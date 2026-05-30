@@ -216,3 +216,24 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# autoharness
+.autoharness/backups/
+
+# backlogit runtime artifacts
+.backlogit/backlogit.db
+.backlogit/*.db-shm
+.backlogit/*.db-wal
+.backlogit/*.db-journal
+
+# local agent/editor state
+.backlogit/
+.claude/
+.copilot/
+.cursor/mcp.json
+.engram/
+.mcp.json
+.vscode/mcp.json
+
+.*.lock
+**/.*.lock

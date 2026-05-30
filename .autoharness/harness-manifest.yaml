@@ -1,0 +1,339 @@
+schema_version: "1.0.0"
+installed_at: "2026-05-30T00:12:00-07:00"
+autoharness_version: "1.0.0"
+autoharness_home: "<local-autoharness-home>"
+profile_hash: null
+config_hash: null
+install_preset: "full"
+primary_stack_pack: "mcp-server"
+stack_packs: ["cli-tool", "mcp-server"]
+install_layers: ["foundation", "instructions", "workflow", "review", "runtime", "backlog", "knowledge", "overlays"]
+capability_packs: ["agent-engram", "backlogit", "strict-safety"]
+capability_pack_overlays:
+  - pack: "agent-engram"
+    overlay_targets:
+      - "foundation-docs"
+      - "agent-engram.instructions.md"
+      - "pipeline-agents"
+      - "analysis-heavy-workflows"
+    verification_checks:
+      - "agent-engram.instructions.md installed at .github/instructions/"
+      - "stage.agent.md contains Engram session-start check"
+      - "ship.agent.md contains Engram session-start check"
+      - "copilot-instructions.md engram block present"
+  - pack: "backlogit"
+    overlay_targets:
+      - "foundation-docs"
+      - "backlogit.instructions.md"
+      - "backlogit-sql-schema.instructions.md"
+      - "backlogit-yaml-header-tooling.instructions.md"
+      - "backlog-integration.instructions.md"
+      - "pipeline-agents"
+    verification_checks:
+      - "backlogit.instructions.md installed at .github/instructions/"
+      - "backlogit-sql-schema.instructions.md installed"
+      - "backlogit-yaml-header-tooling.instructions.md installed"
+      - "stage.agent.md contains backlogit references"
+      - "ship.agent.md contains backlogit references"
+  - pack: "strict-safety"
+    overlay_targets:
+      - "foundation-docs"
+      - "strict-safety.instructions.md"
+      - "pipeline-agents"
+      - "plan-harden-skill"
+      - "safety-modes-skill"
+    verification_checks:
+      - "strict-safety.instructions.md installed at .github/instructions/"
+      - "stage.agent.md contains safety references"
+      - "ship.agent.md contains safety references"
+primitives_installed: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+vscode_settings:
+  applied: false
+  user_settings_path: "<local-vscode-user-settings-path>"
+  entries_added: []
+  skipped_because: "deferred_to_operator"
+artifacts:
+  # Foundation
+  - path: "AGENTS.md"
+    primitive: 9
+    template: "foundation/AGENTS.md.tmpl"
+  - path: ".github/copilot-instructions.md"
+    primitive: 6
+    template: "foundation/copilot-instructions.md.tmpl"
+  - path: ".github/instructions/constitution.instructions.md"
+    primitive: 5
+    template: "foundation/constitution.instructions.md.tmpl"
+  # Instructions
+  - path: ".github/instructions/technology-python.instructions.md"
+    primitive: 6
+    template: "instructions/technology-python.instructions.md.tmpl"
+  - path: ".github/instructions/commit-message.instructions.md"
+    primitive: 6
+    template: "instructions/commit-message.instructions.md.tmpl"
+  - path: ".github/instructions/markdown.instructions.md"
+    primitive: 6
+    template: "instructions/markdown.instructions.md.tmpl"
+  - path: ".github/instructions/writing-style.instructions.md"
+    primitive: 6
+    template: "instructions/writing-style.instructions.md.tmpl"
+  - path: ".github/instructions/git-merge.instructions.md"
+    primitive: 6
+    template: "instructions/git-merge.instructions.md.tmpl"
+  - path: ".github/instructions/pull-request.instructions.md"
+    primitive: 6
+    template: "instructions/pull-request.instructions.md.tmpl"
+  - path: ".github/instructions/prompt-builder.instructions.md"
+    primitive: 6
+    template: "instructions/prompt-builder.instructions.md.tmpl"
+  - path: ".github/instructions/circuit-breaker.instructions.md"
+    primitive: 5
+    template: "instructions/circuit-breaker.instructions.md.tmpl"
+  - path: ".github/instructions/concurrency.instructions.md"
+    primitive: 5
+    template: "instructions/concurrency.instructions.md.tmpl"
+  - path: ".github/instructions/architecture-doc.instructions.md"
+    primitive: 9
+    template: "instructions/architecture-doc.instructions.md.tmpl"
+  - path: ".github/instructions/context-efficiency.instructions.md"
+    primitive: 1
+    template: "instructions/context-efficiency.instructions.md.tmpl"
+  - path: ".github/instructions/ci-security.instructions.md"
+    primitive: 5
+    template: "instructions/ci-security.instructions.md.tmpl"
+  - path: ".github/instructions/workflows.instructions.md"
+    primitive: 6
+    template: "instructions/workflows.instructions.md.tmpl"
+  - path: ".github/instructions/github-pr-automation.instructions.md"
+    primitive: 6
+    template: "instructions/github-pr-automation.instructions.md.tmpl"
+  - path: ".github/instructions/mcp-server.instructions.md"
+    primitive: 6
+    template: "instructions/mcp-server.instructions.md.tmpl"
+  - path: ".github/instructions/backlog-integration.instructions.md"
+    primitive: 4
+    template: "instructions/backlog-integration.instructions.md.tmpl"
+  - path: ".github/instructions/coding-discipline.instructions.md"
+    primitive: 5
+    template: "instructions/coding-discipline.instructions.md.tmpl"
+  - path: ".github/instructions/role-enforcement.instructions.md"
+    primitive: 5
+    template: "instructions/role-enforcement.instructions.md.tmpl"
+  # Capability pack instructions
+  - path: ".github/instructions/agent-engram.instructions.md"
+    primitive: 6
+    template: "instructions/agent-engram.instructions.md.tmpl"
+  - path: ".github/instructions/backlogit.instructions.md"
+    primitive: 4
+    template: "instructions/backlogit.instructions.md.tmpl"
+  - path: ".github/instructions/backlogit-sql-schema.instructions.md"
+    primitive: 4
+    template: "instructions/backlogit-sql-schema.instructions.md.tmpl"
+  - path: ".github/instructions/backlogit-yaml-header-tooling.instructions.md"
+    primitive: 4
+    template: "instructions/backlogit-yaml-header-tooling.instructions.md.tmpl"
+  - path: ".github/instructions/strict-safety.instructions.md"
+    primitive: 5
+    template: "instructions/strict-safety.instructions.md.tmpl"
+  # Pipeline agents
+  - path: ".github/agents/stage.agent.md"
+    primitive: 4
+    template: "agents/stage.agent.md.tmpl"
+  - path: ".github/agents/ship.agent.md"
+    primitive: 4
+    template: "agents/ship.agent.md.tmpl"
+  - path: ".github/agents/orchestrator.agent.md"
+    primitive: 4
+    template: "agents/orchestrator.agent.md.tmpl"
+  # Subagents
+  - path: ".github/agents/subagents/python-engineer.agent.md"
+    primitive: 4
+    template: "agents/language-engineer.agent.md.tmpl"
+  - path: ".github/agents/subagents/prompt-builder.agent.md"
+    primitive: 4
+    template: "agents/prompt-builder.agent.md.tmpl"
+  - path: ".github/agents/subagents/adversarial-review.agent.md"
+    primitive: 7
+    template: "agents/adversarial-review.agent.md.tmpl"
+  - path: ".github/agents/subagents/security-sentinel.agent.md"
+    primitive: 5
+    template: "agents/security-sentinel.agent.md.tmpl"
+  - path: ".github/agents/subagents/learnings-researcher.agent.md"
+    primitive: 1
+    template: "agents/research/learnings-researcher.agent.md.tmpl"
+  # Review personas
+  - path: ".github/agents/subagents/architecture-strategist.agent.md"
+    primitive: 7
+    template: "agents/review/architecture-strategist.agent.md.tmpl"
+  - path: ".github/agents/subagents/constitution-reviewer.agent.md"
+    primitive: 7
+    template: "agents/review/constitution-reviewer.agent.md.tmpl"
+  - path: ".github/agents/subagents/correctness-reviewer.agent.md"
+    primitive: 7
+    template: "generated"
+  - path: ".github/agents/subagents/maintainability-reviewer.agent.md"
+    primitive: 7
+    template: "generated"
+  - path: ".github/agents/subagents/scope-boundary-auditor.agent.md"
+    primitive: 7
+    template: "agents/review/scope-boundary-auditor.agent.md.tmpl"
+  - path: ".github/agents/subagents/python-reviewer.agent.md"
+    primitive: 7
+    template: "agents/review/technology-reviewer.agent.md.tmpl"
+  - path: ".github/agents/subagents/concurrency-reviewer.agent.md"
+    primitive: 7
+    template: "agents/review/concurrency-reviewer.agent.md.tmpl"
+  - path: ".github/agents/subagents/agent-native-parity-reviewer.agent.md"
+    primitive: 7
+    template: "agents/review/agent-native-parity-reviewer.agent.md.tmpl"
+  - path: ".github/agents/subagents/security-reviewer.agent.md"
+    primitive: 7
+    template: "agents/review/security-reviewer.agent.md.tmpl"
+  - path: ".github/agents/subagents/security-lens-reviewer.agent.md"
+    primitive: 7
+    template: "agents/review/security-lens-reviewer.agent.md.tmpl"
+  # Skills
+  - path: ".github/skills/build-feature/SKILL.md"
+    primitive: 4
+    template: "skills/build-feature/SKILL.md.tmpl"
+  - path: ".github/skills/fix-ci/SKILL.md"
+    primitive: 4
+    template: "skills/fix-ci/SKILL.md.tmpl"
+  - path: ".github/skills/impl-plan/SKILL.md"
+    primitive: 4
+    template: "skills/impl-plan/SKILL.md.tmpl"
+  - path: ".github/skills/deliberate/SKILL.md"
+    primitive: 4
+    template: "skills/deliberate/SKILL.md.tmpl"
+  - path: ".github/skills/spike/SKILL.md"
+    primitive: 4
+    template: "skills/spike/SKILL.md.tmpl"
+  - path: ".github/skills/plan-harden/SKILL.md"
+    primitive: 4
+    template: "skills/plan-harden/SKILL.md.tmpl"
+  - path: ".github/skills/compact-context/SKILL.md"
+    primitive: 1
+    template: "skills/compact-context/SKILL.md.tmpl"
+  - path: ".github/skills/compound/SKILL.md"
+    primitive: 1
+    template: "skills/compound/SKILL.md.tmpl"
+  - path: ".github/skills/compound-refresh/SKILL.md"
+    primitive: 1
+    template: "skills/compound-refresh/SKILL.md.tmpl"
+  - path: ".github/skills/harness-architect/SKILL.md"
+    primitive: 4
+    template: "skills/harness-architect/SKILL.md.tmpl"
+  - path: ".github/skills/harvest/SKILL.md"
+    primitive: 4
+    template: "skills/harvest/SKILL.md.tmpl"
+  - path: ".github/skills/pr-lifecycle/SKILL.md"
+    primitive: 4
+    template: "skills/pr-lifecycle/SKILL.md.tmpl"
+  - path: ".github/skills/safety-modes/SKILL.md"
+    primitive: 5
+    template: "skills/safety-modes/SKILL.md.tmpl"
+  - path: ".github/skills/file-lock/SKILL.md"
+    primitive: 5
+    template: "skills/file-lock/SKILL.md.tmpl"
+  - path: ".github/skills/skill-search/SKILL.md"
+    primitive: 6
+    template: "skills/skill-search/SKILL.md.tmpl"
+  - path: ".github/skills/security-audit/SKILL.md"
+    primitive: 5
+    template: "skills/security-audit/SKILL.md.tmpl"
+  - path: ".github/skills/runtime-verification/SKILL.md"
+    primitive: 10
+    template: "skills/runtime-verification/SKILL.md.tmpl"
+  - path: ".github/skills/operational-closure/SKILL.md"
+    primitive: 10
+    template: "skills/operational-closure/SKILL.md.tmpl"
+  - path: ".github/skills/plan-review/SKILL.md"
+    primitive: 7
+    template: "skills/plan-review/SKILL.md.tmpl"
+  - path: ".github/skills/review/SKILL.md"
+    primitive: 7
+    template: "skills/review/SKILL.md.tmpl"
+  - path: ".github/skills/harness-doctor/SKILL.md"
+    primitive: 5
+    template: "skills/harness-doctor/SKILL.md.tmpl"
+  - path: ".github/skills/iterative-experiment/SKILL.md"
+    primitive: 4
+    template: "skills/iterative-experiment/SKILL.md.tmpl"
+  - path: ".github/skills/shipment-reconcile/SKILL.md"
+    primitive: 4
+    template: "skills/shipment-reconcile/SKILL.md.tmpl"
+  # Policies
+  - path: ".github/policies/workflow-policies.md"
+    primitive: 8
+    template: "policies/workflow-policies.md.tmpl"
+  # Prompts
+  - path: ".github/prompts/ping-loop.prompt.md"
+    primitive: 4
+    template: "prompts/ping-loop.prompt.md.tmpl"
+  - path: ".github/prompts/stage-grouping-analysis.prompt.md"
+    primitive: 4
+    template: "prompts/stage-grouping-analysis.prompt.md.tmpl"
+  # Scripts
+  - path: "start.ps1"
+    primitive: 4
+    template: "scripts/start.ps1.tmpl"
+  - path: "start.sh"
+    primitive: 4
+    template: "scripts/start.sh.tmpl"
+  - path: ".markdownlint.json"
+    primitive: 6
+    template: "scripts/.markdownlint.json.tmpl"
+  - path: "scripts/acquire_lock.ps1"
+    primitive: 5
+    template: "skills/file-lock/scripts/acquire_lock.ps1"
+  - path: "scripts/acquire_lock.sh"
+    primitive: 5
+    template: "skills/file-lock/scripts/acquire_lock.sh"
+  - path: "scripts/release_lock.ps1"
+    primitive: 5
+    template: "skills/file-lock/scripts/release_lock.ps1"
+  - path: "scripts/release_lock.sh"
+    primitive: 5
+    template: "skills/file-lock/scripts/release_lock.sh"
+  - path: "scripts/search.ps1"
+    primitive: 6
+    template: "skills/skill-search/scripts/search.ps1"
+  - path: "scripts/search.sh"
+    primitive: 6
+    template: "skills/skill-search/scripts/search.sh"
+  - path: "scripts/pre-commit-markdownlint.ps1"
+    primitive: 6
+    template: "scripts/pre-commit-markdownlint.ps1.tmpl"
+  - path: "scripts/pre-commit-markdownlint.sh"
+    primitive: 6
+    template: "scripts/pre-commit-markdownlint.sh.tmpl"
+  # Config
+  - path: ".autoharness/config.yaml"
+    primitive: null
+    template: "harness-config.yaml.tmpl"
+  - path: ".autoharness/backlog-registry.yaml"
+    primitive: null
+    template: "backlog/registries/backlogit.registry.yaml"
+  - path: ".autoharness/workspace-profile.yaml"
+    primitive: null
+    template: null
+variables_used:
+  PROJECT_NAME: "docline"
+  PRIMARY_LANGUAGE: "Python"
+  PRIMARY_LANGUAGE_LOWER: "python"
+  LANGUAGE_VERSION: "3.12"
+  BUILD_COMMAND: "python -m build"
+  TEST_COMMAND: "pytest"
+  LINT_COMMAND: "ruff check ."
+  FORMAT_COMMAND: "ruff format --check ."
+  FORMAT_FIX_COMMAND: "ruff format ."
+  BUILD_CHECK_COMMAND: "python -m py_compile src/docline/__init__.py"
+  TEST_DIR: "tests/"
+  SOURCE_DIR: "src/"
+  CI_PLATFORM: "GitHub Actions"
+  REPO_OWNER: "softwaresalt"
+  REPO_NAME: "docline"
+  BACKLOG_TOOL_NAME: "backlogit"
+  BACKLOG_DIRECTORY: ".backlogit"
+  DOCS_ROOT: "docs"
+  INSTALL_PRESET: "full"
+  PRIMARY_STACK_PACK: "mcp-server"

@@ -1,0 +1,107 @@
+# autoharness Configuration
+#
+# Resolved harness configuration for this workspace.
+# Written by autoharness install; updated by autoharness tune.
+# Operator edits to this file are preserved on re-install and tuning.
+#
+# Schema: schemas/harness-config.schema.json
+
+schema_version: "1.0.0"
+
+# Installation preset: starter | standard | full
+preset: full
+
+# Additive stack classification used for composition
+primary_stack_pack: mcp-server
+stack_packs: ["cli-tool", "mcp-server"]
+
+# Explicit artifact-class layers selected for installation
+install_layers: ["foundation", "instructions", "workflow", "review", "runtime", "backlog", "knowledge", "overlays"]
+
+# Capability packs enabled for this workspace
+capability_packs: ["agent-engram", "backlogit", "strict-safety"]
+
+# Backlog tool configuration
+backlog:
+  tool: backlogit
+  directory: .backlogit
+  suffix_map:
+    feature: "F"
+    chore: "C"
+    task: "T"
+    spike: "SP"
+    deliberation: "DL"
+    bug: "B"
+    epic: "E"
+    subtask: "ST"
+    shipment: "S"
+
+# Long-lived knowledge artifact directories
+docs:
+  root: docs
+  subdirectories:
+    compound: compound
+    plans: plans
+    decisions: decisions
+    memory: memory
+    closure: closure
+    design_docs: design-docs
+    product_specs: product-specs
+
+# Optional continuous-learning capability-pack configuration
+continuous_learning:
+  directory: ".autoharness/continuous-learning"
+  capture_hooks: false
+  environment_adapter: "none"
+  promotion_threshold: 3
+
+# Optional strict-safety capability-pack configuration
+strict_safety:
+  enabled: true
+  require_approval_for:
+    - destructive
+
+# Model routing preferences (map tiers to model identifiers and per-tier config)
+model_routing:
+  tier1:
+    model: gpt-5.4-mini              # Fast/cheap: memory, docs, compaction (e.g., gpt-5.4-mini)
+    reasoning_effort: ""  # Leave empty to use model default
+    model_provider: ""       # e.g., openai, anthropic — leave empty for default
+    model_family: "gpt-5.4-mini"           # Resolved into Tier 1 agent frontmatter
+  tier2:
+    model: claude-sonnet-4.6              # Standard: orchestration, code, review (e.g., claude-sonnet-4.6)
+    reasoning_effort: ""
+    model_provider: ""
+    model_family: "claude-sonnet-4.6"
+  tier3:
+    model: claude-opus-4.6              # Frontier: planning, architecture, analysis (e.g., claude-opus-4.6)
+    reasoning_effort: ""
+    model_provider: ""
+    model_family: "claude-opus-4.6"
+  orchestrator:
+    model_family: "gpt-5.4"     # Orchestrator model override (default: gpt-5.4)
+    reasoning_effort: ""
+    model_provider: ""
+
+# AI CLI tool startup configuration
+# Resolves copilot in the generated start.ps1 and start.sh scripts.
+# Set exe_path to the full path if copilot is not on PATH.
+ai_tools:
+  copilot_cli:
+    exe_path: "copilot"  # Default: "copilot" (expects it on PATH)
+                                      # Example: "C:\\Tools\\ghcpcli\\copilot.exe"
+
+# Optional browser-automation capability configuration (used when browser-verification is enabled)
+browser:
+  cli: "agent-browser"                    # Default: "agent-browser"
+  headless_flag: "--headless" # Default: "--headless"
+
+# Optional iterative-experiment skill configuration
+experiments:
+  branch_prefix: "experiment/"  # Default: "experiment/"
+  results_dir: "docs/experiments"       # Default: "docs/experiments"
+
+# Explicit template variable overrides applied during install/tune (use sparingly —
+# prefer fixing the workspace setup over overriding discovery results)
+overrides: {}
+
