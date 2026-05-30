@@ -1,9 +1,0 @@
-{
-  "mcpServers": {
-    "engram": {
-      "type": "stdio",
-      "command": "D:/Tools/engram.exe",
-      "args": []
-    }
-  }
-}

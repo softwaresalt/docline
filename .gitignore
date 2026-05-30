@@ -226,21 +226,14 @@ __marimo__/
 .backlogit/*.db-wal
 .backlogit/*.db-journal
 
-# engram plugin (runtime artifacts — state files are intentionally tracked)
-.engram/run/
-.engram/db/
-.engram/code-graph/
-.engram/cozo/
+# local agent/editor state
+.backlogit/
+.claude/
+.copilot/
+.cursor/mcp.json
+.engram/
+.mcp.json
+.vscode/mcp.json
 
 .*.lock
 **/.*.lock
-
-# copilot
-.copilot/ide/
-.copilot/installed-plugins/
-.copilot/logs/
-.copilot/restart/
-.copilot/session-state/
-.copilot/*.db
-.copilot/*.db-shm
-.copilot/*.db-wal

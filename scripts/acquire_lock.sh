@@ -24,8 +24,9 @@ FILENAME="$(basename "$FILEPATH")"
 LOCKFILE="${DIRECTORY}/.${FILENAME}.lock"
 
 if [ -e "$LOCKFILE" ]; then
+    LOCK_INFO="$(cat "$LOCKFILE" 2>/dev/null || printf 'unreadable lock metadata')"
     echo "Warning: Lock already held on: $FILEPATH" >&2
-    echo "Warning: Lock info: $(cat "$LOCKFILE")" >&2
+    echo "Warning: Lock info: $LOCK_INFO" >&2
     exit 1
 fi
 

@@ -16,7 +16,7 @@ cd "$(git rev-parse --show-toplevel)"
 STAGED_MD_FILES=()
 while IFS= read -r -d '' f; do
   STAGED_MD_FILES+=("$f")
-done < <(git diff --cached --name-only -z --diff-filter=ACMR | grep -zE '\.md$' || true)
+done < <(git diff --cached --name-only -z --diff-filter=ACMR -- '*.md')
 
 if [ ${#STAGED_MD_FILES[@]} -eq 0 ]; then
   exit 0
