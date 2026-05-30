@@ -229,6 +229,18 @@ __marimo__/
 # engram plugin (runtime artifacts — state files are intentionally tracked)
 .engram/run/
 .engram/db/
+.engram/code-graph/
+.engram/cozo/
 
 .*.lock
 **/.*.lock
+
+# copilot
+.copilot/ide/
+.copilot/installed-plugins/
+.copilot/logs/
+.copilot/restart/
+.copilot/session-state/
+.copilot/*.db
+.copilot/*.db-shm
+.copilot/*.db-wal

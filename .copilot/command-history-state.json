@@ -1,0 +1,14 @@
+{
+  "commandHistory": [
+    "I just did a git add --all . and got a bunch of files I don't want staged.  Can you undo the stage?",
+    "Actually, I want you to include those docs in the PR. Add, commit, and push the design doc with the rest.",
+    "Let's put our autoharness install into a feature branch and prepare it for PR and branch merge.",
+    "/mcp show",
+    "/model",
+    "/agent",
+    "You can remove the agent-intercom capability pack from this installation.  It won't be necessary in this workspace.",
+    "Install autoharness into this workspace, which will be a python-based project designed to ingest, parse, and process documents an document sources of various types into normalized markdown content files prepared for a document ingestion pipeline into a graph and semantic embedding database.",
+    "/exit",
+    "/update"
+  ]
+}

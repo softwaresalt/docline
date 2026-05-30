@@ -1,0 +1,100 @@
+// User settings belong in settings.json.
+// This file is managed automatically.
+{
+  "firstLaunchAt": "2026-05-30T06:43:25.958Z",
+  "expAssignmentsCache": {
+    "v1:432a8759b1371fa76c6e1b63a6d4f63b88273100e44f5285e7fb043cd29ea41b": {
+      "schemaVersion": 1,
+      "retrievedAt": "2026-05-30T08:16:02.186Z",
+      "response": {
+        "Features": [
+          "cli_aa_c",
+          "553h5936",
+          "h7c07110",
+          "e974i579",
+          "h0649438",
+          "7ge25706",
+          "i810g980",
+          "ibdi6602",
+          "cjf2j356",
+          "7f4g8540",
+          "122j5628",
+          "40003418",
+          "4hhf8315",
+          "1ejaa966",
+          "ci93f471",
+          "7483-disabled",
+          "cli_aa_monitor_t",
+          "cfdic-spawn",
+          "h600b851"
+        ],
+        "Flights": {
+          "9dd4c115-7dcb-c453-d2b5-339c74a1ded6": "cli_aa_c",
+          "f81660f7-c021-d3ce-e95c-70ba7561213d": "553h5936",
+          "c845d17b-3348-6a8b-6435-e4352da2f268": "h7c07110",
+          "cdbba11c-53d2-d2f3-6039-88f91f7dbd10": "e974i579",
+          "36115216-e8ea-0eb0-d3a5-0919cf86df38": "h0649438",
+          "82d80fe2-8ba1-9865-7cce-7f1848904284": "7ge25706",
+          "10146615-ae8f-4853-6838-078ac94b4a14": "i810g980",
+          "2033b9f3-b9e1-6d25-898e-5f14c616a72b": "ibdi6602",
+          "117598bf-6eec-9b69-3ebb-8db6bc949bcf": "cjf2j356",
+          "6941fe83-83fe-f2a0-0128-4c4a5cdc393f": "7f4g8540",
+          "d5402b0a-d2cf-5fe2-d6a8-4111560c4366": "122j5628",
+          "f7039b47-82c2-7db1-cecf-6848b0d2c143": "40003418",
+          "8326b4a7-7225-23dc-089d-6c1362473606": "4hhf8315",
+          "9a31b9c3-0000-2d68-6830-e7f7b34a7a31": "1ejaa966",
+          "6e9fbe8f-80fd-3b34-bdaa-0aacca62d1fd": "ci93f471",
+          "bba80291-0189-dff2-4fe9-7eaefa9d7724": "7483-disabled",
+          "535e4d56-d57b-cbea-68e4-6ed90f421902": "cli_aa_monitor_t",
+          "016eec88-9035-ea0e-56b7-b265ca50d665": "cfdic-spawn",
+          "1e91e67f-d7b1-7059-d2fa-9efb221c8002": "h600b851"
+        },
+        "Configs": [
+          {
+            "Id": "default",
+            "Parameters": {
+              "copilot_cli": true,
+              "copilot_cli_anthropic_messages_api": true,
+              "copilot_cli_gh_cli_over_mcp": true,
+              "copilot_cli_gpt_5_4_for_subagents": true,
+              "copilot_cli_gpt_5_4_mini_for_explore": true,
+              "copilot_cli_mcp_allowlist": true,
+              "copilot_cli_mcp_enterprise_allowlist": true,
+              "copilot_cli_number": -39,
+              "copilot_cli_remove_cwd_listing": true,
+              "copilot_cli_remove_parallel_tool_prompt": true,
+              "copilot_cli_rubber_duck_gpt_claude": true,
+              "copilot_cli_session_based_subagents": false,
+              "copilot_cli_shell_error_classification": true,
+              "copilot_cli_shell_spawn_backend": true,
+              "copilot_cli_skills_instructions": false,
+              "copilot_cli_string": "c_string",
+              "copilot_cli_subagent_parallelism_prompts": false,
+              "copilot_cli_targeted_validation_prompt": true,
+              "copilot_cli_websocket_responses": true,
+              "enable_memory_voting": true
+            }
+          }
+        ],
+        "ParameterGroups": null,
+        "FlightingVersion": 1678,
+        "ImpressionId": "7163736B702A4F65BD731DACCB1AB112",
+        "AssignmentContext": "cli_aa_c:1136621;553h5936:1174692;h7c07110:1165810;e974i579:1131039;h0649438:1151070;7ge25706:1165080;i810g980:1155223;ibdi6602:1154653;cjf2j356:1157326;7f4g8540:1171743;122j5628:1178747;40003418:1183413;4hhf8315:1183362;1ejaa966:1171801;ci93f471:1185513;7483-disabled:1190057;cli_aa_monitor_t:1169029;cfdic-spawn:1187653;h600b851:1183577;"
+      }
+    }
+  },
+  "staff": true,
+  "trustedFolders": [
+    "D:\\Source\\GitHub\\docline"
+  ],
+  "installedPlugins": [
+    {
+      "name": "autoharness",
+      "marketplace": "autoharness",
+      "version": "1.4.5",
+      "installed_at": "2026-05-30T07:04:20.307Z",
+      "enabled": true,
+      "cache_path": "D:\\Source\\GitHub\\docline\\.copilot\\installed-plugins\\autoharness\\autoharness"
+    }
+  ]
+}
