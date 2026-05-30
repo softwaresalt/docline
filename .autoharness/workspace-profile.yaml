@@ -1,0 +1,234 @@
+# .autoharness/workspace-profile.yaml
+schema_version: "1.0.0"
+generated_at: "2026-05-30T00:09:53-07:00"
+workspace_path: "<local-workspace-path>"
+
+languages:
+  primary: "python"
+  secondary: []
+
+frameworks:
+  list:
+    - "fastapi"
+    - "pydantic"
+  mcp_sdk: "mcp-python"
+  mcp_transport: "stdio"
+
+primary_stack_pack: "mcp-server"
+stack_packs:
+  - "cli-tool"
+  - "mcp-server"
+
+build:
+  tool: null
+  command: null
+
+test:
+  runner: "pytest"
+  command: "pytest"
+  directory: "tests"
+
+lint:
+  tool: "ruff"
+  command: "ruff check ."
+
+format:
+  tool: "ruff"
+  command: "ruff format ."
+
+ci:
+  platform: "github-actions"
+  pipeline_steps: []
+  quality_gates: []
+
+structure:
+  source_layout: "src"
+  test_layout: "tests"
+  doc_layout: "docs"
+
+runtime_surfaces:
+  cli: true
+  web_ui: false
+  public_api: true
+  background_jobs: false
+  browser_tooling: []
+  deployment_manifests: []
+
+runtime_validation:
+  validator_manifest:
+    surfaces:
+      - surface: "cli"
+        adapter_hint: "command"
+        probe_hints:
+          - "docline --help"
+          - "docline --manifest"
+        manual_checkpoints: []
+      - surface: "api"
+        adapter_hint: "auto"
+        probe_hints:
+          - "MCP tools/list response"
+        manual_checkpoints:
+          - "Verify MCP server responds to initialize handshake"
+  validation_expectations:
+    required: true
+    surfaces_expected:
+      - "cli"
+      - "api"
+    minimum_verdict: "PASS"
+    preserve_invariants:
+      - "CLI and MCP tool parity"
+      - "Schema validation produces identical results via both interfaces"
+    release_blockers:
+      - "CLI --manifest output must match MCP tools/list schema"
+  releasability:
+    required: true
+    status_when_satisfied: "READY"
+    required_evidence:
+      - "CLI smoke test passes"
+      - "MCP initialize handshake succeeds"
+
+conventions:
+  code_style:
+    linter: "ruff"
+    formatter: "ruff"
+    type_checker: "pyright"
+    pre_commit: false
+  git:
+    branch_naming: "conventional"
+    commit_style: "conventional-commits"
+    default_branch: "main"
+    pr_template: false
+  documentation:
+    api_docs: null
+    adrs: false
+    changelog: false
+    design_docs: "docs/design-docs"
+    product_specs: "docs/product-specs"
+
+distribution: null
+
+tools:
+  markdownlint: true
+  markdownlint_config: null
+
+harness_recommendations:
+  preset: "full"
+  primary_stack_pack: "mcp-server"
+  stack_packs:
+    - "cli-tool"
+    - "mcp-server"
+  capability_packs:
+    - "agent-engram"
+    - "backlogit"
+    - "strict-safety"
+  install_layers:
+    - "constitution"
+    - "agents-md"
+    - "instructions"
+    - "agents"
+    - "skills"
+    - "policies"
+    - "prompts"
+    - "backlog"
+    - "docs"
+  recommendation_reasons:
+    preset:
+      - "Greenfield project with MCP server + CLI dual interface requires comprehensive agent support"
+      - "Complex document ingestion pipeline with multiple extraction engines benefits from full deliberation and review workflows"
+      - "Engram and backlogit already configured — full preset maximizes integration"
+    capability_packs:
+      - "agent-engram: Engram MCP server detected in .mcp.json, .vscode/mcp.json, and .cursor/mcp.json with .engram/ state directory present"
+      - "backlogit: backlogit MCP server configured and .backlogit/ directory with full config present"
+      - "agent-intercom: Recommended for remote operator approval during long-running pipeline operations"
+      - "strict-safety: MCP server exposes public API surface; schema validation is security-sensitive"
+    install_layers:
+      - "All layers recommended for full preset with dual-interface product"
+
+agent_intercom:
+  detected: false
+  mcp_configured: false
+  config_paths: []
+  instruction_markers: []
+  recommended: true
+
+agent_engram:
+  detected: true
+  mcp_configured: true
+  config_paths:
+    - ".mcp.json"
+    - ".vscode/mcp.json"
+    - ".cursor/mcp.json"
+  instruction_markers:
+    - "<!-- engram:start -->"
+    - "<!-- engram:end -->"
+  recommended: true
+
+graphtor_docs:
+  detected: false
+  mcp_configured: false
+  config_paths: []
+  sources_path: ""
+  binary_path: ""
+  instruction_markers: []
+  recommended: false
+
+agent_native:
+  detected: true
+  mcp_sdk_present: true
+  mcp_transport: "stdio"
+  agent_tooling_markers:
+    - "MCP server dual interface (design doc)"
+    - "CLI/MCP parity requirement"
+    - "--manifest command for tool schema discovery"
+  user_agent_parity_required: true
+  recommended_reviewer: true
+
+existing_harness:
+  has_harness: true
+  artifacts:
+    - path: ".github/copilot-instructions.md"
+      type: "instruction"
+      description: "Engram integration instructions only"
+    - path: "start.ps1"
+      type: "startup-script"
+      description: "Autoharness-generated agent CLI startup script"
+    - path: ".backlogit/"
+      type: "backlog-directory"
+      description: "Fully configured backlogit installation"
+
+backlog_tool:
+  detected: true
+  tool_name: "backlogit"
+  directory: ".backlogit"
+  tool_type: "both"
+  mcp_registered: true
+  cli_available: true
+  config_path: ".backlogit/config.yaml"
+  registry_path: null
+  status_values:
+    - "queued"
+    - "active"
+    - "blocked"
+    - "review"
+    - "done"
+    - "accepted"
+    - "rejected"
+    - "archived"
+  features:
+    sql_query: true
+    milestones: false
+    documents: false
+    telemetry: true
+
+vscode:
+  detected: true
+  user_settings_path: "<local-vscode-user-settings-path>"
+  has_agent_settings: false
+
+strict_safety_signals:
+  - "MCP server exposes public API surface to external agent consumers"
+  - "Schema validation pipeline is trust-sensitive — malformed output could poison downstream RAG/graph systems"
+
+release_observability_signals: []
+
+drift_report: null

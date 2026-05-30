@@ -216,3 +216,19 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# autoharness
+.autoharness/backups/
+
+# backlogit runtime artifacts
+.backlogit/backlogit.db
+.backlogit/*.db-shm
+.backlogit/*.db-wal
+.backlogit/*.db-journal
+
+# engram plugin (runtime artifacts — state files are intentionally tracked)
+.engram/run/
+.engram/db/
+
+.*.lock
+**/.*.lock
