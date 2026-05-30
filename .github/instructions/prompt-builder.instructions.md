@@ -2,7 +2,7 @@
 
 description: "Authoring standards for prompt engineering artifacts including prompts, agents, instructions, and skills"
 
-applyTo: '**/*.prompt.md, **/*.agent.md, **/*.instructions.md, **/SKILL.md'
+applyTo: '**/*.prompt.md,**/*.agent.md,**/*.instructions.md,**/SKILL.md'
 
 ---
 

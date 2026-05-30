@@ -1,6 +1,7 @@
 AGENTS.md text eol=lf
 .autoharness/*.yaml text eol=lf
 .github/**/*.md text eol=lf
+.github/**/*.yml text eol=lf
 .github/**/*.yaml text eol=lf
 docs/**/*.md text eol=lf
 docs/**/*.yaml text eol=lf

@@ -83,8 +83,15 @@ if (-not $copilotExe) {
     throw "Unable to locate Copilot CLI. Set COPILOT_EXE_PATH (or COPILOT_EXE for backward compatibility) or add 'copilot' to PATH."
 }
 
-if (-not (Test-Path -LiteralPath $copilotExe -PathType Leaf) -and ($copilotExe -ne "copilot")) {
-    throw "COPILOT_EXE_PATH ('$copilotExe') must be a path to the Copilot executable only (no arguments). Update ai_tools.copilot_cli.exe_path in .autoharness/config.yaml."
+if (Test-Path -LiteralPath $copilotExe -PathType Leaf) {
+    $copilotExe = (Resolve-Path -LiteralPath $copilotExe).Path
+} else {
+    $copilotCommand = Get-Command $copilotExe -ErrorAction SilentlyContinue
+    if (-not $copilotCommand) {
+        throw "Unable to locate Copilot CLI executable '$copilotExe'. Set COPILOT_EXE_PATH to a valid executable path or add '$copilotExe' to PATH."
+    }
+
+    $copilotExe = $copilotCommand.Source
 }
 
 $backlogitCmd = Get-Command backlogit -ErrorAction SilentlyContinue
