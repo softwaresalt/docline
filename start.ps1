@@ -1,7 +1,7 @@
 # Agent CLI Startup Script — docline
 #
 # Sets workspace-local directories so that AI agent state (memories,
-# checkpoints, database) is scoped to this workspace and git-visible.
+# checkpoints, database) is scoped to this workspace and gitignored by default.
 #
 # Activate the section matching your AI CLI tool.
 # To switch tools, comment out the active section and uncomment another.
@@ -10,8 +10,8 @@
 
 # ── GitHub Copilot CLI ──────────────────────────────────────────────────────
 # COPILOT_HOME redirects the Copilot CLI database and memory to a workspace-
-# local directory. This keeps agent state visible in git and isolated per
-# project rather than shared across all workspaces.
+# local directory. This keeps agent state isolated per project and gitignored
+# by default rather than shared across all workspaces.
 #
 # This script does NOT install or refresh Auto-MergeInstall / Auto-Tune.
 # Register those globally with `autoharness setup-copilot-cli`.
@@ -71,16 +71,12 @@ if (-not $env:GITHUB_TOKEN) {
         }
     }
 }
-$defaultCopilotExe = "copilot"
 $copilotExe = if ($env:COPILOT_EXE_PATH) {
     $env:COPILOT_EXE_PATH
 } elseif ($env:COPILOT_EXE) {
     $env:COPILOT_EXE
-} elseif ($defaultCopilotExe) {
-    $defaultCopilotExe
 } else {
-    $copilotCommand = Get-Command "copilot" -ErrorAction SilentlyContinue
-    if ($copilotCommand) { $copilotCommand.Source } else { $null }
+    "copilot"
 }
 
 if (-not $copilotExe) {

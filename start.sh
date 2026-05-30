@@ -2,7 +2,7 @@
 # Agent CLI Startup Script — docline
 #
 # Sets workspace-local directories so that AI agent state (memories,
-# checkpoints, database) is scoped to this workspace and git-visible.
+# checkpoints, database) is scoped to this workspace and gitignored by default.
 #
 # Usage: ./start.sh
 #   Requires execute permission on first use: chmod +x start.sh
@@ -14,10 +14,12 @@
 
 set -euo pipefail
 
+SCRIPT_DIR="$(cd -- "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
+
 # ── GitHub Copilot CLI ──────────────────────────────────────────────────────
 # COPILOT_HOME redirects the Copilot CLI database and memory to a workspace-
-# local directory. This keeps agent state visible in git and isolated per
-# project rather than shared across all workspaces.
+# local directory. This keeps agent state isolated per project and gitignored
+# by default rather than shared across all workspaces.
 #
 # This script does NOT install or refresh Auto-MergeInstall / Auto-Tune.
 # Register those globally with `autoharness setup-copilot-cli`.
@@ -28,8 +30,8 @@ set -euo pipefail
 # Set ai_tools.copilot_cli.exe_path in .autoharness/config.yaml if copilot
 # is not on PATH, then re-run autoharness install or tune.
 #
-export COPILOT_HOME="${COPILOT_HOME:-./.copilot}"
-export ENGRAM_DATA_DIR="${ENGRAM_DATA_DIR:-./.engram}"
+export COPILOT_HOME="${COPILOT_HOME:-$SCRIPT_DIR/.copilot}"
+export ENGRAM_DATA_DIR="${ENGRAM_DATA_DIR:-$SCRIPT_DIR/.engram}"
 if [[ -z "${GITHUB_TOKEN:-}" ]] && command -v gh >/dev/null 2>&1; then
 	gh_token="$(gh auth token 2>/dev/null || true)"
 	if [[ -n "$gh_token" ]]; then
