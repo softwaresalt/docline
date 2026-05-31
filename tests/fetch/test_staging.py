@@ -11,6 +11,7 @@ from docline.fetch.staging import (
     make_job_id,
     sanitize_source,
 )
+from docline.paths import PathContainmentError
 from docline.schema.models import DoclineError
 
 
@@ -249,6 +250,16 @@ def test_create_staging_job_job_id_from_raw_source() -> None:
     from docline.fetch.staging import make_job_id
 
     assert job.job_id == make_job_id(raw)
+
+
+@pytest.mark.parametrize(
+    "base_dir",
+    ["/tmp/staging", r"C:\staging", "../staging", r"..\staging", "a/../b", r"a\..\b"],
+)
+def test_create_staging_job_rejects_unsafe_base_dir(base_dir: str) -> None:
+    """create_staging_job rejects absolute and traversal base_dir inputs."""
+    with pytest.raises(PathContainmentError):
+        create_staging_job("https://example.com/doc", base_dir)
 
 
 # --- sanitize_source: extended path pattern tests ---

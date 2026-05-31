@@ -3,9 +3,11 @@
 import hashlib
 import re
 from datetime import UTC, datetime
+from pathlib import Path
 from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
 
 from docline.fetch.models import SourceMetadata, StagingJob
+from docline.paths import safe_workspace_path, validate_workspace_relative_path
 
 _CREDENTIAL_PARAM_PREFIXES = (
     "token",
@@ -144,9 +146,15 @@ def create_staging_job(
     Returns:
         A :class:`~docline.fetch.models.StagingJob` with a deterministic
         ``job_id`` and a sharded ``cache_path``.
+
+    Raises:
+        PathContainmentError: If ``base_dir`` is absolute, traversing, or
+            resolves outside the current workspace root.
     """
+    validated_base_dir = validate_workspace_relative_path(base_dir)
+    safe_workspace_path(validated_base_dir, Path.cwd())
     job_id = make_job_id(source)
-    cache_path = build_cache_path(base_dir, job_id)
+    cache_path = build_cache_path(validated_base_dir, job_id)
     metadata = SourceMetadata(
         source=sanitize_source(source),
         fetch_timestamp=datetime.now(UTC),

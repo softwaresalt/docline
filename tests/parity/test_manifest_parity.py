@@ -1,4 +1,4 @@
-"""Tests for manifest parity between CLI and app module."""
+"""Tests for manifest parity between CLI, app, and MCP server surfaces."""
 
 import json
 import subprocess
@@ -6,7 +6,8 @@ import sys
 from pathlib import Path
 
 from docline.app import get_manifest
-from docline.app_models import Manifest
+from docline.app_models import Manifest, McpManifestResponse
+from docline.mcp.server import SERVER, get_manifest_response
 
 
 def test_get_manifest_returns_manifest() -> None:
@@ -72,6 +73,36 @@ def test_manifest_fetch_parameters_preserve_required_metadata() -> None:
     assert "source" in fetch.parameters["required"]
 
 
+def test_get_mcp_manifest_returns_mcp_manifest_response() -> None:
+    """The MCP server surface returns a typed manifest envelope."""
+    manifest = get_manifest_response()
+    assert isinstance(manifest, McpManifestResponse)
+
+
+def test_mcp_manifest_matches_shared_manifest() -> None:
+    """The MCP server manifest surface exposes the shared tool schemas."""
+    manifest = get_manifest()
+    mcp_manifest = get_manifest_response()
+    expected_tools = [
+        {
+            "name": tool.name,
+            "description": tool.description,
+            "inputSchema": tool.parameters,
+        }
+        for tool in manifest.tools
+    ]
+    assert mcp_manifest.model_dump(by_alias=True)["tools"] == expected_tools
+
+
+def test_mcp_server_list_tools_exposes_shared_manifest() -> None:
+    """The MCP server surface exposes the shared tool set via list_tools()."""
+    manifest = get_manifest()
+    mcp_manifest = SERVER.list_tools()
+    assert [tool["name"] for tool in mcp_manifest.model_dump(by_alias=True)["tools"]] == [
+        tool.name for tool in manifest.tools
+    ]
+
+
 def test_cli_manifest_flag_outputs_valid_json(capsys) -> None:
     """CLI --manifest flag prints valid JSON with 'tools' key."""
     from docline.cli import main
@@ -93,6 +124,40 @@ def test_cli_manifest_contains_fetch_and_process(capsys) -> None:
     names = [t["name"] for t in data["tools"]]
     assert "fetch" in names
     assert "process" in names
+
+
+def test_cli_manifest_matches_mcp_manifest(capsys) -> None:
+    """CLI and MCP server surfaces expose equivalent shared tool schemas."""
+    from docline.cli import main
+
+    main(["--manifest"])
+    captured = capsys.readouterr()
+    cli_manifest = json.loads(captured.out)
+    mcp_manifest = get_manifest_response()
+    assert [
+        {
+            "name": tool["name"],
+            "description": tool["description"],
+            "inputSchema": tool["parameters"],
+        }
+        for tool in cli_manifest["tools"]
+    ] == mcp_manifest.model_dump(by_alias=True)["tools"]
+
+
+def test_cli_manifest_uses_parameters_field(capsys) -> None:
+    """CLI manifest keeps the documented ``parameters`` field name."""
+    from docline.cli import main
+
+    main(["--manifest"])
+    captured = capsys.readouterr()
+    cli_manifest = json.loads(captured.out)
+    assert "parameters" in cli_manifest["tools"][0]
+
+
+def test_mcp_manifest_uses_input_schema_field() -> None:
+    """MCP manifest uses the protocol-native ``inputSchema`` field name."""
+    mcp_manifest = get_manifest_response().model_dump(by_alias=True)
+    assert "inputSchema" in mcp_manifest["tools"][0]
 
 
 def test_cli_fetch_stub_returns_1(capsys) -> None:

@@ -5,11 +5,34 @@ from pathlib import Path
 
 from docline.schema.models import DoclineError
 
+_PATH_SEPARATOR_RE = re.compile(r"[\\/]+")
 _WINDOWS_DRIVE_RE = re.compile(r"^[A-Za-z]:", re.ASCII)
 
 
 class PathContainmentError(DoclineError):
     """Raised when a path resolves outside the workspace root."""
+
+
+def validate_workspace_relative_path(relative: str | Path) -> str:
+    """Validate that a path is workspace-relative and non-traversing.
+
+    Args:
+        relative: Path text supplied at a CLI, MCP, or helper boundary.
+
+    Returns:
+        The validated path text.
+
+    Raises:
+        PathContainmentError: If the path is absolute or contains ``..`` traversal.
+    """
+    str_path = str(relative)
+    if str_path.startswith(("/", "\\")) or _WINDOWS_DRIVE_RE.match(str_path):
+        raise PathContainmentError(
+            f"Absolute path {relative!r} is not allowed; provide a path relative to the workspace"
+        )
+    if ".." in _PATH_SEPARATOR_RE.split(str_path):
+        raise PathContainmentError(f"Path {relative!r} must not contain parent-directory traversal")
+    return str_path
 
 
 def _contains_workspace_symlink(candidate: Path, workspace_root: Path) -> bool:
@@ -88,9 +111,5 @@ def safe_workspace_path(relative: str | Path, workspace_root: str | Path) -> Pat
     Raises:
         PathContainmentError: If ``relative`` is absolute or escapes the root.
     """
-    str_path = str(relative)
-    if str_path.startswith(("/", "\\")) or _WINDOWS_DRIVE_RE.match(str_path):
-        raise PathContainmentError(
-            f"Absolute path {relative!r} is not allowed; provide a path relative to the workspace"
-        )
-    return resolve_contained(relative, workspace_root)
+    validated = validate_workspace_relative_path(relative)
+    return resolve_contained(validated, workspace_root)

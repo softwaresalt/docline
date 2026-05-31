@@ -1,6 +1,12 @@
 """Application-level functions shared between CLI and MCP server."""
 
-from docline.app_models import FetchRequest, Manifest, ManifestTool, ProcessRequest
+from docline.app_models import (
+    FetchRequest,
+    Manifest,
+    ManifestTool,
+    McpManifestResponse,
+    ProcessRequest,
+)
 
 
 def get_manifest() -> Manifest:
@@ -33,3 +39,13 @@ def get_manifest() -> Manifest:
             ),
         ]
     )
+
+
+def get_mcp_manifest() -> McpManifestResponse:
+    """Build and return the manifest through a minimal MCP tools/list envelope.
+
+    Returns:
+        A :class:`~docline.app_models.McpManifestResponse` containing the shared
+        manifest payload converted into MCP ``tools/list`` entries.
+    """
+    return McpManifestResponse(tools=get_manifest().tools)

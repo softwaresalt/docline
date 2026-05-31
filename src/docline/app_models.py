@@ -1,20 +1,8 @@
 """Shared operation models used by both the CLI and MCP server interfaces."""
 
-import re
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from pydantic import BaseModel, Field, field_validator
-
-_WINDOWS_DRIVE_RE = re.compile(r"^[A-Za-z]:", re.ASCII)
-_PATH_SEPARATOR_RE = re.compile(r"[\\/]+")
-
-
-def _validate_workspace_relative_path(value: str) -> str:
-    """Validate that a boundary path is relative and non-traversing."""
-    if value.startswith(("/", "\\")) or _WINDOWS_DRIVE_RE.match(value):
-        raise ValueError("path must be relative to the workspace")
-    if ".." in _PATH_SEPARATOR_RE.split(value):
-        raise ValueError("path must not contain parent-directory traversal")
-    return value
+from docline.paths import PathContainmentError, validate_workspace_relative_path
 
 
 class FetchRequest(BaseModel):
@@ -33,7 +21,10 @@ class FetchRequest(BaseModel):
     @field_validator("output_dir")
     @classmethod
     def _validate_output_dir(cls, value: str) -> str:
-        return _validate_workspace_relative_path(value)
+        try:
+            return validate_workspace_relative_path(value)
+        except PathContainmentError as err:
+            raise ValueError(str(err)) from err
 
 
 class FetchResult(BaseModel):
@@ -66,7 +57,10 @@ class ProcessRequest(BaseModel):
     @field_validator("staging_dir", "output_dir")
     @classmethod
     def _validate_workspace_paths(cls, value: str) -> str:
-        return _validate_workspace_relative_path(value)
+        try:
+            return validate_workspace_relative_path(value)
+        except PathContainmentError as err:
+            raise ValueError(str(err)) from err
 
 
 class ProcessResult(BaseModel):
@@ -94,9 +88,14 @@ class ManifestTool(BaseModel):
         parameters: Full JSON Schema dict for the tool's parameters.
     """
 
+    model_config = ConfigDict(populate_by_name=True)
+
     name: str
     description: str
-    parameters: dict[str, object]
+    parameters: dict[str, object] = Field(
+        serialization_alias="inputSchema",
+        validation_alias="inputSchema",
+    )
 
 
 class Manifest(BaseModel):
@@ -104,6 +103,16 @@ class Manifest(BaseModel):
 
     Attributes:
         tools: Ordered list of tool definitions.
+    """
+
+    tools: list[ManifestTool]
+
+
+class McpManifestResponse(BaseModel):
+    """A minimal MCP-compatible tools/list response.
+
+    Attributes:
+        tools: Ordered list of shared manifest tools in MCP discovery format.
     """
 
     tools: list[ManifestTool]
