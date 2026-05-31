@@ -17,9 +17,6 @@ def get_manifest() -> Manifest:
     fetch_schema = FetchRequest.model_json_schema()
     process_schema = ProcessRequest.model_json_schema()
 
-    fetch_props = fetch_schema.get("properties", {})
-    process_props = process_schema.get("properties", {})
-
     return Manifest(
         tools=[
             ManifestTool(
@@ -27,12 +24,12 @@ def get_manifest() -> Manifest:
                 description=(
                     "Fetch a document from a URL or file path and stage it for processing."
                 ),
-                parameters=fetch_props,
+                parameters=fetch_schema,
             ),
             ManifestTool(
                 name="process",
                 description=("Process staged documents into schema-validated Markdown output."),
-                parameters=process_props,
+                parameters=process_schema,
             ),
         ]
     )

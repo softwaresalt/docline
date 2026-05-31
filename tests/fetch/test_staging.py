@@ -152,6 +152,16 @@ def test_sanitize_url_strips_sig_query_param() -> None:
     assert "sig=" not in result
 
 
+def test_sanitize_url_strips_signed_cloud_query_params() -> None:
+    """sanitize_source removes signed cloud storage signature parameters."""
+    result = sanitize_source(
+        "https://example.com/doc?X-Amz-Signature=secret&X-Goog-Signature=secret2&page=1"
+    )
+    assert "x-amz-signature=" not in result.lower()
+    assert "x-goog-signature=" not in result.lower()
+    assert "page=1" in result
+
+
 def test_sanitize_url_strips_userinfo_from_netloc() -> None:
     """sanitize_source removes user:pass@ from URL netloc."""
     result = sanitize_source("https://user:pass@example.com/path")

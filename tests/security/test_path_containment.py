@@ -54,6 +54,18 @@ def test_safe_workspace_path_windows_absolute_raises(tmp_path) -> None:
         safe_workspace_path("C:\\Users\\alice\\secret.txt", tmp_path)
 
 
+def test_safe_workspace_path_windows_rooted_raises(tmp_path) -> None:
+    """safe_workspace_path raises PathContainmentError for rooted Windows paths."""
+    with pytest.raises(PathContainmentError, match="Absolute path"):
+        safe_workspace_path("\\Windows\\system32\\config", tmp_path)
+
+
+def test_safe_workspace_path_unc_raises(tmp_path) -> None:
+    """safe_workspace_path raises PathContainmentError for UNC paths."""
+    with pytest.raises(PathContainmentError, match="Absolute path"):
+        safe_workspace_path("\\\\server\\share\\secret.txt", tmp_path)
+
+
 def test_safe_workspace_path_traversal_raises(tmp_path) -> None:
     """safe_workspace_path raises PathContainmentError for escaping traversal."""
     with pytest.raises(PathContainmentError):

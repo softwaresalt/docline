@@ -1,6 +1,6 @@
 """Shared operation models used by both the CLI and MCP server interfaces."""
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class FetchRequest(BaseModel):
@@ -13,7 +13,7 @@ class FetchRequest(BaseModel):
     """
 
     source: str
-    depth: int = 0
+    depth: int = Field(default=0, ge=0)
     output_dir: str = ".cache/staging"
 
 
@@ -67,12 +67,12 @@ class ManifestTool(BaseModel):
     Attributes:
         name: Unique tool name in snake_case.
         description: Human-readable description of what the tool does.
-        parameters: JSON schema properties dict for the tool's parameters.
+        parameters: Full JSON Schema dict for the tool's parameters.
     """
 
     name: str
     description: str
-    parameters: dict
+    parameters: dict[str, object]
 
 
 class Manifest(BaseModel):

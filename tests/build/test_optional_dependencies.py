@@ -36,6 +36,14 @@ def test_require_extra_error_message_contains_extra() -> None:
         require_extra("__nonexistent_package__", "test-extra")
 
 
+def test_require_extra_error_message_does_not_suggest_undeclared_extra() -> None:
+    """Error message does not suggest installing an undeclared project extra."""
+    with pytest.raises(DependencyUnavailableError) as exc_info:
+        require_extra("__nonexistent_package__", "test-extra")
+
+    assert "docline[test-extra]" not in str(exc_info.value)
+
+
 def test_require_extra_does_not_raise_for_stdlib() -> None:
     """require_extra does not raise for packages that are available."""
     require_extra("json", "core")  # json is always available

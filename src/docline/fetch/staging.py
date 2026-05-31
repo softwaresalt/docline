@@ -7,7 +7,16 @@ from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
 
 from docline.fetch.models import SourceMetadata, StagingJob
 
-_CREDENTIAL_PARAM_PREFIXES = ("token", "key", "secret", "auth", "sig", "signature")
+_CREDENTIAL_PARAM_PREFIXES = (
+    "token",
+    "key",
+    "secret",
+    "auth",
+    "sig",
+    "signature",
+    "x-amz-signature",
+    "x-goog-signature",
+)
 _WINDOWS_DRIVE_RE = re.compile(r"^[A-Za-z]:", re.ASCII)
 
 
@@ -50,7 +59,7 @@ def sanitize_source(source: str) -> str:
        from the netloc and remove query parameters whose names match credential
        prefixes (``token``, ``key``, ``secret``, ``auth``, ``sig``,
        ``signature``, ``X-Amz-Signature``, ``X-Goog-Signature``).
-       Matching is case-insensitive prefix comparison.
+       Matching is case-insensitive prefix comparison after lowercasing.
     2. **Absolute file path**: replace with ``"<local-path-redacted>"`` when
        the string starts with a Windows drive letter + colon (e.g. ``C:``) or
        a Unix root slash (``/``).

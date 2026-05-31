@@ -27,6 +27,12 @@ def test_fetch_request_custom_fields() -> None:
     assert req.output_dir == "/tmp/out"
 
 
+def test_fetch_request_rejects_negative_depth() -> None:
+    """FetchRequest rejects negative crawl depth values."""
+    with pytest.raises(ValidationError):
+        FetchRequest(source="http://example.com", depth=-1)
+
+
 def test_fetch_request_requires_source() -> None:
     """FetchRequest raises ValidationError when source is missing."""
     with pytest.raises(ValidationError):
@@ -92,6 +98,7 @@ def test_fetch_request_json_schema_generated() -> None:
     schema = FetchRequest.model_json_schema()
     assert "properties" in schema
     assert "source" in schema["properties"]
+    assert schema["properties"]["depth"]["minimum"] == 0
 
 
 def test_process_request_json_schema_generated() -> None:

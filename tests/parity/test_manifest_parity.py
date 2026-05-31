@@ -50,14 +50,23 @@ def test_manifest_fetch_parameters_has_source() -> None:
     """The fetch tool parameters include the 'source' field."""
     manifest = get_manifest()
     fetch = next(t for t in manifest.tools if t.name == "fetch")
-    assert "source" in fetch.parameters
+    assert "source" in fetch.parameters["properties"]
 
 
 def test_manifest_process_parameters_has_staging_dir() -> None:
     """The process tool parameters include the 'staging_dir' field."""
     manifest = get_manifest()
     process = next(t for t in manifest.tools if t.name == "process")
-    assert "staging_dir" in process.parameters
+    assert "staging_dir" in process.parameters["properties"]
+
+
+def test_manifest_fetch_parameters_preserve_required_metadata() -> None:
+    """The fetch tool parameters preserve full JSON Schema metadata."""
+    manifest = get_manifest()
+    fetch = next(t for t in manifest.tools if t.name == "fetch")
+    assert fetch.parameters["type"] == "object"
+    assert "required" in fetch.parameters
+    assert "source" in fetch.parameters["required"]
 
 
 def test_cli_manifest_flag_outputs_valid_json(capsys) -> None:

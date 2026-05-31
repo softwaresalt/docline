@@ -24,7 +24,8 @@ def require_extra(package: str, extra: str) -> None:
         importlib.import_module(package)
     except ImportError as err:
         raise DependencyUnavailableError(
-            f"Install docline[{extra}] to use this feature (missing: {package})"
+            f"Install the optional dependency package {package!r} to use this feature "
+            f"(feature: {extra}; missing import: {package})"
         ) from err
 
 

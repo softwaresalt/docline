@@ -56,7 +56,7 @@ def safe_workspace_path(relative: str | Path, workspace_root: str | Path) -> Pat
         PathContainmentError: If ``relative`` is absolute or escapes the root.
     """
     str_path = str(relative)
-    if str_path.startswith("/") or _WINDOWS_DRIVE_RE.match(str_path):
+    if str_path.startswith(("/", "\\")) or _WINDOWS_DRIVE_RE.match(str_path):
         raise PathContainmentError(
             f"Absolute path {relative!r} is not allowed; provide a path relative to the workspace"
         )
