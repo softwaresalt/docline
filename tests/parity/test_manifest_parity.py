@@ -1,6 +1,9 @@
 """Tests for manifest parity between CLI and app module."""
 
 import json
+import subprocess
+import sys
+from pathlib import Path
 
 from docline.app import get_manifest
 from docline.app_models import Manifest
@@ -114,3 +117,18 @@ def test_cli_unknown_arg_returns_2(capsys) -> None:
 
     exit_code = main(["--unknown"])
     assert exit_code == 2
+
+
+def test_python_m_docline_cli_runs_main() -> None:
+    """Running ``python -m docline.cli`` executes the CLI entrypoint."""
+    repo_root = Path(__file__).resolve().parents[2]
+    result = subprocess.run(
+        [sys.executable, "-m", "docline.cli", "--manifest"],
+        capture_output=True,
+        check=False,
+        cwd=repo_root,
+        text=True,
+    )
+
+    assert result.returncode == 0
+    assert "tools" in json.loads(result.stdout)

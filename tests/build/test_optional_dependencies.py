@@ -1,5 +1,8 @@
 """Tests for optional dependency guards."""
 
+import tomllib
+from pathlib import Path
+
 import pytest
 
 from docline.dependencies import (
@@ -64,3 +67,20 @@ def test_html_available_returns_bool() -> None:
 def test_transcript_available_returns_true() -> None:
     """transcript_available() always returns True (stdlib-only path)."""
     assert transcript_available() is True
+
+
+def test_pyproject_declares_pydantic_dependency() -> None:
+    """pyproject.toml declares the runtime Pydantic dependency."""
+    pyproject = Path(__file__).resolve().parents[2] / "pyproject.toml"
+    project = tomllib.loads(pyproject.read_text(encoding="utf-8"))["project"]
+
+    dependencies = project.get("dependencies", [])
+    assert any(dependency.startswith("pydantic") for dependency in dependencies)
+
+
+def test_pyproject_declares_docline_console_script() -> None:
+    """pyproject.toml exposes the docline console script entrypoint."""
+    pyproject = Path(__file__).resolve().parents[2] / "pyproject.toml"
+    project = tomllib.loads(pyproject.read_text(encoding="utf-8"))["project"]
+
+    assert project.get("scripts", {}).get("docline") == "docline.cli:main"

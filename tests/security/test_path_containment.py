@@ -89,3 +89,18 @@ def test_resolve_contained_sibling_prefix_bypass(tmp_path) -> None:
     # outside root but shares its string prefix.
     with pytest.raises(PathContainmentError):
         resolve_contained("../root2/secret.txt", root)
+
+
+def test_resolve_contained_rejects_symlink_within_workspace(tmp_path) -> None:
+    """resolve_contained rejects paths that traverse a workspace symlink."""
+    target_dir = tmp_path / "real"
+    target_dir.mkdir()
+    symlink_dir = tmp_path / "linked"
+
+    try:
+        symlink_dir.symlink_to(target_dir, target_is_directory=True)
+    except OSError as exc:
+        pytest.skip(f"symlink creation unavailable: {exc}")
+
+    with pytest.raises(PathContainmentError, match="symlink"):
+        resolve_contained("linked/report.md", tmp_path)

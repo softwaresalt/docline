@@ -92,6 +92,8 @@ def _sanitize_url(source: str) -> str:
     parsed = urlparse(source)
     # Strip userinfo (user:pass@) from netloc
     netloc = parsed.hostname or ""
+    if ":" in netloc and not netloc.startswith("["):
+        netloc = f"[{netloc}]"
     if parsed.port:
         netloc = f"{netloc}:{parsed.port}"
 

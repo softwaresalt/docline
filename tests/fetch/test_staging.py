@@ -170,6 +170,12 @@ def test_sanitize_url_strips_userinfo_from_netloc() -> None:
     assert "example.com" in result
 
 
+def test_sanitize_url_preserves_brackets_for_ipv6_literal() -> None:
+    """sanitize_source preserves IPv6 brackets when rebuilding the netloc."""
+    result = sanitize_source("https://[::1]:8443/path?token=secret&page=1")
+    assert result == "https://[::1]:8443/path?page=1"
+
+
 def test_sanitize_url_no_credentials_unchanged() -> None:
     """sanitize_source leaves clean URLs without credentials unchanged."""
     url = "https://example.com/docs/api?page=2&lang=en"

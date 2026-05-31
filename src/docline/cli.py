@@ -44,3 +44,7 @@ def main(argv: list[str] | None = None) -> int:
 
     print("usage: docline [--manifest | fetch | process]")
     return 2
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

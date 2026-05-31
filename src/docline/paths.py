@@ -12,12 +12,36 @@ class PathContainmentError(DoclineError):
     """Raised when a path resolves outside the workspace root."""
 
 
+def _contains_workspace_symlink(candidate: Path, workspace_root: Path) -> bool:
+    """Return whether a candidate path traverses a symlink under the workspace root.
+
+    Args:
+        candidate: Absolute candidate path before canonical resolution.
+        workspace_root: Canonical workspace root.
+
+    Returns:
+        ``True`` when any existing path segment under ``workspace_root`` is a symlink.
+    """
+    try:
+        relative_candidate = candidate.relative_to(workspace_root)
+    except ValueError:
+        return False
+
+    current = workspace_root
+    for part in relative_candidate.parts:
+        current /= part
+        if current.is_symlink():
+            return True
+    return False
+
+
 def resolve_contained(path: str | Path, workspace_root: str | Path) -> Path:
     """Resolve a path and verify it is contained within the workspace root.
 
     Uses ``Path.resolve(strict=False)`` to compute the canonical path without
-    requiring the path to exist on disk, then checks that the resolved path is
-    a descendant of ``workspace_root``.
+    requiring the path to exist on disk, rejects symlink traversal within the
+    workspace, then checks that the resolved path is a descendant of
+    ``workspace_root``.
 
     Args:
         path: The path to resolve. May be relative or absolute.
@@ -27,10 +51,19 @@ def resolve_contained(path: str | Path, workspace_root: str | Path) -> Path:
         The resolved :class:`~pathlib.Path` if it is inside ``workspace_root``.
 
     Raises:
-        PathContainmentError: If the resolved path is not under ``workspace_root``.
+        PathContainmentError: If the resolved path is not under ``workspace_root``
+            or the path traverses a workspace symlink.
     """
     root = Path(workspace_root).resolve()
-    resolved = (root / path).resolve()
+    candidate = Path(path)
+    unresolved = candidate if candidate.is_absolute() else root / candidate
+
+    if _contains_workspace_symlink(unresolved, root):
+        raise PathContainmentError(
+            f"Path {path!r} traverses a symlink under workspace root {root!r}"
+        )
+
+    resolved = unresolved.resolve(strict=False)
 
     if not resolved.is_relative_to(root):
         raise PathContainmentError(
