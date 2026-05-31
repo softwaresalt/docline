@@ -64,3 +64,16 @@ def test_safe_workspace_path_deep_nesting(tmp_path) -> None:
     """safe_workspace_path accepts deeply nested relative paths."""
     result = safe_workspace_path("a/b/c/d/file.txt", tmp_path)
     assert str(result).startswith(str(tmp_path))
+
+
+def test_resolve_contained_sibling_prefix_bypass(tmp_path) -> None:
+    """resolve_contained raises PathContainmentError for sibling paths sharing a prefix.
+
+    Regression: startswith("root") incorrectly accepted "root2/secret.txt"
+    because "root2" starts with "root".
+    """
+    root = tmp_path / "root"
+    # ../root2/secret.txt resolves to tmp_path/root2/secret.txt, which is
+    # outside root but shares its string prefix.
+    with pytest.raises(PathContainmentError):
+        resolve_contained("../root2/secret.txt", root)

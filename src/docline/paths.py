@@ -32,7 +32,7 @@ def resolve_contained(path: str | Path, workspace_root: str | Path) -> Path:
     root = Path(workspace_root).resolve()
     resolved = (root / path).resolve()
 
-    if not str(resolved).startswith(str(root)):
+    if not resolved.is_relative_to(root):
         raise PathContainmentError(
             f"Path {path!r} resolves to {resolved!r} which is outside workspace root {root!r}"
         )
