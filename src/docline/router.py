@@ -21,10 +21,10 @@ def classify_source(raw: str) -> SourceInput:
         A :class:`~docline.types.SourceInput` with the resolved kind and the
         original raw string.
     """
-    if raw.startswith(_URL_PREFIXES):
+    lower = raw.lower()
+    if lower.startswith(_URL_PREFIXES):
         return SourceInput(kind=SourceKind.URL, raw=raw)
 
-    lower = raw.lower()
     for ext in _TRANSCRIPT_EXTENSIONS:
         if lower.endswith(ext):
             return SourceInput(kind=SourceKind.TRANSCRIPT, raw=raw)

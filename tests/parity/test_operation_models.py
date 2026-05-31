@@ -39,6 +39,12 @@ def test_fetch_request_requires_source() -> None:
         FetchRequest()  # type: ignore[call-arg]
 
 
+def test_fetch_request_rejects_empty_source() -> None:
+    """FetchRequest rejects empty source strings."""
+    with pytest.raises(ValidationError):
+        FetchRequest(source="")
+
+
 def test_fetch_result_success() -> None:
     """FetchResult can represent a successful fetch."""
     result = FetchResult(source="http://example.com", staged_path="/cache/abc", success=True)
@@ -98,6 +104,7 @@ def test_fetch_request_json_schema_generated() -> None:
     schema = FetchRequest.model_json_schema()
     assert "properties" in schema
     assert "source" in schema["properties"]
+    assert schema["properties"]["source"]["minLength"] == 1
     assert schema["properties"]["depth"]["minimum"] == 0
 
 

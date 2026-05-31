@@ -71,9 +71,10 @@ def sanitize_source(source: str) -> str:
     Returns:
         A sanitised copy of the source string with credentials removed.
     """
-    if source.startswith("file://"):
+    lower_source = source.lower()
+    if lower_source.startswith("file://"):
         return "<local-path-redacted>"
-    if source.startswith(("http://", "https://")):
+    if lower_source.startswith(("http://", "https://")):
         return _sanitize_url(source)
     if source.startswith(("/", "\\")) or _WINDOWS_DRIVE_RE.match(source):
         return "<local-path-redacted>"
@@ -94,7 +95,7 @@ def _sanitize_url(source: str) -> str:
     netloc = parsed.hostname or ""
     if ":" in netloc and not netloc.startswith("["):
         netloc = f"[{netloc}]"
-    if parsed.port:
+    if parsed.port is not None:
         netloc = f"{netloc}:{parsed.port}"
 
     # Filter credential query params (case-insensitive prefix match)

@@ -76,3 +76,9 @@ def test_classify_http_prefix_only() -> None:
     """Bare http:// prefix is classified as URL."""
     result = classify_source("http://localhost")
     assert result.kind == SourceKind.URL
+
+
+def test_classify_mixed_case_https_url() -> None:
+    """Mixed-case HTTPS schemes are still classified as URL."""
+    result = classify_source("HtTpS://example.com/page")
+    assert result.kind == SourceKind.URL

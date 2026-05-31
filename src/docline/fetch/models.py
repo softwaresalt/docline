@@ -15,7 +15,7 @@ class SourceMetadata(BaseModel):
     """Metadata captured during a document fetch operation.
 
     Attributes:
-        source: The original source URL or file path.
+        source: The sanitized source URL or file path persisted with the staging job.
         fetch_timestamp: When the fetch was initiated.
         http_status: HTTP response status code, if applicable.
         content_type: MIME type of the fetched content, if available.

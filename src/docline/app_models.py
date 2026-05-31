@@ -12,7 +12,7 @@ class FetchRequest(BaseModel):
         output_dir: Directory where staged files are written.
     """
 
-    source: str
+    source: str = Field(min_length=1)
     depth: int = Field(default=0, ge=0)
     output_dir: str = ".cache/staging"
 

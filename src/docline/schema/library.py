@@ -97,19 +97,19 @@ class WebFrontmatter(BaseFrontmatter):
 
     Attributes:
         doc_type: Always ``"web"``.
-        url: Source URL. Must start with ``http://`` or ``https://``.
+        source_url: Source URL. Must start with ``http://`` or ``https://``.
         crawl_depth: Depth at which this page was discovered during crawling.
     """
 
     doc_type: Literal["web"] = "web"  # type: ignore[override]
-    url: str
+    source_url: str
     crawl_depth: int = 0
 
-    @field_validator("url")
+    @field_validator("source_url")
     @classmethod
     def _validate_url(cls, value: str) -> str:
         if not (value.startswith("http://") or value.startswith("https://")):
-            raise ValueError("url must start with http:// or https://")
+            raise ValueError("source_url must start with http:// or https://")
         return value
 
 

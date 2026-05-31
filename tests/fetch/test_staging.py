@@ -251,3 +251,21 @@ def test_sanitize_source_redacts_file_url() -> None:
     """sanitize_source redacts file:// URLs."""
     result = sanitize_source("file:///C:/secret.txt")
     assert result == "<local-path-redacted>"
+
+
+def test_sanitize_source_redacts_mixed_case_file_url() -> None:
+    """sanitize_source redacts file URLs regardless of scheme casing."""
+    result = sanitize_source("FiLe:///C:/secret.txt")
+    assert result == "<local-path-redacted>"
+
+
+def test_sanitize_source_redacts_mixed_case_https_url() -> None:
+    """sanitize_source strips credentials from HTTPS URLs regardless of scheme casing."""
+    result = sanitize_source("HtTpS://user:pass@example.com/path?token=secret&page=1")
+    assert result == "https://example.com/path?page=1"
+
+
+def test_sanitize_source_preserves_explicit_port_zero() -> None:
+    """sanitize_source preserves an explicit :0 port when rebuilding URLs."""
+    result = sanitize_source("https://example.com:0/path?token=secret&page=1")
+    assert result == "https://example.com:0/path?page=1"
