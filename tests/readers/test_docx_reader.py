@@ -34,11 +34,11 @@ def test_docx_read_error_is_docline_error() -> None:
 
 
 def test_read_docx_returns_string(tmp_path: Path) -> None:
-    """read_docx returns a string for a DOCX-like file."""
+    """read_docx raises DocxReadError for a PK-signed but corrupt ZIP file."""
     docx_path = tmp_path / "sample.docx"
     docx_path.write_bytes(b"PK\x03\x04minimal docx content")
-    result = read_docx(docx_path)
-    assert isinstance(result, str)
+    with pytest.raises(DocxReadError):
+        read_docx(docx_path)
 
 
 def test_read_docx_returns_string_for_zip_file(tmp_path: Path) -> None:
@@ -66,5 +66,19 @@ def test_read_docx_raises_for_corrupt_file(tmp_path: Path) -> None:
     """read_docx raises DocxReadError for a corrupt or non-DOCX file."""
     docx_path = tmp_path / "corrupt.docx"
     docx_path.write_bytes(b"\x00\x01\x02 not a zip at all GARBAGE DATA")
+    with pytest.raises(DocxReadError):
+        read_docx(docx_path)
+
+
+def test_read_docx_raises_for_malformed_xml(tmp_path: Path) -> None:
+    """read_docx raises DocxReadError when word/document.xml contains invalid XML."""
+    import io
+    import zipfile
+
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as zf:
+        zf.writestr("word/document.xml", "<<NOT VALID XML AT ALL>>")
+    docx_path = tmp_path / "bad_xml.docx"
+    docx_path.write_bytes(buf.getvalue())
     with pytest.raises(DocxReadError):
         read_docx(docx_path)

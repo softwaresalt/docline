@@ -10,11 +10,16 @@ Harness pattern: structural tests verify scaffold shape (PASS); behavioral
 tests assert return values (FAIL in red phase).
 """
 
+import asyncio
+
+import pytest
+
 from docline.fetch.crawl import (
     CrawlConfig,
     CrawlRobotsError,
     check_robots_allowed,
     compute_backoff_seconds,
+    crawl,
 )
 from docline.schema.models import DoclineError
 
@@ -121,3 +126,95 @@ def test_compute_backoff_custom_base_scales_output() -> None:
     default = compute_backoff_seconds(1, base=1.0)
     doubled = compute_backoff_seconds(1, base=2.0)
     assert doubled > default
+
+
+# ---------------------------------------------------------------------------
+# Behavioral: crawl() wires retry/backoff and robots (no live network)
+# ---------------------------------------------------------------------------
+
+
+def test_crawl_retries_transient_fetch_failure_and_succeeds(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """crawl() retries a transient FetchError and returns the successful result.
+
+    Verifies that the retry/backoff loop around fetch_page is wired: the first
+    attempt raises FetchError; the second attempt succeeds.  backoff_base_seconds
+    is set to 0.0 so the test does not sleep.
+    """
+    from docline.fetch.http import FetchError, FetchResponse
+
+    attempt_count = 0
+    success_response = FetchResponse(
+        url="https://example.com",
+        status=200,
+        content_type="text/html",
+        body="<html>ok</html>",
+    )
+
+    async def fake_fetch_page(
+        url: str,
+        *,
+        timeout_seconds: float = 30.0,
+        max_redirects: int = 5,
+    ) -> FetchResponse:
+        nonlocal attempt_count
+        attempt_count += 1
+        if attempt_count == 1:
+            raise FetchError("transient connection error")
+        return success_response
+
+    monkeypatch.setattr("docline.fetch.crawl.fetch_page", fake_fetch_page)
+
+    config = CrawlConfig(
+        respect_robots=False,
+        max_retries=2,
+        backoff_base_seconds=0.0,
+    )
+    results = asyncio.run(crawl("https://example.com", config))
+
+    assert len(results) == 1
+    assert results[0].skipped is False
+    assert results[0].response is not None
+    assert attempt_count == 2, (
+        f"Expected 2 fetch attempts (1 fail + 1 success), got {attempt_count}"
+    )
+
+
+def test_crawl_returns_skipped_result_when_robots_txt_disallows(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """crawl() returns a skipped CrawlResult when robots.txt disallows the URL.
+
+    Verifies that the respect_robots config knob is wired: when robots.txt
+    contains a Disallow rule matching start_url, the page is skipped without
+    being fetched.
+    """
+    from docline.fetch.http import FetchResponse
+
+    async def fake_fetch_page(
+        url: str,
+        *,
+        timeout_seconds: float = 30.0,
+        max_redirects: int = 5,
+    ) -> FetchResponse:
+        if "robots.txt" in url:
+            return FetchResponse(
+                url=url,
+                status=200,
+                content_type="text/plain",
+                body="User-agent: *\nDisallow: /\n",
+            )
+        raise AssertionError(f"Should not fetch page URL when robots disallows: {url!r}")
+
+    monkeypatch.setattr("docline.fetch.crawl.fetch_page", fake_fetch_page)
+
+    config = CrawlConfig(respect_robots=True, max_retries=0)
+    results = asyncio.run(crawl("https://example.com/page", config))
+
+    assert len(results) == 1
+    assert results[0].skipped is True, "Result must be marked skipped when robots.txt disallows"
+    assert results[0].skip_reason is not None
+    assert "robots" in results[0].skip_reason.lower(), (
+        f"skip_reason should mention robots, got: {results[0].skip_reason!r}"
+    )

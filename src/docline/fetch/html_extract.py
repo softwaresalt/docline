@@ -1,6 +1,7 @@
 """HTML main-content extraction — strip DOM noise, return raw Markdown."""
 
-from bs4 import BeautifulSoup, NavigableString, Tag
+from bs4 import BeautifulSoup, Tag
+from bs4.element import NavigableString
 
 from docline.schema.models import DoclineError
 

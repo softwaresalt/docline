@@ -12,6 +12,8 @@ tests assert return values or typed exceptions (FAIL in red phase).
 
 import asyncio
 
+import pytest
+
 from docline.fetch.crawl import (
     CrawlConfig,
     CrawlLimitExceededError,
@@ -88,3 +90,18 @@ def test_crawl_with_default_config_returns_list() -> None:
     """crawl() with default config returns a list."""
     results = asyncio.run(crawl("https://example.com"))
     assert isinstance(results, list)
+
+
+# ---------------------------------------------------------------------------
+# Behavioral: page-budget enforcement (no live network required)
+# ---------------------------------------------------------------------------
+
+
+def test_crawl_raises_limit_exceeded_when_max_pages_zero() -> None:
+    """crawl() raises CrawlLimitExceededError when max_pages is 0.
+
+    A zero-page budget cannot accommodate even a single page; the error is
+    raised before any network I/O, so no monkeypatching is required.
+    """
+    with pytest.raises(CrawlLimitExceededError):
+        asyncio.run(crawl("https://example.com", CrawlConfig(max_pages=0)))

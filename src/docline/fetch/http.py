@@ -1,7 +1,9 @@
 """HTTP fetch primitives with timeout enforcement."""
 
 import asyncio
+import http.client
 from dataclasses import dataclass
+from typing import IO
 from urllib import error, request
 from urllib.parse import urlparse
 
@@ -51,10 +53,10 @@ class _ValidatingRedirectHandler(request.HTTPRedirectHandler):
     def redirect_request(
         self,
         req: request.Request,
-        fp: object,
+        fp: IO[bytes],
         code: int,
         msg: str,
-        headers: object,
+        headers: http.client.HTTPMessage,
         newurl: str,
     ) -> request.Request | None:
         """Validate and count each redirect before following it.
@@ -143,7 +145,7 @@ async def fetch_page(
         raise FetchTimeoutError(
             f"Timed out fetching {validated_url} after {timeout_seconds} seconds"
         ) from err
-    except (FetchError, error.URLError):
+    except (DoclineError, error.URLError):
         raise
     except Exception as err:
         raise FetchError(f"Failed to fetch {validated_url}: {err}") from err

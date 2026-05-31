@@ -1,10 +1,12 @@
 """Bounded async crawl executor with timeout, page-cap, robots, and backoff."""
 
+import asyncio
 from dataclasses import dataclass
+from urllib.parse import urlparse
 from urllib.robotparser import RobotFileParser
 
 from docline.fetch.http import FetchResponse, fetch_page
-from docline.fetch.url_policy import validate_crawl_url
+from docline.fetch.url_policy import CrawlUrlRejectedError, validate_crawl_url
 from docline.schema.models import DoclineError
 
 
@@ -60,35 +62,78 @@ async def crawl(
     start_url: str,
     config: CrawlConfig | None = None,
 ) -> list[CrawlResult]:
-    """Crawl pages starting from *start_url* within the configured budget.
+    """Crawl a single page at *start_url* within the configured budget.
+
+    Fetches *start_url* once, optionally honouring ``robots.txt`` rules and
+    retrying transient failures with exponential backoff.  This is a
+    single-page crawler; it does not follow links to additional pages.
 
     Args:
-        start_url: The URL to begin crawling from.
+        start_url: The URL to fetch.
         config: Crawl configuration.  Uses default :class:`CrawlConfig` when
             ``None``.
 
     Returns:
-        A list of :class:`CrawlResult` objects, one per attempted page.
+        A list containing exactly one :class:`CrawlResult` for *start_url*:
+        a successful result, or a skipped result when the page cannot be
+        fetched (robots.txt disallow, retries exhausted, etc.).
 
     Raises:
-        CrawlLimitExceededError: If the crawl exceeds ``config.max_pages``
-            before the queue is exhausted.
+        CrawlLimitExceededError: If ``config.max_pages`` is less than 1
+            (zero-page budget cannot accommodate a single page).
         CrawlUrlRejectedError: If ``start_url`` fails URL policy validation.
     """
     crawl_config = config or CrawlConfig()
+
+    if crawl_config.max_pages < 1:
+        raise CrawlLimitExceededError(
+            f"Page budget of {crawl_config.max_pages} cannot accommodate a single page."
+        )
+
     validate_crawl_url(start_url)
 
-    results: list[CrawlResult] = []
-    try:
-        response = await fetch_page(
-            start_url,
-            timeout_seconds=crawl_config.page_timeout_seconds,
-            max_redirects=crawl_config.max_redirects,
-        )
-        results.append(CrawlResult(url=start_url, response=response))
-    except (DoclineError, OSError) as err:
-        results.append(CrawlResult(url=start_url, skipped=True, skip_reason=str(err)))
-    return results[: crawl_config.max_pages]
+    # --- Optional robots.txt check ---
+    if crawl_config.respect_robots:
+        parsed = urlparse(start_url)
+        robots_url = f"{parsed.scheme}://{parsed.netloc}/robots.txt"
+        try:
+            robots_resp = await fetch_page(
+                robots_url,
+                timeout_seconds=crawl_config.page_timeout_seconds,
+                max_redirects=crawl_config.max_redirects,
+            )
+            if not check_robots_allowed(robots_resp.body, crawl_config.user_agent, start_url):
+                return [
+                    CrawlResult(
+                        url=start_url,
+                        skipped=True,
+                        skip_reason="robots.txt disallows this URL",
+                    )
+                ]
+        except DoclineError:
+            pass  # robots.txt unreachable — proceed permissively
+        except OSError:
+            pass  # network error fetching robots.txt — proceed permissively
+
+    # --- Fetch with retry / exponential backoff ---
+    last_err: Exception | None = None
+    for attempt in range(crawl_config.max_retries + 1):
+        if attempt > 0:
+            backoff = compute_backoff_seconds(attempt - 1, crawl_config.backoff_base_seconds)
+            await asyncio.sleep(backoff)
+        try:
+            response = await fetch_page(
+                start_url,
+                timeout_seconds=crawl_config.page_timeout_seconds,
+                max_redirects=crawl_config.max_redirects,
+            )
+            return [CrawlResult(url=start_url, response=response)]
+        except CrawlUrlRejectedError:
+            raise  # permanent policy rejection — do not retry
+        except (DoclineError, OSError) as err:
+            last_err = err
+
+    return [CrawlResult(url=start_url, skipped=True, skip_reason=str(last_err))]
 
 
 def check_robots_allowed(robots_txt: str, user_agent: str, url: str) -> bool:

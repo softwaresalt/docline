@@ -41,13 +41,13 @@ def read_docx(path: Path) -> str:
             if "word/document.xml" not in archive.namelist():
                 return ""
             document_xml = archive.read("word/document.xml")
-    except zipfile.BadZipFile:
-        return ""
+    except zipfile.BadZipFile as err:
+        raise DocxReadError(f"Corrupt ZIP archive (DOCX unreadable): {path}") from err
 
     try:
         tree = ET.fromstring(document_xml)
-    except ET.ParseError:
-        return ""
+    except ET.ParseError as err:
+        raise DocxReadError(f"Malformed XML in word/document.xml: {path}") from err
 
     texts = [
         node.text
