@@ -62,9 +62,11 @@ def sanitize_source(source: str) -> str:
     Returns:
         A sanitised copy of the source string with credentials removed.
     """
+    if source.startswith("file://"):
+        return "<local-path-redacted>"
     if source.startswith(("http://", "https://")):
         return _sanitize_url(source)
-    if source.startswith("/") or _WINDOWS_DRIVE_RE.match(source):
+    if source.startswith(("/", "\\")) or _WINDOWS_DRIVE_RE.match(source):
         return "<local-path-redacted>"
     return source
 

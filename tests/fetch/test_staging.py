@@ -214,3 +214,24 @@ def test_create_staging_job_job_id_from_raw_source() -> None:
     from docline.fetch.staging import make_job_id
 
     assert job.job_id == make_job_id(raw)
+
+
+# --- sanitize_source: extended path pattern tests ---
+
+
+def test_sanitize_source_redacts_rooted_windows_path() -> None:
+    """sanitize_source redacts rooted Windows paths without a drive letter."""
+    result = sanitize_source(r"\Windows\system32\config")
+    assert result == "<local-path-redacted>"
+
+
+def test_sanitize_source_redacts_unc_path() -> None:
+    """sanitize_source redacts UNC paths (\\\\server\\share\\...)."""
+    result = sanitize_source(r"\\server\share\secret.pdf")
+    assert result == "<local-path-redacted>"
+
+
+def test_sanitize_source_redacts_file_url() -> None:
+    """sanitize_source redacts file:// URLs."""
+    result = sanitize_source("file:///C:/secret.txt")
+    assert result == "<local-path-redacted>"
