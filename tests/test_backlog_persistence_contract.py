@@ -75,12 +75,20 @@ def _git_ignores(relative_path: str) -> bool:
     Returns:
         True if the path matches an ignore rule, False otherwise.
     """
-    result = subprocess.run(
-        ["git", "check-ignore", "--no-index", "-q", relative_path],
-        cwd=REPO_ROOT,
-        capture_output=True,
-        text=True,
-    )
+    try:
+        result = subprocess.run(
+            ["git", "check-ignore", "--no-index", "-q", relative_path],
+            cwd=REPO_ROOT,
+            capture_output=True,
+            text=True,
+        )
+    except FileNotFoundError as exc:
+        message = (
+            f"git check-ignore failed for {relative_path!r}: "
+            "git executable is not available on PATH"
+        )
+        raise _GitCheckIgnoreError(message) from exc
+
     if result.returncode == 0:
         return True
     if result.returncode == 1:
@@ -143,3 +151,19 @@ def test_git_ignores_raises_on_unexpected_git_error(
     assert "return code=128" in message
     assert "fatal: unable to read .gitignore" in message
     assert "check-ignore failed" in message
+
+
+def test_git_ignores_raises_when_git_is_unavailable(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Missing git executable should raise an actionable exception."""
+
+    def _fake_run(*args: object, **kwargs: object) -> subprocess.CompletedProcess[str]:
+        raise FileNotFoundError("git")
+
+    monkeypatch.setattr(subprocess, "run", _fake_run)
+
+    with pytest.raises(_GitCheckIgnoreError, match="git executable is not available") as exc_info:
+        _git_ignores(".backlogit/queue/001-F.md")
+
+    assert "PATH" in str(exc_info.value)
