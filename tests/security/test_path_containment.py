@@ -41,6 +41,24 @@ def test_resolve_contained_absolute_path_outside_raises(tmp_path) -> None:
         resolve_contained("/etc/passwd", tmp_path)
 
 
+def test_resolve_contained_windows_absolute_raises(tmp_path) -> None:
+    """resolve_contained rejects Windows drive-letter absolute paths."""
+    with pytest.raises(PathContainmentError, match="Absolute path"):
+        resolve_contained("C:\\Users\\alice\\secret.txt", tmp_path)
+
+
+def test_resolve_contained_windows_rooted_raises(tmp_path) -> None:
+    """resolve_contained rejects rooted Windows paths for direct callers."""
+    with pytest.raises(PathContainmentError, match="Absolute path"):
+        resolve_contained("\\Windows\\system32\\config", tmp_path)
+
+
+def test_resolve_contained_unc_raises(tmp_path) -> None:
+    """resolve_contained rejects UNC paths for direct callers."""
+    with pytest.raises(PathContainmentError, match="Absolute path"):
+        resolve_contained("\\\\server\\share\\secret.txt", tmp_path)
+
+
 def test_resolve_contained_empty_string_raises(tmp_path) -> None:
     """resolve_contained rejects an empty string instead of returning the workspace root."""
     with pytest.raises(PathContainmentError, match="[Ee]mpty"):

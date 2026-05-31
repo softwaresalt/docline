@@ -89,6 +89,10 @@ def resolve_contained(path: str | Path, workspace_root: str | Path) -> Path:
             "Empty or current-directory path text is not allowed; "
             "provide a non-empty path relative to the workspace"
         )
+    if candidate_text.startswith(("/", "\\")) or _WINDOWS_DRIVE_RE.match(candidate_text):
+        raise PathContainmentError(
+            f"Absolute path {path!r} is not allowed; provide a path relative to the workspace"
+        )
     candidate = Path(path)
     unresolved = candidate if candidate.is_absolute() else root / candidate
 
