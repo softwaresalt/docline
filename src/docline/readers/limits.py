@@ -74,7 +74,26 @@ def validate_document_input(
             without trusted-local verification.
         FileNotFoundError: If ``path`` does not exist or is not a regular file.
     """
-    raise NotImplementedError("stub: limits.validate_document_input not yet implemented")
+    if not path.exists() or not path.is_file():
+        raise FileNotFoundError(f"Document not found: {path}")
+    if path.stat().st_size > limits.max_bytes:
+        raise ReaderLimitExceededError(f"File exceeds {limits.max_bytes} bytes: {path}")
+    if (
+        mime_hint is not None
+        and limits.allowed_mime_types
+        and mime_hint not in limits.allowed_mime_types
+    ):
+        raise ReaderLimitExceededError(f"MIME type {mime_hint!r} is not allowed: {path}")
+    if (
+        mime_hint is not None
+        and mime_hint in TRUSTED_LOCAL_ONLY_TYPES
+        and limits.trusted_local_only
+        and not trusted
+    ):
+        raise UntrustedSourceError(
+            f"Document type {mime_hint!r} requires trusted-local source: {path}"
+        )
+    return None
 
 
 __all__ = [

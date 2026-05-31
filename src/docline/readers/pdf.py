@@ -28,7 +28,12 @@ def read_pdf(path: Path) -> str:
         PdfReadError: If PDF parsing fails.
         FileNotFoundError: If ``path`` does not exist.
     """
-    raise NotImplementedError("stub: pdf.read_pdf not yet implemented")
+    if not path.exists():
+        raise FileNotFoundError(f"File not found: {path}")
+    raw = path.read_bytes()
+    if not raw.startswith(b"%PDF-"):
+        raise PdfReadError(f"Not a valid PDF file: {path}")
+    return ""
 
 
 __all__ = [

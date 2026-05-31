@@ -27,7 +27,17 @@ def read_text(path: Path, *, encoding: str = "utf-8") -> str:
             or if a line exceeds :data:`MAX_LINE_LENGTH` (indicating binary).
         FileNotFoundError: If ``path`` does not exist.
     """
-    raise NotImplementedError("stub: text.read_text not yet implemented")
+    if not path.exists():
+        raise FileNotFoundError(f"File not found: {path}")
+    try:
+        content = path.read_text(encoding=encoding)
+    except (UnicodeDecodeError, LookupError) as err:
+        raise TextReadError(f"Failed to decode {path} with encoding {encoding!r}: {err}") from err
+
+    for line in content.splitlines():
+        if len(line) > MAX_LINE_LENGTH:
+            raise TextReadError(f"Line exceeds maximum length ({MAX_LINE_LENGTH}) in {path}")
+    return content
 
 
 __all__ = [
