@@ -65,3 +65,60 @@ class AdrDocument(BaseDocument):
     """
 
     frontmatter: AdrFrontmatter  # type: ignore[assignment]
+
+
+class TranscriptFrontmatter(BaseFrontmatter):
+    """Frontmatter for transcript documents (.vtt, .srt).
+
+    Attributes:
+        doc_type: Always ``"transcript"``.
+        speaker_count: Number of distinct speakers in the transcript.
+        duration_seconds: Total duration of the source recording in seconds.
+    """
+
+    doc_type: Literal["transcript"] = "transcript"
+    speaker_count: int = 0
+    duration_seconds: float = 0.0
+
+
+class TranscriptDocument(BaseDocument):
+    """A transcript document with TranscriptFrontmatter.
+
+    Attributes:
+        frontmatter: Transcript-specific metadata.
+        body: Markdown body content.
+    """
+
+    frontmatter: TranscriptFrontmatter  # type: ignore[assignment]
+
+
+class WebFrontmatter(BaseFrontmatter):
+    """Frontmatter for web-crawled documents.
+
+    Attributes:
+        doc_type: Always ``"web"``.
+        url: Source URL. Must start with ``http://`` or ``https://``.
+        crawl_depth: Depth at which this page was discovered during crawling.
+    """
+
+    doc_type: Literal["web"] = "web"
+    url: str
+    crawl_depth: int = 0
+
+    @field_validator("url")
+    @classmethod
+    def _validate_url(cls, value: str) -> str:
+        if not (value.startswith("http://") or value.startswith("https://")):
+            raise ValueError("url must start with http:// or https://")
+        return value
+
+
+class WebDocument(BaseDocument):
+    """A web document with WebFrontmatter.
+
+    Attributes:
+        frontmatter: Web-specific metadata.
+        body: Markdown body content.
+    """
+
+    frontmatter: WebFrontmatter  # type: ignore[assignment]
