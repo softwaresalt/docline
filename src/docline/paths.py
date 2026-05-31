@@ -23,9 +23,14 @@ def validate_workspace_relative_path(relative: str | Path) -> str:
         The validated path text.
 
     Raises:
-        PathContainmentError: If the path is absolute or contains ``..`` traversal.
+        PathContainmentError: If the path is empty, absolute, or contains ``..`` traversal.
     """
     str_path = str(relative)
+    if Path(str_path) == Path("."):
+        raise PathContainmentError(
+            "Empty or current-directory path text is not allowed; "
+            "provide a non-empty path relative to the workspace"
+        )
     if str_path.startswith(("/", "\\")) or _WINDOWS_DRIVE_RE.match(str_path):
         raise PathContainmentError(
             f"Absolute path {relative!r} is not allowed; provide a path relative to the workspace"
@@ -78,6 +83,12 @@ def resolve_contained(path: str | Path, workspace_root: str | Path) -> Path:
             or the path traverses a workspace symlink.
     """
     root = Path(workspace_root).resolve()
+    candidate_text = str(path)
+    if Path(candidate_text) == Path("."):
+        raise PathContainmentError(
+            "Empty or current-directory path text is not allowed; "
+            "provide a non-empty path relative to the workspace"
+        )
     candidate = Path(path)
     unresolved = candidate if candidate.is_absolute() else root / candidate
 

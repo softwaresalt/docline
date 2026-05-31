@@ -2,7 +2,12 @@
 
 import pytest
 
-from docline.paths import PathContainmentError, resolve_contained, safe_workspace_path
+from docline.paths import (
+    PathContainmentError,
+    resolve_contained,
+    safe_workspace_path,
+    validate_workspace_relative_path,
+)
 from docline.schema.models import DoclineError
 
 
@@ -34,6 +39,24 @@ def test_resolve_contained_absolute_path_outside_raises(tmp_path) -> None:
     """resolve_contained raises PathContainmentError for absolute paths outside root."""
     with pytest.raises(PathContainmentError):
         resolve_contained("/etc/passwd", tmp_path)
+
+
+def test_resolve_contained_empty_string_raises(tmp_path) -> None:
+    """resolve_contained rejects an empty string instead of returning the workspace root."""
+    with pytest.raises(PathContainmentError, match="[Ee]mpty"):
+        resolve_contained("", tmp_path)
+
+
+def test_resolve_contained_dot_path_raises(tmp_path) -> None:
+    """resolve_contained rejects dot paths instead of resolving them to the workspace root."""
+    with pytest.raises(PathContainmentError, match="[Ee]mpty"):
+        resolve_contained(".", tmp_path)
+
+
+def test_resolve_contained_dot_slash_path_raises(tmp_path) -> None:
+    """resolve_contained rejects dot-slash paths instead of resolving them to the workspace root."""
+    with pytest.raises(PathContainmentError, match="[Ee]mpty"):
+        resolve_contained("./", tmp_path)
 
 
 def test_safe_workspace_path_nested(tmp_path) -> None:
@@ -104,3 +127,49 @@ def test_resolve_contained_rejects_symlink_within_workspace(tmp_path) -> None:
 
     with pytest.raises(PathContainmentError, match="symlink"):
         resolve_contained("linked/report.md", tmp_path)
+
+
+# ---------------------------------------------------------------------------
+# Regression: empty path text must not resolve to workspace root (Copilot blocker)
+# ---------------------------------------------------------------------------
+
+
+def test_validate_workspace_relative_path_empty_string_raises() -> None:
+    """validate_workspace_relative_path rejects an empty string.
+
+    Regression: an empty string passed through without a guard would resolve to
+    the workspace root via ``root / ""``, allowing callers to treat the root
+    itself as a valid artifact path and produce escaped cache paths.
+    """
+    with pytest.raises(PathContainmentError, match="[Ee]mpty"):
+        validate_workspace_relative_path("")
+
+
+def test_validate_workspace_relative_path_empty_path_raises() -> None:
+    """validate_workspace_relative_path rejects a Path constructed from an empty string.
+
+    In Python, ``Path("")`` is canonicalised to ``"."`` (current directory) by
+    ``str()``.  ``"."`` resolves to the workspace root under
+    ``root / "."`` == ``root``, so it carries the same vulnerability as a bare
+    empty string and must be rejected with the same guard.
+    """
+    from pathlib import Path
+
+    with pytest.raises(PathContainmentError, match="[Ee]mpty"):
+        validate_workspace_relative_path(Path(""))
+
+
+def test_validate_workspace_relative_path_dot_slash_raises() -> None:
+    """validate_workspace_relative_path rejects dot-slash root aliases."""
+    with pytest.raises(PathContainmentError, match="[Ee]mpty"):
+        validate_workspace_relative_path("./")
+
+
+def test_safe_workspace_path_empty_string_raises(tmp_path) -> None:
+    """safe_workspace_path rejects an empty string end-to-end.
+
+    Regression: ``safe_workspace_path("", root)`` must not silently return the
+    workspace root and allow downstream code to build cache paths from it.
+    """
+    with pytest.raises(PathContainmentError, match="[Ee]mpty"):
+        safe_workspace_path("", tmp_path)
