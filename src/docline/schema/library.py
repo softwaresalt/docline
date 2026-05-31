@@ -2,7 +2,7 @@
 
 from typing import Literal
 
-from pydantic import field_validator
+from pydantic import Field, field_validator
 
 from docline.schema.models import BaseDocument, BaseFrontmatter
 
@@ -77,8 +77,8 @@ class TranscriptFrontmatter(BaseFrontmatter):
     """
 
     doc_type: Literal["transcript"] = "transcript"  # type: ignore[override]
-    speaker_count: int = 0
-    duration_seconds: float = 0.0
+    speaker_count: int = Field(default=0, ge=0)
+    duration_seconds: float = Field(default=0.0, ge=0)
 
 
 class TranscriptDocument(BaseDocument):
@@ -103,12 +103,12 @@ class WebFrontmatter(BaseFrontmatter):
 
     doc_type: Literal["web"] = "web"  # type: ignore[override]
     source_url: str
-    crawl_depth: int = 0
+    crawl_depth: int = Field(default=0, ge=0)
 
     @field_validator("source_url")
     @classmethod
     def _validate_url(cls, value: str) -> str:
-        if not (value.startswith("http://") or value.startswith("https://")):
+        if not (value.lower().startswith("http://") or value.lower().startswith("https://")):
             raise ValueError("source_url must start with http:// or https://")
         return value
 

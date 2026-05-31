@@ -2,6 +2,8 @@
 
 from datetime import UTC, datetime
 
+import pytest
+
 from docline.fetch.models import SourceMetadata, StagingJob, StagingJobError
 from docline.fetch.staging import (
     build_cache_path,
@@ -162,6 +164,17 @@ def test_sanitize_url_strips_signed_cloud_query_params() -> None:
     assert "page=1" in result
 
 
+@pytest.mark.parametrize(
+    "query_name",
+    ["access_token", "api_key", "X-Amz-Credential", "X-Amz-Security-Token"],
+)
+def test_sanitize_url_strips_additional_credential_query_params(query_name: str) -> None:
+    """sanitize_source removes additional credential-bearing query parameters."""
+    result = sanitize_source(f"https://example.com/doc?{query_name}=secret&page=1")
+    assert query_name.lower() not in result.lower()
+    assert "page=1" in result
+
+
 def test_sanitize_url_strips_userinfo_from_netloc() -> None:
     """sanitize_source removes user:pass@ from URL netloc."""
     result = sanitize_source("https://user:pass@example.com/path")
@@ -181,6 +194,12 @@ def test_sanitize_url_no_credentials_unchanged() -> None:
     url = "https://example.com/docs/api?page=2&lang=en"
     result = sanitize_source(url)
     assert result == url
+
+
+def test_sanitize_url_strips_fragment() -> None:
+    """sanitize_source drops URL fragments from sanitized URLs."""
+    result = sanitize_source("https://example.com/docs/api?page=2#access_token=secret")
+    assert result == "https://example.com/docs/api?page=2"
 
 
 def test_sanitize_windows_absolute_path() -> None:

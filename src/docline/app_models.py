@@ -1,6 +1,20 @@
 """Shared operation models used by both the CLI and MCP server interfaces."""
 
-from pydantic import BaseModel, Field
+import re
+
+from pydantic import BaseModel, Field, field_validator
+
+_WINDOWS_DRIVE_RE = re.compile(r"^[A-Za-z]:", re.ASCII)
+_PATH_SEPARATOR_RE = re.compile(r"[\\/]+")
+
+
+def _validate_workspace_relative_path(value: str) -> str:
+    """Validate that a boundary path is relative and non-traversing."""
+    if value.startswith(("/", "\\")) or _WINDOWS_DRIVE_RE.match(value):
+        raise ValueError("path must be relative to the workspace")
+    if ".." in _PATH_SEPARATOR_RE.split(value):
+        raise ValueError("path must not contain parent-directory traversal")
+    return value
 
 
 class FetchRequest(BaseModel):
@@ -15,6 +29,11 @@ class FetchRequest(BaseModel):
     source: str = Field(min_length=1)
     depth: int = Field(default=0, ge=0)
     output_dir: str = ".cache/staging"
+
+    @field_validator("output_dir")
+    @classmethod
+    def _validate_output_dir(cls, value: str) -> str:
+        return _validate_workspace_relative_path(value)
 
 
 class FetchResult(BaseModel):
@@ -43,6 +62,11 @@ class ProcessRequest(BaseModel):
 
     staging_dir: str = ".cache/staging"
     output_dir: str = "output"
+
+    @field_validator("staging_dir", "output_dir")
+    @classmethod
+    def _validate_workspace_paths(cls, value: str) -> str:
+        return _validate_workspace_relative_path(value)
 
 
 class ProcessResult(BaseModel):

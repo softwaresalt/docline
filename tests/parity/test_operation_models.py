@@ -22,9 +22,9 @@ def test_fetch_request_defaults() -> None:
 
 def test_fetch_request_custom_fields() -> None:
     """FetchRequest accepts custom depth and output_dir."""
-    req = FetchRequest(source="http://example.com", depth=2, output_dir="/tmp/out")
+    req = FetchRequest(source="http://example.com", depth=2, output_dir="tmp/out")
     assert req.depth == 2
-    assert req.output_dir == "/tmp/out"
+    assert req.output_dir == "tmp/out"
 
 
 def test_fetch_request_rejects_negative_depth() -> None:
@@ -66,6 +66,21 @@ def test_process_request_defaults() -> None:
     req = ProcessRequest()
     assert req.staging_dir == ".cache/staging"
     assert req.output_dir == "output"
+
+
+@pytest.mark.parametrize("output_dir", ["/tmp/out", r"C:\tmp\out", "../out", r"..\out"])
+def test_fetch_request_rejects_unsafe_output_dir(output_dir: str) -> None:
+    """FetchRequest rejects absolute and traversal output paths."""
+    with pytest.raises(ValidationError):
+        FetchRequest(source="http://example.com", output_dir=output_dir)
+
+
+@pytest.mark.parametrize("field_name", ["staging_dir", "output_dir"])
+@pytest.mark.parametrize("path_value", ["/tmp/out", r"C:\tmp\out", "../out", r"..\out"])
+def test_process_request_rejects_unsafe_paths(field_name: str, path_value: str) -> None:
+    """ProcessRequest rejects absolute and traversal paths."""
+    with pytest.raises(ValidationError):
+        ProcessRequest(**{field_name: path_value})
 
 
 def test_process_result_success() -> None:

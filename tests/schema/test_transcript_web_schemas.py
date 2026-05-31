@@ -42,6 +42,18 @@ def test_transcript_frontmatter_accepts_values() -> None:
     assert fm.duration_seconds == 3600.5
 
 
+@pytest.mark.parametrize(
+    ("field_name", "value"),
+    [("speaker_count", -1), ("duration_seconds", -0.5)],
+)
+def test_transcript_frontmatter_rejects_negative_values(
+    field_name: str, value: int | float
+) -> None:
+    """TranscriptFrontmatter rejects negative speaker counts and durations."""
+    with pytest.raises(ValidationError):
+        TranscriptFrontmatter(**_base_fields(), **{field_name: value})
+
+
 def test_transcript_document_valid_construction() -> None:
     """TranscriptDocument accepts valid TranscriptFrontmatter and body."""
     fm = TranscriptFrontmatter(**_base_fields(), speaker_count=2)
@@ -74,6 +86,12 @@ def test_web_frontmatter_accepts_http_url() -> None:
     assert fm.source_url == "http://example.com"
 
 
+def test_web_frontmatter_accepts_mixed_case_http_scheme() -> None:
+    """WebFrontmatter accepts mixed-case HTTP(S) URL schemes."""
+    fm = WebFrontmatter(**_base_fields(), source_url="HtTpS://example.com")
+    assert fm.source_url == "HtTpS://example.com"
+
+
 def test_web_frontmatter_invalid_url_raises() -> None:
     """WebFrontmatter raises ValidationError for non-http(s) URL."""
     with pytest.raises(ValidationError):
@@ -84,6 +102,12 @@ def test_web_frontmatter_bare_path_raises() -> None:
     """WebFrontmatter raises ValidationError for bare file paths."""
     with pytest.raises(ValidationError):
         WebFrontmatter(**_base_fields(), source_url="/local/path/file.html")
+
+
+def test_web_frontmatter_rejects_negative_crawl_depth() -> None:
+    """WebFrontmatter rejects negative crawl depth values."""
+    with pytest.raises(ValidationError):
+        WebFrontmatter(**_base_fields(), source_url="https://example.com", crawl_depth=-1)
 
 
 def test_web_frontmatter_uses_source_url_field_in_schema() -> None:

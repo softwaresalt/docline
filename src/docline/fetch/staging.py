@@ -9,12 +9,16 @@ from docline.fetch.models import SourceMetadata, StagingJob
 
 _CREDENTIAL_PARAM_PREFIXES = (
     "token",
+    "access_token",
     "key",
+    "api_key",
     "secret",
     "auth",
     "sig",
     "signature",
+    "x-amz-credential",
     "x-amz-signature",
+    "x-amz-security-token",
     "x-goog-signature",
 )
 _WINDOWS_DRIVE_RE = re.compile(r"^[A-Za-z]:", re.ASCII)
@@ -106,9 +110,7 @@ def _sanitize_url(source: str) -> str:
     ]
     clean_query = urlencode(clean_params)
 
-    sanitized = urlunparse(
-        (parsed.scheme, netloc, parsed.path, parsed.params, clean_query, parsed.fragment)
-    )
+    sanitized = urlunparse((parsed.scheme, netloc, parsed.path, parsed.params, clean_query, ""))
     return sanitized
 
 
