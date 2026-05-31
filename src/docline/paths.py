@@ -72,7 +72,8 @@ def resolve_contained(path: str | Path, workspace_root: str | Path) -> Path:
     ``workspace_root``.
 
     Args:
-        path: The path to resolve. May be relative or absolute.
+        path: The path to resolve. Must be workspace-relative; absolute path
+            forms are rejected before resolution.
         workspace_root: The workspace directory that must contain ``path``.
 
     Returns:

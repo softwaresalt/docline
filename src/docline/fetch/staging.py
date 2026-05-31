@@ -66,10 +66,12 @@ def sanitize_source(source: str) -> str:
        prefixes (``token``, ``key``, ``secret``, ``auth``, ``sig``,
        ``signature``, ``X-Amz-Signature``, ``X-Goog-Signature``).
        Matching is case-insensitive prefix comparison after lowercasing.
-    2. **Absolute file path**: replace with ``"<local-path-redacted>"`` when
-       the string starts with a Windows drive letter + colon (e.g. ``C:``) or
-       a Unix root slash (``/``).
-    3. **Everything else**: return as-is.
+    2. **File URL** (starts with ``file://``): replace with
+       ``"<local-path-redacted>"``.
+    3. **Absolute file path**: replace with ``"<local-path-redacted>"`` when
+       the string starts with a Windows drive letter + colon (e.g. ``C:``), a
+       Unix root slash (``/``), a rooted Windows backslash path, or a UNC path.
+    4. **Everything else**: return as-is.
 
     Args:
         source: The raw source string to sanitise.
