@@ -45,13 +45,23 @@ Two substantive findings from the 001-S review were addressed after shipment:
    contract test. Resolved by adding two archive paths to `_DURABLE_PATHS`
    and a representative log path to `_VOLATILE_PATHS`.
 
+3. **Checkpoint durability gap** — the deliberation scoped checkpoints into the
+   durable backlog contract, but the test suite did not assert that
+   representative checkpoint artifacts stay trackable. Resolved by adding a
+   checkpoint path to `_DURABLE_PATHS`.
+
+4. **Telemetry hygiene gap** — the plan required volatile telemetry to stay out
+   of Git, but `.gitignore` and the contract test did not cover it. Resolved by
+   ignoring backlogit telemetry output and adding a telemetry path to
+   `_VOLATILE_PATHS`.
+
 ## Quality Gate Results
 
 All gates green at closure commit:
 
 ```text
 python -m py_compile src/docline/__init__.py  → exit 0
-pytest                                         → 13 passed
+pytest                                         → 16 passed
 ruff check .                                   → no issues
 ruff format --check .                          → no issues
 ```

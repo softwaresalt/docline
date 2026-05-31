@@ -11,6 +11,7 @@ status: "pr-ready"
 * Added a minimal greenfield Python bootstrap: `pyproject.toml`, `src/docline/__init__.py`, `tests/`
 * Added contract tests that prove durable backlog artifacts stay trackable and volatile backlogit runtime files stay ignored
 * Added a closure note for shipment 001-S
+* Extended the contract to cover checkpoint durability and telemetry exclusion
 * Re-validated with `python -m py_compile`, `pytest`, `ruff check .`, and `ruff format --check .`
 
 ## Decisions

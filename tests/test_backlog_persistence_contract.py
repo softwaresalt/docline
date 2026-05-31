@@ -30,6 +30,8 @@ _DURABLE_PATHS: list[str] = [
     ".backlogit/queue/001-F.md",
     ".backlogit/queue/001-S.md",
     ".backlogit/queue/001.001-T.md",
+    # Durable continuity artifacts
+    ".backlogit/checkpoints/ship-001-S.json",
     # Top-level durable files
     ".backlogit/stash.jsonl",
     ".backlogit/config.yaml",
@@ -46,6 +48,8 @@ _VOLATILE_PATHS: list[str] = [
     ".backlogit/backlogit.db-journal",
     ".backlogit/backlogit.db-wal",
     ".backlogit/backlogit.db-shm",
+    # Telemetry output
+    ".backlogit/telemetry.jsonl",
     # Hook event queue written at runtime
     ".backlogit/hooks_queue.jsonl",
     # Session log files

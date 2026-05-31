@@ -225,6 +225,8 @@ __marimo__/
 .backlogit/*.db-shm
 .backlogit/*.db-wal
 .backlogit/*.db-journal
+.backlogit/telemetry/
+.backlogit/telemetry*.jsonl
 .backlogit/hooks_queue.jsonl
 .backlogit/logs/
 
