@@ -2,7 +2,7 @@
 title: "Ship memory - 003-S final"
 shipment: "003-S"
 branch: "post-merge/003-document-ingestion-acquisition-and-reader-adapters"
-status: "closure-pr-pending"
+status: "closure-pr-open"
 ---
 
 ## Final outcome
@@ -15,7 +15,7 @@ status: "closure-pr-pending"
 
 * Source branch: `feat/document-ingestion-acquisition-and-reader-adapters`
 * Post-merge docs branch: `post-merge/003-document-ingestion-acquisition-and-reader-adapters`
-* Closure PR: pending creation from the post-merge branch
+* Closure PR: `#7` is open from the post-merge branch
 * Closure PR merge remains blocked on separate operator approval
 
 ## Archival state
@@ -32,6 +32,8 @@ status: "closure-pr-pending"
   because fresh Copilot review could not be requested for the current head
 * GitHub base-branch policy blocked the normal merge path, so the merge used
   `--merge --admin`
+* Closure PR `#7` opened successfully, but the environment still could not
+  request Copilot review through `gh pr edit 7 --add-reviewer copilot`
 * Closure work stays isolated on
   `post-merge/003-document-ingestion-acquisition-and-reader-adapters`
 

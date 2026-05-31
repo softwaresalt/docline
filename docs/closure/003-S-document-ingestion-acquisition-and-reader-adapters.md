@@ -72,9 +72,11 @@ Final gates before closure:
 * Monitoring and rollback: rely on the documented quality gates and revert
   merge commit `3f83a9715854bf77d36d4511e5f51ebf2fe8b38e` if acquisition or
   reader behavior regresses
-* Follow-on closure PR will be opened from
-  `post-merge/003-document-ingestion-acquisition-and-reader-adapters` and
-  still requires separate operator approval before merge
+* Follow-on closure PR `#7` is open from
+  `post-merge/003-document-ingestion-acquisition-and-reader-adapters`
+* Closure PR Copilot review request via `gh pr edit 7 --add-reviewer copilot`
+  did not succeed in this environment and still requires separate operator
+  approval before merge
 
 ## Knowledge graduation
 
@@ -82,4 +84,3 @@ Final gates before closure:
   already cover the shipped architecture
 * No additional source-artifact cleanup was required for `003-F`
 * No shipment-local follow-up backlog items were identified during closure
-
