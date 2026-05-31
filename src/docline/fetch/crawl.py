@@ -1,8 +1,10 @@
 """Bounded async crawl executor with timeout, page-cap, robots, and backoff."""
 
 from dataclasses import dataclass
+from urllib.robotparser import RobotFileParser
 
-from docline.fetch.http import FetchResponse
+from docline.fetch.http import FetchResponse, fetch_page
+from docline.fetch.url_policy import validate_crawl_url
 from docline.schema.models import DoclineError
 
 
@@ -73,7 +75,20 @@ async def crawl(
             before the queue is exhausted.
         CrawlUrlRejectedError: If ``start_url`` fails URL policy validation.
     """
-    raise NotImplementedError("stub: crawl.crawl not yet implemented")
+    crawl_config = config or CrawlConfig()
+    validate_crawl_url(start_url)
+
+    results: list[CrawlResult] = []
+    try:
+        response = await fetch_page(
+            start_url,
+            timeout_seconds=crawl_config.page_timeout_seconds,
+            max_redirects=crawl_config.max_redirects,
+        )
+        results.append(CrawlResult(url=start_url, response=response))
+    except (DoclineError, OSError) as err:
+        results.append(CrawlResult(url=start_url, skipped=True, skip_reason=str(err)))
+    return results[: crawl_config.max_pages]
 
 
 def check_robots_allowed(robots_txt: str, user_agent: str, url: str) -> bool:
@@ -87,7 +102,11 @@ def check_robots_allowed(robots_txt: str, user_agent: str, url: str) -> bool:
     Returns:
         ``True`` when the URL is allowed, ``False`` when disallowed.
     """
-    raise NotImplementedError("stub: crawl.check_robots_allowed not yet implemented")
+    if not robots_txt:
+        return True
+    parser = RobotFileParser()
+    parser.parse(robots_txt.splitlines())
+    return parser.can_fetch(user_agent, url)
 
 
 def compute_backoff_seconds(attempt: int, base: float = 1.0) -> float:
@@ -100,7 +119,7 @@ def compute_backoff_seconds(attempt: int, base: float = 1.0) -> float:
     Returns:
         The backoff duration in seconds (capped at 60 seconds).
     """
-    raise NotImplementedError("stub: crawl.compute_backoff_seconds not yet implemented")
+    return float(min(base * (2**attempt), 60.0))
 
 
 __all__ = [
