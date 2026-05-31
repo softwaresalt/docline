@@ -189,3 +189,28 @@ def test_sanitize_plain_string_unchanged() -> None:
     """sanitize_source returns non-URL, non-path strings as-is."""
     result = sanitize_source("just-a-name")
     assert result == "just-a-name"
+
+
+# --- create_staging_job sanitization tests ---
+
+
+def test_create_staging_job_sanitizes_credential_url() -> None:
+    """create_staging_job stores sanitized URL (no token) in metadata.source."""
+    job = create_staging_job("https://example.com/doc?token=secret123&page=1", ".cache")
+    assert "token=secret123" not in job.metadata.source
+    assert "page=1" in job.metadata.source
+
+
+def test_create_staging_job_sanitizes_absolute_path() -> None:
+    """create_staging_job replaces absolute path with sentinel in metadata.source."""
+    job = create_staging_job(r"C:\Users\alice\secret.pdf", ".cache")
+    assert job.metadata.source == "<local-path-redacted>"
+
+
+def test_create_staging_job_job_id_from_raw_source() -> None:
+    """create_staging_job job_id is derived from the original (pre-sanitization) source."""
+    raw = "https://example.com/doc?token=secret123"
+    job = create_staging_job(raw, ".cache")
+    from docline.fetch.staging import make_job_id
+
+    assert job.job_id == make_job_id(raw)

@@ -132,7 +132,7 @@ def create_staging_job(
     job_id = make_job_id(source)
     cache_path = build_cache_path(base_dir, job_id)
     metadata = SourceMetadata(
-        source=source,
+        source=sanitize_source(source),
         fetch_timestamp=datetime.now(UTC),
         http_status=http_status,
         content_type=content_type,
