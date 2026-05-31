@@ -1,0 +1,1 @@
+"""Processing pipeline scaffolding package."""
