@@ -2,7 +2,7 @@
 title: "Ship memory - 002-S final"
 shipment: "002-S"
 branch: "post-merge/002-document-ingestion-foundations"
-status: "closure-in-progress"
+status: "closure-pr-open"
 ---
 
 ## Final outcome
@@ -15,7 +15,8 @@ status: "closure-in-progress"
 
 * Source branch: `feat/document-ingestion-foundations`
 * Post-merge docs branch: `post-merge/002-document-ingestion-foundations`
-* Closure PR: pending creation from the post-merge branch
+* Closure PR: `#5` is open from the post-merge branch
+* Closure PR merge remains blocked on separate operator approval
 
 ## Archival state
 
@@ -35,5 +36,5 @@ status: "closure-in-progress"
 
 ## Next routing
 
-* Create the post-merge closure PR
+* Await operator approval for closure PR `#5`
 * Do not start the next shipment automatically

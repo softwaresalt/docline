@@ -70,6 +70,9 @@ Final gates before closure:
 * Owner: operator / repository maintainer
 * Monitoring and rollback: rely on the documented quality gates and revert the
   merge commit if downstream ingestion contract regressions appear
+* Follow-on closure PR: `#5` is open from
+  `post-merge/002-document-ingestion-foundations` and awaits separate operator
+  approval before merge
 
 ## Knowledge graduation
 
