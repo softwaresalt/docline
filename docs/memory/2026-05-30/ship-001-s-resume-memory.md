@@ -23,6 +23,5 @@ status: "pr-ready"
 ## Pending
 
 * Stage and commit the shipment changes
-* Move 001.001-T through 001.004-T and 001-F to `done`
 * Push branch and create the feature PR
 * Await explicit operator merge approval before any merge
