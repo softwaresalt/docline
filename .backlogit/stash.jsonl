@@ -1,1 +1,2 @@
 {"id":"4BC95A72","priority":"medium","kind":"task","text":"Restore fresh Copilot review requestability for docline repository. Source: docs/closure/001-S-backlog-artifact-persistence-prerequisite.md","created_at":"2026-05-31T03:19:11.7987134Z"}
+{"id":"F6CCF29C","priority":"high","kind":"bug","text":"Fix pyright type-check regressions in process metadata and AST lint after shipment 004-S merge (metadata.py:80, ast_lint.py:11-14)","created_at":"2026-05-31T22:55:24.0096012Z"}
