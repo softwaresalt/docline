@@ -39,6 +39,6 @@ status: "closure-pr-open"
 
 ## Next routing
 
-* Create or update the closure PR from the post-merge branch
+* Address any remaining closure actions on open closure PR #7 from the post-merge branch
 * Await separate operator approval for the closure PR merge
 * Do not start the next shipment automatically
