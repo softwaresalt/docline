@@ -35,6 +35,12 @@ def test_resolve_contained_traversal_escaping_root_raises(tmp_path) -> None:
         resolve_contained("../../etc/passwd", tmp_path)
 
 
+def test_resolve_contained_internal_parent_segment_raises(tmp_path) -> None:
+    """resolve_contained rejects internal .. segments even when the final path stays inside root."""
+    with pytest.raises(PathContainmentError):
+        resolve_contained("docs/../secret.md", tmp_path)
+
+
 def test_resolve_contained_absolute_path_outside_raises(tmp_path) -> None:
     """resolve_contained raises PathContainmentError for absolute paths outside root."""
     with pytest.raises(PathContainmentError):

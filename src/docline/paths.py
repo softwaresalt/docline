@@ -84,18 +84,9 @@ def resolve_contained(path: str | Path, workspace_root: str | Path) -> Path:
             or the path traverses a workspace symlink.
     """
     root = Path(workspace_root).resolve()
-    candidate_text = str(path)
-    if Path(candidate_text) == Path("."):
-        raise PathContainmentError(
-            "Empty or current-directory path text is not allowed; "
-            "provide a non-empty path relative to the workspace"
-        )
-    if candidate_text.startswith(("/", "\\")) or _WINDOWS_DRIVE_RE.match(candidate_text):
-        raise PathContainmentError(
-            f"Absolute path {path!r} is not allowed; provide a path relative to the workspace"
-        )
-    candidate = Path(path)
-    unresolved = candidate if candidate.is_absolute() else root / candidate
+    candidate_text = validate_workspace_relative_path(path)
+    candidate = Path(candidate_text)
+    unresolved = root / candidate
 
     if _contains_workspace_symlink(unresolved, root):
         raise PathContainmentError(
