@@ -15,7 +15,9 @@ status: "closure-pr-pending"
 
 * Source branch: `feat/document-ingestion-processing-validation-and-outputs`
 * Post-merge docs branch: `post-merge/004-document-ingestion-processing-validation-and-outputs`
-* Closure PR is the next required review surface after these closure commits are pushed
+* Closure PR: `#9` is open from the post-merge branch
+* Closure PR Copilot review request via `gh pr edit 9 --add-reviewer copilot`
+  did not succeed in this environment
 * Do not start the next shipment automatically
 
 ## Archival state
@@ -36,7 +38,5 @@ status: "closure-pr-pending"
 ## Next routing
 
 * Commit and push the closure branch
-* Open the dedicated closure PR for `004-S`
-* Await separate operator approval for the closure PR merge
+* Await separate operator approval for closure PR `#9`
 * Address follow-up stash `F6CCF29C` in a later shipment or targeted fix path
-

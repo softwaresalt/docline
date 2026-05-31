@@ -67,6 +67,10 @@ Final gates observed during closure:
 * Owner: operator / repository maintainer
 * Monitoring and rollback: rely on the documented quality gates and revert
   merge commit `b9d138904f7a9ff2f222cdd0a5103b07152de3cc` if process-stage behavior regresses
+* Closure PR `#9` is open from `post-merge/004-document-ingestion-processing-validation-and-outputs`
+* Closure PR Copilot review request via `gh pr edit 9 --add-reviewer copilot`
+  did not succeed in this environment and still requires separate operator
+  approval before merge
 * Follow-up stash `F6CCF29C` tracks the post-merge `pyright` regressions
 
 ## Knowledge graduation
@@ -76,4 +80,3 @@ Final gates observed during closure:
 * No additional source-artifact cleanup was required for `004-F`
 * No further shipment-local follow-up backlog items were identified beyond
   stash `F6CCF29C`
-
