@@ -1,5 +1,8 @@
 """Crawl URL policy enforcement — scheme allow-list and SSRF rejection."""
 
+import ipaddress
+from urllib.parse import urlparse
+
 from docline.schema.models import DoclineError
 
 _ALLOWED_SCHEMES = frozenset({"http", "https"})
@@ -31,7 +34,17 @@ def validate_crawl_url(url: str) -> str:
     Raises:
         CrawlUrlRejectedError: When the URL violates any policy rule.
     """
-    raise NotImplementedError("stub: url_policy.validate_crawl_url not yet implemented")
+    parsed = urlparse(url)
+    if parsed.scheme not in _ALLOWED_SCHEMES:
+        raise CrawlUrlRejectedError(
+            f"Scheme '{parsed.scheme}' is not allowed; only http and https are permitted."
+        )
+    host = parsed.hostname or ""
+    if not host:
+        raise CrawlUrlRejectedError("URL has no host component.")
+    if is_private_host(host):
+        raise CrawlUrlRejectedError(f"Host '{host}' resolves to a reserved or private address.")
+    return url
 
 
 def is_private_host(host: str) -> bool:
@@ -48,7 +61,11 @@ def is_private_host(host: str) -> bool:
     Returns:
         ``True`` when the host is a reserved address class.
     """
-    raise NotImplementedError("stub: url_policy.is_private_host not yet implemented")
+    try:
+        addr = ipaddress.ip_address(host)
+        return addr.is_loopback or addr.is_private or addr.is_link_local
+    except ValueError:
+        return host.lower() == "localhost"
 
 
 def assert_redirect_count(count: int) -> None:
@@ -60,7 +77,10 @@ def assert_redirect_count(count: int) -> None:
     Raises:
         CrawlUrlRejectedError: When ``count`` exceeds :data:`MAX_REDIRECTS`.
     """
-    raise NotImplementedError("stub: url_policy.assert_redirect_count not yet implemented")
+    if count > MAX_REDIRECTS:
+        raise CrawlUrlRejectedError(
+            f"Redirect chain length {count} exceeds the maximum of {MAX_REDIRECTS}."
+        )
 
 
 __all__ = [
