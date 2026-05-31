@@ -220,14 +220,15 @@ __marimo__/
 # autoharness
 .autoharness/backups/
 
-# backlogit runtime artifacts
+# backlogit volatile runtime artifacts (durable queue, config, and stash are tracked)
 .backlogit/backlogit.db
 .backlogit/*.db-shm
 .backlogit/*.db-wal
 .backlogit/*.db-journal
+.backlogit/hooks_queue.jsonl
+.backlogit/logs/
 
 # local agent/editor state
-.backlogit/
 .claude/
 .copilot/
 .cursor/mcp.json
