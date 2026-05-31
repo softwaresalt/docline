@@ -1,9 +1,14 @@
 """Utilities for building and managing fetch-stage jobs."""
 
 import hashlib
+import re
 from datetime import UTC, datetime
+from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
 
 from docline.fetch.models import SourceMetadata, StagingJob
+
+_CREDENTIAL_PARAM_PREFIXES = ("token", "key", "secret", "auth", "sig", "signature")
+_WINDOWS_DRIVE_RE = re.compile(r"^[A-Za-z]:", re.ASCII)
 
 
 def make_job_id(source: str) -> str:
@@ -34,6 +39,76 @@ def build_cache_path(base_dir: str, job_id: str) -> str:
         A path string of the form ``{base_dir}/{job_id[:2]}/{job_id}``.
     """
     return f"{base_dir}/{job_id[:2]}/{job_id}"
+
+
+def sanitize_source(source: str) -> str:
+    """Remove credentials and sensitive data from a source string before staging.
+
+    Rules applied in order:
+
+    1. **URL** (starts with ``http://`` or ``https://``): strip ``userinfo``
+       from the netloc and remove query parameters whose names match credential
+       prefixes (``token``, ``key``, ``secret``, ``auth``, ``sig``,
+       ``signature``, ``X-Amz-Signature``, ``X-Goog-Signature``).
+       Matching is case-insensitive prefix comparison.
+    2. **Absolute file path**: replace with ``"<local-path-redacted>"`` when
+       the string starts with a Windows drive letter + colon (e.g. ``C:``) or
+       a Unix root slash (``/``).
+    3. **Everything else**: return as-is.
+
+    Args:
+        source: The raw source string to sanitise.
+
+    Returns:
+        A sanitised copy of the source string with credentials removed.
+    """
+    if source.startswith(("http://", "https://")):
+        return _sanitize_url(source)
+    if source.startswith("/") or _WINDOWS_DRIVE_RE.match(source):
+        return "<local-path-redacted>"
+    return source
+
+
+def _sanitize_url(source: str) -> str:
+    """Strip credentials from a URL string.
+
+    Args:
+        source: A URL string starting with ``http://`` or ``https://``.
+
+    Returns:
+        The URL with userinfo and credential query parameters removed.
+    """
+    parsed = urlparse(source)
+    # Strip userinfo (user:pass@) from netloc
+    netloc = parsed.hostname or ""
+    if parsed.port:
+        netloc = f"{netloc}:{parsed.port}"
+
+    # Filter credential query params (case-insensitive prefix match)
+    clean_params = [
+        (k, v)
+        for k, v in parse_qsl(parsed.query, keep_blank_values=True)
+        if not _is_credential_param(k)
+    ]
+    clean_query = urlencode(clean_params)
+
+    sanitized = urlunparse(
+        (parsed.scheme, netloc, parsed.path, parsed.params, clean_query, parsed.fragment)
+    )
+    return sanitized
+
+
+def _is_credential_param(name: str) -> bool:
+    """Return True if a query parameter name looks like a credential.
+
+    Args:
+        name: Query parameter name.
+
+    Returns:
+        ``True`` if the name matches a known credential prefix.
+    """
+    lower = name.lower()
+    return any(lower.startswith(prefix) for prefix in _CREDENTIAL_PARAM_PREFIXES)
 
 
 def create_staging_job(

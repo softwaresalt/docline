@@ -3,7 +3,12 @@
 from datetime import UTC, datetime
 
 from docline.fetch.models import SourceMetadata, StagingJob, StagingJobError
-from docline.fetch.staging import build_cache_path, create_staging_job, make_job_id
+from docline.fetch.staging import (
+    build_cache_path,
+    create_staging_job,
+    make_job_id,
+    sanitize_source,
+)
 from docline.schema.models import DoclineError
 
 
@@ -109,3 +114,78 @@ def test_create_staging_job_with_content_type() -> None:
     """create_staging_job stores content_type in metadata."""
     job = create_staging_job("http://example.com", ".cache", content_type="application/pdf")
     assert job.metadata.content_type == "application/pdf"
+
+
+# --- sanitize_source tests ---
+
+
+def test_sanitize_url_strips_token_query_param() -> None:
+    """sanitize_source removes token= query parameter from URLs."""
+    result = sanitize_source("https://example.com/doc?token=secret123&page=1")
+    assert "token=" not in result
+    assert "page=1" in result
+
+
+def test_sanitize_url_strips_key_query_param() -> None:
+    """sanitize_source removes key= query parameter from URLs."""
+    result = sanitize_source("https://example.com/doc?key=abc&lang=en")
+    assert "key=" not in result
+    assert "lang=en" in result
+
+
+def test_sanitize_url_strips_secret_query_param() -> None:
+    """sanitize_source removes secret= query parameter from URLs."""
+    result = sanitize_source("https://example.com/doc?secret=xyz")
+    assert "secret=" not in result
+
+
+def test_sanitize_url_strips_auth_query_param() -> None:
+    """sanitize_source removes auth= query parameter from URLs."""
+    result = sanitize_source("http://example.com/path?auth=tok&id=42")
+    assert "auth=" not in result
+    assert "id=42" in result
+
+
+def test_sanitize_url_strips_sig_query_param() -> None:
+    """sanitize_source removes sig= query parameter from URLs."""
+    result = sanitize_source("https://cdn.example.com/file?sig=abc123")
+    assert "sig=" not in result
+
+
+def test_sanitize_url_strips_userinfo_from_netloc() -> None:
+    """sanitize_source removes user:pass@ from URL netloc."""
+    result = sanitize_source("https://user:pass@example.com/path")
+    assert "user" not in result
+    assert "pass" not in result
+    assert "example.com" in result
+
+
+def test_sanitize_url_no_credentials_unchanged() -> None:
+    """sanitize_source leaves clean URLs without credentials unchanged."""
+    url = "https://example.com/docs/api?page=2&lang=en"
+    result = sanitize_source(url)
+    assert result == url
+
+
+def test_sanitize_windows_absolute_path() -> None:
+    """sanitize_source replaces Windows absolute paths with sentinel."""
+    result = sanitize_source(r"C:\Users\alice\documents\report.pdf")
+    assert result == "<local-path-redacted>"
+
+
+def test_sanitize_unix_absolute_path() -> None:
+    """sanitize_source replaces Unix absolute paths with sentinel."""
+    result = sanitize_source("/home/user/documents/report.pdf")
+    assert result == "<local-path-redacted>"
+
+
+def test_sanitize_relative_path_unchanged() -> None:
+    """sanitize_source leaves relative file paths unchanged."""
+    result = sanitize_source("docs/report.pdf")
+    assert result == "docs/report.pdf"
+
+
+def test_sanitize_plain_string_unchanged() -> None:
+    """sanitize_source returns non-URL, non-path strings as-is."""
+    result = sanitize_source("just-a-name")
+    assert result == "just-a-name"
