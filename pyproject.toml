@@ -7,6 +7,12 @@ name = "docline"
 version = "0.1.0"
 description = "Document ingestion and normalization pipeline"
 requires-python = ">=3.12"
+dependencies = [
+    "pydantic>=2,<3",
+]
+
+[project.scripts]
+docline = "docline.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
