@@ -45,4 +45,4 @@ def test_segment_transcript_topics_groups_expected_sections() -> None:
 
 def test_segment_transcript_topics_detects_boundaries() -> None:
     sections = segment_transcript_topics(_transcript_meta())
-    assert sections[0].end_ms < sections[1].start_ms
+    assert sections[0].end_ms <= sections[1].start_ms

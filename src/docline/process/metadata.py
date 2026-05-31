@@ -19,9 +19,19 @@ def resolve_document_type(
 ) -> type[BaseFrontmatter]:
     """Resolve a staged source into a schema family.
 
+    **Stub**: Resolution is based solely on coarse path-substring heuristics
+    applied to ``source_input.raw``. ``staged_metadata`` is accepted for API
+    stability but is currently unused — content-type hints, title signals, and
+    other metadata fields in ``staged_metadata`` are not yet incorporated into
+    the resolution logic. Heuristics: TRANSCRIPT → ``TranscriptFrontmatter``;
+    URL with ``/wiki/`` → ``WikiFrontmatter``; URL otherwise →
+    ``WebFrontmatter``; FILE with ``/adr/`` → ``AdrFrontmatter``; FILE
+    otherwise → ``WikiFrontmatter``. These defaults will be tightened when
+    ``staged_metadata`` is wired in.
+
     Args:
         source_input: Classified staged source input.
-        staged_metadata: Optional staged metadata used for schema-family resolution.
+        staged_metadata: Optional staged metadata; currently unused.
 
     Returns:
         The resolved frontmatter model type.

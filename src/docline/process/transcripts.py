@@ -122,6 +122,7 @@ def segment_transcript_topics(transcript: TranscriptMeta) -> list[TranscriptTopi
             continue
 
         sections[-1].segments.append(segment)
+        sections[-1].end_ms = segment.end_ms
 
     return sections
 

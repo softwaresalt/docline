@@ -32,6 +32,13 @@ def run_correction_loop(
 ) -> CorrectionLoopResult:
     """Run a bounded correction loop for schema-lint failures.
 
+    **Stub**: This function is intentionally unimplemented in v1. No provider
+    calls are made, no correction attempts are performed, and ``corrected_markdown``
+    is always ``None`` on the returned failure result. Callers MUST treat
+    ``corrected_markdown is None`` as the signal that no correction was produced.
+    The ``max_attempts`` and ``lint_errors`` parameters are accepted for API
+    stability but are not used until a real correction provider is wired in.
+
     Args:
         markdown_text: Markdown document requiring correction.
         lint_errors: Structural lint errors to address.
@@ -39,16 +46,16 @@ def run_correction_loop(
         max_attempts: Maximum number of correction retries.
 
     Returns:
-        Typed correction-loop result.
+        Typed correction-loop result with ``status="failed"``,
+        ``attempts=0``, and ``corrected_markdown=None``.
     """
-    del lint_errors, config
+    del markdown_text, lint_errors, config, max_attempts
 
-    attempts = max(max_attempts, 0)
     return CorrectionLoopResult(
         status="failed",
-        attempts=attempts,
-        corrected_markdown=markdown_text,
-        failure_reason="Correction provider did not produce a valid revision",
+        attempts=0,
+        corrected_markdown=None,
+        failure_reason="Correction provider not yet implemented",
     )
 
 
