@@ -18,7 +18,7 @@ class WikiFrontmatter(BaseFrontmatter):
         section: Optional wiki section or category name.
     """
 
-    doc_type: Literal["wiki"] = "wiki"
+    doc_type: Literal["wiki"] = "wiki"  # type: ignore[override]
     tags: list[str] = []
     section: str = ""
 
@@ -44,7 +44,7 @@ class AdrFrontmatter(BaseFrontmatter):
         decision_date: ISO date string when the decision was made.
     """
 
-    doc_type: Literal["adr"] = "adr"
+    doc_type: Literal["adr"] = "adr"  # type: ignore[override]
     status: str
     decision_date: str = ""
 
@@ -76,7 +76,7 @@ class TranscriptFrontmatter(BaseFrontmatter):
         duration_seconds: Total duration of the source recording in seconds.
     """
 
-    doc_type: Literal["transcript"] = "transcript"
+    doc_type: Literal["transcript"] = "transcript"  # type: ignore[override]
     speaker_count: int = 0
     duration_seconds: float = 0.0
 
@@ -101,7 +101,7 @@ class WebFrontmatter(BaseFrontmatter):
         crawl_depth: Depth at which this page was discovered during crawling.
     """
 
-    doc_type: Literal["web"] = "web"
+    doc_type: Literal["web"] = "web"  # type: ignore[override]
     url: str
     crawl_depth: int = 0
 
