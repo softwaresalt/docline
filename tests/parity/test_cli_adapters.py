@@ -5,13 +5,16 @@ import json
 from docline.cli import main
 
 
-def test_cli_fetch_valid_source_succeeds(capsys) -> None:
-    """CLI fetch succeeds for a valid source."""
+def test_cli_fetch_valid_source_reports_not_implemented(capsys) -> None:
+    """CLI fetch reports failure until real staging is implemented."""
     exit_code = main(["fetch", "http://example.com"])
     captured = capsys.readouterr()
 
-    assert exit_code == 0
-    assert json.loads(captured.out)["success"] is True
+    payload = json.loads(captured.out)
+
+    assert exit_code == 1
+    assert payload["success"] is False
+    assert payload["error"] == "Fetch execution is not implemented."
 
 
 def test_cli_fetch_result_json_has_source(capsys) -> None:
@@ -22,12 +25,12 @@ def test_cli_fetch_result_json_has_source(capsys) -> None:
     assert json.loads(captured.out)["source"] == "http://example.com"
 
 
-def test_cli_fetch_result_json_has_staged_path(capsys) -> None:
-    """CLI fetch JSON output includes a staged path."""
+def test_cli_fetch_result_json_has_no_staged_path_when_not_implemented(capsys) -> None:
+    """CLI fetch JSON output keeps staged_path empty until a file is staged."""
     main(["fetch", "http://example.com"])
     captured = capsys.readouterr()
 
-    assert json.loads(captured.out)["staged_path"]
+    assert json.loads(captured.out)["staged_path"] == ""
 
 
 def test_cli_fetch_no_source_returns_2(capsys) -> None:
@@ -36,16 +39,21 @@ def test_cli_fetch_no_source_returns_2(capsys) -> None:
     capsys.readouterr()
 
 
-def test_cli_process_with_existing_staging_dir(capsys, monkeypatch, tmp_path) -> None:
-    """CLI process succeeds when the staging directory exists."""
+def test_cli_process_with_existing_staging_dir_reports_not_implemented(
+    capsys, monkeypatch, tmp_path
+) -> None:
+    """CLI process reports failure until real output generation is implemented."""
     monkeypatch.chdir(tmp_path)
     tmp_path.joinpath("staging").mkdir()
 
     exit_code = main(["process", "--staging-dir", "staging"])
     captured = capsys.readouterr()
 
-    assert exit_code == 0
-    assert json.loads(captured.out)["success"] is True
+    payload = json.loads(captured.out)
+
+    assert exit_code == 1
+    assert payload["success"] is False
+    assert payload["error"] == "Process execution is not implemented."
 
 
 def test_cli_process_missing_staging_dir_returns_1(capsys) -> None:
@@ -57,13 +65,16 @@ def test_cli_process_missing_staging_dir_returns_1(capsys) -> None:
     assert json.loads(captured.out)["success"] is False
 
 
-def test_cli_fetch_custom_depth(capsys) -> None:
-    """CLI fetch accepts a custom crawl depth."""
+def test_cli_fetch_custom_depth_reports_not_implemented(capsys) -> None:
+    """CLI fetch still reports not implemented when given a custom depth."""
     exit_code = main(["fetch", "http://example.com", "--depth", "2"])
     captured = capsys.readouterr()
 
-    assert exit_code == 0
-    assert json.loads(captured.out)["success"] is True
+    payload = json.loads(captured.out)
+
+    assert exit_code == 1
+    assert payload["success"] is False
+    assert payload["error"] == "Fetch execution is not implemented."
 
 
 def test_cli_fetch_invalid_output_dir_returns_2(capsys) -> None:
@@ -72,15 +83,20 @@ def test_cli_fetch_invalid_output_dir_returns_2(capsys) -> None:
     capsys.readouterr()
 
 
-def test_cli_process_result_json_has_output_path(capsys, monkeypatch, tmp_path) -> None:
-    """CLI process JSON output includes the output path on success."""
+def test_cli_process_result_json_has_no_output_path_when_not_implemented(
+    capsys, monkeypatch, tmp_path
+) -> None:
+    """CLI process JSON output keeps output_path unset until output exists."""
     monkeypatch.chdir(tmp_path)
     tmp_path.joinpath("staging").mkdir()
 
     main(["process", "--staging-dir", "staging", "--output-dir", "outdir"])
     captured = capsys.readouterr()
 
-    assert json.loads(captured.out)["output_path"] == "outdir"
+    payload = json.loads(captured.out)
+
+    assert payload["output_path"] is None
+    assert payload["error"] == "Process execution is not implemented."
 
 
 def test_cli_manifest_with_invalid_extra_token_returns_2(capsys) -> None:
@@ -94,4 +110,3 @@ def test_cli_unknown_command_returns_2(capsys) -> None:
     """CLI keeps returning exit code 2 for unknown commands."""
     assert main(["--unknown"]) == 2
     capsys.readouterr()
-

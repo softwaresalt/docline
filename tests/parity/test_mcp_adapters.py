@@ -13,10 +13,11 @@ def test_mcp_server_fetch_returns_fetch_result() -> None:
     assert isinstance(result, FetchResult)
 
 
-def test_mcp_server_fetch_result_success() -> None:
-    """MCP fetch succeeds for a valid source."""
+def test_mcp_server_fetch_result_reports_not_implemented() -> None:
+    """MCP fetch reports failure until real staging is implemented."""
     result = SERVER.fetch(FetchRequest(source="http://example.com"))
-    assert result.success is True
+    assert result.success is False
+    assert result.error == "Fetch execution is not implemented."
 
 
 def test_mcp_server_fetch_result_has_source() -> None:
@@ -25,10 +26,10 @@ def test_mcp_server_fetch_result_has_source() -> None:
     assert result.source == "http://example.com"
 
 
-def test_mcp_server_fetch_result_has_staged_path() -> None:
-    """MCP fetch returns a non-empty staged path."""
+def test_mcp_server_fetch_result_has_no_staged_path_when_not_implemented() -> None:
+    """MCP fetch keeps staged_path empty until a file is staged."""
     result = SERVER.fetch(FetchRequest(source="http://example.com"))
-    assert result.staged_path != ""
+    assert result.staged_path == ""
 
 
 def test_mcp_server_process_returns_process_result() -> None:
@@ -43,13 +44,17 @@ def test_mcp_server_process_missing_staging_dir_fails() -> None:
     assert result.success is False
 
 
-def test_mcp_server_process_with_existing_dir_succeeds(monkeypatch, tmp_path) -> None:
-    """MCP process succeeds when the staging directory exists."""
+def test_mcp_server_process_with_existing_dir_reports_not_implemented(
+    monkeypatch, tmp_path
+) -> None:
+    """MCP process reports failure until real output generation is implemented."""
     monkeypatch.chdir(tmp_path)
     tmp_path.joinpath("staging").mkdir()
 
     result = SERVER.process(ProcessRequest(staging_dir="staging"))
-    assert result.success is True
+    assert result.success is False
+    assert result.output_path is None
+    assert result.error == "Process execution is not implemented."
 
 
 def test_mcp_server_fetch_process_same_contracts_as_app() -> None:
@@ -62,7 +67,8 @@ def test_mcp_server_fetch_accepts_raw_dict() -> None:
     """MCP fetch validates and accepts a raw dict payload at the transport boundary."""
     result = SERVER.fetch({"source": "http://example.com"})
     assert isinstance(result, FetchResult)
-    assert result.success is True
+    assert result.success is False
+    assert result.error == "Fetch execution is not implemented."
 
 
 def test_mcp_server_fetch_dict_source_preserved() -> None:
@@ -86,7 +92,9 @@ def test_mcp_server_process_accepts_raw_dict(monkeypatch, tmp_path) -> None:
 
     result = SERVER.process({"staging_dir": "staging", "output_dir": "output"})
     assert isinstance(result, ProcessResult)
-    assert result.success is True
+    assert result.success is False
+    assert result.output_path is None
+    assert result.error == "Process execution is not implemented."
 
 
 def test_mcp_server_process_invalid_dict_raises_validation_error() -> None:

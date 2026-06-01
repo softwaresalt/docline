@@ -11,7 +11,9 @@ from docline.app_models import (
     ProcessRequest,
     ProcessResult,
 )
-from docline.schema.models import DoclineError
+
+_FETCH_NOT_IMPLEMENTED_ERROR = "Fetch execution is not implemented."
+_PROCESS_NOT_IMPLEMENTED_ERROR = "Process execution is not implemented."
 
 
 def get_manifest() -> Manifest:
@@ -57,29 +59,30 @@ def get_mcp_manifest() -> McpManifestResponse:
 
 
 def execute_fetch(request: FetchRequest) -> FetchResult:
-    """Execute a fetch operation and stage the source document.
+    """Execute a fetch operation.
 
-    Creates a deterministic staging job record for the requested source without
-    performing the actual fetch I/O.
+    Until the real fetch pipeline exists, this returns an explicit failure
+    result rather than claiming that a staged artifact was produced.
 
     Args:
         request: Validated fetch parameters.
 
     Returns:
-        A fetch result describing the staged cache path and outcome.
+        A fetch result describing the honest placeholder outcome.
     """
-    from docline.fetch.staging import create_staging_job
-
-    try:
-        job = create_staging_job(request.source, request.output_dir)
-    except (DoclineError, ValueError) as err:
-        return FetchResult(source=request.source, staged_path="", success=False, error=str(err))
-
-    return FetchResult(source=request.source, staged_path=job.cache_path, success=True)
+    return FetchResult(
+        source=request.source,
+        staged_path="",
+        success=False,
+        error=_FETCH_NOT_IMPLEMENTED_ERROR,
+    )
 
 
 def execute_process(request: ProcessRequest) -> ProcessResult:
     """Execute a processing operation on staged documents.
+
+    Until the real processing pipeline exists, this returns an explicit failure
+    result rather than claiming that an output artifact was produced.
 
     Args:
         request: Validated process parameters.
@@ -97,6 +100,6 @@ def execute_process(request: ProcessRequest) -> ProcessResult:
 
     return ProcessResult(
         input_path=request.staging_dir,
-        output_path=request.output_dir,
-        success=True,
+        success=False,
+        error=_PROCESS_NOT_IMPLEMENTED_ERROR,
     )
