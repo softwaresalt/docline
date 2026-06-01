@@ -6,6 +6,7 @@ import sys
 
 from docline.app import execute_fetch, execute_process, get_manifest
 from docline.app_models import FetchRequest, ProcessRequest
+from docline.quarantine_viewer import QuarantineViewerError, render_local_quarantine_viewer
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -45,6 +46,20 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Processing output directory.",
     )
 
+    quarantine_viewer_parser = subcommands.add_parser(
+        "quarantine-viewer",
+        help="Render a local HTML viewer for a quarantine artifact.",
+    )
+    quarantine_viewer_parser.add_argument(
+        "artifact",
+        help="Path to the quarantine JSON artifact to render.",
+    )
+    quarantine_viewer_parser.add_argument(
+        "--output-dir",
+        default="quarantine-viewer",
+        help="Workspace-local output directory for the rendered viewer.",
+    )
+
     return parser
 
 
@@ -55,6 +70,7 @@ def main(argv: list[str] | None = None) -> int:
     - ``--manifest``: Print the JSON tool manifest and exit 0.
     - ``fetch``: Stage a fetch request and print a JSON result.
     - ``process``: Validate a process request and print a JSON result.
+    - ``quarantine-viewer``: Render a local quarantine viewer artifact.
     - Anything else: Prints usage and exits 2.
 
     Args:
@@ -66,7 +82,7 @@ def main(argv: list[str] | None = None) -> int:
     args_list = argv if argv is not None else sys.argv[1:]
 
     if not args_list:
-        print("usage: docline [--manifest | fetch | process]")
+        print("usage: docline [--manifest | fetch | process | quarantine-viewer]")
         return 2
 
     parser = _build_parser()
@@ -116,7 +132,19 @@ def main(argv: list[str] | None = None) -> int:
         print(json.dumps(result.model_dump()))
         return 0 if result.success else 1
 
-    print("usage: docline [--manifest | fetch | process]")
+    if parsed.command == "quarantine-viewer":
+        try:
+            viewer_path = render_local_quarantine_viewer(
+                artifact_path=parsed.artifact,
+                output_dir=parsed.output_dir,
+            )
+        except QuarantineViewerError as err:
+            print(f"error: {err}", file=sys.stderr)
+            return 1
+        print(json.dumps({"viewer_path": str(viewer_path)}))
+        return 0
+
+    print("usage: docline [--manifest | fetch | process | quarantine-viewer]")
     return 2
 
 
