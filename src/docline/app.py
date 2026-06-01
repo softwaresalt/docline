@@ -88,11 +88,11 @@ def execute_process(request: ProcessRequest) -> ProcessResult:
         A process result describing the input and output paths and outcome.
     """
     staging_dir = Path(request.staging_dir)
-    if not staging_dir.exists():
+    if not staging_dir.is_dir():
         return ProcessResult(
             input_path=request.staging_dir,
             success=False,
-            error=f"Staging directory not found: {request.staging_dir}",
+            error=f"Staging directory not found or is not a directory: {request.staging_dir}",
         )
 
     return ProcessResult(
