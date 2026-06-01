@@ -33,7 +33,7 @@ def discover_configs(config_dir: Path) -> list[SourceConfig]:
         return []
 
     configs: list[SourceConfig] = []
-    for path in sorted(_iter_config_paths(config_dir)):
+    for path in _iter_config_paths(config_dir):
         raw_config = _load_config_file(path)
         if raw_config is None:
             continue

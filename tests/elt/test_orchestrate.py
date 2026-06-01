@@ -70,6 +70,20 @@ def test_orchestrate_fetch_validates_staging_dir(
     assert recorded == {"relative": ".elt/staging", "workspace_root": tmp_path}
 
 
+def test_orchestrate_fetch_rejects_config_dir_outside_workspace(tmp_path: Path) -> None:
+    """orchestrate_fetch raises PathContainmentError for out-of-workspace config_dir."""
+    from docline.elt.orchestrate import orchestrate_fetch
+    from docline.paths import PathContainmentError
+
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    outside_dir = tmp_path / "outside"
+    outside_dir.mkdir()
+
+    with pytest.raises(PathContainmentError, match="outside workspace root"):
+        orchestrate_fetch(outside_dir, ".elt/staging", workspace_root=workspace)
+
+
 def test_orchestrate_fetch_returns_empty_list_when_no_configs(tmp_path: Path) -> None:
     """orchestrate_fetch returns an empty list for an empty config directory."""
     from docline.elt.orchestrate import orchestrate_fetch
