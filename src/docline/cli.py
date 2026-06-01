@@ -76,6 +76,12 @@ def main(argv: list[str] | None = None) -> int:
     except SystemExit as err:
         return int(err.code) if err.code is not None else 2
 
+    if parsed.manifest and parsed.command is not None:
+        try:
+            parser.error("--manifest cannot be used with a subcommand")
+        except SystemExit as err:
+            return int(err.code) if err.code is not None else 2
+
     if parsed.manifest:
         manifest = get_manifest()
         print(json.dumps(manifest.model_dump(), indent=2))

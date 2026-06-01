@@ -11,6 +11,7 @@ from docline.app_models import (
     ProcessRequest,
     ProcessResult,
 )
+from docline.paths import PathContainmentError, safe_workspace_path
 
 _FETCH_NOT_IMPLEMENTED_ERROR = "Fetch execution is not implemented."
 _PROCESS_NOT_IMPLEMENTED_ERROR = "Process execution is not implemented."
@@ -90,7 +91,15 @@ def execute_process(request: ProcessRequest) -> ProcessResult:
     Returns:
         A process result describing the input and output paths and outcome.
     """
-    staging_dir = Path(request.staging_dir)
+    try:
+        staging_dir = safe_workspace_path(request.staging_dir, Path.cwd())
+    except PathContainmentError as err:
+        return ProcessResult(
+            input_path=request.staging_dir,
+            success=False,
+            error=str(err),
+        )
+
     if not staging_dir.is_dir():
         return ProcessResult(
             input_path=request.staging_dir,

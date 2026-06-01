@@ -42,10 +42,10 @@ class DoclineMcpServer:
         if isinstance(transport_mode, str):
             try:
                 transport_mode = TransportMode(transport_mode)
-            except ValueError:
+            except ValueError as err:
                 raise McpTransportError(
                     f"Unsupported MCP transport: {transport_mode!r}. Only stdio is approved."
-                )
+                ) from err
         if transport_mode is not TransportMode.STDIO:
             raise McpTransportError(
                 f"Unsupported MCP transport: {transport_mode!r}. Only stdio is approved."

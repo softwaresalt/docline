@@ -25,6 +25,16 @@ def test_non_stdio_string_rejected() -> None:
         DoclineMcpServer(transport_mode="websocket")  # type: ignore[arg-type]
 
 
+def test_non_stdio_string_preserves_value_error_cause() -> None:
+    """Invalid transport string coercion preserves the original ValueError cause."""
+    from docline.mcp.exceptions import McpTransportError
+
+    with pytest.raises(McpTransportError) as exc_info:
+        DoclineMcpServer(transport_mode="websocket")  # type: ignore[arg-type]
+
+    assert isinstance(exc_info.value.__cause__, ValueError)
+
+
 def test_stdio_string_accepted() -> None:
     """DoclineMcpServer accepts the string 'stdio' in place of the enum."""
     server = DoclineMcpServer(transport_mode="stdio")  # type: ignore[arg-type]
