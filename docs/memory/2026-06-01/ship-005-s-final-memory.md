@@ -15,7 +15,8 @@ status: "closure-pr-open"
 
 * Source branch: `feat/005-cli-mcp-parity`
 * Post-merge docs branch: `post-merge/005-cli-mcp-parity`
-* Closure PR: to be created from the post-merge branch
+* Closure PR: `#13` is open from the post-merge branch
+* Closure PR Copilot review request via `gh pr edit 13 --add-reviewer copilot` did not succeed in this environment
 * Do not start the next shipment automatically
 
 ## Archival state

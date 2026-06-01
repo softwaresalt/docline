@@ -64,7 +64,8 @@ Final gates before closure:
 * Validation window: next normal development cycle on `main`
 * Owner: operator / repository maintainer
 * Monitoring and rollback: rely on the documented quality gates and revert merge commit `160153ac56851b69dd97c2a07cf1129543ddbdea` if CLI/MCP parity regresses
-* Closure PR is opened from `post-merge/005-cli-mcp-parity`
+* Closure PR `#13` is open from `post-merge/005-cli-mcp-parity`
+* Closure PR Copilot review request via `gh pr edit 13 --add-reviewer copilot` did not succeed in this environment and still requires separate operator approval before merge
 * No shipment-local follow-up backlog items were identified during closure
 
 ## Knowledge graduation
