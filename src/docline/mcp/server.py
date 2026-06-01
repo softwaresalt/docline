@@ -1,4 +1,4 @@
-"""Minimal MCP manifest adapter for shared docline operations."""
+"""MCP server adapters for manifest discovery and shared fetch/process operations."""
 
 from enum import Enum
 
@@ -23,7 +23,7 @@ class TransportMode(Enum):
 
 
 class DoclineMcpServer:
-    """Minimal MCP server surface for manifest discovery."""
+    """Expose manifest discovery plus fetch/process adapters over approved stdio transport."""
 
     def __init__(self, transport_mode: "TransportMode | str" = TransportMode.STDIO) -> None:
         """Initialize the MCP server with the approved transport mode.
