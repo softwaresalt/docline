@@ -220,6 +220,9 @@ __marimo__/
 # autoharness
 .autoharness/backups/
 
+# local extract-land-transform staging
+.elt/
+
 # backlogit volatile runtime artifacts (durable queue, config, and stash are tracked)
 .backlogit/backlogit.db
 .backlogit/*.db-shm
