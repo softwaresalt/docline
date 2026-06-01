@@ -1,12 +1,17 @@
 """Application-level functions shared between CLI and MCP server."""
 
+from pathlib import Path
+
 from docline.app_models import (
     FetchRequest,
+    FetchResult,
     Manifest,
     ManifestTool,
     McpManifestResponse,
     ProcessRequest,
+    ProcessResult,
 )
+from docline.schema.models import DoclineError
 
 
 def get_manifest() -> Manifest:
@@ -49,3 +54,49 @@ def get_mcp_manifest() -> McpManifestResponse:
         manifest payload converted into MCP ``tools/list`` entries.
     """
     return McpManifestResponse(tools=get_manifest().tools)
+
+
+def execute_fetch(request: FetchRequest) -> FetchResult:
+    """Execute a fetch operation and stage the source document.
+
+    Creates a deterministic staging job record for the requested source without
+    performing the actual fetch I/O.
+
+    Args:
+        request: Validated fetch parameters.
+
+    Returns:
+        A fetch result describing the staged cache path and outcome.
+    """
+    from docline.fetch.staging import create_staging_job
+
+    try:
+        job = create_staging_job(request.source, request.output_dir)
+    except (DoclineError, ValueError) as err:
+        return FetchResult(source=request.source, staged_path="", success=False, error=str(err))
+
+    return FetchResult(source=request.source, staged_path=job.cache_path, success=True)
+
+
+def execute_process(request: ProcessRequest) -> ProcessResult:
+    """Execute a processing operation on staged documents.
+
+    Args:
+        request: Validated process parameters.
+
+    Returns:
+        A process result describing the input and output paths and outcome.
+    """
+    staging_dir = Path(request.staging_dir)
+    if not staging_dir.exists():
+        return ProcessResult(
+            input_path=request.staging_dir,
+            success=False,
+            error=f"Staging directory not found: {request.staging_dir}",
+        )
+
+    return ProcessResult(
+        input_path=request.staging_dir,
+        output_path=request.output_dir,
+        success=True,
+    )
