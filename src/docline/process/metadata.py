@@ -1,6 +1,7 @@
 """Metadata processing stubs for type resolution and frontmatter assembly."""
 
 from collections.abc import Mapping
+from typing import Any
 
 from pydantic import ValidationError
 
@@ -15,7 +16,7 @@ from docline.types import SourceInput, SourceKind
 
 
 def resolve_document_type(
-    source_input: SourceInput, staged_metadata: Mapping[str, object] | None = None
+    source_input: SourceInput, staged_metadata: Mapping[str, Any] | None = None
 ) -> type[BaseFrontmatter]:
     """Resolve a staged source into a schema family.
 
@@ -62,7 +63,7 @@ def resolve_document_type(
 
 
 def assemble_frontmatter_payload(
-    schema_family: type[BaseFrontmatter], staged_metadata: Mapping[str, object]
+    schema_family: type[BaseFrontmatter], staged_metadata: Mapping[str, Any]
 ) -> BaseFrontmatter:
     """Build a validated frontmatter payload for a resolved schema family.
 
