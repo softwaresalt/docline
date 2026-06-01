@@ -1,21 +1,35 @@
-"""Tests for CLI and MCP output equivalence."""
+"""Tests for CLI, app, and MCP output equivalence."""
 
 import json
 
 from docline.app import get_manifest
 from docline.app_models import FetchRequest, FetchResult, ProcessRequest, ProcessResult
 from docline.cli import main
+from docline.elt.orchestrate import orchestrate_fetch
 from docline.mcp.server import SERVER
 
 
-def test_fetch_equivalent_via_cli_and_mcp(capsys) -> None:
-    """CLI and MCP fetch surfaces return identical results."""
-    request = FetchRequest(source="http://example.com")
+def test_fetch_equivalent_via_cli_and_orchestrator(capsys, monkeypatch, tmp_path) -> None:
+    """CLI fetch matches the orchestrator output for the same configs."""
+    monkeypatch.chdir(tmp_path)
+    config_dir = tmp_path / ".elt" / "config"
+    config_dir.mkdir(parents=True)
+    (config_dir / "source.yaml").write_text(
+        "type: web_crawl\nurl: https://example.com\n",
+        encoding="utf-8",
+    )
 
-    main(["fetch", "http://example.com"])
-    cli_result = FetchResult(**json.loads(capsys.readouterr().out))
+    main(["fetch"])
+    cli_result = json.loads(capsys.readouterr().out)
+    expected = [
+        job.model_dump(mode="json") for job in orchestrate_fetch(config_dir, ".elt/staging")
+    ]
 
-    assert cli_result == SERVER.fetch(request)
+    assert [job["job_id"] for job in cli_result] == [job["job_id"] for job in expected]
+    assert [job["cache_path"] for job in cli_result] == [job["cache_path"] for job in expected]
+    assert [job["metadata"]["source"] for job in cli_result] == [
+        job["metadata"]["source"] for job in expected
+    ]
 
 
 def test_process_equivalent_via_cli_and_mcp(capsys, monkeypatch, tmp_path) -> None:
@@ -30,25 +44,39 @@ def test_process_equivalent_via_cli_and_mcp(capsys, monkeypatch, tmp_path) -> No
     assert cli_result == SERVER.process(request)
 
 
-def test_fetch_staged_path_deterministic(capsys) -> None:
-    """Fetch staged paths stay deterministic across interfaces."""
-    request = FetchRequest(source="http://example.com")
+def test_fetch_job_id_deterministic_between_cli_and_orchestrator(
+    capsys, monkeypatch, tmp_path
+) -> None:
+    """CLI fetch job identifiers match the orchestrator deterministically."""
+    monkeypatch.chdir(tmp_path)
+    config_dir = tmp_path / ".elt" / "config"
+    config_dir.mkdir(parents=True)
+    (config_dir / "source.yaml").write_text(
+        "type: web_crawl\nurl: https://example.com\n",
+        encoding="utf-8",
+    )
 
-    main(["fetch", "http://example.com"])
-    cli_result = FetchResult(**json.loads(capsys.readouterr().out))
-    mcp_result = SERVER.fetch(request)
+    main(["fetch"])
+    cli_result = json.loads(capsys.readouterr().out)
+    expected = orchestrate_fetch(config_dir, ".elt/staging")
 
-    assert cli_result.staged_path == mcp_result.staged_path
+    assert cli_result[0]["job_id"] == expected[0].job_id
 
 
-def test_cli_and_mcp_fetch_source_preserved(capsys) -> None:
-    """Both interfaces preserve the fetch source field."""
-    request = FetchRequest(source="http://example.com")
+def test_cli_fetch_metadata_source_preserved(capsys, monkeypatch, tmp_path) -> None:
+    """CLI fetch preserves the staged source metadata."""
+    monkeypatch.chdir(tmp_path)
+    config_dir = tmp_path / ".elt" / "config"
+    config_dir.mkdir(parents=True)
+    (config_dir / "source.yaml").write_text(
+        "type: web_crawl\nurl: https://example.com\n",
+        encoding="utf-8",
+    )
 
-    main(["fetch", "http://example.com"])
-    cli_result = FetchResult(**json.loads(capsys.readouterr().out))
+    main(["fetch"])
+    cli_result = json.loads(capsys.readouterr().out)
 
-    assert cli_result.source == SERVER.fetch(request).source
+    assert cli_result[0]["metadata"]["source"] == "web_crawl:https://example.com"
 
 
 def test_cli_and_mcp_process_input_path_preserved(capsys, monkeypatch, tmp_path) -> None:
@@ -74,9 +102,8 @@ def test_process_result_model_fields_complete() -> None:
 
 
 def test_cli_json_deserializes_to_fetch_result_model(capsys) -> None:
-    """CLI fetch JSON deserializes back into the FetchResult model."""
-    main(["fetch", "http://example.com"])
-    result = FetchResult(**json.loads(capsys.readouterr().out))
+    """MCP fetch JSON model remains stable for fetch results."""
+    result = FetchResult(**SERVER.fetch(FetchRequest(source="http://example.com")).model_dump())
 
     assert result.success is False
     assert result.staged_path == ""

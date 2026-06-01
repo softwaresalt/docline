@@ -3,10 +3,14 @@
 import argparse
 import json
 import sys
+from pathlib import Path
 
-from docline.app import execute_fetch, execute_process, get_manifest
-from docline.app_models import FetchRequest, ProcessRequest
+from docline.app import execute_process, get_manifest
+from docline.app_models import ProcessRequest
+from docline.elt.orchestrate import orchestrate_fetch
+from docline.paths import PathContainmentError, safe_workspace_path
 from docline.quarantine_viewer import QuarantineViewerError, render_local_quarantine_viewer
+from docline.schema.models import DoclineError
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -22,13 +26,19 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     subcommands = parser.add_subparsers(dest="command")
 
-    fetch_parser = subcommands.add_parser("fetch", help="Fetch and stage a document source.")
-    fetch_parser.add_argument("source", help="URL or file path to fetch.")
-    fetch_parser.add_argument("--depth", type=int, default=0, help="Crawl depth for web sources.")
+    fetch_parser = subcommands.add_parser(
+        "fetch",
+        help="Fetch and stage document sources configured in .elt/config.",
+    )
     fetch_parser.add_argument(
-        "--output-dir",
-        default=".cache/staging",
-        help="Staging output directory.",
+        "--config-dir",
+        default=".elt/config",
+        help="ELT config directory containing YAML source definitions.",
+    )
+    fetch_parser.add_argument(
+        "--staging-dir",
+        default=".elt/staging",
+        help="Staging output directory for fetched sources.",
     )
 
     process_parser = subcommands.add_parser(
@@ -105,18 +115,37 @@ def main(argv: list[str] | None = None) -> int:
 
     if parsed.command == "fetch":
         try:
-            request = FetchRequest(
-                source=parsed.source,
-                depth=parsed.depth,
-                output_dir=parsed.output_dir,
-            )
-        except ValueError as err:
+            config_dir = safe_workspace_path(parsed.config_dir, Path.cwd())
+            safe_workspace_path(parsed.staging_dir, Path.cwd())
+        except PathContainmentError as err:
             print(f"error: {err}", file=sys.stderr)
-            return 2
+            return 1
 
-        result = execute_fetch(request)
-        print(json.dumps(result.model_dump()))
-        return 0 if result.success else 1
+        if not config_dir.exists():
+            print(f"error: ELT config directory not found: {parsed.config_dir}", file=sys.stderr)
+            return 1
+        if not config_dir.is_dir():
+            print(
+                f"error: ELT config directory is not a directory: {parsed.config_dir}",
+                file=sys.stderr,
+            )
+            return 1
+
+        try:
+            jobs = orchestrate_fetch(config_dir, parsed.staging_dir, workspace_root=Path.cwd())
+        except DoclineError as err:
+            print(f"error: {err}", file=sys.stderr)
+            return 1
+
+        if not jobs:
+            print(
+                f"error: ELT config directory contains no source configs: {parsed.config_dir}",
+                file=sys.stderr,
+            )
+            return 1
+
+        print(json.dumps([job.model_dump(mode="json") for job in jobs]))
+        return 0
 
     if parsed.command == "process":
         try:
