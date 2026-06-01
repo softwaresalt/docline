@@ -1,12 +1,13 @@
 """Schema-driven Markdown AST lint stubs."""
 
 from markdown_it import MarkdownIt
+from markdown_it.token import Token
 
 _MAX_HEADING_DEPTH = 3
 _REQUIRED_SECTIONS: dict[str, tuple[str, ...]] = {"adr": ("Decision",)}
 
 
-def _heading_text(inline_token: object) -> str:
+def _heading_text(inline_token: Token) -> str:
     """Return plain text from an inline token, stripping markup."""
     if hasattr(inline_token, "children") and inline_token.children:
         return "".join(
