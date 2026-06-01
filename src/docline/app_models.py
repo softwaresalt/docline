@@ -14,6 +14,8 @@ class FetchRequest(BaseModel):
         output_dir: Directory where staged files are written.
     """
 
+    model_config = ConfigDict(extra="forbid")
+
     source: str = Field(min_length=1)
     depth: int = Field(default=0, ge=0)
     output_dir: str = ".cache/staging"
@@ -50,6 +52,8 @@ class ProcessRequest(BaseModel):
         staging_dir: Directory containing staged files to process.
         output_dir: Directory where processed output files are written.
     """
+
+    model_config = ConfigDict(extra="forbid")
 
     staging_dir: str = ".cache/staging"
     output_dir: str = "output"

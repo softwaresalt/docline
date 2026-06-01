@@ -85,6 +85,14 @@ def test_mcp_server_fetch_invalid_dict_raises_validation_error() -> None:
         SERVER.fetch({"source": ""})
 
 
+def test_mcp_server_fetch_rejects_unknown_dict_fields() -> None:
+    """MCP fetch rejects unexpected raw dict fields to match CLI argument parsing."""
+    from pydantic import ValidationError
+
+    with pytest.raises(ValidationError):
+        SERVER.fetch({"source": "http://example.com", "unexpected": "value"})
+
+
 def test_mcp_server_process_accepts_raw_dict(monkeypatch, tmp_path) -> None:
     """MCP process validates and accepts a raw dict payload at the transport boundary."""
     monkeypatch.chdir(tmp_path)
@@ -103,6 +111,17 @@ def test_mcp_server_process_invalid_dict_raises_validation_error() -> None:
 
     with pytest.raises(ValidationError):
         SERVER.process({"staging_dir": "../escape"})
+
+
+def test_mcp_server_process_rejects_unknown_dict_fields(monkeypatch, tmp_path) -> None:
+    """MCP process rejects unexpected raw dict fields to match CLI argument parsing."""
+    from pydantic import ValidationError
+
+    monkeypatch.chdir(tmp_path)
+    tmp_path.joinpath("staging").mkdir()
+
+    with pytest.raises(ValidationError):
+        SERVER.process({"staging_dir": "staging", "output_dir": "output", "unexpected": "value"})
 
 
 def test_mcp_server_process_file_path_not_dir_fails(tmp_path) -> None:
