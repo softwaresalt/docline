@@ -6,7 +6,12 @@ build-backend = "setuptools.build_meta"
 name = "docline"
 version = "0.1.0"
 description = "Document ingestion and normalization pipeline"
+readme = "README.md"
 requires-python = ">=3.12"
+authors = [
+    { name = "SoftwareSalt" },
+]
+urls = { Homepage = "https://github.com/softwaresalt/docline", Repository = "https://github.com/softwaresalt/docline" }
 dependencies = [
     "markdown-it-py>=4,<5",
     "pydantic>=2,<3",
