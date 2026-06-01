@@ -59,6 +59,30 @@ def test_render_local_quarantine_viewer_rejects_artifact_outside_workspace(
         render_local_quarantine_viewer("../outside-artifact.json", "viewer")
 
 
+def test_render_local_quarantine_viewer_rejects_https_remote_url(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """render_local_quarantine_viewer rejects HTTPS remote URLs without attempting a fetch."""
+    monkeypatch.chdir(tmp_path)
+
+    with pytest.raises(
+        QuarantineViewerError, match="Remote quarantine artifacts are not supported"
+    ):
+        render_local_quarantine_viewer("https://evil.example.com/artifact.json", "viewer")
+
+
+def test_render_local_quarantine_viewer_rejects_http_remote_url(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """render_local_quarantine_viewer rejects HTTP remote URLs without attempting a fetch."""
+    monkeypatch.chdir(tmp_path)
+
+    with pytest.raises(
+        QuarantineViewerError, match="Remote quarantine artifacts are not supported"
+    ):
+        render_local_quarantine_viewer("http://evil.example.com/artifact.json", "viewer")
+
+
 def test_cli_quarantine_viewer_rejects_artifact_outside_workspace(
     tmp_path, monkeypatch, capsys
 ) -> None:
