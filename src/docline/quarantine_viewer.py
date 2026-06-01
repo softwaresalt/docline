@@ -13,17 +13,21 @@ class QuarantineViewerError(DoclineError):
     """Raised when a local quarantine viewer artifact cannot be rendered."""
 
 
+def _is_remote_artifact_url(artifact_path: str) -> bool:
+    """Return whether an artifact reference is a remote HTTP(S) URL."""
+    parsed = urlparse(artifact_path)
+    return parsed.scheme in {"http", "https"} and bool(parsed.netloc)
+
+
 def _validate_local_artifact_path(
     artifact_path: Path | str,
     workspace_root: Path,
 ) -> Path:
     """Validate that a quarantine artifact path stays inside the workspace."""
-    if isinstance(artifact_path, str):
-        parsed = urlparse(artifact_path)
-        if parsed.scheme in {"http", "https"}:
-            raise QuarantineViewerError(
-                f"Remote quarantine artifacts are not supported: {artifact_path!r}"
-            )
+    if isinstance(artifact_path, str) and _is_remote_artifact_url(artifact_path):
+        raise QuarantineViewerError(
+            f"Remote quarantine artifacts are not supported: {artifact_path!r}"
+        )
 
     try:
         resolved = safe_workspace_path(artifact_path, workspace_root)

@@ -1,4 +1,4 @@
-"""Failing harness tests for package metadata and the module entrypoint."""
+"""Tests for package metadata and the module entrypoint."""
 
 import json
 import subprocess

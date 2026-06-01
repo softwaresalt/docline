@@ -1,4 +1,4 @@
-"""Failing harness tests for the quarantine viewer CLI surface."""
+"""Tests for the quarantine viewer CLI surface."""
 
 import json
 from pathlib import Path

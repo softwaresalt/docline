@@ -1,9 +1,11 @@
 """Tests for quarantine viewer workspace containment."""
 
 import json
+from pathlib import Path
 
 import pytest
 
+import docline.quarantine_viewer as quarantine_viewer
 from docline.cli import main
 from docline.quarantine_viewer import QuarantineViewerError, render_local_quarantine_viewer
 
@@ -21,6 +23,28 @@ def test_render_local_quarantine_viewer_renders_workspace_artifact(tmp_path, mon
 
     assert viewer_path == tmp_path / "viewer" / "index.html"
     assert viewer_path.read_text(encoding="utf-8")
+
+
+def test_validate_local_artifact_path_allows_http_prefixed_workspace_filename(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Workspace-local artifact names may include an ``http:`` prefix."""
+    artifact_path = tmp_path / "artifact.json"
+    artifact_path.write_text(json.dumps({"document_id": "doc-http"}), encoding="utf-8")
+
+    def fake_safe_workspace_path(path_value: Path | str, workspace_root: Path) -> Path:
+        assert path_value == "http:artifact.json"
+        assert workspace_root == tmp_path
+        return artifact_path
+
+    monkeypatch.setattr(quarantine_viewer, "safe_workspace_path", fake_safe_workspace_path)
+
+    resolved_path = quarantine_viewer._validate_local_artifact_path(
+        "http:artifact.json",
+        tmp_path,
+    )
+
+    assert resolved_path == artifact_path
 
 
 def test_render_local_quarantine_viewer_rejects_artifact_outside_workspace(
