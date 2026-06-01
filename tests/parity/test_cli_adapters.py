@@ -83,7 +83,15 @@ def test_cli_process_result_json_has_output_path(capsys, monkeypatch, tmp_path) 
     assert json.loads(captured.out)["output_path"] == "outdir"
 
 
+def test_cli_manifest_with_invalid_extra_token_returns_2(capsys) -> None:
+    """CLI rejects extra unrecognized tokens after --manifest via argparse."""
+    exit_code = main(["--manifest", "--bogus-flag"])
+    capsys.readouterr()
+    assert exit_code == 2
+
+
 def test_cli_unknown_command_returns_2(capsys) -> None:
     """CLI keeps returning exit code 2 for unknown commands."""
     assert main(["--unknown"]) == 2
     capsys.readouterr()
+

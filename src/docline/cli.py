@@ -71,15 +71,15 @@ def main(argv: list[str] | None = None) -> int:
 
     parser = _build_parser()
 
-    if args_list[0] == "--manifest":
-        manifest = get_manifest()
-        print(json.dumps(manifest.model_dump(), indent=2))
-        return 0
-
     try:
         parsed = parser.parse_args(args_list)
     except SystemExit as err:
         return int(err.code) if err.code is not None else 2
+
+    if parsed.manifest:
+        manifest = get_manifest()
+        print(json.dumps(manifest.model_dump(), indent=2))
+        return 0
 
     if parsed.command == "fetch":
         try:

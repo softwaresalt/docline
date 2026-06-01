@@ -18,11 +18,17 @@ def test_transport_mode_stdio_value() -> None:
 
 
 def test_non_stdio_string_rejected() -> None:
-    """DoclineMcpServer rejects unsupported transport values."""
+    """DoclineMcpServer rejects unsupported transport string values."""
     from docline.mcp.exceptions import McpTransportError
 
     with pytest.raises(McpTransportError):
         DoclineMcpServer(transport_mode="websocket")  # type: ignore[arg-type]
+
+
+def test_stdio_string_accepted() -> None:
+    """DoclineMcpServer accepts the string 'stdio' in place of the enum."""
+    server = DoclineMcpServer(transport_mode="stdio")  # type: ignore[arg-type]
+    assert server._transport_mode is TransportMode.STDIO
 
 
 def test_mcp_transport_error_is_docline_error() -> None:

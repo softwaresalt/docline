@@ -25,15 +25,27 @@ class TransportMode(Enum):
 class DoclineMcpServer:
     """Minimal MCP server surface for manifest discovery."""
 
-    def __init__(self, transport_mode: TransportMode = TransportMode.STDIO) -> None:
+    def __init__(self, transport_mode: "TransportMode | str" = TransportMode.STDIO) -> None:
         """Initialize the MCP server with the approved transport mode.
 
+        Accepts either a :class:`TransportMode` enum member or the string
+        ``"stdio"`` so that callers using config or environment values can
+        pass the mode without constructing the enum directly.
+
         Args:
-            transport_mode: Requested MCP transport configuration.
+            transport_mode: Requested MCP transport configuration. Must resolve
+                to :attr:`TransportMode.STDIO` after coercion.
 
         Raises:
             McpTransportError: If any transport other than stdio is requested.
         """
+        if isinstance(transport_mode, str):
+            try:
+                transport_mode = TransportMode(transport_mode)
+            except ValueError:
+                raise McpTransportError(
+                    f"Unsupported MCP transport: {transport_mode!r}. Only stdio is approved."
+                )
         if transport_mode is not TransportMode.STDIO:
             raise McpTransportError(
                 f"Unsupported MCP transport: {transport_mode!r}. Only stdio is approved."
