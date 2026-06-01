@@ -60,7 +60,8 @@ Final gates before closure:
 * Validation window: next normal development cycle on `main`
 * Owner: operator / repository maintainer
 * Monitoring and rollback: rely on the documented quality gates and revert merge commit `5c93476b49ffb68e8339feff062f0831293e430c` if the process-module type-fix regresses
-* A dedicated closure PR is required from `post-merge/007-fix-pyright-type-regressions` and remains subject to separate approval
+* Closure PR `#11` is open from `post-merge/007-fix-pyright-type-regressions`
+* Closure PR Copilot review request via `gh pr edit 11 --add-reviewer copilot` did not succeed in this environment and still requires separate approval before merge
 
 ## Knowledge graduation
 

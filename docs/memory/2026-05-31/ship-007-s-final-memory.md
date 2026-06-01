@@ -2,7 +2,7 @@
 title: "Ship memory - 007-S final"
 shipment: "007-S"
 branch: "post-merge/007-fix-pyright-type-regressions"
-status: "closure-pr-pending"
+status: "closure-pr-open"
 ---
 
 ## Final outcome
@@ -15,7 +15,7 @@ status: "closure-pr-pending"
 
 * Source branch: `feat/fix-pyright-type-regressions`
 * Post-merge docs branch: `post-merge/007-fix-pyright-type-regressions`
-* Closure PR has not been opened yet from this checkpoint
+* Closure PR: `#11` is open from the post-merge branch
 * Do not start the next shipment automatically
 
 ## Archival state
@@ -34,6 +34,5 @@ status: "closure-pr-pending"
 ## Next routing
 
 * Commit and push the closure branch
-* Open a separate closure PR from `post-merge/007-fix-pyright-type-regressions`
 * Await separate operator approval for the closure PR merge
 * Do not start the next shipment automatically
