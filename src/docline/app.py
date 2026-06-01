@@ -1,12 +1,20 @@
 """Application-level functions shared between CLI and MCP server."""
 
+from pathlib import Path
+
 from docline.app_models import (
     FetchRequest,
+    FetchResult,
     Manifest,
     ManifestTool,
     McpManifestResponse,
     ProcessRequest,
+    ProcessResult,
 )
+from docline.paths import PathContainmentError, safe_workspace_path
+
+_FETCH_NOT_IMPLEMENTED_ERROR = "Fetch execution is not implemented."
+_PROCESS_NOT_IMPLEMENTED_ERROR = "Process execution is not implemented."
 
 
 def get_manifest() -> Manifest:
@@ -49,3 +57,58 @@ def get_mcp_manifest() -> McpManifestResponse:
         manifest payload converted into MCP ``tools/list`` entries.
     """
     return McpManifestResponse(tools=get_manifest().tools)
+
+
+def execute_fetch(request: FetchRequest) -> FetchResult:
+    """Execute a fetch operation.
+
+    Until the real fetch pipeline exists, this returns an explicit failure
+    result rather than claiming that a staged artifact was produced.
+
+    Args:
+        request: Validated fetch parameters.
+
+    Returns:
+        A fetch result describing the honest placeholder outcome.
+    """
+    return FetchResult(
+        source=request.source,
+        staged_path="",
+        success=False,
+        error=_FETCH_NOT_IMPLEMENTED_ERROR,
+    )
+
+
+def execute_process(request: ProcessRequest) -> ProcessResult:
+    """Execute a processing operation on staged documents.
+
+    Until the real processing pipeline exists, this returns an explicit failure
+    result rather than claiming that an output artifact was produced.
+
+    Args:
+        request: Validated process parameters.
+
+    Returns:
+        A process result describing the input and output paths and outcome.
+    """
+    try:
+        staging_dir = safe_workspace_path(request.staging_dir, Path.cwd())
+    except PathContainmentError as err:
+        return ProcessResult(
+            input_path=request.staging_dir,
+            success=False,
+            error=str(err),
+        )
+
+    if not staging_dir.is_dir():
+        return ProcessResult(
+            input_path=request.staging_dir,
+            success=False,
+            error=f"Staging directory not found or is not a directory: {request.staging_dir}",
+        )
+
+    return ProcessResult(
+        input_path=request.staging_dir,
+        success=False,
+        error=_PROCESS_NOT_IMPLEMENTED_ERROR,
+    )
