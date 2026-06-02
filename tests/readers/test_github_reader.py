@@ -148,3 +148,20 @@ def test_fetch_github_files_raises_for_non_github_url() -> None:
     """fetch_github_files raises GitHubFetchError for a non-GitHub URL."""
     with pytest.raises(GitHubFetchError):
         fetch_github_files("https://gitlab.com/org/repo", "main", ["**/*.md"])
+
+
+def test_fetch_github_files_wraps_tree_json_decode_errors() -> None:
+    """fetch_github_files adapts tree JSON decode failures to GitHubFetchError."""
+    with patch("docline.readers.github._http_get", return_value="{not json"):
+        with pytest.raises(GitHubFetchError, match="Invalid JSON"):
+            fetch_github_files("https://github.com/org/repo", "main", ["**/*.md"])
+
+
+def test_fetch_github_files_wraps_unexpected_tree_payload_shape() -> None:
+    """fetch_github_files rejects malformed Trees API payloads with GitHubFetchError."""
+    with patch(
+        "docline.readers.github._http_get",
+        return_value=json.dumps({"tree": {"path": "x"}}),
+    ):
+        with pytest.raises(GitHubFetchError, match="Unexpected GitHub Trees API payload"):
+            fetch_github_files("https://github.com/org/repo", "main", ["**/*.md"])

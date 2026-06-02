@@ -16,6 +16,9 @@ import zipfile
 from datetime import UTC, datetime
 from pathlib import Path
 
+import pytest
+
+from docline.app import _extract_source_url
 from docline.fetch.models import SourceMetadata, StagingJob
 from docline.fetch.staging import build_cache_path, make_job_id, sanitize_source
 
@@ -286,6 +289,53 @@ class TestUniqueOutputPaths:
         assert result.success is True
         md_files = list(output_dir.rglob("*.md"))
         assert len(md_files) == 2, f"Expected 2 separate outputs, got {len(md_files)}: {md_files}"
+
+    def test_processing_failure_without_outputs_leaves_output_path_unset(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """execute_process leaves output_path unset when no output file is written."""
+        import os
+
+        from docline.app import execute_process
+        from docline.app_models import ProcessRequest
+
+        staging_dir = tmp_path / "staging"
+        _write_staging_job(
+            staging_dir,
+            "local_file:docs/broken.docx",
+            {"broken.docx": _make_minimal_docx()},
+        )
+
+        output_dir = tmp_path / "output"
+        request = ProcessRequest(
+            staging_dir=str(staging_dir.relative_to(tmp_path)),
+            output_dir=str(output_dir.relative_to(tmp_path)),
+        )
+
+        def _raise_build_error(*_args: object, **_kwargs: object) -> list[object]:
+            raise RuntimeError("boom")
+
+        monkeypatch.setattr("docline.app.build_output_document_parts", _raise_build_error)
+
+        original_cwd = Path.cwd()
+        try:
+            os.chdir(tmp_path)
+            result = execute_process(request)
+        finally:
+            os.chdir(original_cwd)
+
+        assert result.success is False
+        assert result.output_path is None
+        assert result.error == "boom"
+
+
+def test_extract_source_url_strips_legacy_web_crawl_suffixes() -> None:
+    """Legacy web crawl suffixes are excluded from extracted source URLs."""
+    source = "web_crawl:https://example.com/docs:depth=3:max_pages=25"
+
+    assert _extract_source_url(source) == "https://example.com/docs"
 
 
 def _make_pdf_bytes_simple(text: str) -> bytes:

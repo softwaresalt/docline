@@ -63,7 +63,8 @@ def _extract_source_url(source: str) -> str | None:
     for prefix in ("https://", "http://"):
         idx = source.find(prefix)
         if idx != -1:
-            return source[idx:]
+            url = source[idx:]
+            return re.sub(r"(?::(?:depth|max_pages)=\d+)+$", "", url)
     return None
 
 
@@ -97,13 +98,14 @@ def _load_crawl_manifest(job_dir: Path) -> list[Mapping[str, object]]:
     if not isinstance(pages, list):
         _log.warning("Ignoring crawl manifest with non-list pages at %s", manifest_path)
         return []
-    entries = [entry for entry in pages if isinstance(entry, dict)]
-    return sorted(
-        entries,
-        key=lambda entry: (
-            entry.get("crawl_order") if type(entry.get("crawl_order")) is int else 1_000_000
-        ),
-    )
+    entries: list[Mapping[str, object]] = [entry for entry in pages if isinstance(entry, dict)]
+    return sorted(entries, key=_crawl_order_key)
+
+
+def _crawl_order_key(entry: Mapping[str, object]) -> int:
+    """Return the crawl-order sort key for a crawl manifest entry."""
+    crawl_order = entry.get("crawl_order")
+    return crawl_order if type(crawl_order) is int else 1_000_000
 
 
 def _ordered_staged_files(files_dir: Path, crawl_entries: list[Mapping[str, object]]) -> list[Path]:
@@ -116,16 +118,21 @@ def _ordered_staged_files(files_dir: Path, crawl_entries: list[Mapping[str, obje
     if not crawl_entries:
         return supported_files
 
+    supported_lookup = {path.resolve(): path for path in supported_files}
     ordered: list[Path] = []
     seen: set[Path] = set()
     for entry in crawl_entries:
         relative_path = entry.get("relative_path")
         if not isinstance(relative_path, str):
             continue
-        candidate = files_dir / Path(relative_path)
-        if candidate.is_file() and candidate.suffix.lower() in _SUPPORTED_EXTENSIONS:
-            ordered.append(candidate)
-            seen.add(candidate)
+        try:
+            candidate = safe_workspace_path(relative_path, files_dir)
+        except PathContainmentError:
+            continue
+        supported_candidate = supported_lookup.get(candidate.resolve())
+        if supported_candidate is not None:
+            ordered.append(supported_candidate)
+            seen.add(supported_candidate)
 
     ordered.extend(path for path in supported_files if path not in seen)
     return ordered
@@ -376,7 +383,7 @@ def execute_process(request: ProcessRequest) -> ProcessResult:
 
         crawl_entries = _load_crawl_manifest(metadata_path.parent)
         job_output_root = output_dir / job.job_id
-        job_manifest_entries: list[dict[str, object]] = []
+        job_manifest_entries: list[Mapping[str, object]] = []
         next_ingest_order = 0
 
         for file_path in _ordered_staged_files(files_dir, crawl_entries):
@@ -466,7 +473,6 @@ def execute_process(request: ProcessRequest) -> ProcessResult:
     if errors and processed_count == 0:
         return ProcessResult(
             input_path=request.staging_dir,
-            output_path=request.output_dir,
             success=False,
             error="; ".join(errors[:3]),
         )

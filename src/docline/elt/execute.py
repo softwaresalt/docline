@@ -48,9 +48,10 @@ from urllib.parse import unquote, urlparse
 from docline.elt.config import discover_configs
 from docline.elt.manifest_models import ManifestGitSource, ManifestLocalSource, ManifestUrlSource
 from docline.elt.models import GitHubRepoSource, LocalFileSource, SourceConfig, WebCrawlSource
-from docline.fetch.models import SourceMetadata, StagingJob
 from docline.fetch.crawl import CrawlConfig
+from docline.fetch.models import SourceMetadata, StagingJob
 from docline.fetch.staging import build_cache_path, make_job_id, sanitize_source
+from docline.paths import PathContainmentError, safe_workspace_path
 from docline.readers.github import fetch_github_files
 
 # ---------------------------------------------------------------------------
@@ -113,9 +114,23 @@ def execute_elt_fetch(
     Returns:
         A list of :class:`~docline.fetch.models.StagingJob` records, one per
         discovered source config.
+
+    Raises:
+        PathContainmentError: If ``config_dir`` or ``staging_dir`` resolves
+            outside ``workspace_root``.
     """
     root = Path.cwd() if workspace_root is None else Path(workspace_root)
-    configs = discover_configs(Path(config_dir))
+    root_resolved = root.resolve()
+    config_dir_resolved = Path(config_dir).resolve()
+    if not config_dir_resolved.is_relative_to(root_resolved):
+        raise PathContainmentError(
+            f"config_dir {config_dir!r} resolves to {config_dir_resolved!r} "
+            f"which is outside workspace root {root_resolved!r}"
+        )
+
+    safe_workspace_path(staging_dir, root_resolved)
+
+    configs = discover_configs(config_dir_resolved)
     return [_execute_single_source(config, staging_dir, root) for config in configs]
 
 
@@ -301,14 +316,18 @@ def _crawl_manifest_path(files_dir: Path) -> Path:
 def _crawl_config_from_source(config: WebCrawlSource | ManifestUrlSource) -> CrawlConfig:
     """Translate ELT source config fields into a crawl configuration."""
     max_depth = config.depth if isinstance(config, WebCrawlSource) else config.max_depth
-    kwargs: dict[str, int | bool] = {
-        "max_depth": max_depth,
-        "domain_lock": config.domain_lock,
-        "rate_limit_ms": config.rate_limit_ms,
-    }
     if config.max_pages is not None:
-        kwargs["max_pages"] = config.max_pages
-    return CrawlConfig(**kwargs)
+        return CrawlConfig(
+            max_depth=max_depth,
+            domain_lock=config.domain_lock,
+            rate_limit_ms=config.rate_limit_ms,
+            max_pages=config.max_pages,
+        )
+    return CrawlConfig(
+        max_depth=max_depth,
+        domain_lock=config.domain_lock,
+        rate_limit_ms=config.rate_limit_ms,
+    )
 
 
 def _fetch_manifest_local(config: ManifestLocalSource, root: Path, files_dir: Path) -> None:

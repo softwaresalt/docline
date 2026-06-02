@@ -118,7 +118,7 @@ def test_crawl_follows_links_within_depth_and_page_budget(
             status=200,
             content_type="text/html",
             body=(
-                '<html><body>'
+                "<html><body>"
                 '<a href="/docs/intro">Intro</a>'
                 '<a href="/docs/api">API</a>'
                 "</body></html>"
@@ -178,7 +178,7 @@ def test_crawl_domain_lock_skips_cross_domain_links(monkeypatch: pytest.MonkeyPa
             status=200,
             content_type="text/html",
             body=(
-                '<html><body>'
+                "<html><body>"
                 '<a href="/docs/intro">Intro</a>'
                 '<a href="https://other.example.com/offsite">Offsite</a>'
                 "</body></html>"
@@ -234,7 +234,7 @@ def test_crawl_domain_lock_limits_links_to_inferred_site_section(
             status=200,
             content_type="text/html",
             body=(
-                '<html><body>'
+                "<html><body>"
                 '<a href="/docs/intro">Intro</a>'
                 '<a href="/api/reference">API</a>'
                 "</body></html>"
@@ -302,9 +302,9 @@ def test_crawl_discovers_mdbook_toc_links_from_root_page(
                 "customElements.define('mdbook-sidebar-scrollbox', class extends HTMLElement {"
                 "connectedCallback(){"
                 "this.innerHTML = '<ol>"
-                '<li><a href=\"ch01.html\">Chapter 1</a></li>'
-                '<li><a href=\"ch02.html\">Chapter 2</a></li>'
-                '<li><a href=\"/cargo/index.html\">Cargo</a></li>'
+                '<li><a href="ch01.html">Chapter 1</a></li>'
+                '<li><a href="ch02.html">Chapter 2</a></li>'
+                '<li><a href="/cargo/index.html">Cargo</a></li>'
                 "</ol>';"
                 "}"
                 "});"
@@ -371,7 +371,7 @@ def test_crawl_deduplicates_pages_when_alias_redirects_to_an_emitted_url(
             url="https://example.com/start",
             status=200,
             content_type="text/html",
-            body='<html><body><h1>Start</h1></body></html>',
+            body="<html><body><h1>Start</h1></body></html>",
         ),
     }
 
@@ -409,18 +409,14 @@ def test_crawl_skips_discovered_print_pages(monkeypatch: pytest.MonkeyPatch) -> 
             url="https://example.com/book/",
             status=200,
             content_type="text/html",
-            body=(
-                '<html><body>'
-                '<a href="/book/print.html">Print</a>'
-                "</body></html>"
-            ),
+            body=('<html><body><a href="/book/print.html">Print</a></body></html>'),
         ),
         "https://example.com/book/print.html": FetchResponse(
             url="https://example.com/book/print.html",
             status=200,
             content_type="text/html",
             body=(
-                '<html><body>'
+                "<html><body>"
                 '<a href="/book/chapter-1.html">Chapter 1</a>'
                 '<a href="/cargo/index.html">Cargo</a>'
                 "</body></html>"

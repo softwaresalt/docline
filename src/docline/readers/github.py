@@ -139,9 +139,7 @@ def fetch_github_files(
 
     trees_url = _TREES_URL.format(owner=owner, repo=repo, branch=branch)
     raw_response = _http_get(trees_url)
-    trees_data = json.loads(raw_response)
-
-    all_paths = [item["path"] for item in trees_data.get("tree", []) if item.get("type") == "blob"]
+    all_paths = _extract_tree_paths(raw_response, trees_url)
 
     matched_paths = [
         p
@@ -163,6 +161,43 @@ def fetch_github_files(
         results.append((rel_path, content))
 
     return results
+
+
+def _extract_tree_paths(raw_response: str, trees_url: str) -> list[str]:
+    """Parse and validate file paths from a GitHub Trees API response."""
+    try:
+        trees_data = json.loads(raw_response)
+    except json.JSONDecodeError as err:
+        raise GitHubFetchError(f"Invalid JSON from GitHub Trees API {trees_url}") from err
+
+    if not isinstance(trees_data, dict):
+        raise GitHubFetchError(
+            f"Unexpected GitHub Trees API payload from {trees_url}: expected an object"
+        )
+
+    tree_items = trees_data.get("tree")
+    if not isinstance(tree_items, list):
+        raise GitHubFetchError(
+            f"Unexpected GitHub Trees API payload from {trees_url}: expected 'tree' list"
+        )
+
+    all_paths: list[str] = []
+    for item in tree_items:
+        if not isinstance(item, dict):
+            raise GitHubFetchError(
+                "Unexpected GitHub Trees API payload from "
+                f"{trees_url}: tree entries must be objects"
+            )
+        if item.get("type") != "blob":
+            continue
+        path = item.get("path")
+        if not isinstance(path, str):
+            raise GitHubFetchError(
+                "Unexpected GitHub Trees API payload from "
+                f"{trees_url}: blob entries need string paths"
+            )
+        all_paths.append(path)
+    return all_paths
 
 
 __all__ = [

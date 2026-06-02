@@ -73,9 +73,8 @@ def read_docx_blocks(path: Path) -> list[str]:
 def read_docx(path: Path) -> str:
     """Extract text content from a DOCX file and return it as Markdown.
 
-    Requires the ``docling`` optional extra.  Raises
-    :class:`~docline.dependencies.DependencyUnavailableError` if ``docling``
-    is not installed.
+    Reads ``word/document.xml`` from the DOCX ZIP archive and joins extracted
+    paragraph text blocks with blank lines.
 
     Args:
         path: Path to the DOCX file.  Must be a trusted-local path; remote
@@ -85,7 +84,6 @@ def read_docx(path: Path) -> str:
         Markdown text extracted from the DOCX.
 
     Raises:
-        DependencyUnavailableError: If ``docling`` is not installed.
         DocxReadError: If DOCX parsing fails.
         FileNotFoundError: If ``path`` does not exist.
     """

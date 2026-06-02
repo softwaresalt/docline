@@ -197,7 +197,9 @@ async def crawl(
                 for link in extract_links(response.body, final_url):
                     if crawl_config.domain_lock and urlparse(link).netloc != start_host:
                         continue
-                    if crawl_config.domain_lock and not _url_within_section_scope(link, section_scope):
+                    if crawl_config.domain_lock and not _url_within_section_scope(
+                        link, section_scope
+                    ):
                         continue
                     if link in visited:
                         continue

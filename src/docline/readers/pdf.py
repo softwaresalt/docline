@@ -49,7 +49,6 @@ _TJ_LITERAL_RE = re.compile(rb"\(([^)\\]*(?:\\.[^)\\]*)*)\)\s*Tj", re.DOTALL)
 _TJ_ARRAY_RE = re.compile(rb"\(([^)\\]*(?:\\.[^)\\]*)*)\)", re.DOTALL)
 _TJ_HEX_RE = re.compile(rb"<([0-9A-Fa-f]+)>\s*Tj")
 _TJ_ARRAY_OP_RE = re.compile(rb"\[([^\]]*)\]\s*TJ", re.DOTALL)
-_FILTER_RE = re.compile(rb"<<[^>]*?/Filter\s*(/\w+)[^>]*?>>", re.DOTALL)
 _ESCAPE_RE = re.compile(rb"\\(.)", re.DOTALL)
 
 _PDF_ESCAPE_MAP: dict[bytes, bytes] = {
@@ -288,29 +287,6 @@ def read_pdf_pages(path: Path) -> list[str]:
         if pages:
             return pages
     return _extract_pdf_text_blocks(raw)
-
-
-def _read_pdf_pypdf(raw: bytes, path: Path) -> str:
-    """Extract text using ``pypdf.PdfReader``, with built-in fallback on failure.
-
-    Tries ``pypdf`` first for accurate extraction from real-world PDFs.  If
-    ``pypdf`` raises (e.g., truncated or non-conforming PDF), falls back to
-    the built-in FlateDecode + PDF-operator extractor so that synthetic or
-    minimal PDFs used in tests and edge cases still yield a result.
-
-    Args:
-        raw: Full PDF file bytes (already validated to start with ``%PDF-``).
-        path: Original file path (used only in log-level diagnostics).
-
-    Returns:
-        Page text joined by double newlines, or ``""`` for empty PDFs.
-        Falls back to :func:`_extract_pdf_text` if ``pypdf`` raises.
-    """
-    del path
-    pages = _read_pdf_pypdf_pages(raw)
-    if pages:
-        return "\n\n".join(pages)
-    return _extract_pdf_text(raw)
 
 
 def _read_pdf_pypdf_pages(raw: bytes) -> list[str]:

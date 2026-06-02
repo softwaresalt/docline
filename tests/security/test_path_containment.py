@@ -1,7 +1,11 @@
 """Tests for workspace path containment security enforcement."""
 
+from pathlib import Path
+
 import pytest
 
+from docline.app import _ordered_staged_files
+from docline.elt.execute import execute_elt_fetch
 from docline.paths import (
     PathContainmentError,
     resolve_contained,
@@ -197,3 +201,42 @@ def test_safe_workspace_path_empty_string_raises(tmp_path) -> None:
     """
     with pytest.raises(PathContainmentError, match="[Ee]mpty"):
         safe_workspace_path("", tmp_path)
+
+
+def test_ordered_staged_files_skips_manifest_paths_outside_files_dir(tmp_path: Path) -> None:
+    """_ordered_staged_files ignores crawl manifest paths that escape files_dir."""
+    files_dir = tmp_path / "files"
+    files_dir.mkdir()
+    inside_file = files_dir / "page.html"
+    inside_file.write_text("<html />", encoding="utf-8")
+    escaped_file = tmp_path / "escaped.html"
+    escaped_file.write_text("<html />", encoding="utf-8")
+
+    ordered = _ordered_staged_files(
+        files_dir,
+        [{"relative_path": "../escaped.html"}, {"relative_path": "page.html"}],
+    )
+
+    assert ordered == [inside_file]
+
+
+def test_execute_elt_fetch_rejects_config_dir_outside_workspace(tmp_path: Path) -> None:
+    """execute_elt_fetch rejects config_dir values outside the workspace root."""
+    outside_dir = tmp_path.parent / "outside-config"
+    outside_dir.mkdir(exist_ok=True)
+
+    with pytest.raises(PathContainmentError, match="config_dir"):
+        execute_elt_fetch(outside_dir, ".elt/staging", workspace_root=tmp_path)
+
+
+def test_execute_elt_fetch_rejects_staging_dir_outside_workspace(tmp_path: Path) -> None:
+    """execute_elt_fetch rejects staging_dir values outside the workspace root."""
+    config_dir = tmp_path / ".elt" / "config"
+    config_dir.mkdir(parents=True)
+    (config_dir / "source.yaml").write_text(
+        "type: local_file\npaths:\n  - docs/sample.docx\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(PathContainmentError):
+        execute_elt_fetch(config_dir, "../outside", workspace_root=tmp_path)
