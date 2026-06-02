@@ -365,6 +365,7 @@ def execute_process(request: ProcessRequest) -> ProcessResult:
         )
 
     processed_count = 0
+    completed_job_found = False
     errors: list[str] = []
 
     for metadata_path in sorted(staging_dir.rglob("metadata.json")):
@@ -377,6 +378,7 @@ def execute_process(request: ProcessRequest) -> ProcessResult:
         if not job.complete:
             continue
 
+        completed_job_found = True
         files_dir = metadata_path.parent / "files"
         if not files_dir.is_dir():
             continue
@@ -470,12 +472,19 @@ def execute_process(request: ProcessRequest) -> ProcessResult:
         if job_manifest_entries:
             write_manifest_index(job_output_root, "manifest.json", job_manifest_entries)
 
-    if errors and processed_count == 0:
-        return ProcessResult(
-            input_path=request.staging_dir,
-            success=False,
-            error="; ".join(errors[:3]),
-        )
+    if processed_count == 0:
+        if errors:
+            return ProcessResult(
+                input_path=request.staging_dir,
+                success=False,
+                error="; ".join(errors[:3]),
+            )
+        if completed_job_found:
+            return ProcessResult(
+                input_path=request.staging_dir,
+                success=False,
+                error="Completed staging jobs produced no processed outputs.",
+            )
 
     return ProcessResult(
         input_path=request.staging_dir,

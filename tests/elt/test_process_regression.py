@@ -330,6 +330,37 @@ class TestUniqueOutputPaths:
         assert result.output_path is None
         assert result.error == "boom"
 
+    def test_completed_job_with_no_outputs_returns_failure(self, tmp_path: Path) -> None:
+        """execute_process fails when a completed staging job yields no outputs."""
+        import os
+
+        from docline.app import execute_process
+        from docline.app_models import ProcessRequest
+
+        staging_dir = tmp_path / "staging"
+        _write_staging_job(
+            staging_dir,
+            "local_file:docs/empty",
+            {},
+        )
+
+        output_dir = tmp_path / "output"
+        request = ProcessRequest(
+            staging_dir=str(staging_dir.relative_to(tmp_path)),
+            output_dir=str(output_dir.relative_to(tmp_path)),
+        )
+
+        original_cwd = Path.cwd()
+        try:
+            os.chdir(tmp_path)
+            result = execute_process(request)
+        finally:
+            os.chdir(original_cwd)
+
+        assert result.success is False
+        assert result.output_path is None
+        assert result.error == "Completed staging jobs produced no processed outputs."
+
 
 def test_extract_source_url_strips_legacy_web_crawl_suffixes() -> None:
     """Legacy web crawl suffixes are excluded from extracted source URLs."""
