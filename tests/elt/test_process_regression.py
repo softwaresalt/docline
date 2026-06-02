@@ -369,6 +369,16 @@ def test_extract_source_url_strips_legacy_web_crawl_suffixes() -> None:
     assert _extract_source_url(source) == "https://example.com/docs"
 
 
+def test_extract_source_url_strips_extended_web_crawl_suffixes() -> None:
+    """Extended web crawl suffixes are excluded from extracted source URLs."""
+    source = (
+        "web_crawl:https://example.com/docs:depth=3:max_pages=25:"
+        "domain_lock=false:rate_limit_ms=250"
+    )
+
+    assert _extract_source_url(source) == "https://example.com/docs"
+
+
 def _make_pdf_bytes_simple(text: str) -> bytes:
     """Create a minimal PDF with plain-ASCII text in a literal string."""
     content_stream = f"BT /F1 12 Tf 100 700 Td ({text}) Tj ET"

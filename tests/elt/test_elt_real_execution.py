@@ -9,6 +9,7 @@ Tests cover:
 
 import io
 import json
+import logging
 import zipfile
 from pathlib import Path
 from unittest.mock import patch
@@ -292,6 +293,84 @@ class TestEltFetchUrlSource:
 
         assert len(jobs) == 1
         assert jobs[0].complete is False
+
+    def test_url_fetch_failure_logs_source_key_and_job_id(self, tmp_path: Path, caplog) -> None:
+        """execute_elt_fetch logs crawl failures with source and job context."""
+        from docline.elt.execute import execute_elt_fetch
+
+        config_dir = tmp_path / ".elt" / "config"
+        config_dir.mkdir(parents=True)
+        (config_dir / "web.yaml").write_text(
+            "type: web_crawl\nurl: https://example.com\n", encoding="utf-8"
+        )
+
+        async def fake_crawl(start_url: str, config=None):
+            del start_url, config
+            raise OSError("Network down")
+
+        caplog.set_level(logging.ERROR, logger="docline.elt.execute")
+        with patch("docline.fetch.crawl.crawl", side_effect=fake_crawl):
+            jobs = execute_elt_fetch(config_dir, ".elt/staging", workspace_root=tmp_path)
+
+        assert len(jobs) == 1
+        assert jobs[0].complete is False
+        assert any(
+            jobs[0].job_id in record.message
+            and jobs[0].metadata.source in record.message
+            and record.exc_info is not None
+            for record in caplog.records
+        )
+
+    def test_web_crawl_orchestrate_and_execute_share_job_key(self, tmp_path: Path) -> None:
+        """orchestrate_fetch and execute_elt_fetch stay in crawl key parity."""
+        from docline.elt.execute import execute_elt_fetch
+        from docline.elt.orchestrate import orchestrate_fetch
+        from docline.fetch.crawl import CrawlResult
+        from docline.fetch.http import FetchResponse
+
+        config_dir = tmp_path / ".elt" / "config"
+        config_dir.mkdir(parents=True)
+        (config_dir / "web.yaml").write_text(
+            (
+                "type: web_crawl\n"
+                "url: https://example.com/docs/\n"
+                "depth: 2\n"
+                "max_pages: 5\n"
+                "domain_lock: false\n"
+                "rate_limit_ms: 250\n"
+            ),
+            encoding="utf-8",
+        )
+
+        crawl_results = [
+            CrawlResult(
+                url="https://example.com/docs/",
+                depth=0,
+                response=FetchResponse(
+                    url="https://example.com/docs/",
+                    status=200,
+                    content_type="text/html",
+                    body="<html><body><h1>Docs Home</h1></body></html>",
+                ),
+            )
+        ]
+
+        async def fake_crawl(start_url: str, config=None):
+            del start_url, config
+            return crawl_results
+
+        with patch("docline.fetch.crawl.crawl", side_effect=fake_crawl):
+            orchestrated_jobs = orchestrate_fetch(
+                config_dir,
+                ".elt/staging",
+                workspace_root=tmp_path,
+            )
+            executed_jobs = execute_elt_fetch(config_dir, ".elt/staging", workspace_root=tmp_path)
+
+        assert len(orchestrated_jobs) == 1
+        assert len(executed_jobs) == 1
+        assert orchestrated_jobs[0].job_id == executed_jobs[0].job_id
+        assert orchestrated_jobs[0].metadata.source == executed_jobs[0].metadata.source
 
     def test_url_source_stages_multiple_pages_with_metadata(self, tmp_path: Path) -> None:
         """execute_elt_fetch stages every crawled page plus per-page metadata."""

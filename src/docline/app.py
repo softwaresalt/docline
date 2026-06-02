@@ -64,7 +64,11 @@ def _extract_source_url(source: str) -> str | None:
         idx = source.find(prefix)
         if idx != -1:
             url = source[idx:]
-            return re.sub(r"(?::(?:depth|max_pages)=\d+)+$", "", url)
+            return re.sub(
+                r"(?::(?:depth|max_pages|domain_lock|rate_limit_ms)=[^:]+)+$",
+                "",
+                url,
+            )
     return None
 
 

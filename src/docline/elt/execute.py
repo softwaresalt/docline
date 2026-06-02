@@ -40,6 +40,7 @@ local glob scan so that re-runs do not re-ingest their own prior output.
 import asyncio
 import hashlib
 import json
+import logging
 import shutil
 from datetime import UTC, datetime
 from pathlib import Path
@@ -48,6 +49,7 @@ from urllib.parse import unquote, urlparse
 from docline.elt.config import discover_configs
 from docline.elt.manifest_models import ManifestGitSource, ManifestLocalSource, ManifestUrlSource
 from docline.elt.models import GitHubRepoSource, LocalFileSource, SourceConfig, WebCrawlSource
+from docline.elt.source_keys import build_source_key
 from docline.fetch.crawl import CrawlConfig
 from docline.fetch.models import SourceMetadata, StagingJob
 from docline.fetch.staging import build_cache_path, make_job_id, sanitize_source
@@ -64,6 +66,7 @@ from docline.readers.github import fetch_github_files
 _ELT_GENERATED_DIR_PREFIXES: tuple[str, ...] = ("runtime-staging", "runtime-output")
 _STAGED_WEB_METADATA_SUFFIX = ".meta.json"
 _CRAWL_MANIFEST_NAME = "crawl-manifest.json"
+_log = logging.getLogger(__name__)
 
 
 def _is_elt_generated_artifact(src: Path, base: Path) -> bool:
@@ -134,32 +137,6 @@ def execute_elt_fetch(
     return [_execute_single_source(config, staging_dir, root) for config in configs]
 
 
-def _source_execution_key(config: SourceConfig) -> str:
-    """Derive a deterministic cache key for a source config.
-
-    Args:
-        config: Typed source configuration.
-
-    Returns:
-        Deterministic string suitable for use as the source argument to
-        :func:`~docline.fetch.staging.make_job_id`.
-    """
-    if isinstance(config, LocalFileSource):
-        return f"local_file:{','.join(sorted(config.paths))}"
-    if isinstance(config, WebCrawlSource):
-        return f"web_crawl:{config.url}"
-    if isinstance(config, GitHubRepoSource):
-        return f"github_repo:{config.repo_url}@{config.branch}:{config.path_glob}"
-    if isinstance(config, ManifestLocalSource):
-        includes = ",".join(sorted(config.include))
-        return f"manifest_local:{config.id}:{config.path}:{includes}"
-    if isinstance(config, ManifestUrlSource):
-        return f"manifest_url:{config.id}:{config.url}"
-    if isinstance(config, ManifestGitSource):
-        return f"manifest_git:{config.id}:{config.url}@{config.branch}"
-    raise TypeError(f"Unsupported source config type: {type(config)!r}")
-
-
 def _execute_single_source(config: SourceConfig, staging_dir: str, root: Path) -> StagingJob:
     """Fetch a single source config and write its content to staging.
 
@@ -172,7 +149,7 @@ def _execute_single_source(config: SourceConfig, staging_dir: str, root: Path) -
         A :class:`~docline.fetch.models.StagingJob` with ``complete=True`` on
         success or ``complete=False`` if the fetch fails.
     """
-    source_key = _source_execution_key(config)
+    source_key = build_source_key(config)
     job_id = make_job_id(source_key)
     cache_rel = build_cache_path(staging_dir, job_id)
     cache_abs = root / cache_rel
@@ -197,8 +174,12 @@ def _execute_single_source(config: SourceConfig, staging_dir: str, root: Path) -
         elif isinstance(config, (GitHubRepoSource, ManifestGitSource)):
             _fetch_github(config, files_dir)
             complete = True
-    except (OSError, Exception):  # noqa: BLE001
-        pass  # leave complete=False; metadata.json written below
+    except Exception:  # noqa: BLE001
+        _log.exception(
+            "ELT source execution failed for source_key=%s job_id=%s",
+            source_key,
+            job_id,
+        )
 
     job = StagingJob(
         job_id=job_id,

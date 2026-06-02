@@ -127,6 +127,32 @@ def test_orchestrate_fetch_distinct_depth_produces_distinct_job_ids(
     assert jobs_shallow[0].job_id != jobs_deep[0].job_id
 
 
+def test_orchestrate_fetch_distinct_crawl_options_produce_distinct_job_ids(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Different crawl behavior settings produce distinct job IDs."""
+    from docline.elt.orchestrate import orchestrate_fetch
+
+    default_configs = [WebCrawlSource(type="web_crawl", url="https://example.com")]
+    custom_configs = [
+        WebCrawlSource(
+            type="web_crawl",
+            url="https://example.com",
+            domain_lock=False,
+            rate_limit_ms=250,
+        )
+    ]
+
+    monkeypatch.setattr("docline.elt.orchestrate.discover_configs", lambda _: default_configs)
+    default_jobs = orchestrate_fetch(tmp_path / "config", ".elt/staging", workspace_root=tmp_path)
+
+    monkeypatch.setattr("docline.elt.orchestrate.discover_configs", lambda _: custom_configs)
+    custom_jobs = orchestrate_fetch(tmp_path / "config", ".elt/staging", workspace_root=tmp_path)
+
+    assert default_jobs[0].job_id != custom_jobs[0].job_id
+    assert default_jobs[0].metadata.source != custom_jobs[0].metadata.source
+
+
 def test_orchestrate_fetch_distinct_path_glob_produces_distinct_job_ids(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
