@@ -1,8 +1,14 @@
-"""PDF reader — extract text content from PDF files without external dependencies.
+"""PDF reader — extract text content from PDF files.
 
-Uses the Python standard library ``zlib`` module to decompress ``FlateDecode``
-content streams and a regex-based PDF operator parser to extract text from
-``BT``/``ET`` text blocks.  Supports:
+Primary extractor: ``pypdf`` when installed.  Provides accurate text
+extraction from real-world PDFs including those produced by Microsoft Office,
+Azure documentation, and Power BI tooling.
+
+Fallback extractor: built-in ``zlib``-based stream parser.  Handles simple
+uncompressed and FlateDecode PDFs when ``pypdf`` is not available.  May
+produce garbled output for PDFs with complex encoding or font subsetting.
+
+Supported by the built-in fallback only:
 
 * Uncompressed content streams
 * ``FlateDecode`` (zlib-compressed) content streams
@@ -13,11 +19,24 @@ content streams and a regex-based PDF operator parser to extract text from
 Returns an empty string for PDFs with no extractable text rather than raising.
 """
 
+import io
 import re
 import zlib
 from pathlib import Path
 
 from docline.schema.models import DoclineError
+
+# ---------------------------------------------------------------------------
+# Optional pypdf integration — preferred when installed
+# ---------------------------------------------------------------------------
+
+try:
+    import pypdf as _pypdf  # type: ignore[import-untyped]
+
+    _PYPDF_AVAILABLE: bool = True
+except ImportError:
+    _pypdf = None  # type: ignore[assignment]
+    _PYPDF_AVAILABLE = False
 
 # ---------------------------------------------------------------------------
 # Compiled patterns — reused across calls for performance
@@ -220,9 +239,9 @@ def _extract_pdf_text(data: bytes) -> str:
 def read_pdf(path: Path) -> str:
     """Extract text content from a PDF file and return it as Markdown.
 
-    Extracts text from uncompressed and FlateDecode content streams using
-    PDF operator parsing.  Returns an empty string for PDFs with no
-    extractable text.
+    Prefers ``pypdf`` when installed for accurate extraction from real-world
+    PDFs.  Falls back to the built-in FlateDecode + PDF-operator parser when
+    ``pypdf`` is not available.
 
     Args:
         path: Path to the PDF file.  Must be a trusted-local path; remote
@@ -240,7 +259,40 @@ def read_pdf(path: Path) -> str:
     raw = path.read_bytes()
     if not raw.startswith(b"%PDF-"):
         raise PdfReadError(f"Not a valid PDF file: {path}")
+    if _PYPDF_AVAILABLE:
+        return _read_pdf_pypdf(raw, path)
     return _extract_pdf_text(raw)
+
+
+def _read_pdf_pypdf(raw: bytes, path: Path) -> str:
+    """Extract text using ``pypdf.PdfReader``, with built-in fallback on failure.
+
+    Tries ``pypdf`` first for accurate extraction from real-world PDFs.  If
+    ``pypdf`` raises (e.g., truncated or non-conforming PDF), falls back to
+    the built-in FlateDecode + PDF-operator extractor so that synthetic or
+    minimal PDFs used in tests and edge cases still yield a result.
+
+    Args:
+        raw: Full PDF file bytes (already validated to start with ``%PDF-``).
+        path: Original file path (used only in log-level diagnostics).
+
+    Returns:
+        Page text joined by double newlines, or ``""`` for empty PDFs.
+        Falls back to :func:`_extract_pdf_text` if ``pypdf`` raises.
+    """
+    try:
+        # _pypdf is guaranteed non-None here: _read_pdf_pypdf is only invoked
+        # from read_pdf when _PYPDF_AVAILABLE is True, which is only set when
+        # the import succeeds.  Pyright cannot narrow the module-level variable
+        # through the _PYPDF_AVAILABLE guard, so we suppress the attribute check.
+        reader = _pypdf.PdfReader(io.BytesIO(raw))  # type: ignore[union-attr]
+        pages = [reader.pages[i].extract_text() or "" for i in range(len(reader.pages))]
+        return "\n\n".join(p for p in pages if p)
+    except Exception:  # noqa: BLE001
+        # pypdf could not parse this PDF (truncated, non-conforming, or unusual
+        # encoding).  Fall back to the built-in stream extractor so that
+        # synthetic/minimal PDFs still produce output rather than failing hard.
+        return _extract_pdf_text(raw)
 
 
 __all__ = [
