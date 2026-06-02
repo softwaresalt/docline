@@ -25,6 +25,8 @@ def test_web_crawl_source_validates_expected_fields() -> None:
     assert source.type == "web_crawl"
     assert source.url == "https://example.com"
     assert source.depth == 0
+    assert source.domain_lock is True
+    assert source.rate_limit_ms == 0
 
 
 def test_github_repo_source_validates_expected_fields() -> None:

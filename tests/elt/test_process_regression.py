@@ -11,6 +11,7 @@ Covers:
 """
 
 import io
+import json
 import zipfile
 from datetime import UTC, datetime
 from pathlib import Path
@@ -304,6 +305,42 @@ def _make_pdf_bytes_simple(text: str) -> bytes:
     )
 
 
+def _make_pdf_bytes_multi_page(texts: list[str]) -> bytes:
+    """Create a minimal multi-page PDF with one text stream per page."""
+    if not texts:
+        raise ValueError("texts must contain at least one page")
+
+    objects: list[bytes] = [b"1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n"]
+    page_refs: list[str] = []
+    next_object_id = 3
+
+    for text in texts:
+        page_object_id = next_object_id
+        content_object_id = next_object_id + 1
+        next_object_id += 2
+        page_refs.append(f"{page_object_id} 0 R")
+        content_stream = f"BT /F1 12 Tf 100 700 Td ({text}) Tj ET".encode("latin-1")
+        objects.append(
+            (
+                f"{page_object_id} 0 obj\n"
+                "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792]"
+                f" /Contents {content_object_id} 0 R >>\nendobj\n"
+            ).encode("ascii")
+        )
+        objects.append(
+            b""
+            + f"{content_object_id} 0 obj\n<< /Length {len(content_stream)} >>\n".encode("ascii")
+            + b"stream\n"
+            + content_stream
+            + b"\nendstream\nendobj\n"
+        )
+
+    pages_object = (
+        f"2 0 obj\n<< /Type /Pages /Kids [{' '.join(page_refs)}] /Count {len(texts)} >>\nendobj\n"
+    ).encode("ascii")
+    return b"%PDF-1.4\n" + objects[0] + pages_object + b"".join(objects[1:]) + b"%%EOF\n"
+
+
 # ---------------------------------------------------------------------------
 # Issue 3: YAML frontmatter in output
 # ---------------------------------------------------------------------------
@@ -382,6 +419,216 @@ class TestOutputHasFrontmatter:
         assert content.startswith("---\n")
         assert '"web"' in content or "web" in content.split("---")[1]
 
+    def test_html_output_uses_per_page_source_url_and_crawl_depth(self, tmp_path: Path) -> None:
+        """execute_process prefers staged per-page metadata for crawled HTML files."""
+        import os
+
+        from docline.app import execute_process
+        from docline.app_models import ProcessRequest
+
+        staging_dir = tmp_path / "staging"
+        job = _write_staging_job(
+            staging_dir,
+            "manifest_url:docs:https://docs.example.com/start/",
+            {"guides/index.html": b"<html><body><h1>Guide</h1></body></html>"},
+        )
+        cache_abs = staging_dir.parent / job.cache_path
+        meta_path = cache_abs / "files" / "guides" / "index.meta.json"
+        meta_path.write_text(
+            json.dumps(
+                {
+                    "page_url": "https://docs.example.com/guides/",
+                    "crawl_depth": 2,
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        output_dir = tmp_path / "output"
+        request = ProcessRequest(
+            staging_dir=str(staging_dir.relative_to(tmp_path)),
+            output_dir=str(output_dir.relative_to(tmp_path)),
+        )
+
+        original_cwd = Path.cwd()
+        try:
+            os.chdir(tmp_path)
+            result = execute_process(request)
+        finally:
+            os.chdir(original_cwd)
+
+        assert result.success is True
+        output_path = output_dir / job.job_id / "guides" / "index.md"
+        assert output_path.is_file()
+        content = output_path.read_text(encoding="utf-8")
+        frontmatter_block = content.split("---")[1]
+        assert "source_url" in frontmatter_block
+        assert "https://docs.example.com/guides/" in frontmatter_block
+        assert "crawl_depth: 2" in frontmatter_block
+
+    def test_html_outputs_follow_crawl_manifest_order_in_root_manifest(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        """execute_process writes web manifest entries in crawl order, not alpha order."""
+        import os
+
+        from docline.app import execute_process
+        from docline.app_models import ProcessRequest
+
+        staging_dir = tmp_path / "staging"
+        job = _write_staging_job(
+            staging_dir,
+            "manifest_url:docs:https://docs.example.com/start/",
+            {
+                "zebra.html": b"<html><body><h1>Zebra</h1></body></html>",
+                "aardvark.html": b"<html><body><h1>Aardvark</h1></body></html>",
+                "mango.html": b"<html><body><h1>Mango</h1></body></html>",
+            },
+        )
+        cache_abs = staging_dir.parent / job.cache_path
+        files_dir = cache_abs / "files"
+        metadata_by_file = {
+            "zebra.html": {
+                "page_url": "https://docs.example.com/zebra",
+                "crawl_depth": 0,
+                "crawl_order": 0,
+            },
+            "mango.html": {
+                "page_url": "https://docs.example.com/mango",
+                "crawl_depth": 1,
+                "crawl_order": 1,
+            },
+            "aardvark.html": {
+                "page_url": "https://docs.example.com/aardvark",
+                "crawl_depth": 2,
+                "crawl_order": 2,
+            },
+        }
+        for name, payload in metadata_by_file.items():
+            (files_dir / name).with_suffix(".meta.json").write_text(
+                json.dumps(payload),
+                encoding="utf-8",
+            )
+        (cache_abs / "crawl-manifest.json").write_text(
+            json.dumps(
+                {
+                    "pages": [
+                        {
+                            "crawl_order": 0,
+                            "relative_path": "zebra.html",
+                            **metadata_by_file["zebra.html"],
+                        },
+                        {
+                            "crawl_order": 1,
+                            "relative_path": "mango.html",
+                            **metadata_by_file["mango.html"],
+                        },
+                        {
+                            "crawl_order": 2,
+                            "relative_path": "aardvark.html",
+                            **metadata_by_file["aardvark.html"],
+                        },
+                    ]
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        output_dir = tmp_path / "output"
+        request = ProcessRequest(
+            staging_dir=str(staging_dir.relative_to(tmp_path)),
+            output_dir=str(output_dir.relative_to(tmp_path)),
+        )
+
+        original_cwd = Path.cwd()
+        try:
+            os.chdir(tmp_path)
+            result = execute_process(request)
+        finally:
+            os.chdir(original_cwd)
+
+        assert result.success is True
+        manifest_data = json.loads((output_dir / "manifest.json").read_text(encoding="utf-8"))
+        documents = manifest_data["documents"]
+        assert [doc["input_file"] for doc in documents] == [
+            "zebra.html",
+            "mango.html",
+            "aardvark.html",
+        ]
+        assert [doc["crawl_order"] for doc in documents] == [0, 1, 2]
+        assert [doc["crawl_depth"] for doc in documents] == [0, 1, 2]
+        assert [doc["source_url"] for doc in documents] == [
+            "https://docs.example.com/zebra",
+            "https://docs.example.com/mango",
+            "https://docs.example.com/aardvark",
+        ]
+        source_manifest = json.loads(
+            (output_dir / job.job_id / "manifest.json").read_text(encoding="utf-8")
+        )
+        source_documents = source_manifest["documents"]
+        assert [doc["input_file"] for doc in source_documents] == [
+            "zebra.html",
+            "mango.html",
+            "aardvark.html",
+        ]
+        assert [doc["input_path"] for doc in source_documents] == [
+            "zebra.html",
+            "mango.html",
+            "aardvark.html",
+        ]
+        assert [doc["ingest_order"] for doc in source_documents] == [0, 1, 2]
+        assert [doc["output_path"] for doc in source_documents] == [
+            "zebra.md",
+            "mango.md",
+            "aardvark.md",
+        ]
+        assert all("document_id" in doc for doc in source_documents)
+
+    def test_html_output_has_consistent_h1_root_for_crawled_pages(self, tmp_path: Path) -> None:
+        """execute_process wraps web pages so each file starts with a stable H1 root."""
+        import os
+
+        from docline.app import execute_process
+        from docline.app_models import ProcessRequest
+
+        staging_dir = tmp_path / "staging"
+        job = _write_staging_job(
+            staging_dir,
+            "manifest_url:docs:https://docs.example.com/start/",
+            {"guide.html": b"<html><body><h2>Section</h2><h4>Nested</h4></body></html>"},
+        )
+        cache_abs = staging_dir.parent / job.cache_path
+        (cache_abs / "files" / "guide.meta.json").write_text(
+            json.dumps(
+                {
+                    "page_url": "https://docs.example.com/guide",
+                    "crawl_depth": 0,
+                    "crawl_order": 0,
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        output_dir = tmp_path / "output"
+        request = ProcessRequest(
+            staging_dir=str(staging_dir.relative_to(tmp_path)),
+            output_dir=str(output_dir.relative_to(tmp_path)),
+        )
+
+        original_cwd = Path.cwd()
+        try:
+            os.chdir(tmp_path)
+            result = execute_process(request)
+        finally:
+            os.chdir(original_cwd)
+
+        assert result.success is True
+        output_path = output_dir / job.job_id / "guide.md"
+        content = output_path.read_text(encoding="utf-8")
+        body = content.split("---\n", 2)[2]
+        assert body.startswith("# Guide\n\n## Section\n\n### Nested\n")
+
     def test_local_pdf_output_has_wiki_frontmatter_doc_type(self, tmp_path: Path) -> None:
         """execute_process emits doc_type: wiki in frontmatter for local PDF sources."""
         import os
@@ -453,3 +700,58 @@ class TestOutputHasFrontmatter:
         assert "source:" in frontmatter_block
         assert "ingested_at:" in frontmatter_block
         assert "doc_type:" in frontmatter_block
+
+    def test_multi_page_pdf_output_is_segmented_with_standardized_manifest_fields(
+        self, tmp_path: Path
+    ) -> None:
+        """Large PDF sources emit ordered multi-file output instead of one giant markdown file."""
+        import os
+
+        from docline.app import execute_process
+        from docline.app_models import ProcessRequest
+
+        staging_dir = tmp_path / "staging"
+        job = _write_staging_job(
+            staging_dir,
+            "local_file:docs/segmented-report.pdf",
+            {
+                "segmented-report.pdf": _make_pdf_bytes_multi_page(
+                    ["Page one summary", "Page two details", "Page three appendix"]
+                )
+            },
+        )
+
+        output_dir = tmp_path / "output"
+        request = ProcessRequest(
+            staging_dir=str(staging_dir.relative_to(tmp_path)),
+            output_dir=str(output_dir.relative_to(tmp_path)),
+        )
+
+        original_cwd = Path.cwd()
+        try:
+            os.chdir(tmp_path)
+            result = execute_process(request)
+        finally:
+            os.chdir(original_cwd)
+
+        assert result.success is True
+        source_manifest = json.loads(
+            (output_dir / job.job_id / "manifest.json").read_text(encoding="utf-8")
+        )
+        source_documents = source_manifest["documents"]
+        assert [doc["input_path"] for doc in source_documents] == [
+            "segmented-report.pdf",
+            "segmented-report.pdf",
+            "segmented-report.pdf",
+        ]
+        assert [doc["ingest_order"] for doc in source_documents] == [0, 1, 2]
+        assert [doc["output_path"] for doc in source_documents] == [
+            str(Path("segmented-report") / "part-0001.md"),
+            str(Path("segmented-report") / "part-0002.md"),
+            str(Path("segmented-report") / "part-0003.md"),
+        ]
+        assert all("document_id" in doc for doc in source_documents)
+        assert not (output_dir / job.job_id / "segmented-report.md").exists()
+        assert "Page one summary" in (
+            output_dir / job.job_id / "segmented-report" / "part-0001.md"
+        ).read_text(encoding="utf-8")

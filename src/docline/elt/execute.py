@@ -38,14 +38,18 @@ local glob scan so that re-runs do not re-ingest their own prior output.
 """
 
 import asyncio
+import hashlib
+import json
 import shutil
 from datetime import UTC, datetime
 from pathlib import Path
+from urllib.parse import unquote, urlparse
 
 from docline.elt.config import discover_configs
 from docline.elt.manifest_models import ManifestGitSource, ManifestLocalSource, ManifestUrlSource
 from docline.elt.models import GitHubRepoSource, LocalFileSource, SourceConfig, WebCrawlSource
 from docline.fetch.models import SourceMetadata, StagingJob
+from docline.fetch.crawl import CrawlConfig
 from docline.fetch.staging import build_cache_path, make_job_id, sanitize_source
 from docline.readers.github import fetch_github_files
 
@@ -57,6 +61,8 @@ from docline.readers.github import fetch_github_files
 # These are tool-generated outputs (staged files, processed markdown) and must
 # not be re-ingested as source documents on subsequent runs.
 _ELT_GENERATED_DIR_PREFIXES: tuple[str, ...] = ("runtime-staging", "runtime-output")
+_STAGED_WEB_METADATA_SUFFIX = ".meta.json"
+_CRAWL_MANIFEST_NAME = "crawl-manifest.json"
 
 
 def _is_elt_generated_artifact(src: Path, base: Path) -> bool:
@@ -172,8 +178,7 @@ def _execute_single_source(config: SourceConfig, staging_dir: str, root: Path) -
             _fetch_manifest_local(config, root, files_dir)
             complete = True
         elif isinstance(config, (WebCrawlSource, ManifestUrlSource)):
-            _fetch_url(config, files_dir)
-            complete = True
+            complete = _fetch_url(config, files_dir) > 0
         elif isinstance(config, (GitHubRepoSource, ManifestGitSource)):
             _fetch_github(config, files_dir)
             complete = True
@@ -241,6 +246,71 @@ def _fetch_local_files(config: LocalFileSource, root: Path, files_dir: Path) -> 
         shutil.copy2(str(src), str(dest))
 
 
+def _sanitize_web_path_component(value: str) -> str:
+    """Return a filesystem-safe path component for a crawled URL segment."""
+    cleaned = "".join(ch if ch.isalnum() or ch in {".", "-", "_"} else "-" for ch in value)
+    trimmed = cleaned.strip(" .-_")
+    return trimmed or "page"
+
+
+def _staged_web_relative_path(
+    page_url: str,
+    start_url: str,
+    used_paths: dict[str, str],
+) -> Path:
+    """Derive a stable relative HTML path for a crawled page URL."""
+    if page_url == start_url and "page.html" not in used_paths:
+        used_paths["page.html"] = page_url
+        return Path("page.html")
+
+    parsed = urlparse(page_url)
+    raw_path = unquote(parsed.path or "/")
+    raw_parts = [part for part in raw_path.split("/") if part]
+    if not raw_parts:
+        raw_parts = ["index.html"]
+    elif "." not in raw_parts[-1]:
+        raw_parts.append("index.html")
+
+    safe_parts = [_sanitize_web_path_component(part) for part in raw_parts]
+    candidate = Path(*safe_parts)
+    suffix = candidate.suffix or ".html"
+    if suffix.lower() not in {".html", ".htm"}:
+        candidate = candidate.parent / f"{candidate.name}.html"
+
+    key = candidate.as_posix()
+    needs_hash = bool(parsed.query) or (key in used_paths and used_paths[key] != page_url)
+    if needs_hash:
+        digest = hashlib.sha256(page_url.encode("utf-8")).hexdigest()[:10]
+        candidate = candidate.parent / f"{candidate.stem}--{digest}{candidate.suffix}"
+        key = candidate.as_posix()
+
+    used_paths[key] = page_url
+    return candidate
+
+
+def _staged_web_metadata_path(html_path: Path) -> Path:
+    """Return the metadata sidecar path for a staged HTML file."""
+    return html_path.with_suffix(_STAGED_WEB_METADATA_SUFFIX)
+
+
+def _crawl_manifest_path(files_dir: Path) -> Path:
+    """Return the crawl-manifest path for a staged web job."""
+    return files_dir.parent / _CRAWL_MANIFEST_NAME
+
+
+def _crawl_config_from_source(config: WebCrawlSource | ManifestUrlSource) -> CrawlConfig:
+    """Translate ELT source config fields into a crawl configuration."""
+    max_depth = config.depth if isinstance(config, WebCrawlSource) else config.max_depth
+    kwargs: dict[str, int | bool] = {
+        "max_depth": max_depth,
+        "domain_lock": config.domain_lock,
+        "rate_limit_ms": config.rate_limit_ms,
+    }
+    if config.max_pages is not None:
+        kwargs["max_pages"] = config.max_pages
+    return CrawlConfig(**kwargs)
+
+
 def _fetch_manifest_local(config: ManifestLocalSource, root: Path, files_dir: Path) -> None:
     """Glob and copy files for a manifest-format local source.
 
@@ -276,21 +346,61 @@ def _fetch_manifest_local(config: ManifestLocalSource, root: Path, files_dir: Pa
                 shutil.copy2(str(src), str(dest))
 
 
-def _fetch_url(config: WebCrawlSource | ManifestUrlSource, files_dir: Path) -> None:
-    """Fetch a URL source using the async crawl function.
+def _fetch_url(config: WebCrawlSource | ManifestUrlSource, files_dir: Path) -> int:
+    """Fetch a URL source and stage every crawled HTML page.
 
     Args:
         config: WebCrawlSource or ManifestUrlSource configuration.
         files_dir: Destination staging files directory.
+
+    Returns:
+        Number of staged HTML pages.
+
+    Raises:
+        OSError: When no crawlable pages were staged.
     """
-    from docline.fetch.crawl import CrawlConfig, crawl
+    from docline.fetch.crawl import crawl
 
     url = config.url
-    results = asyncio.run(crawl(url, CrawlConfig()))
+    results = asyncio.run(crawl(url, _crawl_config_from_source(config)))
+    staged_count = 0
+    used_paths: dict[str, str] = {}
+    manifest_pages: list[dict[str, object]] = []
     for result in results:
         if result.response is not None and result.response.body:
-            (files_dir / "page.html").write_text(result.response.body, encoding="utf-8")
-            break
+            rel_path = _staged_web_relative_path(result.url, url, used_paths)
+            dest = files_dir / rel_path
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            dest.write_text(result.response.body, encoding="utf-8")
+            page_metadata = {
+                "page_url": result.url,
+                "crawl_depth": result.depth,
+                "crawl_order": staged_count,
+            }
+            _staged_web_metadata_path(dest).write_text(
+                json.dumps(page_metadata, indent=2),
+                encoding="utf-8",
+            )
+            manifest_pages.append(
+                {
+                    "crawl_order": staged_count,
+                    "relative_path": rel_path.as_posix(),
+                    **page_metadata,
+                }
+            )
+            staged_count += 1
+    if staged_count == 0:
+        raise OSError(f"No crawlable HTML pages were staged for {url}")
+    _crawl_manifest_path(files_dir).write_text(
+        json.dumps(
+            {
+                "pages": manifest_pages,
+            },
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+    return staged_count
 
 
 def _fetch_github(config: GitHubRepoSource | ManifestGitSource, files_dir: Path) -> None:

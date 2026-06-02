@@ -64,10 +64,10 @@ def test_cli_fetch_empty_config_dir_returns_1(capsys, monkeypatch, tmp_path) -> 
     assert "contains no source configs" in captured.err
 
 
-def test_cli_process_with_existing_staging_dir_reports_not_implemented(
+def test_cli_process_with_existing_staging_dir_succeeds_when_empty(
     capsys, monkeypatch, tmp_path
 ) -> None:
-    """CLI process reports failure until real output generation is implemented."""
+    """CLI process succeeds with an empty staging directory."""
     monkeypatch.chdir(tmp_path)
     tmp_path.joinpath("staging").mkdir()
 
@@ -76,9 +76,9 @@ def test_cli_process_with_existing_staging_dir_reports_not_implemented(
 
     payload = json.loads(captured.out)
 
-    assert exit_code == 1
-    assert payload["success"] is False
-    assert payload["error"] == "Process execution is not implemented."
+    assert exit_code == 0
+    assert payload["success"] is True
+    assert payload["error"] is None
 
 
 def test_cli_process_missing_staging_dir_returns_1(capsys) -> None:
@@ -119,10 +119,10 @@ def test_cli_fetch_invalid_staging_dir_returns_1(capsys) -> None:
     assert "must not contain parent-directory traversal" in captured.err
 
 
-def test_cli_process_result_json_has_no_output_path_when_not_implemented(
+def test_cli_process_result_json_has_output_path_when_staging_is_empty(
     capsys, monkeypatch, tmp_path
 ) -> None:
-    """CLI process JSON output keeps output_path unset until output exists."""
+    """CLI process JSON output includes output_path when staging succeeds."""
     monkeypatch.chdir(tmp_path)
     tmp_path.joinpath("staging").mkdir()
 
@@ -131,8 +131,8 @@ def test_cli_process_result_json_has_no_output_path_when_not_implemented(
 
     payload = json.loads(captured.out)
 
-    assert payload["output_path"] is None
-    assert payload["error"] == "Process execution is not implemented."
+    assert payload["output_path"] == "outdir"
+    assert payload["error"] is None
 
 
 def test_cli_manifest_with_invalid_extra_token_returns_2(capsys) -> None:

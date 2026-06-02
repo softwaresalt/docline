@@ -40,6 +40,12 @@ def _build_parser() -> argparse.ArgumentParser:
         default=".elt/staging",
         help="Staging output directory for fetched sources.",
     )
+    fetch_parser.add_argument(
+        "--execute",
+        action="store_true",
+        default=False,
+        help="Actually fetch content (default: plan-only staging job creation).",
+    )
 
     process_parser = subcommands.add_parser(
         "process",
@@ -47,7 +53,7 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     process_parser.add_argument(
         "--staging-dir",
-        default=".cache/staging",
+        default=".elt/staging",
         help="Staging input directory.",
     )
     process_parser.add_argument(
@@ -132,7 +138,12 @@ def main(argv: list[str] | None = None) -> int:
             return 1
 
         try:
-            jobs = orchestrate_fetch(config_dir, parsed.staging_dir, workspace_root=Path.cwd())
+            if getattr(parsed, "execute", False):
+                from docline.elt.execute import execute_elt_fetch as _exec
+
+                jobs = _exec(config_dir, parsed.staging_dir, workspace_root=Path.cwd())
+            else:
+                jobs = orchestrate_fetch(config_dir, parsed.staging_dir, workspace_root=Path.cwd())
         except DoclineError as err:
             print(f"error: {err}", file=sys.stderr)
             return 1

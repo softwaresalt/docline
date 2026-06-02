@@ -3,6 +3,7 @@
 from pathlib import Path
 
 from docline.elt.config import discover_configs
+from docline.elt.manifest_models import ManifestGitSource, ManifestLocalSource, ManifestUrlSource
 from docline.elt.models import GitHubRepoSource, LocalFileSource, SourceConfig, WebCrawlSource
 from docline.fetch.models import StagingJob
 from docline.fetch.staging import create_staging_job
@@ -71,4 +72,11 @@ def _source_to_job_key(config: SourceConfig) -> str:
         return f"web_crawl:{':'.join(parts)}"
     if isinstance(config, GitHubRepoSource):
         return f"github_repo:{config.repo_url}@{config.branch}:{config.path_glob}"
+    if isinstance(config, ManifestLocalSource):
+        includes = ",".join(sorted(config.include))
+        return f"manifest_local:{config.id}:{config.path}:{includes}"
+    if isinstance(config, ManifestUrlSource):
+        return f"manifest_url:{config.id}:{config.url}"
+    if isinstance(config, ManifestGitSource):
+        return f"manifest_git:{config.id}:{config.url}@{config.branch}"
     raise TypeError(f"Unsupported source config type: {type(config)!r}")

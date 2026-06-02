@@ -223,6 +223,11 @@ def _extract_pdf_text(data: bytes) -> str:
     Returns:
         Concatenated extracted text, or ``""`` if no text was found.
     """
+    return "\n\n".join(_extract_pdf_text_blocks(data))
+
+
+def _extract_pdf_text_blocks(data: bytes) -> list[str]:
+    """Extract ordered text blocks from PDF content streams."""
     texts: list[str] = []
     for stream_match in _STREAM_RE.finditer(data):
         stream_data = stream_match.group(1)
@@ -232,8 +237,10 @@ def _extract_pdf_text(data: bytes) -> str:
         pre_bytes = data[pre_start : stream_match.start()]
         if _FLATEDECODE_RE.search(pre_bytes):
             stream_data = _decompress_stream(stream_data)
-        texts.extend(_extract_text_from_stream(stream_data))
-    return " ".join(texts)
+        block_text = " ".join(_extract_text_from_stream(stream_data)).strip()
+        if block_text:
+            texts.append(block_text)
+    return texts
 
 
 def read_pdf(path: Path) -> str:
@@ -254,14 +261,33 @@ def read_pdf(path: Path) -> str:
         PdfReadError: If PDF parsing fails.
         FileNotFoundError: If ``path`` does not exist.
     """
+    return "\n\n".join(read_pdf_pages(path))
+
+
+def read_pdf_pages(path: Path) -> list[str]:
+    """Extract ordered text pages from a PDF file.
+
+    Args:
+        path: Path to the PDF file. Must be a trusted-local path.
+
+    Returns:
+        Ordered non-empty page strings. Returns an empty list when no text is
+        extractable.
+
+    Raises:
+        PdfReadError: If PDF parsing fails.
+        FileNotFoundError: If ``path`` does not exist.
+    """
     if not path.exists():
         raise FileNotFoundError(f"File not found: {path}")
     raw = path.read_bytes()
     if not raw.startswith(b"%PDF-"):
         raise PdfReadError(f"Not a valid PDF file: {path}")
     if _PYPDF_AVAILABLE:
-        return _read_pdf_pypdf(raw, path)
-    return _extract_pdf_text(raw)
+        pages = _read_pdf_pypdf_pages(raw)
+        if pages:
+            return pages
+    return _extract_pdf_text_blocks(raw)
 
 
 def _read_pdf_pypdf(raw: bytes, path: Path) -> str:
@@ -280,22 +306,35 @@ def _read_pdf_pypdf(raw: bytes, path: Path) -> str:
         Page text joined by double newlines, or ``""`` for empty PDFs.
         Falls back to :func:`_extract_pdf_text` if ``pypdf`` raises.
     """
+    del path
+    pages = _read_pdf_pypdf_pages(raw)
+    if pages:
+        return "\n\n".join(pages)
+    return _extract_pdf_text(raw)
+
+
+def _read_pdf_pypdf_pages(raw: bytes) -> list[str]:
+    """Extract ordered page text with ``pypdf`` when available."""
     try:
-        # _pypdf is guaranteed non-None here: _read_pdf_pypdf is only invoked
-        # from read_pdf when _PYPDF_AVAILABLE is True, which is only set when
-        # the import succeeds.  Pyright cannot narrow the module-level variable
-        # through the _PYPDF_AVAILABLE guard, so we suppress the attribute check.
+        # _pypdf is guaranteed non-None here: this helper is only called when
+        # _PYPDF_AVAILABLE is True, which is set only after a successful import.
         reader = _pypdf.PdfReader(io.BytesIO(raw))  # type: ignore[union-attr]
-        pages = [reader.pages[i].extract_text() or "" for i in range(len(reader.pages))]
-        return "\n\n".join(p for p in pages if p)
+        return [
+            page_text
+            for page_text in (
+                reader.pages[i].extract_text() or "" for i in range(len(reader.pages))
+            )
+            if page_text
+        ]
     except Exception:  # noqa: BLE001
         # pypdf could not parse this PDF (truncated, non-conforming, or unusual
-        # encoding).  Fall back to the built-in stream extractor so that
-        # synthetic/minimal PDFs still produce output rather than failing hard.
-        return _extract_pdf_text(raw)
+        # encoding). Fall back to the built-in extractor so synthetic/minimal
+        # PDFs still produce output rather than failing hard.
+        return []
 
 
 __all__ = [
     "PdfReadError",
     "read_pdf",
+    "read_pdf_pages",
 ]

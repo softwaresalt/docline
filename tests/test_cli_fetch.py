@@ -80,12 +80,12 @@ def test_manifest_flag_still_works(capsys) -> None:
 
 
 def test_process_command_still_works(monkeypatch, tmp_path: Path, capsys) -> None:
-    """CLI process behavior remains unchanged."""
+    """CLI process succeeds with an empty staging directory."""
     monkeypatch.chdir(tmp_path)
     tmp_path.joinpath("staging").mkdir()
 
     exit_code = main(["process", "--staging-dir", "staging"])
     captured = capsys.readouterr()
 
-    assert exit_code == 1
-    assert json.loads(captured.out)["error"] == "Process execution is not implemented."
+    assert exit_code == 0
+    assert json.loads(captured.out)["success"] is True

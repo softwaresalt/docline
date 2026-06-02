@@ -117,8 +117,8 @@ def test_cli_json_deserializes_to_process_result_model(capsys, monkeypatch, tmp_
     main(["process", "--staging-dir", "staging"])
     result = ProcessResult(**json.loads(capsys.readouterr().out))
 
-    assert result.success is False
-    assert result.output_path is None
+    assert result.success is True
+    assert result.output_path == "output"
 
 
 def test_manifest_tool_names_match_operation_names() -> None:
