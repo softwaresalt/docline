@@ -5,44 +5,69 @@ import json
 from docline.cli import main
 
 
-def test_cli_fetch_valid_source_reports_not_implemented(capsys) -> None:
-    """CLI fetch reports failure until real staging is implemented."""
-    exit_code = main(["fetch", "http://example.com"])
+def test_cli_fetch_valid_config_reports_staging_jobs(capsys, monkeypatch, tmp_path) -> None:
+    """CLI fetch reports staged jobs for discovered ELT configs."""
+    monkeypatch.chdir(tmp_path)
+    config_dir = tmp_path / ".elt" / "config"
+    config_dir.mkdir(parents=True)
+    (config_dir / "source.yaml").write_text(
+        "type: web_crawl\nurl: https://example.com\n",
+        encoding="utf-8",
+    )
+
+    exit_code = main(["fetch"])
     captured = capsys.readouterr()
 
     payload = json.loads(captured.out)
 
+    assert exit_code == 0
+    assert len(payload) == 1
+    assert payload[0]["metadata"]["source"] == "web_crawl:https://example.com"
+
+
+def test_cli_fetch_result_json_is_a_job_list(capsys, monkeypatch, tmp_path) -> None:
+    """CLI fetch outputs a JSON list of staging jobs."""
+    monkeypatch.chdir(tmp_path)
+    config_dir = tmp_path / ".elt" / "config"
+    config_dir.mkdir(parents=True)
+    (config_dir / "source.yaml").write_text(
+        "type: web_crawl\nurl: https://example.com\n",
+        encoding="utf-8",
+    )
+
+    main(["fetch"])
+    captured = capsys.readouterr()
+
+    assert isinstance(json.loads(captured.out), list)
+
+
+def test_cli_fetch_missing_config_dir_returns_1(capsys, monkeypatch, tmp_path) -> None:
+    """CLI fetch returns exit code 1 when the default config dir is missing."""
+    monkeypatch.chdir(tmp_path)
+
+    exit_code = main(["fetch"])
+    captured = capsys.readouterr()
+
     assert exit_code == 1
-    assert payload["success"] is False
-    assert payload["error"] == "Fetch execution is not implemented."
+    assert captured.out == ""
+    assert "ELT config directory not found" in captured.err
 
 
-def test_cli_fetch_result_json_has_source(capsys) -> None:
-    """CLI fetch JSON output preserves the source field."""
-    main(["fetch", "http://example.com"])
+def test_cli_fetch_empty_config_dir_returns_1(capsys, monkeypatch, tmp_path) -> None:
+    """CLI fetch returns exit code 1 when the config dir is empty."""
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / ".elt" / "config").mkdir(parents=True)
+
+    assert main(["fetch"]) == 1
     captured = capsys.readouterr()
 
-    assert json.loads(captured.out)["source"] == "http://example.com"
+    assert "contains no source configs" in captured.err
 
 
-def test_cli_fetch_result_json_has_no_staged_path_when_not_implemented(capsys) -> None:
-    """CLI fetch JSON output keeps staged_path empty until a file is staged."""
-    main(["fetch", "http://example.com"])
-    captured = capsys.readouterr()
-
-    assert json.loads(captured.out)["staged_path"] == ""
-
-
-def test_cli_fetch_no_source_returns_2(capsys) -> None:
-    """CLI fetch returns exit code 2 when source is missing."""
-    assert main(["fetch"]) == 2
-    capsys.readouterr()
-
-
-def test_cli_process_with_existing_staging_dir_reports_not_implemented(
+def test_cli_process_with_existing_staging_dir_succeeds_when_empty(
     capsys, monkeypatch, tmp_path
 ) -> None:
-    """CLI process reports failure until real output generation is implemented."""
+    """CLI process succeeds with an empty staging directory."""
     monkeypatch.chdir(tmp_path)
     tmp_path.joinpath("staging").mkdir()
 
@@ -51,9 +76,9 @@ def test_cli_process_with_existing_staging_dir_reports_not_implemented(
 
     payload = json.loads(captured.out)
 
-    assert exit_code == 1
-    assert payload["success"] is False
-    assert payload["error"] == "Process execution is not implemented."
+    assert exit_code == 0
+    assert payload["success"] is True
+    assert payload["error"] is None
 
 
 def test_cli_process_missing_staging_dir_returns_1(capsys) -> None:
@@ -65,28 +90,39 @@ def test_cli_process_missing_staging_dir_returns_1(capsys) -> None:
     assert json.loads(captured.out)["success"] is False
 
 
-def test_cli_fetch_custom_depth_reports_not_implemented(capsys) -> None:
-    """CLI fetch still reports not implemented when given a custom depth."""
-    exit_code = main(["fetch", "http://example.com", "--depth", "2"])
+def test_cli_fetch_custom_config_dir_reports_staging_jobs(capsys, monkeypatch, tmp_path) -> None:
+    """CLI fetch can read configs from a custom directory."""
+    monkeypatch.chdir(tmp_path)
+    config_dir = tmp_path / "configs"
+    config_dir.mkdir()
+    (config_dir / "source.yaml").write_text(
+        "type: github_repo\nrepo_url: https://github.com/org/repo\n",
+        encoding="utf-8",
+    )
+
+    exit_code = main(["fetch", "--config-dir", "configs"])
     captured = capsys.readouterr()
 
     payload = json.loads(captured.out)
 
-    assert exit_code == 1
-    assert payload["success"] is False
-    assert payload["error"] == "Fetch execution is not implemented."
+    assert exit_code == 0
+    assert (
+        payload[0]["metadata"]["source"] == "github_repo:https://github.com/org/repo@main:**/*.md"
+    )
 
 
-def test_cli_fetch_invalid_output_dir_returns_2(capsys) -> None:
-    """CLI fetch rejects unsafe output directories."""
-    assert main(["fetch", "http://example.com", "--output-dir", "../out"]) == 2
-    capsys.readouterr()
+def test_cli_fetch_invalid_staging_dir_returns_1(capsys) -> None:
+    """CLI fetch rejects unsafe staging directories."""
+    assert main(["fetch", "--staging-dir", "../out"]) == 1
+    captured = capsys.readouterr()
+
+    assert "must not contain parent-directory traversal" in captured.err
 
 
-def test_cli_process_result_json_has_no_output_path_when_not_implemented(
+def test_cli_process_result_json_has_output_path_when_staging_is_empty(
     capsys, monkeypatch, tmp_path
 ) -> None:
-    """CLI process JSON output keeps output_path unset until output exists."""
+    """CLI process JSON output includes output_path when staging succeeds."""
     monkeypatch.chdir(tmp_path)
     tmp_path.joinpath("staging").mkdir()
 
@@ -95,8 +131,8 @@ def test_cli_process_result_json_has_no_output_path_when_not_implemented(
 
     payload = json.loads(captured.out)
 
-    assert payload["output_path"] is None
-    assert payload["error"] == "Process execution is not implemented."
+    assert payload["output_path"] == "outdir"
+    assert payload["error"] is None
 
 
 def test_cli_manifest_with_invalid_extra_token_returns_2(capsys) -> None:
@@ -108,7 +144,7 @@ def test_cli_manifest_with_invalid_extra_token_returns_2(capsys) -> None:
 
 def test_cli_manifest_with_fetch_subcommand_returns_2(capsys) -> None:
     """CLI rejects mixing --manifest with a subcommand invocation."""
-    exit_code = main(["--manifest", "fetch", "http://example.com"])
+    exit_code = main(["--manifest", "fetch"])
     captured = capsys.readouterr()
 
     assert exit_code == 2

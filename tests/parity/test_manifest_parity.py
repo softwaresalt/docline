@@ -160,12 +160,13 @@ def test_mcp_manifest_uses_input_schema_field() -> None:
     assert "inputSchema" in mcp_manifest["tools"][0]
 
 
-def test_cli_fetch_no_source_returns_2(capsys) -> None:
-    """CLI 'fetch' without a required source returns exit code 2."""
+def test_cli_fetch_missing_default_config_returns_1(capsys, monkeypatch, tmp_path) -> None:
+    """CLI 'fetch' without a default config directory returns exit code 1."""
     from docline.cli import main
 
+    monkeypatch.chdir(tmp_path)
     exit_code = main(["fetch"])
-    assert exit_code == 2
+    assert exit_code == 1
 
 
 def test_cli_process_no_staging_dir_returns_1(capsys) -> None:

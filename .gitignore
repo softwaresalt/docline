@@ -236,10 +236,12 @@ __marimo__/
 # local agent/editor state
 .claude/
 .copilot/
-.cursor/mcp.json
+.cursor/
 .engram/
 .mcp.json
-.vscode/mcp.json
+.vscode/
+.worktrees/
+*.code-workspace
 
 .*.lock
 **/.*.lock

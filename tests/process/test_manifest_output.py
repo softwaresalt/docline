@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 
 from docline.paths import PathContainmentError
-from docline.process.manifest import update_manifest_index
+from docline.process.manifest import update_manifest_index, write_manifest_index
 from docline.process.output import write_markdown_output
 
 
@@ -68,3 +68,21 @@ def test_update_manifest_index_enforces_path_containment(tmp_path: Path) -> None
             "..\\manifest.json",
             {"document_id": "doc-001", "output_path": "ingested/wiki/architecture-overview.md"},
         )
+
+
+def test_write_manifest_index_replaces_manifest_with_snapshot(tmp_path: Path) -> None:
+    manifest_path = write_manifest_index(
+        tmp_path,
+        "manifest.json",
+        [
+            {"document_id": "doc-001", "output_path": "page.md"},
+            {"document_id": "doc-002", "output_path": "chapter\\intro.md"},
+        ],
+    )
+    payload = json.loads(manifest_path.read_text(encoding="utf-8"))
+    assert payload == {
+        "documents": [
+            {"document_id": "doc-001", "output_path": "page.md"},
+            {"document_id": "doc-002", "output_path": "chapter\\intro.md"},
+        ]
+    }
