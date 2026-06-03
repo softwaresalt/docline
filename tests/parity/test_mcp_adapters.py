@@ -44,17 +44,15 @@ def test_mcp_server_process_missing_staging_dir_fails() -> None:
     assert result.success is False
 
 
-def test_mcp_server_process_with_existing_dir_reports_not_implemented(
-    monkeypatch, tmp_path
-) -> None:
-    """MCP process reports failure until real output generation is implemented."""
+def test_mcp_server_process_with_existing_dir_succeeds_when_empty(monkeypatch, tmp_path) -> None:
+    """MCP process succeeds with an empty staging directory."""
     monkeypatch.chdir(tmp_path)
     tmp_path.joinpath("staging").mkdir()
 
     result = SERVER.process(ProcessRequest(staging_dir="staging"))
-    assert result.success is False
-    assert result.output_path is None
-    assert result.error == "Process execution is not implemented."
+    assert result.success is True
+    assert result.output_path == "output"
+    assert result.error is None
 
 
 def test_mcp_server_fetch_process_same_contracts_as_app() -> None:
@@ -100,9 +98,9 @@ def test_mcp_server_process_accepts_raw_dict(monkeypatch, tmp_path) -> None:
 
     result = SERVER.process({"staging_dir": "staging", "output_dir": "output"})
     assert isinstance(result, ProcessResult)
-    assert result.success is False
-    assert result.output_path is None
-    assert result.error == "Process execution is not implemented."
+    assert result.success is True
+    assert result.output_path == "output"
+    assert result.error is None
 
 
 def test_mcp_server_process_invalid_dict_raises_validation_error() -> None:
