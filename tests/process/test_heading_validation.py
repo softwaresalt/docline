@@ -81,13 +81,7 @@ def test_multiple_h1_allowed() -> None:
 
     The validator enforces ancestor presence, not single-H1 uniqueness.
     """
-    markdown = (
-        "# First Root\n\n"
-        "## Section A\n\n"
-        "# Second Root\n\n"
-        "## Section B\n\n"
-        "### Subsection 1\n"
-    )
+    markdown = "# First Root\n\n## Section A\n\n# Second Root\n\n## Section B\n\n### Subsection 1\n"
     validate_heading_hierarchy(markdown)
 
 
