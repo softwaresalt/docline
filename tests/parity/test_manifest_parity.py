@@ -16,10 +16,10 @@ def test_get_manifest_returns_manifest() -> None:
     assert isinstance(manifest, Manifest)
 
 
-def test_manifest_has_two_tools() -> None:
-    """Manifest contains exactly two tools: fetch and process."""
+def test_manifest_has_three_tools() -> None:
+    """Manifest contains the three documented tools: fetch, process, and export_schema."""
     manifest = get_manifest()
-    assert len(manifest.tools) == 2
+    assert len(manifest.tools) == 3
 
 
 def test_manifest_has_fetch_tool() -> None:
