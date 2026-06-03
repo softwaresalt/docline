@@ -10,8 +10,6 @@ pr_number: 19
 releasability: READY_WITH_CONDITIONS
 ---
 
-# 010-S — Operational Closure
-
 ## Release readiness summary
 
 Shipment **010-S** (PR [#19](https://github.com/softwaresalt/docline/pull/19),

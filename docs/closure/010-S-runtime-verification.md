@@ -9,8 +9,6 @@ commit: 3f1226f
 status: READY_WITH_FOLLOWUPS
 ---
 
-# 010-S — Runtime Verification
-
 ## Scope
 
 Runtime verification for shipment **010-S** (PR #19, merge commit `3f1226f`).

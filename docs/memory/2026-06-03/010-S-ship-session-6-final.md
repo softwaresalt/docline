@@ -9,9 +9,9 @@ Status: closure complete
 
 | Session | Date | Branch | Outcome |
 | --- | --- | --- | --- |
-| 1 | 2026-06-02 | `feat/docline-graphtor-alignment` | Work blocks F1-F2 (schema/manifest, hashing + POSIX paths) — ~14 tasks |
-| 2 | 2026-06-02 | `feat/docline-graphtor-alignment` | Work blocks F3-F5 (HTML, DOCX, PDF heuristic) — ~14 tasks |
-| 3 | 2026-06-03 | `feat/docline-graphtor-alignment` | Work blocks F6-F8 (assemble + chunk anchors, URL canonical / sitemap SSRF, end-to-end parity); 39/39 finished |
+| 1 | 2026-06-02 | `feat/docline-graphtor-alignment` | 1 task (010.001-T, F1 red-first frontmatter v1 contract tests) — halted at PA-1 BaseFrontmatter v1 approval gate |
+| 2 | 2026-06-02 | `feat/docline-graphtor-alignment` | 19 tasks (010.002 → 010.020) — PA-1 applied (010.002-T) and PA-2 POSIX migration applied (010.009-T); covers F1 schema/contract, F2 POSIX paths, F3 heading/chunk, F4 DOCX adapter; halted at 20-task session circuit breaker |
+| 3 | 2026-06-03 | `feat/docline-graphtor-alignment` | 19 tasks (010.021 → 010.039) + lifecycle recovery — covers F5 PDF, F6 HTML/web crawl/SSRF, F7 chunk anchors, F8 contract doc + E2E; 39/39 finished |
 | 4 | 2026-06-03 | `feat/docline-graphtor-alignment` | First §1.9 readiness pass; structured review (`docs/closure/010-S-review.md`); PA-1 + PA-2 applied |
 | 5 | 2026-06-03 | `feat/docline-graphtor-alignment` | Stale-Copilot halt; documented in `2026-06-03/010-S-ship-session-5-stale-copilot-halt.md`; operator re-requested review via UI; merge approved; merged via merge commit `3f1226f` (PR #19) |
 | 6 | 2026-06-03 | `post-merge/010-docline-graphtor-alignment` | This session: runtime verification, operational closure, archives, post-merge closure PR |
