@@ -246,3 +246,6 @@ __marimo__/
 
 .*.lock
 **/.*.lock
+
+# local test/build output (commit-msg drafts, pytest logs, etc.)
+logs/

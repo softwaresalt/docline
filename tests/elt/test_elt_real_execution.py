@@ -437,20 +437,23 @@ class TestEltFetchUrlSource:
         crawl_manifest_path = cache_abs / "crawl-manifest.json"
         assert crawl_manifest_path.is_file()
         crawl_manifest = json.loads(crawl_manifest_path.read_text(encoding="utf-8"))
-        assert crawl_manifest["pages"] == [
-            {
-                "crawl_order": 0,
-                "relative_path": "page.html",
-                "page_url": "https://example.com/docs/",
-                "crawl_depth": 0,
-            },
-            {
-                "crawl_order": 1,
-                "relative_path": "docs/getting-started/index.html",
-                "page_url": "https://example.com/docs/getting-started/",
-                "crawl_depth": 1,
-            },
-        ]
+        pages = crawl_manifest["pages"]
+        assert len(pages) == 2
+        # Core ordering/path/depth invariants per page.
+        assert pages[0]["crawl_order"] == 0
+        assert pages[0]["relative_path"] == "page.html"
+        assert pages[0]["page_url"] == "https://example.com/docs/"
+        assert pages[0]["crawl_depth"] == 0
+        assert pages[1]["crawl_order"] == 1
+        assert pages[1]["relative_path"] == "docs/getting-started/index.html"
+        assert pages[1]["page_url"] == "https://example.com/docs/getting-started/"
+        assert pages[1]["crawl_depth"] == 1
+        # F7.T2 staging-metadata fields flow through the crawl manifest.
+        for page in pages:
+            assert page["http_status"] == 200
+            assert page["final_url"] == page["page_url"]
+            assert page["content_type"] == "text/html"
+            assert isinstance(page["fetched_at"], str) and page["fetched_at"]
 
 
 class TestEltFetchGitHubSource:

@@ -9,6 +9,7 @@ from urllib.parse import parse_qsl, urldefrag, urljoin, urlparse
 from urllib.robotparser import RobotFileParser
 
 from docline.fetch.http import FetchResponse, fetch_page
+from docline.fetch.url_canonical import UrlCanonicalizationError, canonicalize_url
 from docline.fetch.url_policy import CrawlUrlRejectedError, validate_crawl_url
 from docline.schema.models import DoclineError
 
@@ -132,7 +133,7 @@ async def crawl(
     start_host = urlparse(start).netloc
     section_scope = _derive_section_scope(start)
     frontier: deque[tuple[str, int]] = deque([(start, 0)])
-    visited = {start}
+    visited: set[str] = {_dedup_key(start)}
     emitted_urls: set[str] = set()
     robots_cache: dict[str, str | None] = {}
     results: list[CrawlResult] = []
@@ -192,7 +193,7 @@ async def crawl(
             continue
 
         if _is_print_page(final_url, response.body):
-            visited.add(final_url)
+            visited.add(_dedup_key(final_url))
             if depth < crawl_config.max_depth and _is_html_response(response):
                 for link in extract_links(response.body, final_url):
                     if crawl_config.domain_lock and urlparse(link).netloc != start_host:
@@ -201,18 +202,20 @@ async def crawl(
                         link, section_scope
                     ):
                         continue
-                    if link in visited:
+                    link_key = _dedup_key(link)
+                    if link_key in visited:
                         continue
-                    visited.add(link)
+                    visited.add(link_key)
                     frontier.append((link, depth + 1))
             continue
 
-        if final_url in emitted_urls:
-            visited.add(final_url)
+        final_key = _dedup_key(final_url)
+        if final_key in emitted_urls:
+            visited.add(final_key)
             continue
 
-        visited.add(final_url)
-        emitted_urls.add(final_url)
+        visited.add(final_key)
+        emitted_urls.add(final_key)
 
         results.append(CrawlResult(url=final_url, depth=depth, response=response))
         page_count += 1
@@ -239,9 +242,10 @@ async def crawl(
                 continue
             if crawl_config.domain_lock and not _url_within_section_scope(link, section_scope):
                 continue
-            if link in visited:
+            link_key = _dedup_key(link)
+            if link_key in visited:
                 continue
-            visited.add(link)
+            visited.add(link_key)
             frontier.append((link, depth + 1))
 
     return results
@@ -406,6 +410,20 @@ def _normalize_url(url: str) -> str:
     parsed = urlparse(without_fragment)
     normalized_path = parsed.path or "/"
     return parsed._replace(path=normalized_path, fragment="").geturl()
+
+
+def _dedup_key(url: str) -> str:
+    """Return a canonical dedup key for *url*.
+
+    Wraps :func:`canonicalize_url` to collapse aliases that differ only in
+    query order, tracking parameters, scheme/host case, fragments, or default
+    ports. Falls back to :func:`_normalize_url` when canonicalization fails so
+    dedup never raises during normal crawl iteration.
+    """
+    try:
+        return canonicalize_url(url)
+    except UrlCanonicalizationError:
+        return _normalize_url(url)
 
 
 async def _discover_toc_links(

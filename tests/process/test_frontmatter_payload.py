@@ -30,7 +30,9 @@ def test_assemble_frontmatter_payload_includes_required_metadata_fields() -> Non
 def test_assemble_frontmatter_payload_matches_schema_shape() -> None:
     payload = assemble_frontmatter_payload(WikiFrontmatter, _wiki_metadata())
     assert isinstance(payload, WikiFrontmatter)
-    assert payload.model_dump(mode="json")["tags"] == ["architecture", "process"]
+    dumped = payload.model_dump(mode="json")
+    # Wiki-specific ``tags`` lives under the ``docline:`` namespace per v1 contract.
+    assert dumped["docline"]["tags"] == ["architecture", "process"]
 
 
 def test_assemble_frontmatter_payload_rejects_missing_required_fields() -> None:

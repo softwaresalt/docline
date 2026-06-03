@@ -10,6 +10,7 @@ from docline.app_models import ProcessRequest
 from docline.elt.orchestrate import orchestrate_fetch
 from docline.paths import PathContainmentError, safe_workspace_path
 from docline.quarantine_viewer import QuarantineViewerError, render_local_quarantine_viewer
+from docline.schema.export import export_base_frontmatter_schema_json
 from docline.schema.models import DoclineError
 
 
@@ -61,6 +62,15 @@ def _build_parser() -> argparse.ArgumentParser:
         default="output",
         help="Processing output directory.",
     )
+    process_parser.add_argument(
+        "--allow-heading-disorder",
+        action="store_true",
+        default=False,
+        help=(
+            "Bypass H1->H2->H3 heading hierarchy validation during Markdown "
+            "assembly. Defaults to enforcing graphtor-docs chunk-boundary parentage."
+        ),
+    )
 
     quarantine_viewer_parser = subcommands.add_parser(
         "quarantine-viewer",
@@ -74,6 +84,11 @@ def _build_parser() -> argparse.ArgumentParser:
         "--output-dir",
         default="quarantine-viewer",
         help="Workspace-local output directory for the rendered viewer.",
+    )
+
+    subcommands.add_parser(
+        "export-schema",
+        help="Print the JSON Schema for the BaseFrontmatter v1 contract.",
     )
 
     return parser
@@ -98,7 +113,7 @@ def main(argv: list[str] | None = None) -> int:
     args_list = argv if argv is not None else sys.argv[1:]
 
     if not args_list:
-        print("usage: docline [--manifest | fetch | process | quarantine-viewer]")
+        print("usage: docline [--manifest | fetch | process | quarantine-viewer | export-schema]")
         return 2
 
     parser = _build_parser()
@@ -163,6 +178,7 @@ def main(argv: list[str] | None = None) -> int:
             request = ProcessRequest(
                 staging_dir=parsed.staging_dir,
                 output_dir=parsed.output_dir,
+                allow_heading_disorder=parsed.allow_heading_disorder,
             )
         except ValueError as err:
             print(f"error: {err}", file=sys.stderr)
@@ -184,7 +200,11 @@ def main(argv: list[str] | None = None) -> int:
         print(json.dumps({"viewer_path": str(viewer_path)}))
         return 0
 
-    print("usage: docline [--manifest | fetch | process | quarantine-viewer]")
+    if parsed.command == "export-schema":
+        print(export_base_frontmatter_schema_json())
+        return 0
+
+    print("usage: docline [--manifest | fetch | process | quarantine-viewer | export-schema]")
     return 2
 
 

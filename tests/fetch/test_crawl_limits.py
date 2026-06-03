@@ -561,3 +561,76 @@ def test_crawl_skips_nonliteral_print_pages_with_render_mode_marker(
     )
 
     assert results == []
+
+
+def test_crawl_deduplicates_by_canonical_key(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Links that canonicalize to the same URL must collapse to one result.
+
+    Round-trip dedup covers the equivalence classes pinned by
+    ``canonicalize_url``: query order, tracking-param removal, scheme/host
+    case, fragments, and default-port stripping.
+    """
+    page_body = (
+        "<html><body>"
+        '<a href="https://example.com/target?b=2&a=1">A</a>'
+        '<a href="HTTPS://EXAMPLE.com/target?a=1&b=2#frag">B</a>'
+        '<a href="https://example.com/target?a=1&b=2&utm_source=newsletter">C</a>'
+        '<a href="https://example.com:443/target?b=2&a=1">D</a>'
+        "</body></html>"
+    )
+    pages = {
+        "https://example.com/start": FetchResponse(
+            url="https://example.com/start",
+            status=200,
+            content_type="text/html",
+            body=page_body,
+        ),
+        "https://example.com/target": FetchResponse(
+            url="https://example.com/target",
+            status=200,
+            content_type="text/html",
+            body="<html><body><h1>Target</h1></body></html>",
+        ),
+    }
+    fetch_count: dict[str, int] = {}
+
+    async def fake_fetch_page(
+        url: str,
+        *,
+        timeout_seconds: float = 30.0,
+        max_redirects: int = 5,
+    ) -> FetchResponse:
+        del timeout_seconds, max_redirects
+        fetch_count[url] = fetch_count.get(url, 0) + 1
+        # Match by canonical key — any of the four aliases requests the same body.
+        for key, response in pages.items():
+            if url == key or url.startswith("https://example.com/target"):
+                return pages["https://example.com/target"] if "target" in url else response
+        raise KeyError(url)
+
+    monkeypatch.setattr("docline.fetch.crawl.fetch_page", fake_fetch_page)
+
+    results = asyncio.run(
+        crawl(
+            "https://example.com/start",
+            CrawlConfig(
+                max_pages=10,
+                max_depth=2,
+                respect_robots=False,
+                domain_lock=True,
+            ),
+        )
+    )
+
+    emitted_urls = [result.url for result in results]
+    # Start page plus the single canonical target — four aliases collapse to one.
+    assert "https://example.com/start" in emitted_urls
+    target_emissions = [url for url in emitted_urls if "target" in url]
+    assert len(target_emissions) == 1, (
+        f"expected 1 emission for target aliases, got {len(target_emissions)}: {target_emissions}"
+    )
+    # Network fetch must run at most once per canonical key for the target.
+    target_fetches = sum(count for url, count in fetch_count.items() if "target" in url)
+    assert target_fetches == 1, (
+        f"expected 1 fetch for canonical target, got {target_fetches}: {fetch_count}"
+    )

@@ -19,8 +19,9 @@ from docline.app_models import (
 )
 from docline.fetch.html_normalize import extract_headings, normalize_heading_hierarchy
 from docline.fetch.models import StagingJob
-from docline.paths import PathContainmentError, safe_workspace_path
+from docline.paths import PathContainmentError, posixify_path, safe_workspace_path
 from docline.process.assemble import assemble_markdown
+from docline.process.hashing import compute_content_sha256
 from docline.process.manifest import update_manifest_index, write_manifest_index
 from docline.process.metadata import assemble_frontmatter_payload, resolve_document_type
 from docline.process.output import write_markdown_output
@@ -193,6 +194,8 @@ def _build_markdown_with_frontmatter(
     body: str,
     page_metadata: Mapping[str, object] | None = None,
     title_override: str | None = None,
+    relative_input_path: Path | str | None = None,
+    allow_heading_disorder: bool = False,
 ) -> str:
     """Wrap a document body in YAML frontmatter and return an assembled Markdown string.
 
@@ -207,6 +210,14 @@ def _build_markdown_with_frontmatter(
         file_path: Absolute path to the staged file (used for title derivation).
         body: Extracted Markdown body text.
         page_metadata: Optional per-file staged metadata (URL/depth for crawls).
+        title_override: Optional explicit title that bypasses derivation.
+        relative_input_path: Path of the staged source artifact relative to the
+            job's ``files/`` directory. When supplied, it is normalized through
+            :func:`docline.paths.posixify_path` and emitted as the
+            ``source_path`` frontmatter field so downstream graphtor-docs
+            consumers always see forward-slash POSIX paths (PA-2 / 010-S F2.T3).
+        allow_heading_disorder: When ``True``, bypass the H1->H2->H3 heading
+            hierarchy validation enforced by :func:`assemble_markdown`.
 
     Returns:
         Assembled Markdown string with YAML frontmatter.
@@ -232,12 +243,27 @@ def _build_markdown_with_frontmatter(
         "title": title,
         "source": source_str,
         "ingested_at": datetime.now(UTC),
+        "content_sha256": compute_content_sha256(body),
     }
+    if relative_input_path is not None:
+        base_data["source_path"] = posixify_path(relative_input_path)
     if schema_family is WebFrontmatter and source_url:
         base_data["source_url"] = source_url
         crawl_depth = metadata.get("crawl_depth")
         if type(crawl_depth) is int and crawl_depth >= 0:
             base_data["crawl_depth"] = crawl_depth
+        http_status = metadata.get("http_status")
+        if type(http_status) is int and http_status >= 100:
+            base_data["http_status"] = http_status
+        content_type = metadata.get("content_type")
+        if isinstance(content_type, str) and content_type:
+            base_data["content_type"] = content_type
+        final_url = metadata.get("final_url")
+        if isinstance(final_url, str) and final_url:
+            base_data["final_url"] = final_url
+        fetched_at = metadata.get("fetched_at")
+        if isinstance(fetched_at, str) and fetched_at:
+            base_data["fetched_at"] = fetched_at
 
     try:
         payload = assemble_frontmatter_payload(schema_family, base_data)
@@ -245,7 +271,11 @@ def _build_markdown_with_frontmatter(
         # Fallback: use WikiFrontmatter with minimal fields only
         payload = assemble_frontmatter_payload(WikiFrontmatter, base_data)
 
-    return assemble_markdown(payload.model_dump(mode="json"), body)
+    return assemble_markdown(
+        payload.model_dump(mode="json"),
+        body,
+        allow_heading_disorder=allow_heading_disorder,
+    )
 
 
 def _build_document_id(job_id: str, input_path: str, ingest_order: int) -> str:
@@ -294,6 +324,18 @@ def get_manifest() -> Manifest:
                 name="process",
                 description=("Process staged documents into schema-validated Markdown output."),
                 parameters=process_schema,
+            ),
+            ManifestTool(
+                name="export_schema",
+                description=(
+                    "Return the JSON Schema for the BaseFrontmatter v1 contract"
+                    " as a deterministic sort_keys-normalized JSON string."
+                ),
+                parameters={
+                    "type": "object",
+                    "properties": {},
+                    "additionalProperties": False,
+                },
             ),
         ]
     )
@@ -423,6 +465,8 @@ def execute_process(request: ProcessRequest) -> ProcessResult:
                         document_part.body,
                         page_metadata=page_metadata,
                         title_override=title_override,
+                        relative_input_path=rel_in_files,
+                        allow_heading_disorder=request.allow_heading_disorder,
                     )
                 except Exception as err:  # noqa: BLE001
                     _log.warning("Failed to build frontmatter for %s: %s", file_path, err)

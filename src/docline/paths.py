@@ -1,5 +1,6 @@
-"""Workspace path containment enforcement for the docline pipeline."""
+"""Workspace path containment enforcement and POSIX normalization for the docline pipeline."""
 
+import os
 import re
 from pathlib import Path
 
@@ -11,6 +12,28 @@ _WINDOWS_DRIVE_RE = re.compile(r"^[A-Za-z]:", re.ASCII)
 
 class PathContainmentError(DoclineError):
     """Raised when a path resolves outside the workspace root."""
+
+
+def posixify_path(path: str | os.PathLike[str]) -> str:
+    """Return a forward-slash POSIX string for any path-like input.
+
+    Normalizes Windows-style backslash separators, mixed separators, drive
+    letters (``C:\\...`` → ``C:/...``), and UNC paths (``\\\\server\\share`` →
+    ``//server/share``) into a deterministic forward-slash representation
+    suitable for storing in document frontmatter ``source_path`` fields. The
+    transformation is idempotent: applying ``posixify_path`` twice yields the
+    same result as applying it once.
+
+    Args:
+        path: Any string or ``os.PathLike[str]`` value, including POSIX paths,
+            Windows paths, mixed-separator paths, drive-letter absolute paths,
+            UNC paths, ``pathlib.PurePosixPath``, and ``pathlib.PureWindowsPath``.
+
+    Returns:
+        A string with all backslash separators converted to forward slashes.
+        Empty input returns the empty string.
+    """
+    return os.fspath(path).replace("\\", "/")
 
 
 def validate_workspace_relative_path(relative: str | Path) -> str:

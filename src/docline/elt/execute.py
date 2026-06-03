@@ -372,11 +372,16 @@ def _fetch_url(config: WebCrawlSource | ManifestUrlSource, files_dir: Path) -> i
             dest = files_dir / rel_path
             dest.parent.mkdir(parents=True, exist_ok=True)
             dest.write_text(result.response.body, encoding="utf-8")
-            page_metadata = {
+            page_metadata: dict[str, object] = {
                 "page_url": result.url,
                 "crawl_depth": result.depth,
                 "crawl_order": staged_count,
+                "http_status": result.response.status,
+                "final_url": result.response.url,
+                "fetched_at": datetime.now(UTC).isoformat(),
             }
+            if result.response.content_type is not None:
+                page_metadata["content_type"] = result.response.content_type
             _staged_web_metadata_path(dest).write_text(
                 json.dumps(page_metadata, indent=2),
                 encoding="utf-8",
