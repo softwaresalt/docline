@@ -5,8 +5,8 @@ shipment: 010-S
 feature: 010-F
 date: 2026-06-03
 branch: feat/docline-graphtor-alignment
-head_sha: 69cad44
-status: in-progress
+head_sha: a04b877
+status: complete
 agent: ship
 ---
 
@@ -77,4 +77,67 @@ the first task of the next invocation with fresh context.
 ## Session-3 invocations log
 
 * Invocation 1 (this checkpoint): 3 tasks, +3 cumulative → 23/39.
+
+## Final summary — 010-S complete (39/39)
+
+* **Session-3 contribution**: 19 tasks (010.021-T → 010.039-T) plus the
+  010.034/010.035 recovery sequence.
+* **Cumulative 010-S contribution**: 39 / 39 tasks archived.
+  * Session 1: 1 task (010.001-T groundwork).
+  * Session 2: 19 tasks (010.002-T → 010.020-T).
+  * Session 3: 19 tasks (010.021-T → 010.039-T) + recovery.
+* **PA-1 (BaseFrontmatter v1 extension)**: `ActionResult: applied` @ `d18d4d9`.
+* **PA-2 (POSIX path migration)**: `ActionResult: applied` @ `fc9e2ca`.
+* **Recovery**: 010.034-T archive recovered + 010.035-T impl committed
+  retroactively after lifecycle slip; see commits `d878efa`, `f0dd767`,
+  `05e7483`.
+
+### F-block status (all COMPLETE)
+
+| Block | Scope | Status |
+| --- | --- | --- |
+| F1 | Frontmatter v1 field set + docline namespace | COMPLETE |
+| F2 | POSIX `source_path` normalization | COMPLETE |
+| F3 | Heading-hierarchy validator + chunk-boundary rules | COMPLETE |
+| F4 | DOCX reader + style mapping | COMPLETE |
+| F5 | PDF heuristic + docling opt-in layout engine | COMPLETE |
+| F6 | Content SHA-256 + manifest plumbing | COMPLETE |
+| F7 | Chunk anchor emission (opt-in `emit_chunk_anchors`) | COMPLETE |
+| F8 | Graphtor ingestion contract tests + opt-in real-binary suite | COMPLETE |
+
+### P2 advisories honored in flight
+
+* `defusedxml` adoption for DOCX parsing (010.015-T).
+* JSON Schema `$schema` + `$id` declarations on emitted schemas (010.005-T).
+* SSRF defense-in-depth on URL fetch path (010.030-T).
+
+### Pre-existing issues (out of scope, not blocking)
+
+* Stash `CE758832` — Windows pytest tmp `PermissionError` noise; mitigated
+  in-session via `--basetemp=logs/pytest-tmp`. Tracked for separate cleanup.
+
+### Final artifacts (invocation 7)
+
+| Task | Commit | Description |
+| --- | --- | --- |
+| 010.037-T | `14419c3` | Red-first graphtor ingestion contract test suite (`graphtor_integration` marker) |
+| 010.038-T | `51d7654` | Register `graphtor_integration` marker in `pyproject.toml` |
+| 010.039-T | `82a7669` | Opt-in real-binary round-trip suite + `tests/fixtures/real_binary/README.md` |
+
+Archive commits: `a2047e5`, `7b69d07`, `a04b877`.
+
+### Next phase
+
+Execution complete. The next phase is a **separate Ship session**:
+
+1. `review` skill → identify P0/P1 findings on the feature branch.
+2. `fix-ci` skill → remediate any failures.
+3. `pr-lifecycle` skill → open PR.
+4. Operator merge approval (P-014 gate).
+5. `runtime-verification` skill → validator manifest evidence.
+6. `operational-closure` skill → releasability evidence.
+7. Post-merge closure protocol (knowledge graduation, shipment close).
+
+**Recommended next session action**: invoke the `review` skill against
+`feat/docline-graphtor-alignment` to surface findings before opening the PR.
 
