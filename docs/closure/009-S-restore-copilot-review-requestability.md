@@ -12,8 +12,6 @@ references:
   - docs/decisions/2026-06-01-restore-copilot-review-requestability-deliberation.md
 ---
 
-# 009-S — Restore Copilot Review Requestability (Closure)
-
 ## Outcome
 
 Shipment **009-S** closed via verify-and-archive. No code surface was modified.
