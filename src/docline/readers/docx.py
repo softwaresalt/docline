@@ -22,6 +22,7 @@ class DocxReadError(DoclineError):
 
 
 _WORDPROCESSING_NS = "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}"
+_BODY_TAG = f"{_WORDPROCESSING_NS}body"
 _PARA_TAG = f"{_WORDPROCESSING_NS}p"
 _TEXT_TAG = f"{_WORDPROCESSING_NS}t"
 _PPR_TAG = f"{_WORDPROCESSING_NS}pPr"
@@ -37,6 +38,9 @@ _ABSTRACT_NUM_ID_QNAME = f"{_WORDPROCESSING_NS}abstractNumId"
 _LVL_TAG = f"{_WORDPROCESSING_NS}lvl"
 _ILVL_ATTR = f"{_WORDPROCESSING_NS}ilvl"
 _NUMFMT_TAG = f"{_WORDPROCESSING_NS}numFmt"
+_TBL_TAG = f"{_WORDPROCESSING_NS}tbl"
+_TR_TAG = f"{_WORDPROCESSING_NS}tr"
+_TC_TAG = f"{_WORDPROCESSING_NS}tc"
 
 _ORDERED_NUMFMTS = frozenset(
     {
@@ -274,6 +278,55 @@ def _render_list_block(
     return "\n".join(lines)
 
 
+def _escape_cell(text: str) -> str:
+    """Escape pipe characters so GFM column boundaries remain intact."""
+    return text.replace("|", "\\|")
+
+
+def _cell_text(cell: Element) -> str:
+    """Concatenate direct-child paragraph text in a ``<w:tc>``.
+
+    Paragraph blocks inside a cell are joined with a single space; empty
+    paragraphs are dropped. List and heading formatting inside a cell is
+    flattened to plain text for GFM table compatibility.
+    """
+    parts: list[str] = []
+    for para in cell.findall(_PARA_TAG):
+        text = _paragraph_text(para).strip()
+        if text:
+            parts.append(text)
+    return " ".join(parts)
+
+
+def _render_table(table: Element) -> str | None:
+    """Render a ``<w:tbl>`` element as a GFM Markdown table.
+
+    The first row is treated as the header. Returns ``None`` for tables
+    with zero rows or zero columns (caller should skip emission).
+    """
+    rows = table.findall(_TR_TAG)
+    if not rows:
+        return None
+    grid: list[list[str]] = []
+    max_cols = 0
+    for row in rows:
+        cells = row.findall(_TC_TAG)
+        cell_texts = [_escape_cell(_cell_text(cell)) for cell in cells]
+        grid.append(cell_texts)
+        if len(cell_texts) > max_cols:
+            max_cols = len(cell_texts)
+    if max_cols == 0:
+        return None
+    for row_cells in grid:
+        while len(row_cells) < max_cols:
+            row_cells.append("")
+    lines: list[str] = ["| " + " | ".join(grid[0]) + " |"]
+    lines.append("| " + " | ".join(["---"] * max_cols) + " |")
+    for row_cells in grid[1:]:
+        lines.append("| " + " | ".join(row_cells) + " |")
+    return "\n".join(lines)
+
+
 def read_docx_blocks(path: Path) -> list[str]:
     """Extract ordered Markdown blocks from a DOCX file.
 
@@ -281,9 +334,10 @@ def read_docx_blocks(path: Path) -> list[str]:
     level 1-6 are emitted as ATX-prefixed strings (``# `` through
     ``###### ``). Paragraphs carrying ``<w:numPr>`` are accumulated into
     contiguous list blocks rendered as GFM lists with two-space indent
-    per ``w:ilvl``. All other paragraphs (Normal, BodyText, unknown
-    styles, or no style at all) are emitted as plain text. Empty
-    paragraphs are skipped regardless of style.
+    per ``w:ilvl``. ``<w:tbl>`` elements render as GFM tables with the
+    first row as the header. All other paragraphs (Normal, BodyText,
+    unknown styles, or no style at all) are emitted as plain text.
+    Empty paragraphs and empty tables are skipped.
 
     Args:
         path: Path to the DOCX file. Must be a trusted-local path.
@@ -296,6 +350,9 @@ def read_docx_blocks(path: Path) -> list[str]:
         FileNotFoundError: If ``path`` does not exist.
     """
     tree, numbering_map = _load_docx_data(path)
+    body = tree.find(_BODY_TAG)
+    elements = list(body) if body is not None else list(tree)
+
     blocks: list[str] = []
     current_list: list[tuple[int, str, int]] = []
     current_num_id: int | None = None
@@ -307,29 +364,34 @@ def read_docx_blocks(path: Path) -> list[str]:
             current_list = []
             current_num_id = None
 
-    for paragraph in tree.iter(_PARA_TAG):
-        numpr = _paragraph_numpr(paragraph)
-        text = _paragraph_text(paragraph).strip()
-
-        if numpr is not None:
-            num_id, ilvl = numpr
-            if not text:
-                # Drop empty list items but keep the surrounding run intact.
+    for element in elements:
+        if element.tag == _PARA_TAG:
+            numpr = _paragraph_numpr(element)
+            text = _paragraph_text(element).strip()
+            if numpr is not None:
+                num_id, ilvl = numpr
+                if not text:
+                    # Drop empty list items but keep the surrounding run intact.
+                    continue
+                if current_num_id is not None and current_num_id != num_id:
+                    _flush_list()
+                current_num_id = num_id
+                current_list.append((ilvl, text, num_id))
                 continue
-            if current_num_id is not None and current_num_id != num_id:
-                _flush_list()
-            current_num_id = num_id
-            current_list.append((ilvl, text, num_id))
-            continue
-
-        _flush_list()
-        if not text:
-            continue
-        level = _heading_level(_paragraph_style(paragraph))
-        if level is not None:
-            blocks.append(f"{'#' * level} {text}")
-        else:
-            blocks.append(text)
+            _flush_list()
+            if not text:
+                continue
+            level = _heading_level(_paragraph_style(element))
+            if level is not None:
+                blocks.append(f"{'#' * level} {text}")
+            else:
+                blocks.append(text)
+        elif element.tag == _TBL_TAG:
+            _flush_list()
+            rendered = _render_table(element)
+            if rendered is not None:
+                blocks.append(rendered)
+        # Other block-level body elements (sectPr, bookmarks, etc.) are skipped.
 
     _flush_list()
     return blocks

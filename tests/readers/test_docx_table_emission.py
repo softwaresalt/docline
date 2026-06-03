@@ -76,9 +76,7 @@ def test_three_column_table_emits_three_columns(tmp_path: Path) -> None:
         _row(_cell("4"), _cell("5"), _cell("6")),
     )
     docx = _make_docx(tmp_path, body)
-    expected = (
-        "| A | B | C |\n| --- | --- | --- |\n| 1 | 2 | 3 |\n| 4 | 5 | 6 |"
-    )
+    expected = "| A | B | C |\n| --- | --- | --- |\n| 1 | 2 | 3 |\n| 4 | 5 | 6 |"
     assert read_docx(docx) == expected
 
 
@@ -94,9 +92,7 @@ def test_multi_paragraph_cell_concatenates_with_space(tmp_path: Path) -> None:
     )
     docx = _make_docx(tmp_path, body)
     expected = (
-        "| Header | Description |\n"
-        "| --- | --- |\n"
-        "| Topic | First sentence. Second sentence. |"
+        "| Header | Description |\n| --- | --- |\n| Topic | First sentence. Second sentence. |"
     )
     assert read_docx(docx) == expected
 
@@ -117,9 +113,7 @@ def test_pipe_in_cell_is_escaped(tmp_path: Path) -> None:
         _row(_cell("|"), _cell("alternation")),
     )
     docx = _make_docx(tmp_path, body)
-    expected = (
-        "| Operator | Meaning |\n| --- | --- |\n| \\| | alternation |"
-    )
+    expected = "| Operator | Meaning |\n| --- | --- |\n| \\| | alternation |"
     assert read_docx(docx) == expected
 
 
@@ -138,11 +132,7 @@ def test_table_between_paragraphs_has_blank_line_separation(tmp_path: Path) -> N
         + _plain_para("After.")
     )
     docx = _make_docx(tmp_path, body)
-    expected = (
-        "Before.\n\n"
-        "| k | v |\n| --- | --- |\n| a | b |\n\n"
-        "After."
-    )
+    expected = "Before.\n\n| k | v |\n| --- | --- |\n| a | b |\n\nAfter."
     assert read_docx(docx) == expected
 
 
@@ -155,10 +145,7 @@ def test_two_tables_are_split_by_blank_line(tmp_path: Path) -> None:
         _row(_cell("v2")),
     )
     docx = _make_docx(tmp_path, body)
-    expected = (
-        "| h1 |\n| --- |\n| v1 |\n\n"
-        "| h2 |\n| --- |\n| v2 |"
-    )
+    expected = "| h1 |\n| --- |\n| v1 |\n\n| h2 |\n| --- |\n| v2 |"
     assert read_docx(docx) == expected
 
 
