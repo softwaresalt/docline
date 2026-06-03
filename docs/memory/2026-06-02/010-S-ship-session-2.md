@@ -5,7 +5,7 @@ shipment: 010-S
 feature: 010-F
 date: 2026-06-02
 branch: feat/docline-graphtor-alignment
-head_sha: d87fc56
+head_sha: f013481
 status: in-progress
 agent: ship
 ---
