@@ -13,9 +13,9 @@ by stable identifier:
 * emission is gated by ``emit_chunk_anchors=False`` (default off) so the
   existing baseline behavior is preserved without an opt-in
 
-These tests are authored red-first per Constitution Principle II. The
-``emit_chunk_anchors`` keyword is intentionally not yet supported by
-``assemble_markdown``; the type stub silences pyright until the impl lands.
+The ``emit_chunk_anchors`` keyword is implemented in
+``src/docline/process/assemble.py`` and exercised here as the green-phase
+characterization suite for the contract above.
 """
 
 from collections.abc import Mapping
@@ -58,7 +58,7 @@ def test_chunk_anchors_injected_before_h1_h2_h3() -> None:
     markdown = assemble_markdown(
         _frontmatter(),
         body,
-        emit_chunk_anchors=True,  # type: ignore[call-arg]
+        emit_chunk_anchors=True,
     )
     lines = _body_lines(markdown)
     # Each heading is preceded by its anchor on its own line.
@@ -84,7 +84,7 @@ def test_chunk_anchors_are_zero_padded_four_digits() -> None:
     markdown = assemble_markdown(
         _frontmatter(),
         headings + "\n",
-        emit_chunk_anchors=True,  # type: ignore[call-arg]
+        emit_chunk_anchors=True,
     )
     assert '<a id="chunk-0001"></a>' in markdown
     assert '<a id="chunk-0009"></a>' in markdown
@@ -101,7 +101,7 @@ def test_chunk_anchors_ignore_h4_and_deeper() -> None:
     markdown = assemble_markdown(
         _frontmatter(),
         body,
-        emit_chunk_anchors=True,  # type: ignore[call-arg]
+        emit_chunk_anchors=True,
     )
     # Three boundary headings → three anchors.
     assert markdown.count('<a id="chunk-') == 3
@@ -128,7 +128,7 @@ def test_chunk_anchors_skip_atx_headings_inside_fenced_code() -> None:
     markdown = assemble_markdown(
         _frontmatter(),
         body,
-        emit_chunk_anchors=True,  # type: ignore[call-arg]
+        emit_chunk_anchors=True,
     )
     # Exactly two chunk anchors — one per real heading.
     assert markdown.count('<a id="chunk-') == 2
@@ -142,7 +142,7 @@ def test_chunk_anchors_handle_empty_body() -> None:
     markdown = assemble_markdown(
         _frontmatter(),
         "",
-        emit_chunk_anchors=True,  # type: ignore[call-arg]
+        emit_chunk_anchors=True,
     )
     assert "chunk-" not in markdown
 
@@ -153,7 +153,7 @@ def test_chunk_anchors_handle_body_without_boundary_headings() -> None:
     markdown = assemble_markdown(
         _frontmatter(),
         body,
-        emit_chunk_anchors=True,  # type: ignore[call-arg]
+        emit_chunk_anchors=True,
     )
     assert "chunk-" not in markdown
     assert "Plain paragraph." in markdown
