@@ -11,6 +11,7 @@ from docline.app_models import (
     ProcessResult,
 )
 from docline.mcp.exceptions import McpTransportError
+from docline.schema.export import export_base_frontmatter_schema_json
 
 
 class TransportMode(Enum):
@@ -93,6 +94,15 @@ class DoclineMcpServer:
         if isinstance(request, dict):
             request = ProcessRequest.model_validate(request)
         return execute_process(request)
+
+    def export_schema(self) -> str:
+        """Return the BaseFrontmatter v1 JSON Schema as a deterministic JSON string.
+
+        Returns:
+            A ``sort_keys`` normalized JSON Schema document declaring the
+            Draft 2020-12 dialect and the stable docline ``$id``.
+        """
+        return export_base_frontmatter_schema_json()
 
 
 def get_manifest_response() -> McpManifestResponse:

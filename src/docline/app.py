@@ -297,6 +297,18 @@ def get_manifest() -> Manifest:
                 description=("Process staged documents into schema-validated Markdown output."),
                 parameters=process_schema,
             ),
+            ManifestTool(
+                name="export_schema",
+                description=(
+                    "Return the JSON Schema for the BaseFrontmatter v1 contract"
+                    " as a deterministic sort_keys-normalized JSON string."
+                ),
+                parameters={
+                    "type": "object",
+                    "properties": {},
+                    "additionalProperties": False,
+                },
+            ),
         ]
     )
 
