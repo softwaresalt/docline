@@ -24,6 +24,20 @@ def _element_to_markdown(el: Tag | NavigableString) -> str:
         return f"{'#' * int(name[1])} {text}"
     if name == "p":
         return text
+    if name == "img":
+        # F6.T2 image preservation: render every <img> as Markdown image so
+        # downstream readers and accessibility linters can see it. Missing
+        # ``alt`` becomes ``![](src)`` rather than being silently dropped.
+        src = el.get("src", "")
+        alt_attr = el.get("alt")
+        alt_text = alt_attr if isinstance(alt_attr, str) else ""
+        if not src:
+            return ""
+        return f"![{alt_text}]({src})"
+    if name == "figcaption":
+        # Plain caption text on its own line; rendered after the figure's
+        # <img> by the containing <figure> recursion.
+        return text
     if name in {"ul", "ol"}:
         items = [
             f"* {item.get_text(' ', strip=True)}"
@@ -31,7 +45,7 @@ def _element_to_markdown(el: Tag | NavigableString) -> str:
             if item.get_text(" ", strip=True)
         ]
         return "\n".join(items)
-    if name in {"div", "section", "article", "main", "body", "[document]"}:
+    if name in {"figure", "div", "section", "article", "main", "body", "[document]"}:
         parts = [
             _element_to_markdown(child)
             for child in el.children
