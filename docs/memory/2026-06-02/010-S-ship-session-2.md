@@ -124,3 +124,96 @@ does **not** extend to PA-2 because PA-2 changes the emitted output shape, not
 just an internal refactor. Awaiting explicit operator approval before claiming
 `010.009-T`.
 
+*(PA-2 was approved 2026-06-03 and applied in `fc9e2ca`; session resumed and
+continued through 13 Ship invocations to the 20-task circuit breaker.)*
+
+## Session-2 Final Summary (20-task circuit breaker reached)
+
+### Cumulative completion
+
+* Total tasks completed across session-2: 19 (010.002 → 010.020;
+  010.001 was session-1)
+* Cumulative tasks archived: 20 / 39
+* Sessions used: 1 (session-1: 1 task), 2 (session-2: 19 tasks via 13 Ship
+  invocations)
+* Remaining: 19 tasks (010.021 → 010.039) across F5 PDF, F6 Web crawl,
+  F7 reader registry, F8 CLI/MCP parity
+
+### Strict-safety records
+
+* PA-1 (`BaseFrontmatter` v1 extension): approved 2026-06-02; applied in
+  010.002-T commit `d18d4d9`
+* PA-2 (POSIX path migration): approved 2026-06-03; applied in 010.009-T
+  commit `fc9e2ca`
+* ActionResult final: both `applied`
+
+### Quality gates
+
+* All `ruff check`, `pyright`, focused `pytest`, and `ruff format` gates
+  green at every task boundary
+* Full pytest suite not run during session-2 (focused subsets only, due
+  to pre-existing Windows tmp `PermissionError` noise documented in
+  stash `CE758832`); focused runs used `--basetemp=logs/pytest-tmp` to
+  bypass the system-temp ACL issue
+
+### Notable patterns
+
+* `defusedxml` dependency added in 010.015-T per P2 advisory (XXE
+  hardening on DOCX parser); `uv.lock` re-resolve drift observed on
+  resume — left unstaged so a future task / Ship session can decide
+  whether to land it as a `build(core)` housekeeping commit
+* `chunk_id` computation matches graphtor-docs contract (SHA-256 with
+  null byte separator)
+* POSIX path normalization (PA-2) applied to all 9 emission / reader
+  paths via the central `posixify_path()` helper
+
+### F5.T1 baseline contract (010.020-T)
+
+* Pinned 10 assertions on current built-in PDF extractor output:
+  literal `(text) Tj`, multi-page joins (`\n\n`), array `[(a) (b)] TJ`,
+  hex `<bytes> Tj`, ordered page list, and the absence of ATX heading
+  markers
+* `_PYPDF_AVAILABLE` patched off in fixtures for cross-version
+  determinism (synthetic minimal PDFs without xref tables also naturally
+  fall back from pypdf to the built-in extractor)
+* F5.T2 / F5.T3 introduction of font-size histogram headers will
+  intentionally break the heading-absence assertions — that is the
+  characterization handoff
+
+### Stash items created
+
+* `CE758832` (low priority): "Investigate pytest tmp PermissionError
+  noise on Windows (176+ entries during pytest runs)" — workaround in
+  use: `--basetemp=logs/pytest-tmp`
+
+### Next Ship session start state
+
+* Branch: `feat/docline-graphtor-alignment` @ `a6b0172`
+* Cumulative: 20 / 39
+* Auto-approve scope: **REMAINS active** (no further PA gates in plan)
+* Remaining work:
+  * F5 (010.021-T → 010.027-T) — PDF font-size heuristic + optional
+    docling opt-in
+  * F6 (010.028-T → 010.033-T) — HTML semantics, URL canonicalization,
+    sitemap discovery; includes the P2 SSRF advisory in F6.T6
+  * F7 (010.034-T → 010.036-T) — staging metadata propagation +
+    optional chunk anchors
+  * F8 (010.037-T → 010.039-T) — cross-tool contract doc + E2E
+    integration test
+* After all 39 tasks land: `review` skill → `fix-ci` skill →
+  `pr-lifecycle` skill → operator merge approval →
+  `runtime-verification` skill → `operational-closure` skill →
+  post-merge closure
+* Recommended next-session ceiling: 18–20 tasks (the full remaining 19
+  may be doable in one session if the task-budget holds; otherwise
+  split at the F6/F7 boundary, around 010.034-T)
+* Open housekeeping: `uv.lock` drift (defusedxml entry) is unstaged in
+  the working tree at session end and will reappear on the next
+  `uv run` invocation; resolve as a `build(core)` commit in the next
+  session
+
+### Halt declaration
+
+Session circuit breaker tripped at 20 / 20. Mandatory halt per
+`circuit-breaker.instructions.md`. A new Ship session in a new
+conversation / dispatch is required to continue 010-S F5 + F6 + F7 + F8.
