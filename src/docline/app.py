@@ -19,7 +19,7 @@ from docline.app_models import (
 )
 from docline.fetch.html_normalize import extract_headings, normalize_heading_hierarchy
 from docline.fetch.models import StagingJob
-from docline.paths import PathContainmentError, safe_workspace_path
+from docline.paths import PathContainmentError, posixify_path, safe_workspace_path
 from docline.process.assemble import assemble_markdown
 from docline.process.hashing import compute_content_sha256
 from docline.process.manifest import update_manifest_index, write_manifest_index
@@ -194,6 +194,7 @@ def _build_markdown_with_frontmatter(
     body: str,
     page_metadata: Mapping[str, object] | None = None,
     title_override: str | None = None,
+    relative_input_path: Path | str | None = None,
 ) -> str:
     """Wrap a document body in YAML frontmatter and return an assembled Markdown string.
 
@@ -208,6 +209,12 @@ def _build_markdown_with_frontmatter(
         file_path: Absolute path to the staged file (used for title derivation).
         body: Extracted Markdown body text.
         page_metadata: Optional per-file staged metadata (URL/depth for crawls).
+        title_override: Optional explicit title that bypasses derivation.
+        relative_input_path: Path of the staged source artifact relative to the
+            job's ``files/`` directory. When supplied, it is normalized through
+            :func:`docline.paths.posixify_path` and emitted as the
+            ``source_path`` frontmatter field so downstream graphtor-docs
+            consumers always see forward-slash POSIX paths (PA-2 / 010-S F2.T3).
 
     Returns:
         Assembled Markdown string with YAML frontmatter.
@@ -235,6 +242,8 @@ def _build_markdown_with_frontmatter(
         "ingested_at": datetime.now(UTC),
         "content_sha256": compute_content_sha256(body),
     }
+    if relative_input_path is not None:
+        base_data["source_path"] = posixify_path(relative_input_path)
     if schema_family is WebFrontmatter and source_url:
         base_data["source_url"] = source_url
         crawl_depth = metadata.get("crawl_depth")
@@ -437,6 +446,7 @@ def execute_process(request: ProcessRequest) -> ProcessResult:
                         document_part.body,
                         page_metadata=page_metadata,
                         title_override=title_override,
+                        relative_input_path=rel_in_files,
                     )
                 except Exception as err:  # noqa: BLE001
                     _log.warning("Failed to build frontmatter for %s: %s", file_path, err)
