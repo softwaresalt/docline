@@ -24,7 +24,31 @@ import re
 import zlib
 from pathlib import Path
 
+from docline import dependencies
+from docline.dependencies import DependencyUnavailableError
 from docline.schema.models import DoclineError
+
+# F5.T5 opt-in PDF layout engine selector. ``"heuristic"`` is the deterministic
+# built-in extractor (phase-1 banding from F5.T3). ``"docling"`` opts in to the
+# optional ``docling`` package and is gated by :func:`dependencies.pdf_available`.
+_SUPPORTED_LAYOUT_ENGINES: frozenset[str] = frozenset({"heuristic", "docling"})
+
+
+def _validate_layout_engine(engine: str) -> None:
+    """Reject unknown ``layout_engine`` values with a clear error.
+
+    Args:
+        engine: Caller-supplied engine name.
+
+    Raises:
+        ValueError: If ``engine`` is not in ``_SUPPORTED_LAYOUT_ENGINES``.
+            The message names the offending value so operators can correct
+            the flag without reading the source.
+    """
+    if engine not in _SUPPORTED_LAYOUT_ENGINES:
+        supported = ", ".join(sorted(_SUPPORTED_LAYOUT_ENGINES))
+        raise ValueError(f"Unknown PDF layout_engine {engine!r}; supported engines: {supported}")
+
 
 # ---------------------------------------------------------------------------
 # Optional pypdf integration — preferred when installed
@@ -374,7 +398,7 @@ def _extract_pdf_text_blocks(data: bytes) -> list[str]:
     return rendered
 
 
-def read_pdf(path: Path) -> str:
+def read_pdf(path: Path, *, layout_engine: str = "heuristic") -> str:
     """Extract text content from a PDF file and return it as Markdown.
 
     Prefers ``pypdf`` when installed for accurate extraction from real-world
@@ -384,6 +408,12 @@ def read_pdf(path: Path) -> str:
     Args:
         path: Path to the PDF file.  Must be a trusted-local path; remote
             content must be staged locally before calling this function.
+        layout_engine: Which layout extractor to use. ``"heuristic"`` (default)
+            uses the deterministic built-in extractor with phase-1 font-size
+            banding. ``"docling"`` opts in to the optional ``docling`` package
+            for richer layout analysis and raises
+            :class:`DependencyUnavailableError` when ``docling`` is not
+            importable.
 
     Returns:
         Markdown text extracted from the PDF (may be empty for scan-only PDFs).
@@ -391,15 +421,19 @@ def read_pdf(path: Path) -> str:
     Raises:
         PdfReadError: If PDF parsing fails.
         FileNotFoundError: If ``path`` does not exist.
+        DependencyUnavailableError: If ``layout_engine='docling'`` and the
+            ``docling`` package is not installed.
+        ValueError: If ``layout_engine`` is not a recognized engine value.
     """
-    return "\n\n".join(read_pdf_pages(path))
+    return "\n\n".join(read_pdf_pages(path, layout_engine=layout_engine))
 
 
-def read_pdf_pages(path: Path) -> list[str]:
+def read_pdf_pages(path: Path, *, layout_engine: str = "heuristic") -> list[str]:
     """Extract ordered text pages from a PDF file.
 
     Args:
         path: Path to the PDF file. Must be a trusted-local path.
+        layout_engine: Which layout extractor to use. See :func:`read_pdf`.
 
     Returns:
         Ordered non-empty page strings. Returns an empty list when no text is
@@ -408,7 +442,18 @@ def read_pdf_pages(path: Path) -> list[str]:
     Raises:
         PdfReadError: If PDF parsing fails.
         FileNotFoundError: If ``path`` does not exist.
+        DependencyUnavailableError: If ``layout_engine='docling'`` and the
+            ``docling`` package is not installed.
+        ValueError: If ``layout_engine`` is not a recognized engine value.
     """
+    _validate_layout_engine(layout_engine)
+    if layout_engine == "docling":
+        if not dependencies.pdf_available():
+            raise DependencyUnavailableError(
+                "Install the optional 'docling' package to use "
+                "layout_engine='docling' (extras: docline[pdf]; missing import: docling)"
+            )
+        return _read_pdf_docling_pages(path)
     if not path.exists():
         raise FileNotFoundError(f"File not found: {path}")
     raw = path.read_bytes()
@@ -419,6 +464,44 @@ def read_pdf_pages(path: Path) -> list[str]:
         if pages:
             return pages
     return _extract_pdf_text_blocks(raw)
+
+
+def _read_pdf_docling_pages(path: Path) -> list[str]:
+    """Extract text via the optional ``docling`` package.
+
+    Called only after :func:`dependencies.pdf_available` returns ``True``.
+
+    Args:
+        path: Path to the PDF file.
+
+    Returns:
+        Single-element list containing the docling-rendered Markdown, or an
+        empty list when docling produces no text.
+
+    Raises:
+        PdfReadError: If docling fails to convert the PDF.
+        FileNotFoundError: If ``path`` does not exist.
+    """
+    if not path.exists():
+        raise FileNotFoundError(f"File not found: {path}")
+    try:
+        from docling.document_converter import DocumentConverter  # type: ignore[import-untyped]
+    except ImportError as err:
+        # Defensive: pdf_available() said yes but the converter import failed.
+        raise DependencyUnavailableError(
+            "Install the optional 'docling' package to use "
+            "layout_engine='docling' (extras: docline[pdf]; missing import: docling)"
+        ) from err
+    try:
+        converter = DocumentConverter()
+        result = converter.convert(str(path))
+        markdown = result.document.export_to_markdown()
+    except Exception as err:  # noqa: BLE001
+        raise PdfReadError(f"docling failed to convert PDF: {path}") from err
+    markdown = markdown.strip()
+    if not markdown:
+        return []
+    return [markdown]
 
 
 def _read_pdf_pypdf_pages(raw: bytes) -> list[str]:

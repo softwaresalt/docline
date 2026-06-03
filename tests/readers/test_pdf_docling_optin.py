@@ -70,7 +70,7 @@ def test_read_pdf_accepts_layout_engine_kwarg(tmp_path: Path) -> None:
     pdf_path = _build_three_band_pdf(tmp_path)
     with patch.object(pdf_module, "_PYPDF_AVAILABLE", False):
         # The call itself must not raise TypeError for an unexpected kwarg.
-        result = read_pdf(pdf_path, layout_engine="heuristic")  # type: ignore[call-arg]
+        result = read_pdf(pdf_path, layout_engine="heuristic")
     assert isinstance(result, str)
 
 
@@ -78,7 +78,7 @@ def test_read_pdf_pages_accepts_layout_engine_kwarg(tmp_path: Path) -> None:
     """``read_pdf_pages`` must accept the same ``layout_engine`` keyword."""
     pdf_path = _build_three_band_pdf(tmp_path)
     with patch.object(pdf_module, "_PYPDF_AVAILABLE", False):
-        result = read_pdf_pages(pdf_path, layout_engine="heuristic")  # type: ignore[call-arg]
+        result = read_pdf_pages(pdf_path, layout_engine="heuristic")
     assert isinstance(result, list)
     assert all(isinstance(page, str) for page in result)
 
@@ -88,7 +88,7 @@ def test_default_engine_matches_explicit_heuristic(tmp_path: Path) -> None:
     pdf_path = _build_three_band_pdf(tmp_path)
     with patch.object(pdf_module, "_PYPDF_AVAILABLE", False):
         default_result = read_pdf(pdf_path)
-        explicit_result = read_pdf(pdf_path, layout_engine="heuristic")  # type: ignore[call-arg]
+        explicit_result = read_pdf(pdf_path, layout_engine="heuristic")
     assert default_result == explicit_result, (
         "Default engine must equal explicit 'heuristic' to keep "
         "phase-1 behavior unchanged for existing callers."
@@ -102,7 +102,7 @@ def test_docling_engine_without_docling_raises_dependency_error(
     pdf_path = _build_three_band_pdf(tmp_path)
     with patch.object(dependencies_module, "pdf_available", return_value=False):
         with pytest.raises(DependencyUnavailableError) as excinfo:
-            read_pdf(pdf_path, layout_engine="docling")  # type: ignore[call-arg]
+            read_pdf(pdf_path, layout_engine="docling")
     assert "docling" in str(excinfo.value).lower()
 
 
@@ -111,7 +111,7 @@ def test_unknown_engine_value_raises_clear_error(tmp_path: Path) -> None:
     pdf_path = _build_three_band_pdf(tmp_path)
     with patch.object(pdf_module, "_PYPDF_AVAILABLE", False):
         with pytest.raises((DoclineError, ValueError)) as excinfo:
-            read_pdf(pdf_path, layout_engine="not-a-real-engine")  # type: ignore[call-arg]
+            read_pdf(pdf_path, layout_engine="not-a-real-engine")
     # The error message must mention the offending engine value so operators
     # can correct the flag without reading the source.
     assert "not-a-real-engine" in str(excinfo.value)
@@ -121,7 +121,7 @@ def test_heuristic_engine_emits_phase1_heading_markers(tmp_path: Path) -> None:
     """The 'heuristic' engine must reuse the F5.T3 phase-1 banding output."""
     pdf_path = _build_three_band_pdf(tmp_path)
     with patch.object(pdf_module, "_PYPDF_AVAILABLE", False):
-        result = read_pdf(pdf_path, layout_engine="heuristic")  # type: ignore[call-arg]
+        result = read_pdf(pdf_path, layout_engine="heuristic")
     assert "# Document Title" in result
     assert "## Section Heading" in result
     assert "### Subsection" in result
