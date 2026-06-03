@@ -1,7 +1,9 @@
 ---
 shipment: 011-S
 title: "Closure record — docline CI workflow"
-status: probe-pending
+status: verified
+merge_sha: e07ffe6
+merged_pr: 21
 ---
 
 This document captures the runtime verification evidence for the docline CI
@@ -46,19 +48,37 @@ The following greps were run against the final workflow file:
 
 ## Per-job CI evidence
 
-To be populated after probe PR runs. Five jobs are expected on `ubuntu-latest`:
+Probe PR: [#21](https://github.com/softwaresalt/docline/pull/21) — first PR exercising the new workflow end-to-end.
 
-| Job ID      | Command                          | Conclusion | Duration |
-|-------------|----------------------------------|------------|----------|
-| `lint`      | `uv run ruff check .`            | pending    | pending  |
-| `format`    | `uv run ruff format --check .`   | pending    | pending  |
-| `typecheck` | `uv run pyright src/`            | pending    | pending  |
-| `test`      | `uv run pytest`                  | pending    | pending  |
-| `build`     | `uv run python -m build`         | pending    | pending  |
+Final green run (head SHA `026aef4`, merged as `e07ffe6`):
+[actions/runs/26911471341](https://github.com/softwaresalt/docline/actions/runs/26911471341)
 
-Probe PR number: pending (will be the 011-S feature PR — first PR with CI in scope).
+| Job ID      | Display name        | Conclusion | Duration |
+|-------------|---------------------|------------|----------|
+| `lint`      | `ruff lint`         | success    | 13 s     |
+| `format`    | `ruff format check` | success    | 12 s     |
+| `typecheck` | `pyright`           | success    | 17 s     |
+| `test`      | `pytest`            | success    | 17 s     |
+| `build`     | `sdist + wheel`     | success    | 19 s     |
 
-Probe run URL: pending.
+All five gates passed on `ubuntu-latest` per the plan's Linux-only decision.
+
+### Real-world findings caught during the probe
+
+The probe surfaced two genuine dependency issues that no local manual gate had caught:
+
+1. **`defusedxml` missing from `uv.lock`** — runtime import dependency was not
+   recorded in the lockfile. Fixed by adding it to `pyproject.toml` and
+   running `uv lock`.
+2. **No dev dependency group declared** — `pyright`, `ruff`, and `pytest` were
+   not pinned in a `[dependency-groups.dev]` table, so `uv sync --group dev`
+   resolved nothing. Added the group and re-locked.
+
+These fixes were applied across runs `26910902443`, `26911040660`, and
+`26911313237` (all `failure`) before run `26911471341` came back fully green.
+Value-add of the CI probe on day 1: immediate detection of dependency-state
+drift that local execution masks because globally-installed tools shadow the
+lockfile.
 
 ## Rollback
 
