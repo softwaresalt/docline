@@ -51,6 +51,18 @@ _TJ_HEX_RE = re.compile(rb"<([0-9A-Fa-f]+)>\s*Tj")
 _TJ_ARRAY_OP_RE = re.compile(rb"\[([^\]]*)\]\s*TJ", re.DOTALL)
 _ESCAPE_RE = re.compile(rb"\\(.)", re.DOTALL)
 
+# F5.T3 phase-1 layout heuristic: scan Tf/Tj/TJ/<hex>Tj operators in order so
+# the active font size at the moment of text emission is known. The combined
+# regex preserves operator order within a BT/ET block.
+_OPERATOR_RE = re.compile(
+    rb"/\w+\s+([\d.]+)\s+Tf"
+    rb"|\(([^)\\]*(?:\\.[^)\\]*)*)\)\s*Tj"
+    rb"|\[([^\]]*)\]\s*TJ"
+    rb"|<([0-9A-Fa-f]+)>\s*Tj",
+    re.DOTALL,
+)
+_HEADING_PREFIXES: tuple[str, str, str] = ("# ", "## ", "### ")
+
 _PDF_ESCAPE_MAP: dict[bytes, bytes] = {
     b"n": b"\n",
     b"r": b"\r",
@@ -171,43 +183,56 @@ def _decompress_stream(data: bytes) -> bytes:
         return data  # Return as-is; extraction may still find plain-text operators
 
 
-def _extract_text_from_stream(stream_data: bytes) -> list[str]:
-    """Extract text strings from a single PDF content stream.
+def _extract_text_from_stream(stream_data: bytes) -> list[tuple[str, float | None]]:
+    """Extract ordered ``(text, font_size)`` pairs from a single content stream.
 
-    Processes BT/ET text blocks and extracts all ``Tj``, ``TJ``, and hex
-    string operators.
+    Walks BT/ET text blocks operator by operator using ``_OPERATOR_RE`` so
+    the active ``Tf`` font size at the moment of each ``Tj``/``TJ``/``<hex>Tj``
+    emission is captured alongside the text. ``font_size`` is ``None`` for
+    runs emitted before any ``Tf`` has been seen.
 
     Args:
         stream_data: Raw (possibly decompressed) content stream bytes.
 
     Returns:
-        List of extracted text strings.
+        Ordered ``(text, font_size_or_None)`` runs.
     """
-    texts: list[str] = []
+    runs: list[tuple[str, float | None]] = []
     for bt_match in _BT_ET_RE.finditer(stream_data):
         block = bt_match.group(1)
-
-        # (text) Tj — literal string
-        for m in _TJ_LITERAL_RE.finditer(block):
-            text = _unescape_pdf_literal(m.group(1))
-            if text:
-                texts.append(text)
-
-        # [(text1) 10 (text2)] TJ — array of text
-        for array_match in _TJ_ARRAY_OP_RE.finditer(block):
-            array_content = array_match.group(1)
-            for m in _TJ_ARRAY_RE.finditer(array_content):
-                text = _unescape_pdf_literal(m.group(1))
+        current_size: float | None = None
+        for m in _OPERATOR_RE.finditer(block):
+            tf_size, tj_literal, tj_array, tj_hex = (
+                m.group(1),
+                m.group(2),
+                m.group(3),
+                m.group(4),
+            )
+            if tf_size is not None:
+                try:
+                    current_size = float(tf_size)
+                except ValueError:
+                    current_size = None
+                continue
+            if tj_literal is not None:
+                text = _unescape_pdf_literal(tj_literal)
                 if text:
-                    texts.append(text)
-
-        # <hexdigits> Tj — hex string
-        for m in _TJ_HEX_RE.finditer(block):
-            text = _decode_hex_string(m.group(1))
-            if text:
-                texts.append(text)
-
-    return texts
+                    runs.append((text, current_size))
+                continue
+            if tj_array is not None:
+                parts: list[str] = []
+                for pm in _TJ_ARRAY_RE.finditer(tj_array):
+                    decoded = _unescape_pdf_literal(pm.group(1))
+                    if decoded:
+                        parts.append(decoded)
+                if parts:
+                    runs.append((" ".join(parts), current_size))
+                continue
+            if tj_hex is not None:
+                text = _decode_hex_string(tj_hex)
+                if text:
+                    runs.append((text, current_size))
+    return runs
 
 
 def _extract_pdf_text(data: bytes) -> str:
@@ -225,21 +250,128 @@ def _extract_pdf_text(data: bytes) -> str:
     return "\n\n".join(_extract_pdf_text_blocks(data))
 
 
-def _extract_pdf_text_blocks(data: bytes) -> list[str]:
-    """Extract ordered text blocks from PDF content streams."""
-    texts: list[str] = []
+def _extract_pdf_runs_blocks(data: bytes) -> list[list[tuple[str, float | None]]]:
+    """Extract per-stream ``(text, font_size)`` run lists from a full PDF.
+
+    Args:
+        data: Full PDF file bytes.
+
+    Returns:
+        Non-empty per-stream run lists in document order. Streams that
+        produce no text runs are dropped.
+    """
+    blocks: list[list[tuple[str, float | None]]] = []
     for stream_match in _STREAM_RE.finditer(data):
         stream_data = stream_match.group(1)
-        # Check if the preceding bytes indicate a FlateDecode filter.
-        # We look 512 bytes before the stream keyword for the dict.
+        # Look 512 bytes before the ``stream`` keyword for a FlateDecode flag.
         pre_start = max(0, stream_match.start() - 512)
         pre_bytes = data[pre_start : stream_match.start()]
         if _FLATEDECODE_RE.search(pre_bytes):
             stream_data = _decompress_stream(stream_data)
-        block_text = " ".join(_extract_text_from_stream(stream_data)).strip()
+        runs = _extract_text_from_stream(stream_data)
+        if runs:
+            blocks.append(runs)
+    return blocks
+
+
+def _compute_heading_levels(
+    blocks: list[list[tuple[str, float | None]]],
+) -> dict[float, str]:
+    """Cluster observed font sizes into ≤3 bands and assign ATX heading prefixes.
+
+    Phase-1 heuristic: when at least two distinct ``Tf`` sizes are observed
+    across the document, the top three distinct sizes (descending) are mapped
+    to ``"# "``, ``"## "``, and ``"### "`` respectively. Smaller sizes (the
+    body band) receive no marker.
+
+    When fewer than two distinct sizes are observed — including the common
+    case where no ``Tf`` operator appears at all — an empty mapping is
+    returned and the caller emits text unchanged (preserving the pre-F5.T3
+    baseline behavior pinned by ``test_pdf_baseline_characterization``).
+
+    Args:
+        blocks: Per-stream ``(text, font_size_or_None)`` run lists from
+            :func:`_extract_pdf_runs_blocks`.
+
+    Returns:
+        Mapping from font size to ATX heading prefix; empty when no banding
+        should be applied.
+    """
+    sizes: set[float] = set()
+    for runs in blocks:
+        for _text, size in runs:
+            if size is not None:
+                sizes.add(size)
+    if len(sizes) < 2:
+        return {}
+    descending = sorted(sizes, reverse=True)
+    # Reserve the smallest distinct size as the body band; map only the top
+    # ``min(N-1, 3)`` bands to heading prefixes. This keeps the heuristic
+    # conservative: small-format documents (2 sizes) emit only H1 + body.
+    heading_band_count = min(len(descending) - 1, len(_HEADING_PREFIXES))
+    mapping: dict[float, str] = {}
+    for size, prefix in zip(descending[:heading_band_count], _HEADING_PREFIXES, strict=False):
+        mapping[size] = prefix
+    return mapping
+
+
+def _emit_block_with_headings(
+    runs: list[tuple[str, float | None]], heading_map: dict[float, str]
+) -> str:
+    """Render one stream's runs as a block of text, applying heading markers.
+
+    With no heading bands active, behavior is identical to the pre-F5.T3
+    extractor: all runs are joined with a single space and stripped. With
+    heading bands active, runs whose font size matches a band are emitted on
+    their own line prefixed with the ATX marker; runs in the body band group
+    together space-joined between heading lines.
+
+    Args:
+        runs: Ordered ``(text, font_size_or_None)`` pairs for one stream.
+        heading_map: Output of :func:`_compute_heading_levels`.
+
+    Returns:
+        Rendered block text (may contain embedded newlines when bands apply).
+    """
+    if not heading_map:
+        return " ".join(text for text, _size in runs).strip()
+
+    lines: list[str] = []
+    body_buffer: list[str] = []
+
+    def _flush_body() -> None:
+        if body_buffer:
+            line = " ".join(body_buffer).strip()
+            if line:
+                lines.append(line)
+            body_buffer.clear()
+
+    for text, size in runs:
+        prefix = heading_map.get(size, "") if size is not None else ""
+        if prefix:
+            _flush_body()
+            lines.append(prefix + text)
+        else:
+            body_buffer.append(text)
+    _flush_body()
+    return "\n".join(lines)
+
+
+def _extract_pdf_text_blocks(data: bytes) -> list[str]:
+    """Extract ordered text blocks with the F5.T3 layout heuristic applied.
+
+    Builds per-stream run lists with attached font sizes, computes the
+    document-level heading band mapping, then renders each stream as one
+    block of text. Streams that render to empty strings are dropped.
+    """
+    runs_blocks = _extract_pdf_runs_blocks(data)
+    heading_map = _compute_heading_levels(runs_blocks)
+    rendered: list[str] = []
+    for runs in runs_blocks:
+        block_text = _emit_block_with_headings(runs, heading_map)
         if block_text:
-            texts.append(block_text)
-    return texts
+            rendered.append(block_text)
+    return rendered
 
 
 def read_pdf(path: Path) -> str:
