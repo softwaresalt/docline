@@ -6,6 +6,7 @@ rather than at the top level so the persisted frontmatter conforms to the
 graphtor-docs ingestion contract.
 """
 
+from datetime import datetime
 from typing import Any, ClassVar, Literal
 
 from pydantic import Field, field_validator, model_serializer
@@ -34,7 +35,12 @@ class _DoclineNamespacedFrontmatter(BaseFrontmatter):
             namespace.update(existing)
         for name in self.DOCLINE_FIELDS:
             if name in dumped:
-                namespace[name] = dumped.pop(name)
+                value = dumped.pop(name)
+                # Drop None-valued optional fields so consumers only see
+                # populated staging metadata (PA-1 / 010-S F7.T2).
+                if value is None:
+                    continue
+                namespace[name] = value
         dumped["docline"] = namespace
         return dumped
 
@@ -138,19 +144,48 @@ class WebFrontmatter(_DoclineNamespacedFrontmatter):
             ``http://`` or ``https://``.
         crawl_depth: Depth at which this page was discovered during crawling
             (docline-only namespace).
+        http_status: Final HTTP status code observed on fetch (docline-only
+            namespace). When set, must be a valid HTTP status code (``>= 100``).
+        content_type: Final ``Content-Type`` header value reported by the
+            origin (docline-only namespace).
+        final_url: Post-redirect URL the response body was fetched from
+            (docline-only namespace). When set, must use ``http://`` or
+            ``https://``.
+        fetched_at: Timestamp of the final fetch attempt (docline-only
+            namespace).
     """
 
     doc_type: Literal["web"] = "web"  # type: ignore[override]
     source_url: str
     crawl_depth: int = Field(default=0, ge=0)
+    http_status: int | None = Field(default=None, ge=100)
+    content_type: str | None = None
+    final_url: str | None = None
+    fetched_at: datetime | None = None
 
-    DOCLINE_FIELDS: ClassVar[tuple[str, ...]] = ("source_url", "crawl_depth")
+    DOCLINE_FIELDS: ClassVar[tuple[str, ...]] = (
+        "source_url",
+        "crawl_depth",
+        "http_status",
+        "content_type",
+        "final_url",
+        "fetched_at",
+    )
 
     @field_validator("source_url")
     @classmethod
     def _validate_url(cls, value: str) -> str:
         if not (value.lower().startswith("http://") or value.lower().startswith("https://")):
             raise ValueError("source_url must start with http:// or https://")
+        return value
+
+    @field_validator("final_url")
+    @classmethod
+    def _validate_final_url(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        if not (value.lower().startswith("http://") or value.lower().startswith("https://")):
+            raise ValueError("final_url must start with http:// or https://")
         return value
 
 

@@ -252,6 +252,18 @@ def _build_markdown_with_frontmatter(
         crawl_depth = metadata.get("crawl_depth")
         if type(crawl_depth) is int and crawl_depth >= 0:
             base_data["crawl_depth"] = crawl_depth
+        http_status = metadata.get("http_status")
+        if type(http_status) is int and http_status >= 100:
+            base_data["http_status"] = http_status
+        content_type = metadata.get("content_type")
+        if isinstance(content_type, str) and content_type:
+            base_data["content_type"] = content_type
+        final_url = metadata.get("final_url")
+        if isinstance(final_url, str) and final_url:
+            base_data["final_url"] = final_url
+        fetched_at = metadata.get("fetched_at")
+        if isinstance(fetched_at, str) and fetched_at:
+            base_data["fetched_at"] = fetched_at
 
     try:
         payload = assemble_frontmatter_payload(schema_family, base_data)
