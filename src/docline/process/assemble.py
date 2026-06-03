@@ -3,6 +3,8 @@
 import json
 from collections.abc import Mapping
 
+from docline.process.heading_validation import validate_heading_hierarchy
+
 
 def _yaml_scalar(value: object) -> str:
     """Serialize a scalar value into a YAML-safe string.
@@ -66,16 +68,30 @@ def _serialize_yaml(value: object, indent: int = 0) -> list[str]:
     return [f"{prefix}{_yaml_scalar(value)}"]
 
 
-def assemble_markdown(frontmatter: Mapping[str, object], body: str) -> str:
+def assemble_markdown(
+    frontmatter: Mapping[str, object],
+    body: str,
+    *,
+    allow_heading_disorder: bool = False,
+) -> str:
     """Assemble validated frontmatter and Markdown body into a document string.
 
     Args:
         frontmatter: Validated frontmatter payload values.
         body: Markdown body content.
+        allow_heading_disorder: When ``True``, skip the H1->H2->H3 heading
+            hierarchy validation. Default ``False`` enforces graphtor-docs
+            chunk-boundary parentage rules.
 
     Returns:
         Assembled Markdown document with YAML frontmatter.
+
+    Raises:
+        HeadingHierarchyError: If ``allow_heading_disorder`` is ``False`` and
+            ``body`` contains an H2 or H3 heading without a required ancestor.
     """
+    if not allow_heading_disorder:
+        validate_heading_hierarchy(body)
     yaml_text = "\n".join(_serialize_yaml(frontmatter))
     markdown = f"---\n{yaml_text}\n---\n{body}"
     if not markdown.endswith("\n"):

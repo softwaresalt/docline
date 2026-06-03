@@ -62,6 +62,15 @@ def _build_parser() -> argparse.ArgumentParser:
         default="output",
         help="Processing output directory.",
     )
+    process_parser.add_argument(
+        "--allow-heading-disorder",
+        action="store_true",
+        default=False,
+        help=(
+            "Bypass H1->H2->H3 heading hierarchy validation during Markdown "
+            "assembly. Defaults to enforcing graphtor-docs chunk-boundary parentage."
+        ),
+    )
 
     quarantine_viewer_parser = subcommands.add_parser(
         "quarantine-viewer",
@@ -169,6 +178,7 @@ def main(argv: list[str] | None = None) -> int:
             request = ProcessRequest(
                 staging_dir=parsed.staging_dir,
                 output_dir=parsed.output_dir,
+                allow_heading_disorder=parsed.allow_heading_disorder,
             )
         except ValueError as err:
             print(f"error: {err}", file=sys.stderr)

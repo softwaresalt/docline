@@ -51,12 +51,15 @@ class ProcessRequest(BaseModel):
     Attributes:
         staging_dir: Directory containing staged files to process.
         output_dir: Directory where processed output files are written.
+        allow_heading_disorder: When ``True``, bypass the H1->H2->H3 heading
+            hierarchy validation during Markdown assembly. Default ``False``.
     """
 
     model_config = ConfigDict(extra="forbid")
 
     staging_dir: str = ".cache/staging"
     output_dir: str = "output"
+    allow_heading_disorder: bool = False
 
     @field_validator("staging_dir", "output_dir")
     @classmethod

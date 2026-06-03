@@ -195,6 +195,7 @@ def _build_markdown_with_frontmatter(
     page_metadata: Mapping[str, object] | None = None,
     title_override: str | None = None,
     relative_input_path: Path | str | None = None,
+    allow_heading_disorder: bool = False,
 ) -> str:
     """Wrap a document body in YAML frontmatter and return an assembled Markdown string.
 
@@ -215,6 +216,8 @@ def _build_markdown_with_frontmatter(
             :func:`docline.paths.posixify_path` and emitted as the
             ``source_path`` frontmatter field so downstream graphtor-docs
             consumers always see forward-slash POSIX paths (PA-2 / 010-S F2.T3).
+        allow_heading_disorder: When ``True``, bypass the H1->H2->H3 heading
+            hierarchy validation enforced by :func:`assemble_markdown`.
 
     Returns:
         Assembled Markdown string with YAML frontmatter.
@@ -256,7 +259,11 @@ def _build_markdown_with_frontmatter(
         # Fallback: use WikiFrontmatter with minimal fields only
         payload = assemble_frontmatter_payload(WikiFrontmatter, base_data)
 
-    return assemble_markdown(payload.model_dump(mode="json"), body)
+    return assemble_markdown(
+        payload.model_dump(mode="json"),
+        body,
+        allow_heading_disorder=allow_heading_disorder,
+    )
 
 
 def _build_document_id(job_id: str, input_path: str, ingest_order: int) -> str:
@@ -447,6 +454,7 @@ def execute_process(request: ProcessRequest) -> ProcessResult:
                         page_metadata=page_metadata,
                         title_override=title_override,
                         relative_input_path=rel_in_files,
+                        allow_heading_disorder=request.allow_heading_disorder,
                     )
                 except Exception as err:  # noqa: BLE001
                     _log.warning("Failed to build frontmatter for %s: %s", file_path, err)
