@@ -65,9 +65,7 @@ def test_test_job_runs_on_matrix_os(workflow: dict) -> None:
 def test_non_test_jobs_remain_ubuntu_only(workflow: dict, job_name: str) -> None:
     job = workflow["jobs"].get(job_name)
     assert job is not None, f"ci.yml must declare {job_name} job"
-    assert job["runs-on"] == "ubuntu-latest", (
-        f"{job_name} job must remain on ubuntu-latest"
-    )
+    assert job["runs-on"] == "ubuntu-latest", f"{job_name} job must remain on ubuntu-latest"
     assert "strategy" not in job or "matrix" not in job.get("strategy", {}), (
         f"{job_name} job must not declare an OS matrix"
     )
