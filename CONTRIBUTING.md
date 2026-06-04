@@ -1,14 +1,15 @@
 # Contributing to docline
 
 Welcome. This guide covers the local quality gates, how to run them with `uv`,
-known Windows local-dev noise, and the pre-PR checklist.
+the cross-OS CI matrix, and the pre-PR checklist.
 
 ## Local quality gates
 
 The five gates below are the authoritative quality bar. They are mirrored in
-CI by [`.github/workflows/ci.yml`](.github/workflows/ci.yml); CI runs each gate
-as a separate job on `ubuntu-latest`. Run the same commands locally before
-opening a PR.
+CI by [`.github/workflows/ci.yml`](.github/workflows/ci.yml); CI runs lint,
+format, typecheck, and build on `ubuntu-latest`, and runs pytest on a matrix
+over `ubuntu-latest`, `windows-latest`, and `macos-latest`. Run the same
+commands locally before opening a PR.
 
 | Gate      | Command                          | Purpose                          |
 |-----------|----------------------------------|----------------------------------|
@@ -31,36 +32,28 @@ then invoke each gate via `uv run <command>`. The `uv run` prefix activates the
 project's virtualenv on demand so contributors do not need globally installed
 `ruff`, `pyright`, `pytest`, or `build`. CI uses the same `uv run` pattern.
 
-## Known Windows local-dev noise
+## Cross-OS CI matrix
 
-When you run `pytest` on Windows you may see ~176 or more `PermissionError`
-entries reported in the `ERROR` section of the output. These are environmental:
-Windows holds file handles in `tmp_path` fixtures during pytest teardown, and
-the cleanup raises `PermissionError` before the OS releases the handle. They do
-NOT affect the pass/fail conclusion of any test and they do NOT indicate
-regressions.
+CI runs the `pytest` job on `ubuntu-latest`, `windows-latest`, and
+`macos-latest` via a strategy matrix. The other gates (`lint`, `format`,
+`typecheck`, `build`) remain on `ubuntu-latest` because their outputs are
+platform-deterministic and they run faster on a single OS. `fail-fast: false`
+keeps a single-platform failure from cancelling signal from the others.
 
-To filter the noise and see only test outcomes:
+When you push a PR, expect three `pytest (<os>)` checks instead of one.
 
-PowerShell:
+## Historical Windows local-dev noise (resolved)
 
-```powershell
-uv run pytest 2>&1 | Select-String -NotMatch 'PermissionError'
-```
+Earlier versions of this guide warned about ~176+ `PermissionError` entries
+emitted during `pytest` teardown on Windows (Windows holding `tmp_path` file
+handles past pytest cleanup). That noise no longer reproduces on current
+`main` — see
+[`docs/decisions/2026-06-04-spike-windows-tmp-path-noise.md`](docs/decisions/2026-06-04-spike-windows-tmp-path-noise.md)
+for the spike that confirmed two consecutive clean runs.
 
-bash:
-
-```bash
-uv run pytest 2>&1 | grep -v 'PermissionError'
-```
-
-CI runs every gate on Linux (Ubuntu), where this noise does not occur. CI is
-the authoritative gate for PR validation. If your local Windows `pytest` shows
-clean `PASSED` results with only the known `tmp_path` `PermissionError` noise,
-you can rely on CI to confirm the result.
-
-A deeper root-cause investigation for the Windows `tmp_path` teardown noise is
-tracked separately as a low-priority follow-up; see stash entry `0AA8B223`.
+If you observe the noise re-emerging in a future Windows session, capture the
+failing teardown with `pytest --tb=long --capture=no -W error::ResourceWarning`
+and file a bug.
 
 ## Pre-PR checklist
 
@@ -72,6 +65,6 @@ Run all five gates locally before opening a pull request:
 * `uv run pytest`
 * `uv run python -m build`
 
-Confirm the gates pass (Windows contributors: confirm the only noise is the
-known `tmp_path` `PermissionError` entries). Then push your branch and open the
-PR; CI will re-run the same five gates and act as the authoritative reviewer.
+Confirm the gates pass. Then push your branch and open the PR; CI will re-run
+the same five gates (with pytest fanned out across ubuntu/windows/macos) and
+act as the authoritative reviewer.
