@@ -160,7 +160,7 @@ def test_docling_pipeline_tuning_options_enabled_when_available(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """When picture_sink is provided, docling pipeline opts in to table-structure and picture generation.
+    """When picture_sink is set, docling pipeline opts in to table-structure and picture generation.
 
     Captures the ``PdfPipelineOptions`` constructed by ``_read_pdf_docling_pages``
     via a converter-class monkeypatch and asserts the expected tuning flags
@@ -173,7 +173,9 @@ def test_docling_pipeline_tuning_options_enabled_when_available(
 
     captured: dict[str, object] = {}
 
-    def fake_converter_factory(*, format_options: dict[object, object] | None = None, **_kw: object) -> object:
+    def fake_converter_factory(
+        *, format_options: dict[object, object] | None = None, **_kw: object
+    ) -> object:
         # Capture the format options for assertion; return a stub that converts
         # to an object yielding an empty markdown string.
         captured["format_options"] = format_options

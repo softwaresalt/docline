@@ -43,12 +43,19 @@ def segment_markdown(markdown: str, *, max_chars: int = _DEFAULT_MAX_CHARS) -> l
     if not markdown or not markdown.strip():
         return [""]
 
-    tokens = _parse(markdown)
+    # G3 hygiene (015-S): normalize CRLF and classic CR line endings on entry
+    # so downstream paragraph splitting (`_char_bin` on literal "\n\n")
+    # works regardless of upstream extractor's line-ending convention.
+    # Replace order matters: CRLF first, then bare CR, to avoid converting
+    # Windows CRLF into "\n\n" (which would create spurious paragraph breaks).
+    normalized = markdown.replace("\r\n", "\n").replace("\r", "\n")
+
+    tokens = _parse(normalized)
     has_h1 = any(_is_heading(token, level=1) for token in tokens)
     if not has_h1:
-        return _finalize(_char_bin(markdown, max_chars))
+        return _finalize(_char_bin(normalized, max_chars))
 
-    h1_parts = _split_at_level(markdown, 1)
+    h1_parts = _split_at_level(normalized, 1)
     output: list[str] = []
     for part in h1_parts:
         if len(part) <= max_chars:
