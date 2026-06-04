@@ -226,3 +226,46 @@ def test_extract_section_title_returns_first_h1_when_multiple_present() -> None:
 
     text = "# First Title\n\nprose\n\n# Later H1\n\nmore prose"
     assert extract_section_title(text) == "First Title"
+
+
+# ---------------------------------------------------------------------------
+# CRLF / CR line-ending normalization (015-S / G3 hygiene)
+# ---------------------------------------------------------------------------
+
+
+def test_segment_handles_crlf_paragraph_separator() -> None:
+    """Multi-paragraph input with CRLF separators splits at paragraph boundaries.
+
+    Without normalization, ``_char_bin``'s literal ``"\\n\\n"`` split would
+    fail on Windows-extracted text (which uses ``"\\r\\n\\r\\n"``) and emit
+    everything as a single oversized bin.
+    """
+    para = "x" * 4_000
+    text = "\r\n\r\n".join([para, para, para, para])  # ~16k, 4 paragraphs
+    result = segment_markdown(text, max_chars=5_000)
+    assert len(result) > 1, "CRLF-separated paragraphs should split into multiple bins"
+    for segment in result:
+        assert len(segment) <= 5_000
+
+
+def test_segment_handles_classic_cr_separator() -> None:
+    """Legacy classic-Mac CR-only separators are also normalized to LF."""
+    para = "y" * 3_000
+    text = "\r\r".join([para, para, para])
+    result = segment_markdown(text, max_chars=4_000)
+    assert len(result) > 1
+
+
+def test_segment_normalizes_mixed_endings_to_match_lf_only_output() -> None:
+    """Mixed CRLF/LF input produces identical output to all-LF input."""
+    base_paragraphs = [f"paragraph-{i} " * 200 for i in range(5)]
+    lf_text = "\n\n".join(base_paragraphs)
+    crlf_text = "\r\n\r\n".join(base_paragraphs)
+    mixed_text = "\r\n\r\n".join(base_paragraphs[:2] + ["\n\n".join(base_paragraphs[2:])])
+
+    lf_result = segment_markdown(lf_text, max_chars=3_000)
+    crlf_result = segment_markdown(crlf_text, max_chars=3_000)
+    mixed_result = segment_markdown(mixed_text, max_chars=3_000)
+
+    assert crlf_result == lf_result, "CRLF and LF inputs must produce identical segments"
+    assert mixed_result == lf_result, "Mixed-ending input must produce identical segments"
