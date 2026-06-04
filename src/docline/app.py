@@ -221,8 +221,13 @@ def _build_markdown_with_frontmatter(
             hierarchy validation enforced by :func:`assemble_markdown`.
         docline_namespace: Optional pre-built ``docline:`` namespace map
             (referentiality fields for graphtor reconstruction). When
-            provided, it is assigned to ``base_data["docline"]`` and
-            serialized under the ``docline:`` key in the YAML frontmatter.
+            provided, it is **merged** into ``payload_dict["docline"]``
+            after the Pydantic payload is built — existing keys from
+            ``WebFrontmatter`` auto-routing (``source_url``,
+            ``crawl_depth``, ``http_status``, ``content_type``,
+            ``final_url``, ``fetched_at``) are preserved and the
+            referentiality keys are layered on top. Overwriting the
+            namespace destroys web-crawl metadata; always merge.
 
     Returns:
         Assembled Markdown string with YAML frontmatter.
