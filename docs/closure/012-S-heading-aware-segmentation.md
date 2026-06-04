@@ -2,8 +2,8 @@
 shipment: 012-S
 title: "Closure record — heading-aware semantic segmentation (G3a)"
 status: verified
-merge_sha: pending
-merged_pr: pending
+merge_sha: 7d4579f
+merged_pr: 24
 ---
 
 This document captures the implementation evidence for shipment `012-S`,
