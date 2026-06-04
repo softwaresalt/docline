@@ -249,3 +249,10 @@ __marimo__/
 
 # local test/build output (commit-msg drafts, pytest logs, etc.)
 logs/
+
+# Agent ephemeral working space — tool-result offloads, PR drafts, ad-hoc scripts.
+# See .github/instructions/context-efficiency.instructions.md. Durable content
+# should graduate to docs/memory/, docs/decisions/, or docs/compound/.
+docs/scratch/*
+!docs/scratch/.gitkeep
+
