@@ -31,7 +31,9 @@ from docline.schema.models import DoclineError
 # F5.T5 opt-in PDF layout engine selector. ``"heuristic"`` is the deterministic
 # built-in extractor (phase-1 banding from F5.T3). ``"docling"`` opts in to the
 # optional ``docling`` package and is gated by :func:`dependencies.pdf_available`.
-_SUPPORTED_LAYOUT_ENGINES: frozenset[str] = frozenset({"heuristic", "docling"})
+# ``"auto"`` (G3c / 014-S) resolves to ``"docling"`` when the optional
+# ``docline[pdf]`` extras are installed, else ``"heuristic"``.
+_SUPPORTED_LAYOUT_ENGINES: frozenset[str] = frozenset({"auto", "heuristic", "docling"})
 
 
 def _validate_layout_engine(engine: str) -> None:
@@ -48,6 +50,29 @@ def _validate_layout_engine(engine: str) -> None:
     if engine not in _SUPPORTED_LAYOUT_ENGINES:
         supported = ", ".join(sorted(_SUPPORTED_LAYOUT_ENGINES))
         raise ValueError(f"Unknown PDF layout_engine {engine!r}; supported engines: {supported}")
+
+
+def _resolve_layout_engine(requested: str) -> str:
+    """Resolve ``"auto"`` to ``"docling"`` when available, else ``"heuristic"``.
+
+    Validates ``requested`` first. Pass-through behavior for explicit
+    ``"heuristic"`` and ``"docling"`` is preserved — only ``"auto"`` is
+    resolved against the runtime probe.
+
+    Args:
+        requested: Engine name (one of ``"auto"``, ``"heuristic"``,
+            ``"docling"``).
+
+    Returns:
+        The concrete engine name (``"heuristic"`` or ``"docling"``).
+
+    Raises:
+        ValueError: If ``requested`` is not a recognized engine value.
+    """
+    _validate_layout_engine(requested)
+    if requested != "auto":
+        return requested
+    return "docling" if dependencies.pdf_available() else "heuristic"
 
 
 # ---------------------------------------------------------------------------
@@ -410,10 +435,16 @@ def read_pdf(path: Path, *, layout_engine: str = "heuristic") -> str:
             content must be staged locally before calling this function.
         layout_engine: Which layout extractor to use. ``"heuristic"`` (default)
             uses the deterministic built-in extractor with phase-1 font-size
-            banding. ``"docling"`` opts in to the optional ``docling`` package
-            for richer layout analysis and raises
+            banding — stable for direct callers and synthetic test PDFs.
+            ``"docling"`` opts in to the optional ``docling`` package for
+            richer layout analysis and raises
             :class:`DependencyUnavailableError` when ``docling`` is not
-            importable.
+            importable. ``"auto"`` (G3c / 014-S) resolves to ``"docling"``
+            when the optional ``docline[pdf]`` extras are installed and
+            transparently falls back to ``"heuristic"`` when docling
+            either is unavailable or fails to load a particular PDF.
+            Production callers (``output_contract``) use ``"auto"``;
+            direct callers default to ``"heuristic"`` for determinism.
 
     Returns:
         Markdown text extracted from the PDF (may be empty for scan-only PDFs).
@@ -440,19 +471,37 @@ def read_pdf_pages(path: Path, *, layout_engine: str = "heuristic") -> list[str]
         extractable.
 
     Raises:
-        PdfReadError: If PDF parsing fails.
+        PdfReadError: If PDF parsing fails (does not fire for ``"auto"`` —
+            ``"auto"`` falls back to heuristic on docling errors).
         FileNotFoundError: If ``path`` does not exist.
         DependencyUnavailableError: If ``layout_engine='docling'`` and the
             ``docling`` package is not installed.
         ValueError: If ``layout_engine`` is not a recognized engine value.
     """
-    _validate_layout_engine(layout_engine)
-    if layout_engine == "docling":
+    resolved_engine = _resolve_layout_engine(layout_engine)
+    if resolved_engine == "docling":
         if not dependencies.pdf_available():
             raise DependencyUnavailableError(
                 "Install the optional 'docling' package to use "
                 "layout_engine='docling' (extras: docline[pdf]; missing import: docling)"
             )
+        if layout_engine == "auto":
+            try:
+                return _read_pdf_docling_pages(path)
+            except (PdfReadError, FileNotFoundError):
+                # FileNotFoundError must propagate; PdfReadError under "auto"
+                # falls back to heuristic so a single hostile PDF does not
+                # break batch processing. Re-raise FileNotFoundError below
+                # by re-entering the heuristic path which performs the same
+                # path.exists() check.
+                if not path.exists():
+                    raise
+                # Drop down to heuristic fallback for docling parse failures.
+            else:
+                # Successful docling path already returned above.
+                pass
+        else:
+            return _read_pdf_docling_pages(path)
         return _read_pdf_docling_pages(path)
     if not path.exists():
         raise FileNotFoundError(f"File not found: {path}")

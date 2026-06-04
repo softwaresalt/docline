@@ -32,6 +32,9 @@ dev = [
 [project.scripts]
 docline = "docline.cli:main"
 
+[project.optional-dependencies]
+pdf = ["docling>=2,<3"]
+
 [tool.setuptools.packages.find]
 where = ["src"]
 
