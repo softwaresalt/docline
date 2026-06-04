@@ -2,8 +2,8 @@
 shipment: 013-S
 title: "Closure record — frontmatter referentiality + chunk anchor default (G3b)"
 status: verified
-merge_sha: pending
-merged_pr: pending
+merge_sha: fe614ea
+merged_pr: 26
 ---
 
 This document captures the implementation evidence for shipment `013-S`,
