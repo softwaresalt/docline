@@ -795,7 +795,13 @@ class TestOutputHasFrontmatter:
     def test_multi_page_pdf_output_is_segmented_with_standardized_manifest_fields(
         self, tmp_path: Path
     ) -> None:
-        """Large PDF sources emit ordered multi-file output instead of one giant markdown file."""
+        """PDF sources with H1 boundaries emit ordered multi-file output.
+
+        After heading-aware segmentation (012-S / G3a), splitting is driven by
+        H1 markdown headings rather than physical PDF pages. The fixture
+        embeds three H1-prefixed text streams so the joined extracted markdown
+        contains three H1 boundaries, producing three semantic parts.
+        """
         import os
 
         from docline.app import execute_process
@@ -807,7 +813,11 @@ class TestOutputHasFrontmatter:
             "local_file:docs/segmented-report.pdf",
             {
                 "segmented-report.pdf": _make_pdf_bytes_multi_page(
-                    ["Page one summary", "Page two details", "Page three appendix"]
+                    [
+                        "# Page one summary",
+                        "# Page two details",
+                        "# Page three appendix",
+                    ]
                 )
             },
         )
@@ -846,3 +856,50 @@ class TestOutputHasFrontmatter:
         assert "Page one summary" in (
             output_dir / job.job_id / "segmented-report" / "part-0001.md"
         ).read_text(encoding="utf-8")
+
+    def test_flat_pdf_without_headings_emits_single_part(self, tmp_path: Path) -> None:
+        """A PDF whose extracted text has no H1 headings collapses to one part.
+
+        Captures the documented behavior change introduced by 012-S: real PDFs
+        whose extractor produces flat text (no markdown structure) fall
+        through to the char-bin safety net, which emits a single segment when
+        the joined text is under ``max_chars``. This replaces the previous
+        page-per-file behavior.
+        """
+        import os
+
+        from docline.app import execute_process
+        from docline.app_models import ProcessRequest
+
+        staging_dir = tmp_path / "staging"
+        job = _write_staging_job(
+            staging_dir,
+            "local_file:docs/flat-report.pdf",
+            {
+                "flat-report.pdf": _make_pdf_bytes_multi_page(
+                    ["Page one summary", "Page two details", "Page three appendix"]
+                )
+            },
+        )
+
+        output_dir = tmp_path / "output"
+        request = ProcessRequest(
+            staging_dir=str(staging_dir.relative_to(tmp_path)),
+            output_dir=str(output_dir.relative_to(tmp_path)),
+        )
+
+        original_cwd = Path.cwd()
+        try:
+            os.chdir(tmp_path)
+            result = execute_process(request)
+        finally:
+            os.chdir(original_cwd)
+
+        assert result.success is True
+        source_manifest = json.loads(
+            (output_dir / job.job_id / "manifest.json").read_text(encoding="utf-8")
+        )
+        source_documents = source_manifest["documents"]
+        assert len(source_documents) == 1
+        assert source_documents[0]["input_path"] == "flat-report.pdf"
+        assert source_documents[0]["output_path"] == "flat-report.md"

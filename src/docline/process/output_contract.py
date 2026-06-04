@@ -3,10 +3,9 @@
 from dataclasses import dataclass
 from pathlib import Path
 
+from docline.process.segment import segment_markdown
 from docline.readers.docx import read_docx_blocks
-from docline.readers.pdf import read_pdf, read_pdf_pages
-
-_DOCX_SEGMENT_CHAR_LIMIT = 6_000
+from docline.readers.pdf import read_pdf
 
 
 @dataclass(frozen=True)
@@ -24,34 +23,6 @@ class OutputDocumentPart:
     title_suffix: str | None = None
 
 
-def _chunk_text_blocks(blocks: list[str], max_chars: int) -> list[str]:
-    """Chunk ordered text blocks into deterministic, size-bounded segments."""
-    normalized_blocks = [block.strip() for block in blocks if block.strip()]
-    if not normalized_blocks:
-        return [""]
-
-    total_chars = sum(len(block) for block in normalized_blocks)
-    if len(normalized_blocks) == 1 or total_chars <= max_chars:
-        return ["\n\n".join(normalized_blocks)]
-
-    chunks: list[str] = []
-    current_blocks: list[str] = []
-    current_length = 0
-    for block in normalized_blocks:
-        projected_length = current_length + len(block) + (2 if current_blocks else 0)
-        if current_blocks and projected_length > max_chars:
-            chunks.append("\n\n".join(current_blocks))
-            current_blocks = [block]
-            current_length = len(block)
-            continue
-        current_blocks.append(block)
-        current_length = projected_length
-
-    if current_blocks:
-        chunks.append("\n\n".join(current_blocks))
-    return chunks
-
-
 def _relative_output_path(relative_input_path: Path, part_index: int, part_count: int) -> Path:
     """Resolve the emitted markdown path for a processed document part."""
     if part_count == 1:
@@ -65,6 +36,11 @@ def build_output_document_parts(
 ) -> list[OutputDocumentPart]:
     """Plan the emitted markdown parts for a staged source file.
 
+    PDF and DOCX inputs are routed through heading-aware semantic
+    segmentation (``segment_markdown``) so output parts respect H1/H2
+    document structure rather than physical pages or arbitrary char
+    bins. HTML, MD, and TXT inputs are emitted as single parts.
+
     Args:
         file_path: Absolute staged file path.
         relative_input_path: Relative path inside the staged ``files/`` directory.
@@ -74,11 +50,12 @@ def build_output_document_parts(
     """
     suffix = file_path.suffix.lower()
     if suffix == ".pdf":
-        segment_bodies = [page.strip() for page in read_pdf_pages(file_path) if page.strip()]
-        if not segment_bodies:
-            segment_bodies = [read_pdf(file_path)]
+        rendered = read_pdf(file_path)
+        segment_bodies = segment_markdown(rendered) if rendered.strip() else [""]
     elif suffix == ".docx":
-        segment_bodies = _chunk_text_blocks(read_docx_blocks(file_path), _DOCX_SEGMENT_CHAR_LIMIT)
+        blocks = read_docx_blocks(file_path)
+        joined = "\n\n".join(block.strip() for block in blocks if block.strip())
+        segment_bodies = segment_markdown(joined) if joined else [""]
     else:
         if suffix in {".html", ".htm"}:
             from docline.fetch.html_extract import HtmlExtractionError, extract_main_content

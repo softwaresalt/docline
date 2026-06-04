@@ -47,9 +47,7 @@ def test_no_heading_fallback_char_binned() -> None:
     result = segment_markdown(text)
     assert len(result) > 1
     for segment in result:
-        assert len(segment) <= _MAX, (
-            f"segment length {len(segment)} exceeds max {_MAX}"
-        )
+        assert len(segment) <= _MAX, f"segment length {len(segment)} exceeds max {_MAX}"
     rejoined = "\n\n".join(segment.strip() for segment in result)
     for paragraph in text.split("\n\n"):
         if paragraph.strip():
@@ -58,12 +56,7 @@ def test_no_heading_fallback_char_binned() -> None:
 
 def test_h1_split_two_chapters() -> None:
     """Two H1 sections under max_chars each yield two segments, each starting with '# '."""
-    text = (
-        "# Chapter One\n\n"
-        + _para("c1", 2_000)
-        + "\n\n# Chapter Two\n\n"
-        + _para("c2", 2_000)
-    )
+    text = "# Chapter One\n\n" + _para("c1", 2_000) + "\n\n# Chapter Two\n\n" + _para("c2", 2_000)
     result = segment_markdown(text)
     assert len(result) == 2
     assert result[0].lstrip().startswith("# Chapter One")
@@ -161,12 +154,7 @@ def test_whitespace_only_input_returns_single_empty() -> None:
 
 def test_deterministic_idempotent() -> None:
     """Calling segment_markdown twice on identical input yields identical output."""
-    text = (
-        "# A\n\n"
-        + _para("a", 3_000)
-        + "\n\n# B\n\n"
-        + _para("b", 3_000)
-    )
+    text = "# A\n\n" + _para("a", 3_000) + "\n\n# B\n\n" + _para("b", 3_000)
     assert segment_markdown(text) == segment_markdown(text)
 
 
@@ -186,10 +174,8 @@ def test_preserves_code_fences() -> None:
 
 def test_preserves_tables() -> None:
     """A GFM table under an H1 is emitted whole, not split mid-row."""
-    table = (
-        "| col1 | col2 | col3 |\n"
-        "|------|------|------|\n"
-        + "\n".join(f"| a{i} | b{i} | c{i} |" for i in range(40))
+    table = "| col1 | col2 | col3 |\n|------|------|------|\n" + "\n".join(
+        f"| a{i} | b{i} | c{i} |" for i in range(40)
     )
     text = "# Table\n\n" + table + "\n\n" + _para("trailing", 1_000)
     result = segment_markdown(text)
@@ -209,10 +195,7 @@ def test_max_chars_parameter_honored() -> None:
 @pytest.mark.parametrize("max_chars", [3_000, 8_000, 15_000])
 def test_max_chars_no_oversize_segments(max_chars: int) -> None:
     """For varied max_chars values, no emitted segment exceeds the configured limit."""
-    text = (
-        "# Chapter\n\n"
-        + _multi_para("delta", paragraphs=15, chars_per_para=1_200)
-    )
+    text = "# Chapter\n\n" + _multi_para("delta", paragraphs=15, chars_per_para=1_200)
     result = segment_markdown(text, max_chars=max_chars)
     for segment in result:
         assert len(segment) <= max_chars
