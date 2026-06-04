@@ -2,8 +2,8 @@
 shipment: 014-S
 title: "Closure record — docling PDF engine + image sidecars (G3c)"
 status: verified
-merge_sha: pending
-merged_pr: pending
+merge_sha: 7b4f3c9
+merged_pr: 28
 ---
 
 This document captures the implementation evidence for shipment `014-S`,
