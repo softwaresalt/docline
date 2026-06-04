@@ -27,11 +27,13 @@ def workflow() -> dict:
 
 
 def test_ci_workflow_has_test_job(workflow: dict) -> None:
+    """ci.yml declares a `test` job."""
     assert "jobs" in workflow, "ci.yml must declare jobs"
     assert "test" in workflow["jobs"], "ci.yml must declare a test job"
 
 
 def test_test_job_runs_on_matrix(workflow: dict) -> None:
+    """The test job declares a strategy matrix over `os`."""
     test_job = workflow["jobs"]["test"]
     assert "strategy" in test_job, "test job must declare a strategy"
     matrix = test_job["strategy"].get("matrix")
@@ -40,6 +42,7 @@ def test_test_job_runs_on_matrix(workflow: dict) -> None:
 
 
 def test_test_job_matrix_includes_three_oses(workflow: dict) -> None:
+    """The matrix covers ubuntu-latest, windows-latest, and macos-latest."""
     matrix_os = workflow["jobs"]["test"]["strategy"]["matrix"]["os"]
     assert set(matrix_os) == EXPECTED_OS_TARGETS, (
         f"expected matrix os {EXPECTED_OS_TARGETS}, got {set(matrix_os)}"
@@ -47,6 +50,7 @@ def test_test_job_matrix_includes_three_oses(workflow: dict) -> None:
 
 
 def test_test_job_fail_fast_disabled(workflow: dict) -> None:
+    """The test job sets fail-fast: false so per-OS failures don't cancel siblings."""
     strategy = workflow["jobs"]["test"]["strategy"]
     assert strategy.get("fail-fast") is False, (
         "test job strategy must set fail-fast: false so a single-platform failure "
@@ -55,6 +59,7 @@ def test_test_job_fail_fast_disabled(workflow: dict) -> None:
 
 
 def test_test_job_runs_on_matrix_os(workflow: dict) -> None:
+    """The test job's runs-on interpolates the matrix.os value."""
     runs_on = workflow["jobs"]["test"]["runs-on"]
     assert runs_on == "${{ matrix.os }}", (
         f"test job runs-on must interpolate matrix.os, got {runs_on!r}"
@@ -63,6 +68,7 @@ def test_test_job_runs_on_matrix_os(workflow: dict) -> None:
 
 @pytest.mark.parametrize("job_name", sorted(UBUNTU_ONLY_JOBS))
 def test_non_test_jobs_remain_ubuntu_only(workflow: dict, job_name: str) -> None:
+    """Non-test jobs stay on ubuntu-latest and do not declare an OS matrix."""
     job = workflow["jobs"].get(job_name)
     assert job is not None, f"ci.yml must declare {job_name} job"
     assert job["runs-on"] == "ubuntu-latest", f"{job_name} job must remain on ubuntu-latest"
