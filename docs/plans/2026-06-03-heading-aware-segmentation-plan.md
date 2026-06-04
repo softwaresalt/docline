@@ -1,3 +1,11 @@
+---
+title: "Heading-aware semantic segmentation for output parts (G3a)"
+stash_ids: ["90695245"]
+shipment: "012-S"
+status: approved
+requires_plan_hardening: no
+---
+
 # Heading-aware semantic segmentation for output parts (G3a)
 
 **Date**: 2026-06-03
