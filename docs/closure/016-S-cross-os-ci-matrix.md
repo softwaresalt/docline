@@ -3,9 +3,9 @@ title: Closure — 016-S Cross-OS CI matrix + Windows noise resolution
 date: 2026-06-04
 shipment: 016-S
 feature: 017-F
-merge_sha: e58c4312c77c806642da80c0d98f94c736357912
-pr: 32
-status: shipped
+merge_sha: e58c431
+merged_pr: 32
+status: verified
 ---
 
 # Closure — 016-S: Cross-OS CI matrix + Windows noise resolution
