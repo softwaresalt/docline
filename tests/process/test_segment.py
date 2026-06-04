@@ -199,3 +199,30 @@ def test_max_chars_no_oversize_segments(max_chars: int) -> None:
     result = segment_markdown(text, max_chars=max_chars)
     for segment in result:
         assert len(segment) <= max_chars
+
+
+# ---------------------------------------------------------------------------
+# extract_section_title (G3b helper)
+# ---------------------------------------------------------------------------
+
+
+def test_extract_section_title_returns_h1_text() -> None:
+    """extract_section_title returns the first H1 text from a segment, stripped of '# '."""
+    from docline.process.segment import extract_section_title
+
+    assert extract_section_title("# Chapter One\n\nbody content") == "Chapter One"
+
+
+def test_extract_section_title_returns_none_when_no_h1() -> None:
+    """extract_section_title returns None for segments produced by the char-bin fallback (no H1)."""
+    from docline.process.segment import extract_section_title
+
+    assert extract_section_title("just prose with no heading\n\nand another paragraph") is None
+
+
+def test_extract_section_title_returns_first_h1_when_multiple_present() -> None:
+    """When multiple H1s exist in a segment (rare), extract_section_title returns the first."""
+    from docline.process.segment import extract_section_title
+
+    text = "# First Title\n\nprose\n\n# Later H1\n\nmore prose"
+    assert extract_section_title(text) == "First Title"

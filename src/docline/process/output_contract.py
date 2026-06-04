@@ -3,7 +3,7 @@
 from dataclasses import dataclass
 from pathlib import Path
 
-from docline.process.segment import segment_markdown
+from docline.process.segment import extract_section_title, segment_markdown
 from docline.readers.docx import read_docx_blocks
 from docline.readers.pdf import read_pdf
 
@@ -16,11 +16,16 @@ class OutputDocumentPart:
         body: Markdown body for the part.
         relative_output_path: Output path relative to a job root.
         title_suffix: Optional suffix appended to the derived document title.
+        section_title: H1 heading text anchoring this part, or ``None`` when
+            the part came from the char-bin fallback (no H1 boundary).
+            Surfaced into the ``docline.section_title`` frontmatter field by
+            the application layer.
     """
 
     body: str
     relative_output_path: Path
     title_suffix: str | None = None
+    section_title: str | None = None
 
 
 def _relative_output_path(relative_input_path: Path, part_index: int, part_count: int) -> Path:
@@ -39,7 +44,10 @@ def build_output_document_parts(
     PDF and DOCX inputs are routed through heading-aware semantic
     segmentation (``segment_markdown``) so output parts respect H1/H2
     document structure rather than physical pages or arbitrary char
-    bins. HTML, MD, and TXT inputs are emitted as single parts.
+    bins. HTML, MD, and TXT inputs are emitted as single parts. Each
+    part carries an optional ``section_title`` derived from its leading
+    H1 (when present); ``section_title`` is ``None`` for char-bin
+    fallback segments and non-segmenter branches.
 
     Args:
         file_path: Absolute staged file path.
@@ -76,6 +84,7 @@ def build_output_document_parts(
             body=body,
             relative_output_path=_relative_output_path(relative_input_path, index, part_count),
             title_suffix=f"Part {index + 1}" if part_count > 1 else None,
+            section_title=extract_section_title(body) if body.strip() else None,
         )
         for index, body in enumerate(segment_bodies)
     ]
