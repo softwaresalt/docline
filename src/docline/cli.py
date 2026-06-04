@@ -71,6 +71,18 @@ def _build_parser() -> argparse.ArgumentParser:
             "assembly. Defaults to enforcing graphtor-docs chunk-boundary parentage."
         ),
     )
+    process_parser.add_argument(
+        "--pdf-engine",
+        choices=("auto", "docling", "heuristic"),
+        default="auto",
+        help=(
+            "PDF layout extractor selection. 'auto' (default) uses docling "
+            "when the optional docline[pdf] extras are installed and falls "
+            "back to the heuristic extractor otherwise. 'docling' opts in "
+            "explicitly (errors if not installed). 'heuristic' uses the "
+            "built-in extractor."
+        ),
+    )
 
     quarantine_viewer_parser = subcommands.add_parser(
         "quarantine-viewer",
@@ -179,6 +191,7 @@ def main(argv: list[str] | None = None) -> int:
                 staging_dir=parsed.staging_dir,
                 output_dir=parsed.output_dir,
                 allow_heading_disorder=parsed.allow_heading_disorder,
+                pdf_engine=parsed.pdf_engine,
             )
         except ValueError as err:
             print(f"error: {err}", file=sys.stderr)

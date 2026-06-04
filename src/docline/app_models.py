@@ -1,5 +1,7 @@
 """Shared operation models used by both the CLI and MCP server interfaces."""
 
+from typing import Literal
+
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from docline.paths import PathContainmentError, validate_workspace_relative_path
@@ -53,6 +55,13 @@ class ProcessRequest(BaseModel):
         output_dir: Directory where processed output files are written.
         allow_heading_disorder: When ``True``, bypass the H1->H2->H3 heading
             hierarchy validation during Markdown assembly. Default ``False``.
+        pdf_engine: PDF layout extractor selection. ``"auto"`` (default,
+            G3c / 014-S) resolves to ``"docling"`` when the optional
+            ``docline[pdf]`` extras are installed and transparently falls
+            back to ``"heuristic"`` when docling is unavailable or fails
+            to load a particular PDF. ``"docling"`` opts in explicitly
+            (and raises when not installed); ``"heuristic"`` uses the
+            built-in extractor.
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -60,6 +69,7 @@ class ProcessRequest(BaseModel):
     staging_dir: str = ".cache/staging"
     output_dir: str = "output"
     allow_heading_disorder: bool = False
+    pdf_engine: Literal["auto", "docling", "heuristic"] = "auto"
 
     @field_validator("staging_dir", "output_dir")
     @classmethod
