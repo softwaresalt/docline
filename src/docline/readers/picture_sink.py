@@ -58,9 +58,7 @@ class MediaReference:
 class PictureSink(Protocol):
     """Receives extracted media artifacts and assigns sidecar filenames."""
 
-    def emit(
-        self, mime: str, data: bytes, *, ext: str | None = None
-    ) -> MediaReference:
+    def emit(self, mime: str, data: bytes, *, ext: str | None = None) -> MediaReference:
         """Persist ``data`` as a media sidecar; return its assigned reference.
 
         Args:
@@ -95,9 +93,7 @@ class CountingPictureSink:
         self._counter = 0
         self._references: list[MediaReference] = []
 
-    def emit(
-        self, mime: str, data: bytes, *, ext: str | None = None
-    ) -> MediaReference:
+    def emit(self, mime: str, data: bytes, *, ext: str | None = None) -> MediaReference:
         """Write ``data`` to ``{media_root}/figure-NNNN{ext}`` and return its reference."""
         self._counter += 1
         extension = _ext_for_mime(mime, override_ext=ext)

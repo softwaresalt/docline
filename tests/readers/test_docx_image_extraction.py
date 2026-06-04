@@ -13,8 +13,6 @@ import zipfile
 from pathlib import Path
 from typing import cast
 
-import pytest
-
 from docline.readers.docx import read_docx_blocks_with_media
 from docline.readers.picture_sink import CountingPictureSink, MediaReference, PictureSink
 
@@ -61,7 +59,7 @@ def _make_docx_with_drawings(image_specs: list[tuple[str, str, bytes]]) -> bytes
             f'<w:p xmlns:w="{ns_w}" xmlns:r="{ns_r}" xmlns:a="{ns_a}" xmlns:pic="{ns_pic}">'
             f"<w:r><w:t>Caption for {rid}</w:t></w:r>"
             f"<w:r><w:drawing>"
-            f"<a:graphic><a:graphicData uri=\"\">"
+            f'<a:graphic><a:graphicData uri="">'
             f"<pic:pic><pic:blipFill>"
             f'<a:blip r:embed="{rid}"/>'
             f"</pic:blipFill></pic:pic>"
@@ -73,9 +71,7 @@ def _make_docx_with_drawings(image_specs: list[tuple[str, str, bytes]]) -> bytes
     document_xml = (
         '<?xml version="1.0"?>'
         f'<w:document xmlns:w="{ns_w}">'
-        "<w:body>"
-        + "".join(body_paragraphs)
-        + "</w:body></w:document>"
+        "<w:body>" + "".join(body_paragraphs) + "</w:body></w:document>"
     )
 
     rels_xml = (
@@ -274,9 +270,7 @@ def test_docx_with_unresolvable_embed_id_is_skipped_silently(tmp_path: Path) -> 
 def test_docx_jpeg_image_mime_detected_from_extension(tmp_path: Path) -> None:
     """A ``.jpeg`` rels Target yields ``image/jpeg`` mime."""
     path = tmp_path / "jpeg-image.docx"
-    path.write_bytes(
-        _make_docx_with_drawings([("rId1", "media/image1.jpeg", _MIN_JPEG)])
-    )
+    path.write_bytes(_make_docx_with_drawings([("rId1", "media/image1.jpeg", _MIN_JPEG)]))
     sink = CountingPictureSink(tmp_path / "media")
     _blocks, media = read_docx_blocks_with_media(path, sink)
     assert len(media) == 1

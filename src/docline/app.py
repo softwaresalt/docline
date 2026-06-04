@@ -26,6 +26,7 @@ from docline.process.manifest import update_manifest_index, write_manifest_index
 from docline.process.metadata import assemble_frontmatter_payload, resolve_document_type
 from docline.process.output import write_markdown_output
 from docline.process.output_contract import build_output_document_parts
+from docline.readers.picture_sink import CountingPictureSink
 from docline.schema.library import WebFrontmatter, WikiFrontmatter
 from docline.schema.models import SchemaValidationError
 from docline.types import SourceInput, SourceKind
@@ -504,8 +505,15 @@ def execute_process(request: ProcessRequest) -> ProcessResult:
 
         for file_path in _ordered_staged_files(files_dir, crawl_entries):
             rel_in_files = file_path.relative_to(files_dir)
+            source_basename = rel_in_files.with_suffix("")
+            picture_sink = CountingPictureSink(job_output_root / source_basename / "media")
             try:
-                document_parts = build_output_document_parts(file_path, rel_in_files)
+                document_parts = build_output_document_parts(
+                    file_path,
+                    rel_in_files,
+                    layout_engine=request.pdf_engine,
+                    picture_sink=picture_sink,
+                )
             except Exception as err:  # noqa: BLE001
                 _log.warning("Failed to convert %s: %s", file_path, err)
                 errors.append(str(err))
@@ -570,6 +578,7 @@ def execute_process(request: ProcessRequest) -> ProcessResult:
                         "input_path": input_path,
                         "input_file": file_path.name,
                         "output_path": str(out_path.relative_to(root)),
+                        "media_files": list(document_part.media_files),
                     }
                     if isinstance(page_metadata, Mapping):
                         source_url = page_metadata.get("page_url")

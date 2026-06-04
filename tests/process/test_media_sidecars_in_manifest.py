@@ -103,7 +103,10 @@ def _make_pdf_bytes_single_page(text: str) -> bytes:
     objects = [
         b"1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n",
         b"2 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj\n",
-        b"3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 4 0 R >>\nendobj\n",
+        (
+            b"3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792]"
+            b" /Contents 4 0 R >>\nendobj\n"
+        ),
         (
             f"4 0 obj\n<< /Length {len(content_stream)} >>\nstream\n".encode("ascii")
             + content_stream
@@ -115,7 +118,7 @@ def _make_pdf_bytes_single_page(text: str) -> bytes:
 
 def _make_html_bytes(body: str) -> bytes:
     """Return a minimal HTML file body."""
-    return f"<html><body>{body}</body></html>".encode("utf-8")
+    return f"<html><body>{body}</body></html>".encode()
 
 
 def _run_process(tmp_path: Path, source_key: str, files: dict[str, bytes]) -> tuple[Path, dict]:
@@ -140,7 +143,11 @@ def _run_process(tmp_path: Path, source_key: str, files: dict[str, bytes]) -> tu
 
 
 def test_docx_image_sidecar_written_to_media_root(tmp_path: Path) -> None:
-    """A DOCX with one embedded image produces a sidecar PNG on disk under the source's media root."""
+    """A DOCX with one embedded image produces a sidecar PNG on disk.
+
+    The sidecar lands under the source's per-source media root
+    (``{job_id}/{source_basename}/media/figure-0001.png``).
+    """
     job_root, _ = _run_process(
         tmp_path,
         "local_file:docs/report.docx",

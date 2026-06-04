@@ -491,18 +491,12 @@ def read_pdf_pages(path: Path, *, layout_engine: str = "heuristic") -> list[str]
             except (PdfReadError, FileNotFoundError):
                 # FileNotFoundError must propagate; PdfReadError under "auto"
                 # falls back to heuristic so a single hostile PDF does not
-                # break batch processing. Re-raise FileNotFoundError below
-                # by re-entering the heuristic path which performs the same
-                # path.exists() check.
+                # break batch processing.
                 if not path.exists():
                     raise
-                # Drop down to heuristic fallback for docling parse failures.
-            else:
-                # Successful docling path already returned above.
-                pass
+                # Drop down to the heuristic path below.
         else:
             return _read_pdf_docling_pages(path)
-        return _read_pdf_docling_pages(path)
     if not path.exists():
         raise FileNotFoundError(f"File not found: {path}")
     raw = path.read_bytes()

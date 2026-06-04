@@ -7,14 +7,14 @@ rejection of unknown values.
 
 from __future__ import annotations
 
-import json
-
 import pytest
 
 from docline.cli import main
 
 
-def test_process_subparser_accepts_pdf_engine_flag(tmp_path, capsys: pytest.CaptureFixture[str]) -> None:
+def test_process_subparser_accepts_pdf_engine_flag(
+    tmp_path, capsys: pytest.CaptureFixture[str]
+) -> None:
     """``docline process --pdf-engine docling`` is accepted (no argparse error)."""
     # Use an empty staging dir so execute_process exits cleanly with 'no jobs'.
     staging = tmp_path / "staging"

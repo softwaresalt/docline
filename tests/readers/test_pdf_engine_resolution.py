@@ -47,9 +47,7 @@ def test_invalid_engine_rejected() -> None:
         _resolve_layout_engine("bogus")
 
 
-def test_docling_raises_when_unavailable(
-    tmp_path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_docling_raises_when_unavailable(tmp_path, monkeypatch: pytest.MonkeyPatch) -> None:
     """Calling ``read_pdf_pages(layout_engine="docling")`` raises when docling is unavailable.
 
     Regression coverage — this behavior already exists in the heuristic
