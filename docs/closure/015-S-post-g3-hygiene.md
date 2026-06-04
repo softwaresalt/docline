@@ -2,8 +2,8 @@
 shipment: 015-S
 title: "Closure record — post-G3 hygiene (CRLF + docling tuning)"
 status: verified
-merge_sha: pending
-merged_pr: pending
+merge_sha: 2585c65
+merged_pr: 30
 ---
 
 Captures the implementation evidence for shipment `015-S`, the post-G3
