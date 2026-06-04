@@ -718,7 +718,12 @@ class TestOutputHasFrontmatter:
         output_path = output_dir / job.job_id / "guide.md"
         content = output_path.read_text(encoding="utf-8")
         body = content.split("---\n", 2)[2]
-        assert body.startswith("# Guide\n\n## Section\n\n### Nested\n")
+        # Chunk anchors are now injected by default in production output (012-S/G3b);
+        # the heading hierarchy under the anchors remains the wrapping contract.
+        assert "# Guide\n" in body
+        assert "## Section\n" in body
+        assert "### Nested\n" in body
+        assert body.index("# Guide") < body.index("## Section") < body.index("### Nested")
 
     def test_local_pdf_output_has_wiki_frontmatter_doc_type(self, tmp_path: Path) -> None:
         """execute_process emits doc_type: wiki in frontmatter for local PDF sources."""

@@ -196,6 +196,7 @@ def _build_markdown_with_frontmatter(
     title_override: str | None = None,
     relative_input_path: Path | str | None = None,
     allow_heading_disorder: bool = False,
+    docline_namespace: Mapping[str, object] | None = None,
 ) -> str:
     """Wrap a document body in YAML frontmatter and return an assembled Markdown string.
 
@@ -218,6 +219,10 @@ def _build_markdown_with_frontmatter(
             consumers always see forward-slash POSIX paths (PA-2 / 010-S F2.T3).
         allow_heading_disorder: When ``True``, bypass the H1->H2->H3 heading
             hierarchy validation enforced by :func:`assemble_markdown`.
+        docline_namespace: Optional pre-built ``docline:`` namespace map
+            (referentiality fields for graphtor reconstruction). When
+            provided, it is assigned to ``base_data["docline"]`` and
+            serialized under the ``docline:`` key in the YAML frontmatter.
 
     Returns:
         Assembled Markdown string with YAML frontmatter.
@@ -271,10 +276,20 @@ def _build_markdown_with_frontmatter(
         # Fallback: use WikiFrontmatter with minimal fields only
         payload = assemble_frontmatter_payload(WikiFrontmatter, base_data)
 
+    payload_dict = payload.model_dump(mode="json")
+    if docline_namespace is not None:
+        existing_docline = payload_dict.get("docline")
+        merged: dict[str, object] = {}
+        if isinstance(existing_docline, dict):
+            merged.update(existing_docline)
+        merged.update(docline_namespace)
+        payload_dict["docline"] = merged
+
     return assemble_markdown(
-        payload.model_dump(mode="json"),
+        payload_dict,
         body,
         allow_heading_disorder=allow_heading_disorder,
+        emit_chunk_anchors=True,
     )
 
 
@@ -283,6 +298,54 @@ def _build_document_id(job_id: str, input_path: str, ingest_order: int) -> str:
     normalized_input_path = input_path.replace("\\", "/")
     digest = sha256(f"{job_id}:{normalized_input_path}:{ingest_order}".encode()).hexdigest()
     return digest[:16]
+
+
+def _build_parent_document_id(job_id: str, input_path: str) -> str:
+    """Build the SHA-derived id shared by every part of a single source.
+
+    Reuses the :func:`_build_document_id` algorithm with ``ingest_order=0``
+    so every part of the same source collapses to the same value, producing
+    a stable ``parent_document_id`` for the ``docline.parent_document_id``
+    referentiality field consumed by graphtor reconstruction.
+    """
+    return _build_document_id(job_id, input_path, ingest_order=0)
+
+
+def _relative_sibling_basename(current: Path, all_paths: list[Path], *, offset: int) -> str | None:
+    """Return the basename of the sibling part at ``offset`` or ``None`` at boundaries."""
+    try:
+        idx = all_paths.index(current)
+    except ValueError:
+        return None
+    target = idx + offset
+    if target < 0 or target >= len(all_paths):
+        return None
+    return all_paths[target].name
+
+
+def _build_docline_namespace(
+    *,
+    parent_document_id: str,
+    part_index: int,
+    total_parts: int,
+    current_output_path: Path,
+    all_output_paths: list[Path],
+    section_title: str | None,
+) -> dict[str, object]:
+    """Build the ``docline:`` namespace dict for a single processed output part.
+
+    Used to populate the ``docline.{parent_document_id, part_index,
+    total_parts, prev_part, next_part, section_title}`` referentiality
+    fields consumed by graphtor reconstruction (G3b).
+    """
+    return {
+        "parent_document_id": parent_document_id,
+        "part_index": part_index,
+        "total_parts": total_parts,
+        "prev_part": _relative_sibling_basename(current_output_path, all_output_paths, offset=-1),
+        "next_part": _relative_sibling_basename(current_output_path, all_output_paths, offset=+1),
+        "section_title": section_title,
+    }
 
 
 def _resolve_ingest_order(
@@ -451,12 +514,25 @@ def execute_process(request: ProcessRequest) -> ProcessResult:
             )
             current_ingest_order = _resolve_ingest_order(next_ingest_order, page_metadata)
 
+            input_path_posix = rel_in_files.as_posix()
+            parent_document_id = _build_parent_document_id(job.job_id, input_path_posix)
+            all_part_output_paths = [part.relative_output_path for part in document_parts]
+            total_parts = len(document_parts)
+
             for part_index, document_part in enumerate(document_parts):
                 part_ingest_order = current_ingest_order + part_index
                 title_override = (
                     f"{base_title} {document_part.title_suffix}"
                     if document_part.title_suffix is not None
                     else None
+                )
+                docline_namespace = _build_docline_namespace(
+                    parent_document_id=parent_document_id,
+                    part_index=part_index + 1,
+                    total_parts=total_parts,
+                    current_output_path=document_part.relative_output_path,
+                    all_output_paths=all_part_output_paths,
+                    section_title=document_part.section_title,
                 )
                 try:
                     markdown_text = _build_markdown_with_frontmatter(
@@ -467,6 +543,7 @@ def execute_process(request: ProcessRequest) -> ProcessResult:
                         title_override=title_override,
                         relative_input_path=rel_in_files,
                         allow_heading_disorder=request.allow_heading_disorder,
+                        docline_namespace=docline_namespace,
                     )
                 except Exception as err:  # noqa: BLE001
                     _log.warning("Failed to build frontmatter for %s: %s", file_path, err)

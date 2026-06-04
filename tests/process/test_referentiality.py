@@ -24,7 +24,6 @@ from docline.app_models import ProcessRequest
 from docline.fetch.models import SourceMetadata, StagingJob
 from docline.fetch.staging import build_cache_path, make_job_id, sanitize_source
 
-
 # ---------------------------------------------------------------------------
 # Helpers (mirror tests/elt/test_process_regression.py)
 # ---------------------------------------------------------------------------
@@ -61,13 +60,18 @@ def _make_minimal_docx() -> bytes:
         "<w:body><w:p><w:r><w:t>Hello DOCX content</w:t></w:r></w:p></w:body>"
         "</w:document>"
     )
-    rels = '<?xml version="1.0"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"/>'
+    rels = (
+        '<?xml version="1.0"?>'
+        '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"/>'
+    )
     types = (
         '<?xml version="1.0"?>'
         '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">'
         '<Default Extension="xml" ContentType="application/xml"/>'
-        '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>'
-        '<Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>'
+        '<Default Extension="rels" '
+        'ContentType="application/vnd.openxmlformats-package.relationships+xml"/>'
+        '<Override PartName="/word/document.xml" '
+        'ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>'  # noqa: E501
         "</Types>"
     )
     buf = io.BytesIO()
@@ -111,7 +115,9 @@ def _make_pdf_bytes_multi_page(texts: list[str]) -> bytes:
     return b"%PDF-1.4\n" + objects[0] + pages_object + b"".join(objects[1:]) + b"%%EOF\n"
 
 
-def _process_and_load_parts(tmp_path: Path, source_key: str, files: dict[str, bytes]) -> list[dict[str, Any]]:
+def _process_and_load_parts(
+    tmp_path: Path, source_key: str, files: dict[str, bytes]
+) -> list[dict[str, Any]]:
     """Run execute_process and return ordered list of {path, body, frontmatter} per emitted part."""
     staging_dir = tmp_path / "staging"
     job = _write_staging_job(staging_dir, source_key, files)
@@ -147,7 +153,10 @@ def _process_and_load_parts(tmp_path: Path, source_key: str, files: dict[str, by
 
 
 def test_single_part_output_has_unit_referentiality(tmp_path: Path) -> None:
-    """Single-part DOCX has part_index=1, total_parts=1, prev/next=None, parent_document_id present."""
+    """Single-part DOCX has unit referentiality fields populated.
+
+    Asserts part_index=1, total_parts=1, prev/next=None, parent_document_id present.
+    """
     parts = _process_and_load_parts(
         tmp_path,
         "local_file:docs/hello.docx",
@@ -209,7 +218,7 @@ def test_parts_share_parent_document_id(tmp_path: Path) -> None:
 
 
 def test_parent_document_id_deterministic_for_same_input(tmp_path: Path) -> None:
-    """Running process twice on the same source yields the same parent_document_id (deterministic)."""
+    """Running process twice on the same source yields the same parent_document_id (deterministic)."""  # noqa: E501
     pdf = _make_pdf_bytes_multi_page(["# Det A", "# Det B"])
     run_a = _process_and_load_parts(tmp_path / "a", "local_file:docs/det.pdf", {"det.pdf": pdf})
     run_b = _process_and_load_parts(tmp_path / "b", "local_file:docs/det.pdf", {"det.pdf": pdf})
@@ -223,11 +232,7 @@ def test_section_title_populated_when_h1_present(tmp_path: Path) -> None:
     parts = _process_and_load_parts(
         tmp_path,
         "local_file:docs/sections.pdf",
-        {
-            "sections.pdf": _make_pdf_bytes_multi_page(
-                ["# Introduction", "# Methods", "# Results"]
-            )
-        },
+        {"sections.pdf": _make_pdf_bytes_multi_page(["# Introduction", "# Methods", "# Results"])},
     )
     assert len(parts) == 3
     titles = [part["frontmatter"]["docline"]["section_title"] for part in parts]
@@ -239,14 +244,18 @@ def test_section_title_null_for_char_bin_fallback(tmp_path: Path) -> None:
     parts = _process_and_load_parts(
         tmp_path,
         "local_file:docs/flat.pdf",
-        {"flat.pdf": _make_pdf_bytes_multi_page(["Page one text", "Page two text", "Page three text"])},
+        {
+            "flat.pdf": _make_pdf_bytes_multi_page(
+                ["Page one text", "Page two text", "Page three text"]
+            )
+        },
     )
     assert len(parts) == 1
     assert parts[0]["frontmatter"]["docline"]["section_title"] is None
 
 
 def test_chunk_anchors_emitted_by_default_in_processed_output(tmp_path: Path) -> None:
-    """Processed output body contains <a id=\"chunk-NNNN\"></a> anchors before headings by default."""
+    """Processed output bodies contain ``<a id="chunk-NNNN"></a>`` anchors before headings by default."""  # noqa: E501
     parts = _process_and_load_parts(
         tmp_path,
         "local_file:docs/anchored.pdf",

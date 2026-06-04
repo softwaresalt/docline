@@ -176,4 +176,29 @@ def _finalize(segments: list[str]) -> list[str]:
     return cleaned
 
 
-__all__ = ["segment_markdown"]
+def extract_section_title(segment: str) -> str | None:
+    """Return the first H1 heading text from ``segment`` or ``None`` if absent.
+
+    The returned text is stripped of the leading ``"# "`` marker and any
+    trailing whitespace. Returns ``None`` for segments produced by the
+    char-bin fallback (no H1 heading present).
+
+    Args:
+        segment: A single semantic markdown segment as produced by
+            ``segment_markdown``.
+
+    Returns:
+        The H1 heading text or ``None``.
+    """
+    if not segment or not segment.strip():
+        return None
+    tokens = _parse(segment)
+    for index, token in enumerate(tokens):
+        if _is_heading(token, level=1) and index + 1 < len(tokens):
+            inline = tokens[index + 1]
+            if inline.type == "inline" and inline.content:
+                return inline.content.strip()
+    return None
+
+
+__all__ = ["segment_markdown", "extract_section_title"]
