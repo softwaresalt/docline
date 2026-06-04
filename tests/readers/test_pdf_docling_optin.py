@@ -125,3 +125,90 @@ def test_heuristic_engine_emits_phase1_heading_markers(tmp_path: Path) -> None:
     assert "# Document Title" in result
     assert "## Section Heading" in result
     assert "### Subsection" in result
+
+
+# ---------------------------------------------------------------------------
+# 015-S — picture_sink kwarg threading + docling tuning options
+# ---------------------------------------------------------------------------
+
+
+def test_docling_engine_accepts_picture_sink_kwarg(tmp_path: Path) -> None:
+    """``read_pdf_pages(layout_engine="docling", picture_sink=...)`` is accepted.
+
+    Skip-gated when docling is not installed: this exercises the call-site
+    contract surface, not the runtime conversion behavior.
+    """
+    if not dependencies_module.pdf_available():
+        pytest.skip("docling not installed; skipping picture_sink kwarg surface test")
+
+    from docline.readers.picture_sink import CountingPictureSink
+
+    pdf_path = _build_three_band_pdf(tmp_path)
+    sink = CountingPictureSink(tmp_path / "media")
+    # Should not raise TypeError for unexpected keyword argument.
+    try:
+        read_pdf_pages(pdf_path, layout_engine="docling", picture_sink=sink)
+    except TypeError as err:
+        raise AssertionError(f"picture_sink kwarg not accepted: {err}") from err
+    except Exception:
+        # Docling parse failure on synthetic PDF is acceptable for this surface
+        # test — what we care about is the kwarg being accepted.
+        pass
+
+
+def test_docling_pipeline_tuning_options_enabled_when_available(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """When picture_sink is set, docling pipeline opts in to table-structure and picture generation.
+
+    Captures the ``PdfPipelineOptions`` constructed by ``_read_pdf_docling_pages``
+    via a converter-class monkeypatch and asserts the expected tuning flags
+    are enabled. Skip-gated when docling is not installed.
+    """
+    if not dependencies_module.pdf_available():
+        pytest.skip("docling not installed; skipping tuning-options test")
+
+    from docline.readers.picture_sink import CountingPictureSink
+
+    captured: dict[str, object] = {}
+
+    def fake_converter_factory(
+        *, format_options: dict[object, object] | None = None, **_kw: object
+    ) -> object:
+        # Capture the format options for assertion; return a stub that converts
+        # to an object yielding an empty markdown string.
+        captured["format_options"] = format_options
+
+        class _Stub:
+            def convert(self, _path: str) -> object:
+                class _Result:
+                    class document:  # type: ignore[no-untyped-def]
+                        @staticmethod
+                        def export_to_markdown() -> str:
+                            return ""
+
+                return _Result()
+
+        return _Stub()
+
+    # Patch the converter import inside _read_pdf_docling_pages by monkeypatching
+    # the module the helper imports from.
+    import docling.document_converter as dc_module  # type: ignore[import-untyped]
+
+    monkeypatch.setattr(dc_module, "DocumentConverter", fake_converter_factory)
+
+    pdf_path = _build_three_band_pdf(tmp_path)
+    sink = CountingPictureSink(tmp_path / "media")
+    read_pdf_pages(pdf_path, layout_engine="docling", picture_sink=sink)
+
+    fmt_opts = captured.get("format_options")
+    assert fmt_opts is not None, "expected DocumentConverter to be constructed with format_options"
+    # The InputFormat.PDF key holds a PdfFormatOption with pipeline_options;
+    # walk into it and confirm the tuning flags.
+    from docling.datamodel.base_models import InputFormat  # type: ignore[import-untyped]
+
+    pdf_format_option = fmt_opts[InputFormat.PDF]  # type: ignore[index]
+    pipeline_options = pdf_format_option.pipeline_options
+    assert pipeline_options.do_table_structure is True
+    assert pipeline_options.generate_picture_images is True

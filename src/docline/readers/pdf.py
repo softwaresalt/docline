@@ -20,13 +20,17 @@ Returns an empty string for PDFs with no extractable text rather than raising.
 """
 
 import io
+import logging
 import re
 import zlib
 from pathlib import Path
 
 from docline import dependencies
 from docline.dependencies import DependencyUnavailableError
+from docline.readers.picture_sink import PictureSink
 from docline.schema.models import DoclineError
+
+_log = logging.getLogger(__name__)
 
 # F5.T5 opt-in PDF layout engine selector. ``"heuristic"`` is the deterministic
 # built-in extractor (phase-1 banding from F5.T3). ``"docling"`` opts in to the
@@ -423,7 +427,12 @@ def _extract_pdf_text_blocks(data: bytes) -> list[str]:
     return rendered
 
 
-def read_pdf(path: Path, *, layout_engine: str = "heuristic") -> str:
+def read_pdf(
+    path: Path,
+    *,
+    layout_engine: str = "heuristic",
+    picture_sink: PictureSink | None = None,
+) -> str:
     """Extract text content from a PDF file and return it as Markdown.
 
     Prefers ``pypdf`` when installed for accurate extraction from real-world
@@ -445,6 +454,11 @@ def read_pdf(path: Path, *, layout_engine: str = "heuristic") -> str:
             either is unavailable or fails to load a particular PDF.
             Production callers (``output_contract``) use ``"auto"``;
             direct callers default to ``"heuristic"`` for determinism.
+        picture_sink: Optional sink for extracted pictures (G3 hygiene /
+            015-S). Forwarded to the docling pipeline (``"docling"`` or
+            resolved-from-``"auto"`` engine) which renders document
+            pictures and emits each via ``picture_sink.emit``. Ignored
+            on the heuristic and pypdf paths.
 
     Returns:
         Markdown text extracted from the PDF (may be empty for scan-only PDFs).
@@ -456,15 +470,22 @@ def read_pdf(path: Path, *, layout_engine: str = "heuristic") -> str:
             ``docling`` package is not installed.
         ValueError: If ``layout_engine`` is not a recognized engine value.
     """
-    return "\n\n".join(read_pdf_pages(path, layout_engine=layout_engine))
+    return "\n\n".join(read_pdf_pages(path, layout_engine=layout_engine, picture_sink=picture_sink))
 
 
-def read_pdf_pages(path: Path, *, layout_engine: str = "heuristic") -> list[str]:
+def read_pdf_pages(
+    path: Path,
+    *,
+    layout_engine: str = "heuristic",
+    picture_sink: PictureSink | None = None,
+) -> list[str]:
     """Extract ordered text pages from a PDF file.
 
     Args:
         path: Path to the PDF file. Must be a trusted-local path.
         layout_engine: Which layout extractor to use. See :func:`read_pdf`.
+        picture_sink: Optional ``PictureSink`` forwarded to the docling
+            engine (015-S). See :func:`read_pdf`.
 
     Returns:
         Ordered non-empty page strings. Returns an empty list when no text is
@@ -487,7 +508,7 @@ def read_pdf_pages(path: Path, *, layout_engine: str = "heuristic") -> list[str]
             )
         if layout_engine == "auto":
             try:
-                return _read_pdf_docling_pages(path)
+                return _read_pdf_docling_pages(path, picture_sink=picture_sink)
             except (PdfReadError, FileNotFoundError):
                 # FileNotFoundError must propagate; PdfReadError under "auto"
                 # falls back to heuristic so a single hostile PDF does not
@@ -496,7 +517,7 @@ def read_pdf_pages(path: Path, *, layout_engine: str = "heuristic") -> list[str]
                     raise
                 # Drop down to the heuristic path below.
         else:
-            return _read_pdf_docling_pages(path)
+            return _read_pdf_docling_pages(path, picture_sink=picture_sink)
     if not path.exists():
         raise FileNotFoundError(f"File not found: {path}")
     raw = path.read_bytes()
@@ -509,13 +530,25 @@ def read_pdf_pages(path: Path, *, layout_engine: str = "heuristic") -> list[str]
     return _extract_pdf_text_blocks(raw)
 
 
-def _read_pdf_docling_pages(path: Path) -> list[str]:
+def _read_pdf_docling_pages(
+    path: Path,
+    *,
+    picture_sink: PictureSink | None = None,
+) -> list[str]:
     """Extract text via the optional ``docling`` package.
 
     Called only after :func:`dependencies.pdf_available` returns ``True``.
 
+    When ``picture_sink`` is provided, the docling pipeline is configured
+    with table-structure and picture-generation tuning options (015-S),
+    and rendered pictures are emitted through ``picture_sink``. When
+    ``picture_sink`` is ``None``, picture-generation is disabled to keep
+    docling fast for callers that do not need sidecars.
+
     Args:
         path: Path to the PDF file.
+        picture_sink: Optional ``PictureSink`` that receives rendered
+            picture bytes.
 
     Returns:
         Single-element list containing the docling-rendered Markdown, or an
@@ -528,7 +561,15 @@ def _read_pdf_docling_pages(path: Path) -> list[str]:
     if not path.exists():
         raise FileNotFoundError(f"File not found: {path}")
     try:
-        from docling.document_converter import DocumentConverter  # type: ignore[import-untyped]
+        from docling.datamodel.base_models import InputFormat  # type: ignore[import-untyped]
+        from docling.datamodel.pipeline_options import (  # type: ignore[import-untyped]
+            PdfPipelineOptions,
+            TableStructureOptions,
+        )
+        from docling.document_converter import (  # type: ignore[import-untyped]
+            DocumentConverter,
+            PdfFormatOption,
+        )
     except ImportError as err:
         # Defensive: pdf_available() said yes but the converter import failed.
         raise DependencyUnavailableError(
@@ -536,15 +577,75 @@ def _read_pdf_docling_pages(path: Path) -> list[str]:
             "layout_engine='docling' (extras: docline[pdf]; missing import: docling)"
         ) from err
     try:
-        converter = DocumentConverter()
+        pipeline_options = PdfPipelineOptions(
+            do_table_structure=True,
+            table_structure_options=TableStructureOptions(do_cell_matching=True),
+            generate_picture_images=picture_sink is not None,
+            images_scale=2.0,
+        )
+        converter = DocumentConverter(
+            format_options={
+                InputFormat.PDF: PdfFormatOption(pipeline_options=pipeline_options),
+            }
+        )
         result = converter.convert(str(path))
         markdown = result.document.export_to_markdown()
+    except DependencyUnavailableError:
+        raise
     except Exception as err:  # noqa: BLE001
         raise PdfReadError(f"docling failed to convert PDF: {path}") from err
+
+    # Picture routing is isolated from the conversion `try/except` above so
+    # that a failure inside the picture-iteration loop (e.g., docling API
+    # drift making `document.pictures` non-iterable) cannot discard the
+    # already-extracted markdown by escalating to PdfReadError.
+    if picture_sink is not None:
+        try:
+            _route_docling_pictures(result.document, picture_sink)
+        except Exception as err:  # noqa: BLE001
+            _log.warning(
+                "Docling picture routing failed for %s; markdown preserved: %s",
+                path,
+                err,
+            )
+
     markdown = markdown.strip()
     if not markdown:
         return []
     return [markdown]
+
+
+def _route_docling_pictures(document: object, picture_sink: PictureSink) -> None:
+    """Emit docling-rendered pictures through ``picture_sink`` (015-S).
+
+    Iterates ``document.pictures`` (when present); for each picture with
+    a rendered PIL ``Image`` attribute, persists the image bytes as PNG
+    through ``picture_sink.emit``. Gracefully skips emission when the
+    expected attribute API is absent (logs warning, returns) so changes
+    in docling's picture-representation API do not break the markdown
+    flow — production still gets the rendered text content.
+    """
+    pictures = getattr(document, "pictures", None)
+    if not pictures:
+        return
+    for picture in pictures:
+        image = getattr(picture, "image", None)
+        if image is None:
+            continue
+        # PIL Image: serialize to PNG bytes.
+        pil_image = getattr(image, "pil_image", image)
+        try:
+            buffer = io.BytesIO()
+            pil_image.save(buffer, format="PNG")
+            png_bytes = buffer.getvalue()
+        except Exception as err:  # noqa: BLE001
+            _log.warning("Failed to serialize docling picture to PNG: %s", err)
+            continue
+        try:
+            picture_sink.emit("image/png", png_bytes)
+        except Exception as err:  # noqa: BLE001
+            _log.warning("PictureSink failed to accept docling picture: %s", err)
+            continue
 
 
 def _read_pdf_pypdf_pages(raw: bytes) -> list[str]:

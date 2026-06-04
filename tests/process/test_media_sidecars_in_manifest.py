@@ -203,3 +203,36 @@ def test_outputs_without_media_omit_media_root_dir(tmp_path: Path) -> None:
     )
     # No media root anywhere under the job root.
     assert not any(p.name == "media" and p.is_dir() for p in job_root.rglob("*"))
+
+
+# ---------------------------------------------------------------------------
+# 015-S — picture_sink threading through read_pdf
+# ---------------------------------------------------------------------------
+
+
+def test_pdf_branch_passes_picture_sink_to_read_pdf(tmp_path: Path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    """build_output_document_parts PDF branch forwards picture_sink to read_pdf.
+
+    Without this forwarding, the docling-side picture-extraction path
+    from 015-S cannot reach the sink. Captured via monkeypatch on
+    ``docline.readers.pdf.read_pdf``.
+    """
+    captured: dict[str, object] = {}
+
+    def fake_read_pdf(_path, *, layout_engine: str = "heuristic", picture_sink=None) -> str:  # type: ignore[no-untyped-def]
+        captured["layout_engine"] = layout_engine
+        captured["picture_sink"] = picture_sink
+        return ""
+
+    import docline.process.output_contract as oc
+
+    monkeypatch.setattr(oc, "read_pdf", fake_read_pdf)
+
+    _job_root, _manifest = _run_process(
+        tmp_path,
+        "local_file:docs/sample.pdf",
+        {"sample.pdf": _make_pdf_bytes_single_page("hi")},
+    )
+
+    assert "picture_sink" in captured, "read_pdf was not called with picture_sink kwarg"
+    assert captured["picture_sink"] is not None, "expected a CountingPictureSink instance, got None"

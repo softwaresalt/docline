@@ -98,7 +98,7 @@ def build_output_document_parts(
     suffix = file_path.suffix.lower()
     media_references: list[MediaReference] = []
     if suffix == ".pdf":
-        rendered = read_pdf(file_path, layout_engine=layout_engine)
+        rendered = read_pdf(file_path, layout_engine=layout_engine, picture_sink=picture_sink)
         segment_bodies = segment_markdown(rendered) if rendered.strip() else [""]
     elif suffix == ".docx":
         if picture_sink is not None:
