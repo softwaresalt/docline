@@ -590,12 +590,25 @@ def _read_pdf_docling_pages(
         )
         result = converter.convert(str(path))
         markdown = result.document.export_to_markdown()
-        if picture_sink is not None:
-            _route_docling_pictures(result.document, picture_sink)
     except DependencyUnavailableError:
         raise
     except Exception as err:  # noqa: BLE001
         raise PdfReadError(f"docling failed to convert PDF: {path}") from err
+
+    # Picture routing is isolated from the conversion `try/except` above so
+    # that a failure inside the picture-iteration loop (e.g., docling API
+    # drift making `document.pictures` non-iterable) cannot discard the
+    # already-extracted markdown by escalating to PdfReadError.
+    if picture_sink is not None:
+        try:
+            _route_docling_pictures(result.document, picture_sink)
+        except Exception as err:  # noqa: BLE001
+            _log.warning(
+                "Docling picture routing failed for %s; markdown preserved: %s",
+                path,
+                err,
+            )
+
     markdown = markdown.strip()
     if not markdown:
         return []
