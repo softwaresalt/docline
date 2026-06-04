@@ -7,6 +7,7 @@ to ATX Markdown headings and ``<w:numPr>`` paragraphs to GFM list
 items with ``w:ilvl`` indentation.
 """
 
+import logging
 import zipfile
 from pathlib import Path
 from xml.etree.ElementTree import Element
@@ -14,7 +15,10 @@ from xml.etree.ElementTree import Element
 from defusedxml.ElementTree import ParseError as DefusedParseError
 from defusedxml.ElementTree import fromstring as _defused_fromstring
 
+from docline.readers.picture_sink import MediaReference, PictureSink
 from docline.schema.models import DoclineError
+
+_log = logging.getLogger(__name__)
 
 
 class DocxReadError(DoclineError):
@@ -41,6 +45,25 @@ _NUMFMT_TAG = f"{_WORDPROCESSING_NS}numFmt"
 _TBL_TAG = f"{_WORDPROCESSING_NS}tbl"
 _TR_TAG = f"{_WORDPROCESSING_NS}tr"
 _TC_TAG = f"{_WORDPROCESSING_NS}tc"
+_DRAWING_TAG = f"{_WORDPROCESSING_NS}drawing"
+
+_DRAWINGML_NS = "{http://schemas.openxmlformats.org/drawingml/2006/main}"
+_BLIP_TAG = f"{_DRAWINGML_NS}blip"
+
+_RELS_NS = "{http://schemas.openxmlformats.org/officeDocument/2006/relationships}"
+_R_EMBED_ATTR = f"{_RELS_NS}embed"
+_PACKAGE_RELS_NS = "{http://schemas.openxmlformats.org/package/2006/relationships}"
+_RELATIONSHIP_TAG = f"{_PACKAGE_RELS_NS}Relationship"
+
+_EXT_TO_MIME: dict[str, str] = {
+    ".png": "image/png",
+    ".jpg": "image/jpeg",
+    ".jpeg": "image/jpeg",
+    ".gif": "image/gif",
+    ".webp": "image/webp",
+    ".bmp": "image/bmp",
+    ".svg": "image/svg+xml",
+}
 
 _ORDERED_NUMFMTS = frozenset(
     {
@@ -420,8 +443,250 @@ def read_docx(path: Path) -> str:
     return "\n\n".join(read_docx_blocks(path))
 
 
+# ---------------------------------------------------------------------------
+# G3c (014-S) — DOCX image extraction with PictureSink integration
+# ---------------------------------------------------------------------------
+
+
+def _parse_relationships(rels_xml: bytes) -> dict[str, str]:
+    """Parse ``word/_rels/document.xml.rels`` into ``{Id: Target}``.
+
+    Uses ``defusedxml`` for XXE safety. Returns an empty mapping when the
+    payload is malformed or empty.
+    """
+    try:
+        root = _defused_fromstring(rels_xml)
+    except DefusedParseError:
+        return {}
+    rels: dict[str, str] = {}
+    for rel in root.iter(_RELATIONSHIP_TAG):
+        rid = rel.get("Id")
+        target = rel.get("Target")
+        if rid and target:
+            rels[rid] = target
+    return rels
+
+
+def _safe_target_path(target: str) -> str | None:
+    """Resolve a rels ``Target`` relative to ``word/``; reject path traversal.
+
+    Returns the path within the DOCX zip (e.g. ``"word/media/image1.png"``)
+    or ``None`` if the target attempts to escape the ``word/`` namespace
+    (leading slash, ``..`` segments, or absolute path).
+    """
+    if not target:
+        return None
+    if target.startswith("/"):
+        return None
+    normalized = target.replace("\\", "/")
+    if ".." in normalized.split("/"):
+        return None
+    return f"word/{normalized}"
+
+
+def _mime_for_target(target: str) -> str:
+    """Infer MIME type from the file extension of a rels Target."""
+    lower = target.lower()
+    for ext, mime in _EXT_TO_MIME.items():
+        if lower.endswith(ext):
+            return mime
+    return "application/octet-stream"
+
+
+def _extract_blip_embed_ids(paragraph: Element) -> list[str]:
+    """Return ordered ``r:embed`` ids from every ``<a:blip>`` inside ``<w:drawing>``.
+
+    Walks every ``<w:drawing>`` descendant of ``paragraph`` and collects
+    the ``r:embed`` attribute of each ``<a:blip>`` it contains. Empty
+    or missing attributes are dropped silently.
+    """
+    embed_ids: list[str] = []
+    for drawing in paragraph.iter(_DRAWING_TAG):
+        for blip in drawing.iter(_BLIP_TAG):
+            rid = blip.get(_R_EMBED_ATTR)
+            if rid:
+                embed_ids.append(rid)
+    return embed_ids
+
+
+def _emit_image_for_embed(
+    *,
+    rid: str,
+    rels: dict[str, str],
+    archive: zipfile.ZipFile,
+    archive_names: set[str],
+    picture_sink: PictureSink,
+) -> str | None:
+    """Resolve ``rid`` to bytes via ``rels`` and emit through ``picture_sink``.
+
+    Returns the markdown image reference (``"![](media/figure-NNNN.ext)"``)
+    on success, or ``None`` when the embed id cannot be resolved or the
+    target bytes cannot be read.
+    """
+    target = rels.get(rid)
+    if target is None:
+        _log.warning("DOCX image rId %s has no matching relationship; skipping", rid)
+        return None
+    archive_path = _safe_target_path(target)
+    if archive_path is None:
+        _log.warning("DOCX image target %r failed path-traversal check; skipping", target)
+        return None
+    if archive_path not in archive_names:
+        _log.warning("DOCX image target %r missing from archive; skipping", archive_path)
+        return None
+    try:
+        data = archive.read(archive_path)
+    except (KeyError, RuntimeError, zipfile.BadZipFile) as err:
+        _log.warning("DOCX image %r failed to read: %s", archive_path, err)
+        return None
+    mime = _mime_for_target(target)
+    # Honor the source extension verbatim so jpeg/jpg distinction is preserved.
+    suffix = Path(target).suffix.lower() or None
+    reference = picture_sink.emit(mime, data, ext=suffix)
+    return f"![](media/{reference.filename})"
+
+
+def read_docx_blocks_with_media(
+    path: Path, picture_sink: PictureSink | None
+) -> tuple[list[str], list[MediaReference]]:
+    """Read DOCX blocks and optionally extract embedded images to ``picture_sink``.
+
+    When ``picture_sink`` is provided, every ``<a:blip r:embed="rIdN"/>``
+    inside ``<w:drawing>`` is resolved via ``word/_rels/document.xml.rels``,
+    the corresponding ``word/media/imageN.<ext>`` bytes are passed to the
+    sink, and the paragraph emits ``![](media/<assigned_filename>)`` in
+    place. When ``picture_sink`` is ``None``, this function delegates to
+    :func:`read_docx_blocks` for the text-only back-compat path.
+
+    Embed ids that cannot be resolved (missing rels entry, target outside
+    ``word/``, file absent from the archive, or read error) are skipped
+    silently with a ``logging.WARNING`` and the surrounding paragraph
+    text still emits.
+
+    Args:
+        path: Path to the DOCX file.
+        picture_sink: Optional ``PictureSink`` that persists extracted
+            image bytes and assigns sidecar filenames. When ``None``,
+            the function emits text blocks only (legacy behavior).
+
+    Returns:
+        Tuple of ``(blocks, references)`` where ``blocks`` is the ordered
+        markdown block list (including any ``![](media/...)`` insertions)
+        and ``references`` is the ordered list of ``MediaReference``
+        objects the sink emitted. ``references`` is always empty when
+        ``picture_sink`` is ``None``.
+
+    Raises:
+        DocxReadError: If DOCX parsing fails.
+        FileNotFoundError: If ``path`` does not exist.
+    """
+    if picture_sink is None:
+        return read_docx_blocks(path), []
+
+    if not path.exists():
+        raise FileNotFoundError(f"File not found: {path}")
+    raw = path.read_bytes()
+    if raw[:2] != b"PK":
+        raise DocxReadError(f"Not a valid DOCX file (missing ZIP signature): {path}")
+
+    try:
+        with zipfile.ZipFile(path) as archive:
+            archive_names = set(archive.namelist())
+            if "word/document.xml" not in archive_names:
+                return [], []
+            document_xml = archive.read("word/document.xml")
+            numbering_map: dict[int, dict[int, str]] = {}
+            if "word/numbering.xml" in archive_names:
+                numbering_map = _parse_numbering_xml(archive.read("word/numbering.xml"))
+            rels: dict[str, str] = {}
+            if "word/_rels/document.xml.rels" in archive_names:
+                rels = _parse_relationships(archive.read("word/_rels/document.xml.rels"))
+
+            try:
+                document_root = _defused_fromstring(document_xml)
+            except DefusedParseError as err:
+                raise DocxReadError(f"Malformed XML in word/document.xml: {path}") from err
+
+            body = document_root.find(_BODY_TAG)
+            elements = list(body) if body is not None else list(document_root)
+
+            blocks: list[str] = []
+            references: list[MediaReference] = []
+            current_list: list[tuple[int, str, int]] = []
+            current_num_id: int | None = None
+
+            def _flush_list() -> None:
+                nonlocal current_list, current_num_id
+                if current_list:
+                    blocks.append(_render_list_block(current_list, numbering_map))
+                    current_list = []
+                    current_num_id = None
+
+            for element in elements:
+                if element.tag == _PARA_TAG:
+                    embed_ids = _extract_blip_embed_ids(element)
+                    image_markdowns: list[str] = []
+                    for rid in embed_ids:
+                        before = len(references)
+                        markdown = _emit_image_for_embed(
+                            rid=rid,
+                            rels=rels,
+                            archive=archive,
+                            archive_names=archive_names,
+                            picture_sink=picture_sink,
+                        )
+                        if markdown is not None:
+                            image_markdowns.append(markdown)
+                            # Track the reference the sink just emitted.
+                            if hasattr(picture_sink, "references"):
+                                refs = picture_sink.references  # type: ignore[attr-defined]
+                                if len(refs) > before:
+                                    references.append(refs[-1])
+
+                    numpr = _paragraph_numpr(element)
+                    text = _paragraph_text(element).strip()
+                    combined = text
+                    if image_markdowns:
+                        if combined:
+                            combined = combined + "\n\n" + "\n\n".join(image_markdowns)
+                        else:
+                            combined = "\n\n".join(image_markdowns)
+
+                    if numpr is not None:
+                        num_id, ilvl = numpr
+                        if not combined:
+                            continue
+                        if current_num_id is not None and current_num_id != num_id:
+                            _flush_list()
+                        current_num_id = num_id
+                        current_list.append((ilvl, combined, num_id))
+                        continue
+
+                    _flush_list()
+                    if not combined:
+                        continue
+                    level = _heading_level(_paragraph_style(element))
+                    if level is not None:
+                        blocks.append(f"{'#' * level} {combined}")
+                    else:
+                        blocks.append(combined)
+                elif element.tag == _TBL_TAG:
+                    _flush_list()
+                    rendered = _render_table(element)
+                    if rendered is not None:
+                        blocks.append(rendered)
+                # Other block-level body elements (sectPr, bookmarks) skipped.
+
+            _flush_list()
+            return blocks, references
+
+    except zipfile.BadZipFile as err:
+        raise DocxReadError(f"Corrupt ZIP archive (DOCX unreadable): {path}") from err
+
+
 __all__ = [
     "DocxReadError",
     "read_docx_blocks",
+    "read_docx_blocks_with_media",
     "read_docx",
 ]
