@@ -516,12 +516,16 @@ def _emit_image_for_embed(
     archive: zipfile.ZipFile,
     archive_names: set[str],
     picture_sink: PictureSink,
-) -> str | None:
+) -> tuple[str, MediaReference] | None:
     """Resolve ``rid`` to bytes via ``rels`` and emit through ``picture_sink``.
 
-    Returns the markdown image reference (``"![](media/figure-NNNN.ext)"``)
-    on success, or ``None`` when the embed id cannot be resolved or the
-    target bytes cannot be read.
+    Returns a ``(markdown_image_reference, media_reference)`` tuple on
+    success, or ``None`` when the embed id cannot be resolved or the
+    target bytes cannot be read. The ``media_reference`` is the value
+    ``picture_sink.emit`` returned — capturing it at the call site
+    avoids reaching into sink-private state (which would not work for
+    arbitrary ``PictureSink`` implementations that do not maintain a
+    ``references`` collection).
     """
     target = rels.get(rid)
     if target is None:
@@ -543,7 +547,7 @@ def _emit_image_for_embed(
     # Honor the source extension verbatim so jpeg/jpg distinction is preserved.
     suffix = Path(target).suffix.lower() or None
     reference = picture_sink.emit(mime, data, ext=suffix)
-    return f"![](media/{reference.filename})"
+    return f"![](media/{reference.filename})", reference
 
 
 def read_docx_blocks_with_media(
@@ -627,21 +631,17 @@ def read_docx_blocks_with_media(
                     embed_ids = _extract_blip_embed_ids(element)
                     image_markdowns: list[str] = []
                     for rid in embed_ids:
-                        before = len(references)
-                        markdown = _emit_image_for_embed(
+                        emitted = _emit_image_for_embed(
                             rid=rid,
                             rels=rels,
                             archive=archive,
                             archive_names=archive_names,
                             picture_sink=picture_sink,
                         )
-                        if markdown is not None:
+                        if emitted is not None:
+                            markdown, reference = emitted
                             image_markdowns.append(markdown)
-                            # Track the reference the sink just emitted.
-                            if hasattr(picture_sink, "references"):
-                                refs = picture_sink.references  # type: ignore[attr-defined]
-                                if len(refs) > before:
-                                    references.append(refs[-1])
+                            references.append(reference)
 
                     numpr = _paragraph_numpr(element)
                     text = _paragraph_text(element).strip()

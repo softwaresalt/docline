@@ -115,12 +115,6 @@ def _make_docx_with_drawings(image_specs: list[tuple[str, str, bytes]]) -> bytes
     return buf.getvalue()
 
 
-def _make_docx_with_no_images() -> bytes:
-    """Return a minimal DOCX with one text-only paragraph (no `<w:drawing>`)."""
-    return _make_docx_with_drawings([])  # empty specs → no paragraphs; add a text-only one
-    # NB: replaced below with a real fixture
-
-
 def _make_docx_text_only(text: str) -> bytes:
     """Return a minimal DOCX containing exactly one text-only paragraph."""
     ns_w = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
