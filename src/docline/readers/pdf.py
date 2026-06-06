@@ -576,8 +576,13 @@ def read_pdf_pages(
         extractable.
 
     Raises:
-        PdfReadError: If PDF parsing fails (does not fire for ``"auto"`` —
-            ``"auto"`` falls back to heuristic on docling errors).
+        PdfReadError: If PDF parsing fails on the explicit ``"docling"`` or
+            ``"heuristic"`` path. Does NOT fire for ``"auto"`` — the auto
+            path catches ``PdfReadError``, ``RuntimeError``, ``MemoryError``,
+            and ``OSError`` and falls back to the heuristic engine so a
+            single hostile PDF (e.g. the 2026-06-04 ``azure-cosmos-db.pdf``
+            that OOM'd docling's rt_detr CPU allocator) cannot abort
+            the batch.
         FileNotFoundError: If ``path`` does not exist.
         DependencyUnavailableError: If ``layout_engine='docling'`` and the
             ``docling`` package is not installed.
@@ -593,12 +598,27 @@ def read_pdf_pages(
         if layout_engine == "auto":
             try:
                 return _read_pdf_docling_pages(path, picture_sink=picture_sink)
-            except (PdfReadError, FileNotFoundError):
-                # FileNotFoundError must propagate; PdfReadError under "auto"
-                # falls back to heuristic so a single hostile PDF does not
-                # break batch processing.
+            except FileNotFoundError:
+                # FileNotFoundError must always propagate so missing-file bugs
+                # surface immediately rather than being swallowed by fallback.
+                raise
+            except (PdfReadError, RuntimeError, MemoryError, OSError) as err:
+                # PdfReadError covers parser failures.
+                # RuntimeError / MemoryError / OSError cover the docling
+                # rt_detr CPU allocator failure pattern observed in the
+                # 2026-06-04 load test (PyTorch raises RuntimeError
+                # from c10::Error("DefaultCPUAllocator: not enough memory")),
+                # plus other torch / I/O blowups that should not abort the
+                # batch. The heuristic path below picks up where docling
+                # left off so a single hostile PDF cannot derail the run.
                 if not path.exists():
-                    raise
+                    raise FileNotFoundError(f"File not found: {path}") from err
+                _log.warning(
+                    "Docling failed on %s (%s: %s); falling back to heuristic engine",
+                    path,
+                    type(err).__name__,
+                    err,
+                )
                 # Drop down to the heuristic path below.
         else:
             return _read_pdf_docling_pages(path, picture_sink=picture_sink)

@@ -243,3 +243,90 @@ def test_resolve_for_file_raises_when_path_missing(tmp_path, monkeypatch: pytest
     monkeypatch.setattr("docline.readers.pdf.dependencies.pdf_available", lambda: True)
     with pytest.raises(FileNotFoundError):
         resolve_pdf_engine_for_file(tmp_path / "missing.pdf", requested="auto")
+
+
+# ---------------------------------------------------------------------------
+# 018.001.003-T — broader auto-fallback exception net
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "exception_class,exception_args",
+    [
+        (RuntimeError, ("DefaultCPUAllocator: not enough memory",)),
+        (MemoryError, ("torch tensor allocation failed",)),
+        (OSError, ("disk I/O error during docling stream parse",)),
+    ],
+)
+def test_auto_falls_back_to_heuristic_on_docling_runtime_errors(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+    exception_class: type[Exception],
+    exception_args: tuple[str, ...],
+) -> None:
+    """``auto`` engine survives docling RuntimeError/MemoryError/OSError.
+
+    Regression coverage for the 2026-06-04 load-test pattern where
+    docling's rt_detr CPU allocator raised
+    ``RuntimeError("DefaultCPUAllocator: not enough memory")`` and aborted
+    the batch because the auto-fallback only caught ``PdfReadError``.
+    With the broadened net, the heuristic engine takes over and the
+    batch continues.
+    """
+
+    monkeypatch.setattr("docline.readers.pdf.dependencies.pdf_available", lambda: True)
+
+    def boom(path, *, picture_sink=None):
+        raise exception_class(*exception_args)
+
+    monkeypatch.setattr("docline.readers.pdf._read_pdf_docling_pages", boom)
+
+    pdf = tmp_path / "doc.pdf"
+    pdf.write_bytes(b"%PDF-1.4\n%\xe2\xe3\xcf\xd3\n")  # valid header + binary marker
+
+    from docline.readers.pdf import read_pdf_pages
+
+    pages = read_pdf_pages(pdf, layout_engine="auto")
+
+    # Heuristic path returns a list (possibly empty for tiny stubs). The key
+    # assertion is that it did NOT raise — the batch survives.
+    assert isinstance(pages, list)
+
+
+def test_auto_re_raises_missing_file_even_under_broader_net(tmp_path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """FileNotFoundError must still propagate so missing-file bugs surface."""
+
+    from docline.readers.pdf import read_pdf_pages
+
+    monkeypatch.setattr("docline.readers.pdf.dependencies.pdf_available", lambda: True)
+
+    def boom(path, *, picture_sink=None):
+        raise RuntimeError("docling exploded but file is also missing")
+
+    monkeypatch.setattr("docline.readers.pdf._read_pdf_docling_pages", boom)
+
+    with pytest.raises(FileNotFoundError):
+        read_pdf_pages(tmp_path / "nope.pdf", layout_engine="auto")
+
+
+def test_explicit_docling_engine_does_not_fall_back(tmp_path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Explicit ``layout_engine='docling'`` re-raises runtime errors (no fallback).
+
+    Callers who explicitly opted into docling get the failure surfaced —
+    only ``auto`` callers get the silent fallback to heuristic.
+    """
+
+    from docline.readers.pdf import read_pdf_pages
+
+    monkeypatch.setattr("docline.readers.pdf.dependencies.pdf_available", lambda: True)
+
+    def boom(path, *, picture_sink=None):
+        raise RuntimeError("docling exploded")
+
+    monkeypatch.setattr("docline.readers.pdf._read_pdf_docling_pages", boom)
+
+    pdf = tmp_path / "doc.pdf"
+    pdf.write_bytes(b"%PDF-1.4\n")
+
+    with pytest.raises(RuntimeError, match="docling exploded"):
+        read_pdf_pages(pdf, layout_engine="docling")
