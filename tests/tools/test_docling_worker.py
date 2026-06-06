@@ -31,7 +31,9 @@ def test_returns_3_when_input_missing(tmp_path: Path, capsys) -> None:
     assert payload["stage"] == "input"
 
 
-def test_returns_4_when_docling_unavailable(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys) -> None:
+def test_returns_4_when_docling_unavailable(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys
+) -> None:
     """DependencyUnavailableError from the reader maps to exit 4."""
 
     from docline import dependencies
@@ -53,7 +55,9 @@ def test_returns_4_when_docling_unavailable(tmp_path: Path, monkeypatch: pytest.
     assert payload["stage"] == "docling-extras"
 
 
-def test_returns_5_when_docling_raises_runtime_error(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys) -> None:
+def test_returns_5_when_docling_raises_runtime_error(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys
+) -> None:
     """Any non-DependencyUnavailableError exception from docling becomes exit 5."""
 
     from docline._tools import docling_worker
@@ -75,7 +79,9 @@ def test_returns_5_when_docling_raises_runtime_error(tmp_path: Path, monkeypatch
     assert "RuntimeError" in payload["exception"]
 
 
-def test_success_writes_markdown_and_returns_0(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_success_writes_markdown_and_returns_0(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """Happy path: docling returns pages, worker writes joined markdown, exits 0."""
 
     from docline._tools import docling_worker
@@ -99,7 +105,9 @@ def test_success_writes_markdown_and_returns_0(tmp_path: Path, monkeypatch: pyte
     assert "Hello\n\n# Page 2" in body
 
 
-def test_creates_parent_directories_for_output(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_creates_parent_directories_for_output(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """Worker creates output_path.parent if it doesn't exist."""
 
     from docline._tools import docling_worker
@@ -108,7 +116,9 @@ def test_creates_parent_directories_for_output(tmp_path: Path, monkeypatch: pyte
     pdf.write_bytes(b"%PDF-1.4\n")
     output = tmp_path / "nested" / "subdir" / "out.md"
 
-    monkeypatch.setattr("docline.readers.pdf._read_pdf_docling_pages", lambda path, picture_sink=None: ["x"])
+    monkeypatch.setattr(
+        "docline.readers.pdf._read_pdf_docling_pages", lambda path, picture_sink=None: ["x"]
+    )
 
     exit_code = docling_worker.main([str(pdf), str(output)])
 
