@@ -149,4 +149,61 @@ def build_output_document_parts(
     return parts
 
 
-__all__ = ["OutputDocumentPart", "build_output_document_parts"]
+def apply_triage_attribution(
+    payload: dict[str, object],
+    engine: str | None,
+) -> None:
+    """Merge the per-page ``engine`` attribution into ``payload['docline']``.
+
+    Stub — implementation lands in task 019.005-T (U5).
+
+    MUST merge with existing ``docline:`` namespace keys, not overwrite them
+    (see ``docs/compound/2026-06-04-pydantic-namespace-merge-vs-overwrite.md``).
+
+    Args:
+        payload: Mutable payload dict that may already contain a ``docline``
+            namespace populated by upstream validators (e.g. ``source_url``,
+            ``crawl_depth``).
+        engine: ``"heuristic"`` or ``"docling"``; ``None`` to leave the
+            payload unchanged (non-triage runs).
+    """
+    raise NotImplementedError("019.005-T: apply_triage_attribution")
+
+
+def build_triage_part_payloads(triage_result: object) -> list[dict[str, object]]:
+    """Build per-page frontmatter payloads from a :class:`TriageResult`.
+
+    Stub — implementation lands in task 019.005-T (U5).
+
+    Args:
+        triage_result: :class:`docline.process.pdf_triage.TriageResult`.
+
+    Returns:
+        One payload dict per page, with the ``engine`` field merged into
+        each payload's ``docline:`` namespace.
+    """
+    raise NotImplementedError("019.005-T: build_triage_part_payloads")
+
+
+def build_triage_manifest_stats(triage_result: object) -> dict[str, int]:
+    """Build the manifest-level ``triage_stats`` summary block.
+
+    Stub — implementation lands in task 019.005-T (U5).
+
+    Args:
+        triage_result: :class:`docline.process.pdf_triage.TriageResult`.
+
+    Returns:
+        Mapping with keys ``pages_total``, ``pages_docling``,
+        ``pages_heuristic``, ``flagged_ranges``.
+    """
+    raise NotImplementedError("019.005-T: build_triage_manifest_stats")
+
+
+__all__ = [
+    "OutputDocumentPart",
+    "apply_triage_attribution",
+    "build_output_document_parts",
+    "build_triage_manifest_stats",
+    "build_triage_part_payloads",
+]
