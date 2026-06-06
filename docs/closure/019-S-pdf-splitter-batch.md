@@ -57,7 +57,7 @@ To be populated after the cross-OS matrix runs through this PR.
 
 ## Architectural surface
 
-```
+```text
 src/docline/runtime/resource_probe.py        # shipment 018-S
 src/docline/readers/pdf_splitter.py          # this shipment (T1)
 src/docline/_tools/docling_worker.py         # this shipment (T2)
