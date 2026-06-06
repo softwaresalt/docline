@@ -1,7 +1,5 @@
 """Page-range coalescer for the triage-then-repair PDF pipeline.
 
-Stub module — implementation lands in task 019.002-T (U2).
-
 Converts flagged page indices into ``(start, end)`` ranges with a
 configurable context buffer and merges adjacent / near-adjacent ranges
 per a merge-gap threshold.
@@ -27,7 +25,7 @@ def coalesce_ranges(
         flagged_indices: Zero-based page indices the scorer triggered on.
             Order does not matter; duplicates are tolerated.
         total_pages: Total page count of the source PDF (used to clamp
-            output ranges).
+            output ranges). Must be ``>= 0``.
         buffer: Pages of context to include on each side of every
             flagged index. Must be ``>= 0``.
         merge_gap: Two ranges are merged when their gap is ``<=`` this
@@ -41,4 +39,24 @@ def coalesce_ranges(
         ValueError: If ``buffer < 0``, ``merge_gap < 0``, or
             ``total_pages < 0``.
     """
-    raise NotImplementedError("019.002-T: coalesce_ranges")
+    if buffer < 0:
+        raise ValueError(f"buffer must be >= 0, got {buffer}")
+    if merge_gap < 0:
+        raise ValueError(f"merge_gap must be >= 0, got {merge_gap}")
+    if total_pages < 0:
+        raise ValueError(f"total_pages must be >= 0, got {total_pages}")
+
+    if not flagged_indices or total_pages == 0:
+        return []
+
+    expanded = sorted(
+        {(max(0, idx - buffer), min(total_pages - 1, idx + buffer)) for idx in flagged_indices}
+    )
+
+    merged: list[tuple[int, int]] = []
+    for start, end in expanded:
+        if merged and start - merged[-1][1] <= merge_gap:
+            merged[-1] = (merged[-1][0], max(merged[-1][1], end))
+        else:
+            merged.append((start, end))
+    return merged
