@@ -2,8 +2,8 @@
 shipment: 020-S
 title: "Closure record — load-test harness"
 status: verified
-merge_sha: TBD
-merged_pr: TBD
+merge_sha: 4bd5d36
+merged_pr: 40
 ---
 
 # Closure — 020-S: load-test harness
