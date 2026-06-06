@@ -2,8 +2,8 @@
 shipment: 017-S
 title: "Closure record — H1 header synthesis spike"
 status: verified
-merge_sha: TBD
-merged_pr: TBD
+merge_sha: d5978ea
+merged_pr: 34
 ---
 
 # Closure — 017-S: H1 header synthesis spike
