@@ -29,7 +29,7 @@ Tiers (file-size buckets):
 
 TSV columns:
 
-``timestamp file mb pages chunk_index engine exit_code elapsed_s peak_rss_mb
+``timestamp file mb chunk_index engine exit_code elapsed_s peak_rss_mb
 output_chars fallback_reason probe_available_gb probe_max_pages probe_serialize``
 
 Each PDF gets one row per chunk, plus a synthetic ``summary`` row with
@@ -121,8 +121,8 @@ def iter_corpus(
         yield pdf_path, size_mb
 
 
-def _sample_peak_rss_mb() -> float:
-    """Sample the current process peak RSS in MB."""
+def _sample_rss_mb() -> float:
+    """Sample the current process RSS in MB (a point-in-time reading)."""
 
     proc = psutil.Process()
     info = proc.memory_info()
@@ -134,13 +134,20 @@ def run_one_pdf(
     *,
     output_dir: Path,
 ) -> tuple[BatchResult, float, float]:
-    """Run a single PDF through the batch processor; return result + elapsed + peak RSS."""
+    """Run a single PDF through the batch processor; return result + elapsed + peak RSS.
+
+    Peak RSS is the maximum of two RSS samples (start + end). It is a coarse
+    approximation — true peak working-set tracking would require
+    ``psutil.memory_info().peak_wset`` on Windows or polling on a thread,
+    both of which add complexity. The two-sample max is good enough to
+    discriminate the per-PDF tiers we care about in the harness output.
+    """
 
     start = time.monotonic()
-    rss_start = _sample_peak_rss_mb()
+    rss_start = _sample_rss_mb()
     result = process_pdf_in_chunks(pdf_path, output_dir=output_dir / pdf_path.stem)
     elapsed = time.monotonic() - start
-    rss_peak = max(_sample_peak_rss_mb(), rss_start)
+    rss_peak = max(_sample_rss_mb(), rss_start)
     return result, elapsed, rss_peak
 
 
