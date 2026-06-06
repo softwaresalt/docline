@@ -2,8 +2,8 @@
 
 The orchestrator runs five passes:
 
-1. Heuristic baseline across the whole PDF via
-   :func:`docline.readers.pdf.read_pdf_pages` with ``layout_engine="heuristic"``.
+1. Heuristic baseline across the whole PDF via direct pypdf per-page
+   extraction (preserves per-page index alignment for splice-back).
 2. Score each page via :func:`docline.process.fidelity_scorer.score_page`.
 3. Coalesce flagged page indices into ranges via
    :func:`docline.process.page_range.coalesce_ranges`.
@@ -12,13 +12,28 @@ The orchestrator runs five passes:
 5. Merge per-page outputs into a final list where flagged pages come
    from docling and the rest from heuristic.
 
+Sibling entry points:
+
+* :func:`triage_report_only` — runs passes 1-2 only and emits a
+  per-page TSV without invoking docling (calibration mode, U6).
+* :func:`dispatch_pdf_mode` — routing entry for the CLI ``--pdf-mode``
+  flag (U4).
+
+QA tripwire (U7): when a :class:`QASampling` configuration is passed,
+:func:`process_pdf_triaged` randomly re-runs that fraction of
+*unflagged* pages through docling and records the disagreement count
+in :attr:`TriageResult.metadata` as ``"qa_disagreements"``.
+
 Plan: ``docs/plans/2026-06-06-triage-then-repair-plan.md`` § U3, U6, U7.
 """
 
 from __future__ import annotations
 
+import csv
+import random
 import subprocess
 import sys
+import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -81,6 +96,27 @@ class QASampling:
 def _default_runner(args: list[str]) -> subprocess.CompletedProcess[str]:
     """Default subprocess runner — captures stderr so diagnostics survive."""
     return subprocess.run(args, capture_output=True, text=True, check=False)
+
+
+def _normalize_markdown(text: str) -> str:
+    """Normalize markdown for QA tripwire comparison.
+
+    Strips trailing whitespace per line and collapses runs of blank lines
+    so trivial whitespace variation does not inflate the disagreement
+    count.
+    """
+    lines = [line.rstrip() for line in text.splitlines()]
+    normalized: list[str] = []
+    prev_blank = False
+    for line in lines:
+        if not line:
+            if not prev_blank:
+                normalized.append("")
+            prev_blank = True
+        else:
+            normalized.append(line)
+            prev_blank = False
+    return "\n".join(normalized).strip()
 
 
 def process_pdf_triaged(
@@ -220,6 +256,50 @@ def process_pdf_triaged(
         "merge_gap": merge_gap,
     }
 
+    # QA tripwire: sample unflagged pages, run docling on each, count
+    # disagreements with heuristic output.
+    if qa_sampling is not None and qa_sampling.sample_rate > 0:
+        unflagged_indices = [i for i in range(total_pages) if engine_per_page[i] == "heuristic"]
+        if qa_sampling.random_seed is None:
+            seed_used = int(time.time() * 1000) & 0xFFFFFFFF
+        else:
+            seed_used = qa_sampling.random_seed
+        rng = random.Random(seed_used)
+        target_count = min(
+            int(len(unflagged_indices) * qa_sampling.sample_rate),
+            qa_sampling.max_sampled_pages,
+            len(unflagged_indices),
+        )
+        sampled = sorted(rng.sample(unflagged_indices, target_count)) if target_count > 0 else []
+
+        qa_disagreements = 0
+        for page_idx in sampled:
+            qa_pdf = splice_cache / f"qa-{page_idx:04d}.pdf"
+            qa_md = splice_cache / f"qa-{page_idx:04d}.md"
+
+            qa_writer = pypdf.PdfWriter()
+            qa_writer.add_page(reader.pages[page_idx])
+            with qa_pdf.open("wb") as fh:
+                qa_writer.write(fh)
+
+            qa_cmd = [
+                sys.executable,
+                "-m",
+                "docline._tools.docling_worker",
+                str(qa_pdf),
+                str(qa_md),
+            ]
+            qa_completed = runner(qa_cmd)
+            if qa_completed.returncode == 0 and qa_md.exists():
+                docling_text = qa_md.read_text(encoding="utf-8")
+                heuristic_text = heuristic_pages[page_idx]
+                if _normalize_markdown(docling_text) != _normalize_markdown(heuristic_text):
+                    qa_disagreements += 1
+
+        metadata["qa_sampled_count"] = len(sampled)
+        metadata["qa_disagreements"] = qa_disagreements
+        metadata["qa_random_seed_used"] = seed_used
+
     return TriageResult(
         source=path,
         pages=tuple(final_pages),
@@ -240,9 +320,82 @@ def triage_report_only(
 ) -> TriageResult:
     """Run heuristic + score only; emit per-page TSV; never call docling.
 
-    Stub — implementation lands in task 019.006-T (U6).
+    Used for empirical calibration of signal weights and thresholds
+    before triage mode is recommended for production use.
+
+    Args:
+        path: Source PDF path.
+        output_dir: Directory for any heuristic outputs (no docling
+            splices written).
+        report_tsv_path: Path where the per-page TSV is written. Columns:
+            ``page_index, <signal_name>..., aggregate, needs_docling, reason``.
+        scorer: Injectable page scorer; defaults to
+            :func:`docline.process.fidelity_scorer.score_page`.
+        buffer: Pages of context (recorded only — no docling invocation).
+        merge_gap: Merge gap (recorded only — no docling invocation).
+
+    Returns:
+        :class:`TriageResult` with ``engine_per_page`` all-heuristic and
+        ``flagged_ranges`` populated for downstream review.
     """
-    raise NotImplementedError("019.006-T: triage_report_only")
+    if not path.exists():
+        raise FileNotFoundError(f"PDF not found: {path}")
+    output_dir.mkdir(parents=True, exist_ok=True)
+    if scorer is None:
+        scorer = score_page
+
+    reader = pypdf.PdfReader(str(path), strict=False)
+    total_pages = len(reader.pages)
+
+    scores: list[PageScore] = []
+    heuristic_pages: list[str] = []
+    for page_idx in range(total_pages):
+        try:
+            text = reader.pages[page_idx].extract_text() or ""
+        except Exception:  # noqa: BLE001
+            text = ""
+        heuristic_pages.append(text)
+        scores.append(scorer(page_idx, text, reader.pages[page_idx]))
+
+    flagged_indices = [s.page_index for s in scores if s.needs_docling]
+    flagged_ranges = coalesce_ranges(
+        flagged_indices,
+        total_pages=total_pages,
+        buffer=buffer,
+        merge_gap=merge_gap,
+    )
+
+    # Emit TSV.
+    signal_names: list[str] = list(scores[0].signals.keys()) if scores else []
+    fieldnames = ["page_index", *signal_names, "aggregate", "needs_docling", "reason"]
+
+    report_tsv_path.parent.mkdir(parents=True, exist_ok=True)
+    with report_tsv_path.open("w", encoding="utf-8", newline="") as fh:
+        writer = csv.DictWriter(fh, fieldnames=fieldnames, delimiter="\t")
+        writer.writeheader()
+        for score in scores:
+            row: dict[str, object] = {
+                "page_index": score.page_index,
+                "aggregate": f"{score.aggregate:.4f}",
+                "needs_docling": int(score.needs_docling),
+                "reason": score.reason,
+            }
+            for name in signal_names:
+                row[name] = f"{score.signals.get(name, 0.0):.4f}"
+            writer.writerow(row)
+
+    return TriageResult(
+        source=path,
+        pages=tuple(heuristic_pages),
+        engine_per_page=tuple("heuristic" for _ in range(total_pages)),
+        flagged_ranges=tuple(flagged_ranges),
+        metadata={
+            "total_pages": total_pages,
+            "flagged_pages_count": len(flagged_indices),
+            "flagged_ranges_count": len(flagged_ranges),
+            "report_only": True,
+        },
+    )
 
 
 def dispatch_pdf_mode(

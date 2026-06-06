@@ -155,10 +155,8 @@ def apply_triage_attribution(
 ) -> None:
     """Merge the per-page ``engine`` attribution into ``payload['docline']``.
 
-    Stub — implementation lands in task 019.005-T (U5).
-
-    MUST merge with existing ``docline:`` namespace keys, not overwrite them
-    (see ``docs/compound/2026-06-04-pydantic-namespace-merge-vs-overwrite.md``).
+    Merges with existing ``docline:`` namespace keys (does not overwrite —
+    see ``docs/compound/2026-06-04-pydantic-namespace-merge-vs-overwrite.md``).
 
     Args:
         payload: Mutable payload dict that may already contain a ``docline``
@@ -167,13 +165,19 @@ def apply_triage_attribution(
         engine: ``"heuristic"`` or ``"docling"``; ``None`` to leave the
             payload unchanged (non-triage runs).
     """
-    raise NotImplementedError("019.005-T: apply_triage_attribution")
+    if engine is None:
+        return
+    docline_ns = payload.setdefault("docline", {})
+    if not isinstance(docline_ns, dict):
+        raise ValueError(
+            f"payload['docline'] must be a dict to merge engine attribution, "
+            f"got {type(docline_ns).__name__}"
+        )
+    docline_ns["engine"] = engine
 
 
 def build_triage_part_payloads(triage_result: object) -> list[dict[str, object]]:
-    """Build per-page frontmatter payloads from a :class:`TriageResult`.
-
-    Stub — implementation lands in task 019.005-T (U5).
+    """Build per-page frontmatter payloads from a ``TriageResult``.
 
     Args:
         triage_result: :class:`docline.process.pdf_triage.TriageResult`.
@@ -182,13 +186,17 @@ def build_triage_part_payloads(triage_result: object) -> list[dict[str, object]]
         One payload dict per page, with the ``engine`` field merged into
         each payload's ``docline:`` namespace.
     """
-    raise NotImplementedError("019.005-T: build_triage_part_payloads")
+    engines = getattr(triage_result, "engine_per_page", ())
+    payloads: list[dict[str, object]] = []
+    for engine in engines:
+        payload: dict[str, object] = {}
+        apply_triage_attribution(payload, engine)
+        payloads.append(payload)
+    return payloads
 
 
 def build_triage_manifest_stats(triage_result: object) -> dict[str, int]:
     """Build the manifest-level ``triage_stats`` summary block.
-
-    Stub — implementation lands in task 019.005-T (U5).
 
     Args:
         triage_result: :class:`docline.process.pdf_triage.TriageResult`.
@@ -197,7 +205,15 @@ def build_triage_manifest_stats(triage_result: object) -> dict[str, int]:
         Mapping with keys ``pages_total``, ``pages_docling``,
         ``pages_heuristic``, ``flagged_ranges``.
     """
-    raise NotImplementedError("019.005-T: build_triage_manifest_stats")
+    pages = getattr(triage_result, "pages", ())
+    engines = getattr(triage_result, "engine_per_page", ())
+    flagged_ranges = getattr(triage_result, "flagged_ranges", ())
+    return {
+        "pages_total": len(pages),
+        "pages_docling": sum(1 for e in engines if e == "docling"),
+        "pages_heuristic": sum(1 for e in engines if e == "heuristic"),
+        "flagged_ranges": len(flagged_ranges),
+    }
 
 
 __all__ = [
