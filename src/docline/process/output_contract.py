@@ -65,6 +65,8 @@ def build_output_document_parts(
     *,
     layout_engine: str = "heuristic",
     picture_sink: PictureSink | None = None,
+    pdf_mode: str = "auto",
+    triage_output_dir: Path | None = None,
 ) -> list[OutputDocumentPart]:
     """Plan the emitted markdown parts for a staged source file.
 
@@ -91,6 +93,16 @@ def build_output_document_parts(
         picture_sink: Optional ``PictureSink`` instance scoped to this
             source. When provided, DOCX image extraction is enabled and
             sidecar references flow into ``OutputDocumentPart.media_files``.
+        pdf_mode: PDF processing pipeline mode (019-F / U4). ``"auto"``
+            (default) uses the existing ``read_pdf`` path. ``"triage"``
+            routes PDFs through :func:`process_pdf_triaged` for selective
+            docling re-extraction; the resulting per-page outputs are
+            joined and segmented through the same downstream pipeline.
+            Non-PDF inputs ignore ``pdf_mode``.
+        triage_output_dir: Output directory for triage splice cache.
+            Required when ``pdf_mode == "triage"`` and the source is a
+            PDF. Should be a per-source subdirectory of the job output
+            root so splice caches don't collide across sources.
 
     Returns:
         Ordered markdown output parts for the source file.
@@ -98,8 +110,20 @@ def build_output_document_parts(
     suffix = file_path.suffix.lower()
     media_references: list[MediaReference] = []
     if suffix == ".pdf":
-        rendered = read_pdf(file_path, layout_engine=layout_engine, picture_sink=picture_sink)
-        segment_bodies = segment_markdown(rendered) if rendered.strip() else [""]
+        if pdf_mode == "triage":
+            if triage_output_dir is None:
+                raise ValueError(
+                    "build_output_document_parts: pdf_mode='triage' requires "
+                    "triage_output_dir (a per-source cache directory)"
+                )
+            from docline.process.pdf_triage import process_pdf_triaged
+
+            triage_result = process_pdf_triaged(file_path, output_dir=triage_output_dir)
+            rendered = "\n\n".join(p for p in triage_result.pages if p.strip())
+            segment_bodies = segment_markdown(rendered) if rendered.strip() else [""]
+        else:
+            rendered = read_pdf(file_path, layout_engine=layout_engine, picture_sink=picture_sink)
+            segment_bodies = segment_markdown(rendered) if rendered.strip() else [""]
     elif suffix == ".docx":
         if picture_sink is not None:
             blocks, media_references = read_docx_blocks_with_media(file_path, picture_sink)

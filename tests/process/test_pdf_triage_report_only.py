@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
+import subprocess
 from pathlib import Path
-from unittest.mock import MagicMock
 
 import pypdf
+import pytest
 
 
 def _make_pdf(path: Path, page_count: int) -> Path:
@@ -17,18 +18,34 @@ def _make_pdf(path: Path, page_count: int) -> Path:
     return path
 
 
-def test_report_only_never_invokes_runner(tmp_path: Path) -> None:
-    """report-only mode must not invoke the docling runner under any flag pattern."""
+def test_report_only_never_invokes_subprocess(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """report-only mode must not invoke any docling subprocess.
+
+    Patches ``subprocess.run`` at module level so the test fails if
+    ``triage_report_only`` ever calls a worker subprocess (fixes the
+    vacuous-assertion flag from PR #42 Copilot review on the original
+    ``MagicMock`` runner pattern).
+    """
+    from docline.process import pdf_triage
     from docline.process.pdf_triage import triage_report_only
 
+    call_count = {"n": 0}
+
+    def fake_run(*args: object, **kwargs: object) -> subprocess.CompletedProcess[str]:
+        call_count["n"] += 1
+        return subprocess.CompletedProcess(args=[], returncode=0, stdout="", stderr="")
+
+    monkeypatch.setattr(pdf_triage.subprocess, "run", fake_run)
+
     pdf = _make_pdf(tmp_path / "doc.pdf", page_count=10)
-    runner = MagicMock()
     triage_report_only(
         pdf,
         output_dir=tmp_path / "out",
         report_tsv_path=tmp_path / "report.tsv",
     )
-    assert runner.call_count == 0
+    assert call_count["n"] == 0
 
 
 def test_report_tsv_has_canonical_columns(tmp_path: Path) -> None:

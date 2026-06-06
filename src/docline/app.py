@@ -507,12 +507,15 @@ def execute_process(request: ProcessRequest) -> ProcessResult:
             rel_in_files = file_path.relative_to(files_dir)
             source_basename = rel_in_files.with_suffix("")
             picture_sink = CountingPictureSink(job_output_root / source_basename / "media")
+            triage_cache = job_output_root / source_basename / "triage-cache"
             try:
                 document_parts = build_output_document_parts(
                     file_path,
                     rel_in_files,
                     layout_engine=request.pdf_engine,
                     picture_sink=picture_sink,
+                    pdf_mode=request.pdf_mode,
+                    triage_output_dir=triage_cache,
                 )
             except Exception as err:  # noqa: BLE001
                 _log.warning("Failed to convert %s: %s", file_path, err)
