@@ -2,8 +2,8 @@
 shipment: 018-S
 title: "Closure record — runtime safety primitives"
 status: verified
-merge_sha: TBD
-merged_pr: TBD
+merge_sha: e44ad54
+merged_pr: 36
 ---
 
 # Closure — 018-S: runtime safety primitives
