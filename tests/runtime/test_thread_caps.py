@@ -52,8 +52,6 @@ def _clear_thread_env(monkeypatch: pytest.MonkeyPatch) -> None:
 
 def test_apply_docling_thread_caps_sets_omp_mkl_openblas(monkeypatch: pytest.MonkeyPatch) -> None:
     """Probe-derived OMP thread count is written into all three BLAS env vars."""
-
-    monkeypatch.setattr("docline.readers.pdf._approximate_pdf_page_count", lambda path: None)
     monkeypatch.setattr(
         "docline.runtime.resource_probe.probe", lambda: _make_budget(omp_thread_count=2)
     )

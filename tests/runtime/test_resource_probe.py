@@ -103,7 +103,7 @@ def test_resource_budget_is_frozen_dataclass() -> None:
         omp_thread_count=2,
     )
 
-    with pytest.raises((AttributeError, Exception)):
+    with pytest.raises(AttributeError):
         budget.recommended_concurrency = 999  # type: ignore[misc]
 
 
