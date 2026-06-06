@@ -309,10 +309,18 @@ def test_non_adjacent_duplicate_h1s_are_preserved(tmp_path: Path) -> None:
     # "Introduction" appears in chunks 1 and 3 (non-adjacent) — both must be preserved.
     # Use newline-bounded matches to avoid substring false positives like
     # "# Chapter One" counting "# Chapter One Content" twice.
-    intro_lines = sum(1 for line in result.stitched_markdown.splitlines() if line == "# Introduction")
-    chapter_one_lines = sum(1 for line in result.stitched_markdown.splitlines() if line == "# Chapter One")
-    different_section_lines = sum(1 for line in result.stitched_markdown.splitlines() if line == "# Different Section")
-    appendix_lines = sum(1 for line in result.stitched_markdown.splitlines() if line == "# Appendix A")
+    intro_lines = sum(
+        1 for line in result.stitched_markdown.splitlines() if line == "# Introduction"
+    )
+    chapter_one_lines = sum(
+        1 for line in result.stitched_markdown.splitlines() if line == "# Chapter One"
+    )
+    different_section_lines = sum(
+        1 for line in result.stitched_markdown.splitlines() if line == "# Different Section"
+    )
+    appendix_lines = sum(
+        1 for line in result.stitched_markdown.splitlines() if line == "# Appendix A"
+    )
 
     assert intro_lines == 2
     assert chapter_one_lines == 1
