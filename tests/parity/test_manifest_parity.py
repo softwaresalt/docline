@@ -169,10 +169,24 @@ def test_cli_fetch_missing_default_config_returns_1(capsys, monkeypatch, tmp_pat
     assert exit_code == 1
 
 
-def test_cli_process_no_staging_dir_returns_1(capsys) -> None:
-    """CLI 'process' without an existing staging directory returns exit code 1."""
+def test_cli_process_no_staging_dir_returns_1(capsys, monkeypatch, tmp_path) -> None:
+    """CLI 'process' without an existing staging directory returns exit code 1.
+
+    Wraps the call in ``monkeypatch.chdir(tmp_path)`` so the CLI's default
+    staging-dir lookup (``.elt/staging``) resolves into the empty tmp
+    directory rather than the developer's CWD. Without this isolation,
+    a populated local ``.elt/staging/`` from a real ``docline fetch`` run
+    causes the CLI to discover staged content and recursively invoke
+    docling on it — observed during the 2026-06-05 017-S closure to
+    hang pytest for 30+ minutes on what should be a millisecond test.
+
+    Sister test ``test_cli_fetch_missing_default_config_returns_1`` already
+    follows this pattern; this test is brought into parity with it.
+    Stash CB89952B.
+    """
     from docline.cli import main
 
+    monkeypatch.chdir(tmp_path)
     exit_code = main(["process"])
     assert exit_code == 1
 
