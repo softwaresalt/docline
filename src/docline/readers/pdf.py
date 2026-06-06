@@ -21,6 +21,7 @@ Returns an empty string for PDFs with no extractable text rather than raising.
 
 import io
 import logging
+import os
 import re
 import zlib
 from pathlib import Path
@@ -161,6 +162,45 @@ def _approximate_pdf_page_count(path: Path) -> int | None:
         return len(reader.pages)
     except Exception:  # noqa: BLE001
         return None
+
+
+_DOCLING_THREAD_ENV_VARS: tuple[str, ...] = (
+    "OMP_NUM_THREADS",
+    "MKL_NUM_THREADS",
+    "OPENBLAS_NUM_THREADS",
+)
+
+
+def _apply_docling_thread_caps() -> None:
+    """Apply probe-derived BLAS / OpenMP thread caps before docling loads.
+
+    PyTorch and the BLAS libraries it links read ``OMP_NUM_THREADS`` /
+    ``MKL_NUM_THREADS`` / ``OPENBLAS_NUM_THREADS`` at import time, so
+    this MUST fire before the first ``import docling`` (which imports
+    torch under the hood). The function consults
+    :func:`docline.runtime.resource_probe.probe` for the right value
+    and uses :func:`os.environ.setdefault` so an operator-set value
+    wins over the probe's recommendation.
+
+    Also forces ``TOKENIZERS_PARALLELISM='false'`` to silence the
+    HuggingFace warning and avoid spawning a second thread pool that
+    competes with the BLAS pool for CPU.
+
+    Idempotent — calling multiple times is safe and reuses any value
+    a prior invocation set.
+
+    The probe is invoked lazily inside this function (not at module
+    import) so that fast-path callers (heuristic engine, tests) never
+    pay the psutil-call cost.
+    """
+
+    from docline.runtime.resource_probe import probe
+
+    budget = probe()
+    threads = str(max(budget.omp_thread_count, 1))
+    for env_var in _DOCLING_THREAD_ENV_VARS:
+        os.environ.setdefault(env_var, threads)
+    os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
 
 
 # ---------------------------------------------------------------------------
@@ -664,6 +704,7 @@ def _read_pdf_docling_pages(
     """
     if not path.exists():
         raise FileNotFoundError(f"File not found: {path}")
+    _apply_docling_thread_caps()
     try:
         from docling.datamodel.base_models import InputFormat  # type: ignore[import-untyped]
         from docling.datamodel.pipeline_options import (  # type: ignore[import-untyped]
