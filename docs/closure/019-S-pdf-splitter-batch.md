@@ -2,8 +2,8 @@
 shipment: 019-S
 title: "Closure record — PDF splitter + batch + stitch + subprocess isolation"
 status: verified
-merge_sha: TBD
-merged_pr: TBD
+merge_sha: 1431c63
+merged_pr: 38
 ---
 
 # Closure — 019-S: PDF splitter + batch + stitch + subprocess isolation
