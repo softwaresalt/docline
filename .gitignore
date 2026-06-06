@@ -256,3 +256,10 @@ logs/
 docs/scratch/*
 !docs/scratch/.gitkeep
 
+# Transient docline run output at repo root (canonical path is .elt/output/).
+/output/
+
+# Node.js OOM / fatal-error diagnostic dumps (e.g. from the agent CLI runtime).
+report.*.json
+isolate-*.log
+
