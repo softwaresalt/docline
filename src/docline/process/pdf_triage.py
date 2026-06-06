@@ -254,6 +254,61 @@ def dispatch_pdf_mode(
 ) -> object:
     """Route a PDF process invocation to the correct mode handler.
 
-    Stub — implementation lands in task 019.004-T (U4).
+    Called by the CLI when ``--pdf-mode`` is set. Dispatches to
+    :func:`docline.process.pdf_batch.process_pdf_in_chunks` for the
+    ``"auto"`` mode (existing behavior) or :func:`process_pdf_triaged`
+    for the ``"triage"`` mode.
+
+    Args:
+        mode: Mode name from ``--pdf-mode`` (``"auto"`` or ``"triage"``).
+        path: Source PDF path.
+        output_dir: Output directory for the chosen pipeline.
+        **kwargs: Mode-specific keyword arguments forwarded to the
+            chosen handler. The CLI is responsible for constructing
+            and passing the resource ``budget``, ``runner``, etc. When
+            no ``budget`` is provided for the ``"auto"`` mode, a
+            docling-disabled budget is used so the dispatcher does not
+            silently invoke a heavyweight ML pipeline (the production
+            CLI always passes an explicit probed budget).
+
+    Returns:
+        Result object from the chosen handler (``BatchResult`` for
+        ``"auto"`` or :class:`TriageResult` for ``"triage"``).
+
+    Raises:
+        ValueError: If ``mode`` is not a recognized value.
     """
-    raise NotImplementedError("019.004-T: dispatch_pdf_mode")
+    if mode == "triage":
+        return process_pdf_triaged(path, output_dir=output_dir, **kwargs)  # type: ignore[arg-type]
+    if mode == "auto":
+        from docline.process.pdf_batch import process_pdf_in_chunks
+
+        if "budget" not in kwargs:
+            kwargs["budget"] = _no_docling_budget()
+        return process_pdf_in_chunks(path, output_dir=output_dir, **kwargs)  # type: ignore[arg-type]
+    raise ValueError(f"unknown pdf-mode: {mode!r}; supported: 'auto', 'triage'")
+
+
+def _no_docling_budget() -> ResourceBudget:
+    """Build a budget that forces process_pdf_in_chunks down the heuristic path.
+
+    Used as the default by :func:`dispatch_pdf_mode` for the ``"auto"``
+    mode when the caller did not supply a ``budget`` kwarg. Ensures the
+    dispatcher never silently invokes a heavyweight ML pipeline; the
+    production CLI must pass an explicit probed budget to enable docling.
+    """
+    return ResourceBudget(
+        available_ram_gb=0.0,
+        total_ram_gb=0.0,
+        logical_cpus=1,
+        pagefile_pressure=True,
+        accelerator_device="cpu",
+        gpu_name=None,
+        gpu_vram_gb=None,
+        gpu_compute_capability=None,
+        recommended_concurrency=1,
+        recommended_docling_max_pages=0,
+        recommended_docling_max_mb=0,
+        serialize_docling=True,
+        omp_thread_count=1,
+    )

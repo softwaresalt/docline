@@ -70,6 +70,17 @@ class ProcessRequest(BaseModel):
     output_dir: str = "output"
     allow_heading_disorder: bool = False
     pdf_engine: Literal["auto", "docling", "heuristic"] = "auto"
+    pdf_mode: Literal["auto", "triage"] = Field(
+        default="auto",
+        description=(
+            "PDF processing pipeline mode (CLI: --pdf-mode). 'auto' "
+            "(default) is the existing split-and-throttle batch pipeline. "
+            "'triage' runs the heuristic engine across the whole document, "
+            "scores each page for fidelity loss, and re-runs only flagged "
+            "pages through docling — typically 6-8x faster on long technical "
+            "PDFs with mostly clean prose. Orthogonal to --pdf-engine."
+        ),
+    )
 
     @field_validator("staging_dir", "output_dir")
     @classmethod
