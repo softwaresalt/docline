@@ -38,7 +38,6 @@ _log = logging.getLogger(__name__)
 AcceleratorDevice = Literal["cpu", "cuda", "mps"]
 
 _BYTES_PER_GB = 1_000_000_000  # decimal GB, matches psutil reporting convention
-_GIB = 1024**3  # binary GiB, matches torch.cuda.mem_get_info convention
 
 # Minimum GPU criteria for docling acceleration.
 _MIN_GPU_COMPUTE_CAPABILITY: tuple[int, int] = (5, 0)  # Maxwell+; rejects Kepler sm_3x
@@ -223,7 +222,11 @@ def _detect_gpu() -> tuple[AcceleratorDevice, str | None, float | None, tuple[in
 
         force_override = os.environ.get("DOCLINE_GPU_FORCE", "") == "1"
 
-        if not force_override and capability is not None and capability < _MIN_GPU_COMPUTE_CAPABILITY:
+        if (
+            not force_override
+            and capability is not None
+            and capability < _MIN_GPU_COMPUTE_CAPABILITY
+        ):
             return "cpu", gpu_name, free_vram_gb, capability
 
         if free_vram_gb is not None and free_vram_gb < _MIN_GPU_FREE_VRAM_GB:

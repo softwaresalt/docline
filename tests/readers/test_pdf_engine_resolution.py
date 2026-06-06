@@ -235,7 +235,9 @@ def test_resolve_for_file_rejects_unknown_engine(tmp_path) -> None:
         resolve_pdf_engine_for_file(pdf, requested="bogus")
 
 
-def test_resolve_for_file_raises_when_path_missing(tmp_path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_resolve_for_file_raises_when_path_missing(
+    tmp_path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """Missing path propagates FileNotFoundError in auto mode."""
 
     from docline.readers.pdf import resolve_pdf_engine_for_file
@@ -293,7 +295,9 @@ def test_auto_falls_back_to_heuristic_on_docling_runtime_errors(
     assert isinstance(pages, list)
 
 
-def test_auto_re_raises_missing_file_even_under_broader_net(tmp_path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_auto_re_raises_missing_file_even_under_broader_net(
+    tmp_path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """FileNotFoundError must still propagate so missing-file bugs surface."""
 
     from docline.readers.pdf import read_pdf_pages
@@ -309,7 +313,9 @@ def test_auto_re_raises_missing_file_even_under_broader_net(tmp_path, monkeypatc
         read_pdf_pages(tmp_path / "nope.pdf", layout_engine="auto")
 
 
-def test_explicit_docling_engine_does_not_fall_back(tmp_path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_explicit_docling_engine_does_not_fall_back(
+    tmp_path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """Explicit ``layout_engine='docling'`` re-raises runtime errors (no fallback).
 
     Callers who explicitly opted into docling get the failure surfaced —

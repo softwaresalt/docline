@@ -41,7 +41,12 @@ def _make_budget(omp_thread_count: int) -> Any:
 def _clear_thread_env(monkeypatch: pytest.MonkeyPatch) -> None:
     """Strip the relevant env vars so each test starts from a known state."""
 
-    for var in ("OMP_NUM_THREADS", "MKL_NUM_THREADS", "OPENBLAS_NUM_THREADS", "TOKENIZERS_PARALLELISM"):
+    for var in (
+        "OMP_NUM_THREADS",
+        "MKL_NUM_THREADS",
+        "OPENBLAS_NUM_THREADS",
+        "TOKENIZERS_PARALLELISM",
+    ):
         monkeypatch.delenv(var, raising=False)
 
 
@@ -49,7 +54,9 @@ def test_apply_docling_thread_caps_sets_omp_mkl_openblas(monkeypatch: pytest.Mon
     """Probe-derived OMP thread count is written into all three BLAS env vars."""
 
     monkeypatch.setattr("docline.readers.pdf._approximate_pdf_page_count", lambda path: None)
-    monkeypatch.setattr("docline.runtime.resource_probe.probe", lambda: _make_budget(omp_thread_count=2))
+    monkeypatch.setattr(
+        "docline.runtime.resource_probe.probe", lambda: _make_budget(omp_thread_count=2)
+    )
 
     from docline.readers.pdf import _apply_docling_thread_caps
 
@@ -63,12 +70,16 @@ def test_apply_docling_thread_caps_sets_omp_mkl_openblas(monkeypatch: pytest.Mon
     assert os.environ["TOKENIZERS_PARALLELISM"] == "false"
 
 
-def test_apply_docling_thread_caps_respects_operator_overrides(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_apply_docling_thread_caps_respects_operator_overrides(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """``setdefault`` semantics: operator-set values win over the probe recommendation."""
 
     monkeypatch.setenv("OMP_NUM_THREADS", "16")
     monkeypatch.setenv("TOKENIZERS_PARALLELISM", "true")
-    monkeypatch.setattr("docline.runtime.resource_probe.probe", lambda: _make_budget(omp_thread_count=2))
+    monkeypatch.setattr(
+        "docline.runtime.resource_probe.probe", lambda: _make_budget(omp_thread_count=2)
+    )
 
     from docline.readers.pdf import _apply_docling_thread_caps
 
@@ -88,7 +99,9 @@ def test_apply_docling_thread_caps_respects_operator_overrides(monkeypatch: pyte
 def test_apply_docling_thread_caps_floors_at_one(monkeypatch: pytest.MonkeyPatch) -> None:
     """A budget with 0 threads still results in a sane value of 1."""
 
-    monkeypatch.setattr("docline.runtime.resource_probe.probe", lambda: _make_budget(omp_thread_count=0))
+    monkeypatch.setattr(
+        "docline.runtime.resource_probe.probe", lambda: _make_budget(omp_thread_count=0)
+    )
 
     from docline.readers.pdf import _apply_docling_thread_caps
 
@@ -102,7 +115,9 @@ def test_apply_docling_thread_caps_floors_at_one(monkeypatch: pytest.MonkeyPatch
 def test_apply_docling_thread_caps_idempotent(monkeypatch: pytest.MonkeyPatch) -> None:
     """Calling twice in a row leaves the env vars stable."""
 
-    monkeypatch.setattr("docline.runtime.resource_probe.probe", lambda: _make_budget(omp_thread_count=4))
+    monkeypatch.setattr(
+        "docline.runtime.resource_probe.probe", lambda: _make_budget(omp_thread_count=4)
+    )
 
     from docline.readers.pdf import _apply_docling_thread_caps
 
