@@ -16,6 +16,7 @@ dependencies = [
     "beautifulsoup4>=4.12,<5",
     "defusedxml>=0.7,<1",
     "markdown-it-py>=4,<5",
+    "psutil>=5.9,<8",
     "pydantic>=2,<3",
     "pypdf>=4,<6",
     "PyYAML>=6,<7",
