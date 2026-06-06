@@ -262,6 +262,64 @@ def test_concurrent_mode_does_not_sleep(tmp_path: Path, monkeypatch: pytest.Monk
     assert sleep_calls == []
 
 
+def test_non_adjacent_duplicate_h1s_are_preserved(tmp_path: Path) -> None:
+    """Regression: H1s that repeat across non-adjacent chunks must be kept.
+
+    Copilot review identified a global-dedup bug in an earlier version
+    where any H1 appearing in chunk K was dropped if it reappeared in
+    any later chunk, even across non-overlapping content. Documents
+    with legitimately repeated headings (e.g. "Introduction" in both
+    Chapter 1 and Appendix A) were silently corrupted.
+
+    The fix limits deduplication to the adjacent-chunk boundary case
+    introduced by page_overlap, where chunk K's first H1 equals
+    chunk K-1's last H1. Non-adjacent duplicates are preserved.
+    """
+
+    from docline.process.pdf_batch import process_pdf_in_chunks
+
+    pdf = _make_pdf(tmp_path / "doc.pdf", page_count=25)
+    out = tmp_path / "out"
+
+    chunk_bodies = [
+        "# Chapter One\n# Introduction\nintro to chapter 1\n# Chapter One Content\nbody",
+        "# Different Section\ncontent\n# Subsection\nmore",
+        "# Appendix A\n# Introduction\nintro to appendix\nmore content",
+        "# Glossary\nterm defs\nmore terms",
+    ]
+    call = {"n": 0}
+
+    def runner(args: list[str]) -> subprocess.CompletedProcess[str]:
+        idx = call["n"]
+        call["n"] += 1
+        output_path = Path(args[-1])
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        # Cycle defensively in case the splitter emits more chunks than we have bodies.
+        output_path.write_text(chunk_bodies[idx % len(chunk_bodies)], encoding="utf-8")
+        return subprocess.CompletedProcess(args=args, returncode=0, stdout="", stderr="")
+
+    result = process_pdf_in_chunks(
+        pdf,
+        output_dir=out,
+        budget=_budget(recommended_docling_max_pages=10),
+        runner=runner,
+        reclaim_pause_seconds=0,
+    )
+
+    # "Introduction" appears in chunks 1 and 3 (non-adjacent) — both must be preserved.
+    # Use newline-bounded matches to avoid substring false positives like
+    # "# Chapter One" counting "# Chapter One Content" twice.
+    intro_lines = sum(1 for line in result.stitched_markdown.splitlines() if line == "# Introduction")
+    chapter_one_lines = sum(1 for line in result.stitched_markdown.splitlines() if line == "# Chapter One")
+    different_section_lines = sum(1 for line in result.stitched_markdown.splitlines() if line == "# Different Section")
+    appendix_lines = sum(1 for line in result.stitched_markdown.splitlines() if line == "# Appendix A")
+
+    assert intro_lines == 2
+    assert chapter_one_lines == 1
+    assert different_section_lines == 1
+    assert appendix_lines == 1
+
+
 def test_missing_pdf_raises_file_not_found(tmp_path: Path) -> None:
     from docline.process.pdf_batch import process_pdf_in_chunks
 

@@ -225,41 +225,64 @@ def _process_one_chunk(
 
 
 def _stitch_chunk_markdown(chunk_bodies: list[str]) -> str:
-    """Concatenate chunk markdowns; drop duplicate H1s caused by page overlap.
+    """Concatenate chunk markdowns; drop H1s duplicated at adjacent-chunk boundaries.
 
-    Adjacent chunks share ``page_overlap`` pages by design, which often
-    duplicates an H1 across the boundary. We keep the FIRST occurrence
-    (its frontmatter semantics win) and drop later duplicates.
+    The page_overlap option on :func:`split_pdf` makes the first ``N``
+    pages of chunk K identical to the last ``N`` pages of chunk K-1.
+    Headers that fall inside that overlap window will appear in both
+    chunks. This stitcher drops the duplicate by checking only the
+    **adjacent-chunk boundary** condition: if chunk K's first H1
+    matches chunk K-1's last H1, drop chunk K's leading H1.
+
+    Non-adjacent duplicates (e.g. "Introduction" appearing in both
+    Chapter 1 and Appendix A, which span separate non-overlapping
+    chunks) are preserved — only the boundary collision pattern
+    introduced by page_overlap is removed.
     """
 
     if not chunk_bodies:
         return ""
 
-    seen_h1s: set[str] = set()
-    keep_bodies: list[str] = []
-
+    kept: list[str] = []
+    prior_trailing_h1: str | None = None
     for body in chunk_bodies:
-        cleaned = _dedupe_h1s_against_seen(body, seen_h1s)
+        cleaned = _drop_leading_h1_if_matches(body, prior_trailing_h1)
         if cleaned.strip():
-            keep_bodies.append(cleaned)
+            kept.append(cleaned)
+            prior_trailing_h1 = _last_h1_title(cleaned) or prior_trailing_h1
 
-    return "\n\n".join(keep_bodies)
+    return "\n\n".join(kept)
 
 
-def _dedupe_h1s_against_seen(body: str, seen: set[str]) -> str:
-    """Drop H1 lines whose title is already in ``seen``; otherwise record + keep.
+def _drop_leading_h1_if_matches(body: str, target_title: str | None) -> str:
+    """Drop the chunk's first non-blank H1 line if its title matches ``target_title``.
 
-    Operates line-by-line so we can drop a single duplicated heading
-    without disturbing surrounding paragraphs.
+    Inspects only the leading H1; any subsequent H1s in the body are
+    preserved verbatim. This is the boundary-collision case caused by
+    ``page_overlap`` in the splitter.
     """
 
-    output_lines: list[str] = []
+    if target_title is None:
+        return body
+    lines = body.splitlines()
+    for i, line in enumerate(lines):
+        if not line.strip():
+            continue
+        match = _H1_PATTERN.fullmatch(line)
+        if match and match.group("title").strip() == target_title:
+            # Drop this leading H1; preserve every other line including
+            # blank lines so paragraph spacing stays intact.
+            return "\n".join(lines[:i] + lines[i + 1 :])
+        return body  # First non-blank line isn't a matching H1 — keep body as-is.
+    return body  # All blank lines; nothing to dedupe.
+
+
+def _last_h1_title(body: str) -> str | None:
+    """Return the title text of the last H1 line in ``body``, or None if none."""
+
+    last_title: str | None = None
     for line in body.splitlines():
         match = _H1_PATTERN.fullmatch(line)
         if match:
-            title = match.group("title").strip()
-            if title in seen:
-                continue  # drop duplicate
-            seen.add(title)
-        output_lines.append(line)
-    return "\n".join(output_lines)
+            last_title = match.group("title").strip()
+    return last_title
