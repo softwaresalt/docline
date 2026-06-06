@@ -79,6 +79,90 @@ def _resolve_layout_engine(requested: str) -> str:
     return "docling" if dependencies.pdf_available() else "heuristic"
 
 
+def resolve_pdf_engine_for_file(
+    path: Path,
+    *,
+    requested: str = "auto",
+) -> tuple[str, str]:
+    """Resolve the PDF layout engine for a specific file under the runtime budget.
+
+    Extends :func:`_resolve_layout_engine` with a per-file size/page-count
+    gate sourced from :func:`docline.runtime.resource_probe.probe`. This is
+    the canonical entry point for callers that have a concrete PDF path —
+    they should prefer it over :func:`_resolve_layout_engine` so that
+    oversized PDFs (the 2026-06-04 ``azure-cosmos-db.pdf`` case) route to
+    the heuristic engine rather than feeding docling a workload it cannot
+    safely complete.
+
+    Args:
+        path: PDF file path. The file's byte size is read directly;
+            page count is approximated from byte size when ``pypdf`` is
+            unavailable.
+        requested: Caller-requested engine, one of ``"auto"``,
+            ``"heuristic"``, ``"docling"``. Explicit ``"heuristic"`` and
+            ``"docling"`` are passed through unchanged with reason
+            ``"explicit_request"`` (the explicit request wins over the
+            runtime probe; callers who want safe routing should pass
+            ``"auto"``).
+
+    Returns:
+        Tuple of ``(engine, reason)`` where ``engine`` is one of
+        ``"heuristic"`` or ``"docling"`` and ``reason`` is a short
+        machine-readable token: ``"ok"`` for an accepted docling
+        routing, ``"explicit_request"`` for pass-through requests,
+        ``"engine_unavailable"`` if ``"auto"`` resolves to heuristic
+        because docling isn't installed, or one of the gating reasons
+        from :func:`docline.runtime.resource_probe.should_use_docling`.
+
+    Raises:
+        ValueError: If ``requested`` is not a recognized engine.
+        FileNotFoundError: If ``path`` does not exist.
+    """
+    _validate_layout_engine(requested)
+
+    if requested != "auto":
+        return requested, "explicit_request"
+
+    if not dependencies.pdf_available():
+        return "heuristic", "engine_unavailable"
+
+    if not path.exists():
+        raise FileNotFoundError(f"File not found: {path}")
+
+    from docline.runtime.resource_probe import probe, should_use_docling
+
+    budget = probe()
+    file_size_mb = path.stat().st_size / 1_000_000
+    page_count = _approximate_pdf_page_count(path)
+
+    use_docling, reason = should_use_docling(
+        budget, file_size_mb=file_size_mb, page_count=page_count
+    )
+    if use_docling:
+        return "docling", reason
+    return "heuristic", reason
+
+
+def _approximate_pdf_page_count(path: Path) -> int | None:
+    """Best-effort page count using pypdf when available.
+
+    Returns ``None`` (let the file-size gate carry the decision) when
+    pypdf is missing or fails to parse the document. The pypdf branch
+    is intentionally tolerant — a hostile PDF that pypdf can't read is
+    one we definitely don't want to hand to docling either.
+    """
+    if not _PYPDF_AVAILABLE or _pypdf is None:
+        return None
+    try:
+        reader = _pypdf.PdfReader(str(path), strict=False)
+    except Exception:  # noqa: BLE001 — pypdf raises various uncategorized errors
+        return None
+    try:
+        return len(reader.pages)
+    except Exception:  # noqa: BLE001
+        return None
+
+
 # ---------------------------------------------------------------------------
 # Optional pypdf integration — preferred when installed
 # ---------------------------------------------------------------------------
