@@ -73,7 +73,7 @@ omp threads) is consumed by:
 * (Future) the batch processor (`D885CE79`) — chooses serial vs
   concurrent chunk processing based on `serialize_docling`
 
-The auto-fallback exception net (`015ADD215`) is the safety belt under
+The auto-fallback exception net (`15ADD215`) is the safety belt under
 all of the above: even if the size gate misclassifies a PDF or the
 probe misreads system state, docling crashes can no longer abort the
 batch.
