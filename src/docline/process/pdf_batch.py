@@ -12,9 +12,12 @@ RCA remediations 3 and 6 from the 2026-06-04 load-test post-mortem:
   c10::Error / SIGABRT inside docling is contained to that one chunk —
   the OS reaps the child and the parent records exit code without
   inheriting torch's broken allocator state.
-* **Adaptive concurrency**: when ``probe.serialize_docling`` is True,
-  run chunks one at a time with a small reclaim pause between them.
-  Otherwise allow up to ``probe.recommended_concurrency`` workers.
+* **Adaptive throttling**: when ``probe.serialize_docling`` is True,
+  insert a small reclaim pause between sequential chunks so the OS
+  can release torch tensor pages. When False, chunks still process
+  sequentially in this shipment (true parallel chunk execution via
+  ProcessPoolExecutor is deferred to a follow-on shipment after the
+  load-test harness produces baseline measurements).
 * **Per-chunk fallback**: a chunk whose subprocess exits non-zero falls
   back to the in-process heuristic engine for that chunk only. The
   rest of the batch keeps running. This is the inverse of the
@@ -35,6 +38,7 @@ import re
 import subprocess
 import sys
 import time
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -48,6 +52,11 @@ _log = logging.getLogger(__name__)
 
 _RECLAIM_PAUSE_SECONDS = 10.0  # Time to wait between serial docling chunks.
 _H1_PATTERN = re.compile(r"^# (?P<title>.+)$", re.MULTILINE)
+
+# Type alias for the subprocess runner. Tests substitute a deterministic
+# callable; production uses ``_default_runner`` which delegates to
+# :func:`subprocess.run`.
+ChunkRunner = Callable[[list[str]], "subprocess.CompletedProcess[str]"]
 
 
 @dataclass(frozen=True)
@@ -77,7 +86,7 @@ def process_pdf_in_chunks(
     *,
     output_dir: Path,
     budget: ResourceBudget | None = None,
-    runner: object | None = None,
+    runner: ChunkRunner | None = None,
     reclaim_pause_seconds: float = _RECLAIM_PAUSE_SECONDS,
 ) -> BatchResult:
     """Process a (possibly oversized) PDF via split + subprocess + stitch.
@@ -176,7 +185,7 @@ def _default_runner(args: list[str]) -> subprocess.CompletedProcess[str]:
 def _process_one_chunk(
     chunk_path: Path,
     output_path: Path,
-    runner: object,
+    runner: ChunkRunner,
 ) -> ChunkResult:
     """Run docling on a single chunk via the worker subprocess.
 
@@ -184,7 +193,7 @@ def _process_one_chunk(
     """
 
     cmd = [sys.executable, "-m", "docline._tools.docling_worker", str(chunk_path), str(output_path)]
-    completed = runner(cmd)  # type: ignore[operator]
+    completed = runner(cmd)
     if completed.returncode == 0 and output_path.exists():
         return ChunkResult(
             chunk_path=chunk_path,

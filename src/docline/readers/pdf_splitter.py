@@ -133,5 +133,7 @@ def _hash_path(path: Path) -> str:
 def _resolve_cache_dir(cache_dir: Path | None, source_hash: str) -> Path:
     """Pick a per-source cache directory under ``cache_dir`` or the temp dir."""
 
-    base = cache_dir if cache_dir is not None else Path(tempfile.gettempdir()) / "docline-pdf-chunks"
+    base = (
+        cache_dir if cache_dir is not None else Path(tempfile.gettempdir()) / "docline-pdf-chunks"
+    )
     return base / source_hash
