@@ -86,11 +86,18 @@ class QASampling:
             recorded in metadata as ``"qa_random_seed_used"``.
         max_sampled_pages: Cap on the number of unflagged pages sampled
             per run. Bounds runtime on long documents.
+        similarity_threshold: Jaccard-similarity threshold (020.003-T / U2).
+            Disagreements are counted only when content similarity falls
+            BELOW this threshold. Default 0.7 chosen empirically from
+            the 2026-06-07 PA4 inspection: page 107 (code-fence /
+            no-fence, same content) ~0.9 similarity; page 470
+            (heuristic broken text vs docling table) <0.3.
     """
 
     sample_rate: float
     random_seed: int | None = None
     max_sampled_pages: int = 50
+    similarity_threshold: float = 0.7
 
 
 def _default_runner(args: list[str]) -> subprocess.CompletedProcess[str]:
@@ -119,6 +126,53 @@ def _normalize_markdown(text: str) -> str:
     return "\n".join(normalized).strip()
 
 
+def _content_similarity(a: str, b: str) -> float:
+    """Jaccard similarity of lowercased + tokenized content (020.003-T / U2).
+
+    Stub — implementation lands in task 020.003-T.
+
+    Args:
+        a: First text.
+        b: Second text.
+
+    Returns:
+        Float in ``[0.0, 1.0]``. ``1.0`` means substantially identical
+        token sets; ``0.0`` means no overlap. Empty inputs both empty
+        return ``1.0`` (vacuously identical); one empty + one non-empty
+        returns ``0.0``.
+    """
+    raise NotImplementedError("020.003-T: _content_similarity")
+
+
+def _heuristic_extract(
+    reader: object,
+    page_idx: int,
+    engine: str,
+    splice_cache: Path,
+) -> str:
+    """Extract heuristic baseline text for one page via the chosen engine.
+
+    Stub — implementation lands in task 020.002-T (U1).
+
+    Args:
+        reader: ``pypdf.PdfReader`` instance for the source PDF.
+        page_idx: Zero-based page index.
+        engine: ``"markitdown"`` or ``"pypdf"``. When ``"markitdown"``,
+            splices the page into ``splice_cache`` and invokes
+            ``markitdown.MarkItDown(enable_plugins=False).convert(splice).text_content``.
+            When ``"pypdf"``, uses ``reader.pages[page_idx].extract_text()``
+            directly.
+        splice_cache: Directory under ``output_dir`` for splice temp PDFs.
+
+    Returns:
+        Extracted text (possibly empty).
+
+    Raises:
+        NotImplementedError: Until 020.002-T lands.
+    """
+    raise NotImplementedError("020.002-T: _heuristic_extract")
+
+
 def process_pdf_triaged(
     path: Path,
     *,
@@ -129,6 +183,7 @@ def process_pdf_triaged(
     buffer: int = 1,
     merge_gap: int = 2,
     qa_sampling: QASampling | None = None,
+    baseline_engine: str = "pypdf",
 ) -> TriageResult:
     """Process a PDF via heuristic baseline + selective docling repair.
 
@@ -254,6 +309,8 @@ def process_pdf_triaged(
         "subprocess_fallback_count": subprocess_fallback_count,
         "buffer": buffer,
         "merge_gap": merge_gap,
+        "baseline_engine": baseline_engine,
+        "baseline_engine_fallback": 0,
     }
 
     # QA tripwire: sample unflagged pages, run docling on each, count
@@ -317,6 +374,7 @@ def triage_report_only(
     scorer: PageScorer | None = None,
     buffer: int = 1,
     merge_gap: int = 2,
+    baseline_engine: str = "pypdf",
 ) -> TriageResult:
     """Run heuristic + score only; emit per-page TSV; never call docling.
 
@@ -394,6 +452,8 @@ def triage_report_only(
             "flagged_pages_count": len(flagged_indices),
             "flagged_ranges_count": len(flagged_ranges),
             "report_only": True,
+            "baseline_engine": baseline_engine,
+            "baseline_engine_fallback": 0,
         },
     )
 

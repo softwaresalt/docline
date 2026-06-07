@@ -204,6 +204,34 @@ def _page_image_count(page_metadata: object) -> int:
         return 0
 
 
+def signal_layout_complexity(text: str, page_metadata: object | None = None) -> float:
+    """Flag pages whose source PDF layout has structural complexity (020.004-T / U3).
+
+    Stub — implementation lands in task 020.004-T.
+
+    Inspects the source ``pypdf.PageObject`` for text-run X-coordinate
+    clustering, column count, line density vs page area, and grid-like
+    positioning. Fires (returns positive value in ``[0, 1]``) when the
+    source PDF has columns / grid structure that the heuristic extractor
+    flattened into prose-looking text.
+
+    Returns ``0.0`` when ``page_metadata`` is ``None`` (charitable-
+    when-no-metadata; matches the pattern from ``signal_char_density``).
+
+    Args:
+        text: Heuristic-extracted page text (used to compare flat-line-
+            count vs source X-cluster-count).
+        page_metadata: ``pypdf.PageObject`` for the source page.
+
+    Returns:
+        Score in ``[0.0, 1.0]``.
+
+    Raises:
+        NotImplementedError: Until 020.004-T lands.
+    """
+    raise NotImplementedError("020.004-T: signal_layout_complexity")
+
+
 # -------------------------------------------------------------------------
 # Weight loading.
 # -------------------------------------------------------------------------
