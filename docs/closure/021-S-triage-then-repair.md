@@ -15,8 +15,6 @@ compound_learnings: docs/compound/2026-06-06-triage-then-repair-pattern.md
 follow_up_stashes: 5CFE4481, 24920EFF, DE3E7346
 ---
 
-# Closure — 021-S triage-then-repair hybrid PDF pipeline
-
 ## Readiness status
 
 **READY WITH CONDITIONS** — merge to `main` is complete (PR #42, merge
