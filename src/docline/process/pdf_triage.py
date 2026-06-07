@@ -109,28 +109,24 @@ def _default_runner(args: list[str]) -> subprocess.CompletedProcess[str]:
     return subprocess.run(args, capture_output=True, text=True, check=False)
 
 
-def _normalize_markdown(text: str) -> str:
-    """Normalize markdown for QA tripwire comparison.
+_TOKEN_RE = re.compile(r"\w+")
+_MARKITDOWN_INSTANCE: object | None = None
 
-    Strips trailing whitespace per line and collapses runs of blank lines
-    so trivial whitespace variation does not inflate the disagreement
-    count.
+
+def _get_markitdown() -> object:
+    """Return a process-wide MarkItDown instance, constructing once on first call.
+
+    The MarkItDown constructor initializes the pdfminer.six backend and
+    its plugins; doing this on every page would multiply the per-page
+    overhead by 3,000+ on a cosmos-class document. Hoist to a module-
+    level singleton instead.
     """
-    lines = [line.rstrip() for line in text.splitlines()]
-    normalized: list[str] = []
-    prev_blank = False
-    for line in lines:
-        if not line:
-            if not prev_blank:
-                normalized.append("")
-            prev_blank = True
-        else:
-            normalized.append(line)
-            prev_blank = False
-    return "\n".join(normalized).strip()
+    global _MARKITDOWN_INSTANCE
+    if _MARKITDOWN_INSTANCE is None:
+        from markitdown import MarkItDown
 
-
-_TOKEN_RE = re.compile(r"\w+", re.UNICODE)
+        _MARKITDOWN_INSTANCE = MarkItDown(enable_plugins=False)
+    return _MARKITDOWN_INSTANCE
 
 
 def _content_similarity(a: str, b: str) -> float:
@@ -196,10 +192,8 @@ def _heuristic_extract(
             writer.add_page(reader.pages[page_idx])  # type: ignore[attr-defined]
             with splice_pdf.open("wb") as fh:
                 writer.write(fh)
-            from markitdown import MarkItDown
-
-            md = MarkItDown(enable_plugins=False)
-            result = md.convert(str(splice_pdf))
+            md = _get_markitdown()
+            result = md.convert(str(splice_pdf))  # type: ignore[attr-defined]
             text = result.text_content or ""
             return text, False
         except Exception:  # noqa: BLE001 — defensive: markitdown can fail on weird PDFs
@@ -248,6 +242,14 @@ def process_pdf_triaged(
             are sent to docling. U7 extends this path with actual
             sampling; this U3 implementation accepts the parameter and
             ignores it.
+        baseline_engine: Heuristic baseline extractor selection.
+            ``"markitdown"`` (default, 020.002-T / U1) routes each
+            page through :class:`markitdown.MarkItDown`, producing
+            real markdown for numbered lists, code fences, and headings.
+            ``"pypdf"`` uses ``reader.pages[i].extract_text()``
+            directly — preserves the pre-020.002-T behavior, used for
+            regression coverage and as the fallback when markitdown
+            fails on a page.
 
     Returns:
         :class:`TriageResult` with per-page outputs, engine attribution,

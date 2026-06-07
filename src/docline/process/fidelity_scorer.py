@@ -1,11 +1,11 @@
 """Per-page fidelity scorer for the triage-then-repair PDF pipeline.
 
-Provides seven pure-function fidelity signals
+Provides eight pure-function fidelity signals
 (``char_density``, ``non_ascii_ratio``, ``long_unbroken_line``,
-``column_gap``, ``table_char_density``, ``image_heavy``, ``form_fields``),
-a weighted combiner :func:`score_page`, and a frozen :class:`PageScore`
-result. Signal weights are externalized via JSON so they can be tuned
-without code changes.
+``column_gap``, ``table_char_density``, ``image_heavy``, ``form_fields``,
+``layout_complexity``), a weighted combiner :func:`score_page`, and a
+frozen :class:`PageScore` result. Signal weights are externalized via
+JSON so they can be tuned without code changes.
 
 Weights are importance multipliers applied to BOTH the hard-flag path
 (any single weighted signal at or above ``_HARD_FLAG_THRESHOLD``) and
@@ -14,6 +14,8 @@ Setting a weight to ``0.0`` fully mutes that signal across both paths.
 
 POC reference: ``docs/scratch/2026-06-06-fidelity-scorer-poc.py``.
 Plan: ``docs/plans/2026-06-06-triage-then-repair-plan.md`` § U1.
+``layout_complexity`` added in 020.004-T (plan
+``docs/plans/2026-06-07-pa4-calibration-closure-plan.md`` § U3).
 """
 
 from __future__ import annotations
