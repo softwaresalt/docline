@@ -128,52 +128,107 @@ Carried forward from plan hardening. Each must reach `applied` or
 | **PA1** | Land `--pdf-mode triage` wired to production batch path | moderate | **applied** (commit `15e3036`; CLI wiring fix in `603f3cd`) |
 | **PA2** | Add `engine` field to part frontmatter `docline:` namespace | moderate | **applied** (commit `14e7856`) |
 | **PA3** | First end-to-end triage run on `azure-cosmos-db.pdf` | low | **applied** — operator ran `scripts/pa3_triage_cosmos.py` on 2026-06-06; **50 min wall-clock vs. ~9.5 h baseline (~11.4× speedup, 3× under the ≤ 2.4 h Acceptance Criterion 6 target)**; engine distribution 103 docling / 3,323 heuristic (3.0 % flag rate); 29 coalesced ranges; 0 subprocess fallbacks. Raw evidence: `.elt/output/cosmos-triage/pa3-summary.json`. |
-| **PA4** | Lock-in default `_SIGNAL_WEIGHTS` based on calibration | low | **planned with conditions** — PA3 confirmed wall-clock target but produced a **3 % flag rate, below the 5 % calibration sanity-band floor** (see PA3 calibration finding below). Recommended next step: QA tripwire run via `scripts/pa3_triage_cosmos.py --sample-rate 0.01` (~30 min) to measure false-negative rate before locking weights. |
+| **PA4** | Lock-in default `_SIGNAL_WEIGHTS` based on calibration | low | **blocked on tooling gaps** — PA4 QA tripwire run on 2026-06-07 produced `qa_disagreements: 32 / qa_sampled_count: 33` (97 %). Manual inspection of 5 sampled pages revealed **4 false positives** (formatting / reading-order differences with substantially equivalent content) and **1 genuine scorer miss** (page 470: a real Azure RBAC permissions table rendered as broken vertical text by heuristic, ~2.1× richer markdown table from docling). Two blockers identified — see "PA4 calibration finding" section. **Weights NOT locked**; module defaults remain. |
 
 ## PA3 calibration finding (2026-06-06)
 
 The PA3 run on `azure-cosmos-db.pdf` produced a **3.0 % flag rate**,
 which is below the 5 % floor of the recommended sanity band documented
-in the plan-hardening calibration gate. Two interpretations carry
+in the plan-hardening calibration gate. Two interpretations carried
 forward to PA4:
 
 * **Interpretation A** (charitable): cosmos really is ~97 % clean prose
-  with the dense layout concentrated in a few chapters. The flagged
-  ranges cluster tightly around plausible regions — cover/TOC, two
-  dense chapter clusters around pages 1197–1353 and 2743–2858, and a
-  late reference section. The 5 % floor is a universal heuristic that
-  may not apply uniformly to all corpora.
+  with the dense layout concentrated in a few chapters.
 * **Interpretation B** (defensive): the scorer is missing pages it
-  should have flagged (false negatives), the speedup is genuine but
-  the fidelity on the 97 % heuristic pages may be compromised.
+  should have flagged (false negatives).
 
-**Resolution path** (do this BEFORE locking PA4 weights):
+**PA4 verdict** (2026-06-07): both interpretations are partially right.
+The flag-rate floor was misleading; details below.
 
-1. Run the QA tripwire to empirically measure false-negative rate:
+## PA4 calibration finding (2026-06-07)
 
-   ```powershell
-   .\.venv\Scripts\python.exe scripts\pa3_triage_cosmos.py `
-       --output-dir .elt\output\cosmos-tripwire `
-       --log-path logs\pa3-cosmos-tripwire.log `
-       --sample-rate 0.01 --qa-random-seed 42
-   ```
+QA tripwire run (`scripts/pa3_triage_cosmos.py --sample-rate 0.01
+--qa-random-seed 42`) produced 32 / 33 disagreements. Manual inspection
+of 5 sampled splice outputs in `.elt/output/cosmos-tripwire/splices/`:
 
-   That randomly re-runs ~1 % of unflagged pages (~33 pages, capped at
-   `--qa-max-pages 50`) through docling and diffs against heuristic.
-   Disagreement count is recorded as `qa_disagreements` in the new
-   summary. Wall-clock impact: ~30 min on top of the baseline triage
-   run.
+| Sample | Length (heur / docling) | Disagreement is... |
+|---|---|---|
+| `qa-0107.md` | 1,773 / 1,446 | **False positive** — JSON with vs. without code fence; same content |
+| `qa-0113.md` | 1,584 / 1,527 | **False positive** — same content, different starting point (reading order) |
+| `qa-0127.md` | 1,832 / 1,901 | **False positive** — trivial whitespace + spacing variation |
+| `qa-0367.md` | 1,717 / 1,711 | **False positive** — same content, different reading order |
+| `qa-0470.md` | 2,109 / 4,519 | **TRUE POSITIVE** — RBAC permissions table; heuristic broke into single-column vertical words; docling reconstructed proper markdown table |
 
-2. Interpret the result:
-   - `qa_disagreements / qa_sampled_count < 5 %`: scorer judgments are
-     genuinely correct on this corpus; lock current weights as
-     defaults; transition this closure to `production-ready`.
-   - `qa_disagreements / qa_sampled_count >= 5 %`: scorer is missing
-     content; tune `_SIGNAL_WEIGHTS` (e.g., lower `_HARD_FLAG_THRESHOLD`,
-     raise `non_ascii_ratio` weight); re-run PA3; iterate.
+### Two distinct blockers
 
-3. After tuning, commit `src/docline/process/fidelity_weights.json`
-   (PA4 close).
+**Blocker A — diff metric too coarse (stash `60E6157D`)**
+
+`_normalize_markdown` in `pdf_triage.py` only strips trailing whitespace
+and collapses blank lines. It cannot distinguish "structurally similar
+text with formatting differences" from "fundamentally different
+content". Hence 4 of 5 sampled disagreements are artifacts of the
+metric, not real fidelity gaps. **Without a fix, `qa_disagreements`
+cannot be used as a calibration signal**: any non-zero rate is dominated
+by formatting noise.
+
+Recommended fix: switch to lowercased + punctuation-stripped tokenized
+Jaccard similarity with a threshold (default ~0.7). Count as
+disagreement only when similarity falls below the threshold.
+
+**Blocker B — scorer architectural blind spot (stash `1380BD85`)**
+
+The page 470 case demonstrates a class of failure mode none of the
+current signals can detect: a real table in the source PDF that
+`pypdf.extract_text()` flattens into a single column of single words
+that **looks like ordinary paragraph text**. The current signals all
+score the **heuristic output text** — they cannot see that the source
+layout had columns or grid structure that got destroyed.
+
+Recommended fix: add `signal_layout_complexity` that inspects the
+SOURCE `pypdf.PageObject` for text-run X-coordinate clustering,
+column count, line density vs page area, and grid-like positioning.
+The signal fires when the heuristic-extracted text is suspiciously
+sparse relative to the source layout's structural complexity.
+
+### Why this matters
+
+Cosmos at the current scorer is genuinely correct on ~96 % of pages
+(prose, code samples, simple lists). The remaining ~1 % (page 470 and
+its kin) are reference tables that downstream RAG / graph consumers
+care a lot about — exact field-value pairings drive search relevance.
+Missing these in heuristic output is a fidelity regression on
+high-information-density content.
+
+### PA4 resolution path
+
+PA4 is **blocked** until both stashes land:
+
+1. `60E6157D` (diff metric improvement) — unlocks meaningful
+   calibration via `qa_disagreements`.
+2. `1380BD85` (layout-complexity signal) — closes the dominant
+   scorer-miss failure mode.
+
+After both ship and a re-run of PA3 confirms the cosmos table pages
+flag correctly, PA4 can lock the calibrated weights.
+
+### Operator workaround until PA4 closes
+
+For documents known to contain reference tables, use `--pdf-mode auto`
+(the existing all-docling path). Triage remains safe to use for
+prose-dominated documents but should NOT be the default for table-rich
+reference material.
+
+### Closure status
+
+This closure remains at `status: verified`. It will transition to
+`production-ready` only after:
+
+1. Stashes `60E6157D` + `1380BD85` are harvested, implemented, and
+   shipped (target follow-on shipment).
+2. Re-run of PA3 confirms page 470 (and analogous table pages)
+   flag correctly under the new layout-complexity signal.
+3. PA4 re-run with the improved diff metric produces a disagreement
+   rate below 5 % on the cosmos corpus.
 
 ## Healthy signals (what success looks like)
 
