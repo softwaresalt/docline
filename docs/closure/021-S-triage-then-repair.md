@@ -201,15 +201,21 @@ high-information-density content.
 
 ### PA4 resolution path
 
-PA4 is **blocked** until both stashes land:
+PA4 was **blocked** until both stashes landed:
 
 1. `60E6157D` (diff metric improvement) — unlocks meaningful
    calibration via `qa_disagreements`.
 2. `1380BD85` (layout-complexity signal) — closes the dominant
    scorer-miss failure mode.
 
-After both ship and a re-run of PA3 confirms the cosmos table pages
-flag correctly, PA4 can lock the calibrated weights.
+**Update (2026-06-07): both blockers closed in shipment 022-S** (PR #44,
+merge commit `f4ef7f1`). The tokenized Jaccard QA metric and the
+`signal_layout_complexity` PDF-introspection signal are now on `main`.
+See `docs/closure/022-S-pa4-closure.md` for the resolution details.
+
+After an operator re-run of PA3 confirms the cosmos table pages flag
+correctly and produces a meaningful Jaccard disagreement rate, this
+closure transitions to `status: production-ready`.
 
 ### Operator workaround until PA4 closes
 
