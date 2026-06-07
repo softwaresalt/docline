@@ -123,6 +123,31 @@ def main(argv: list[str] | None = None) -> int:
         help="Merge flagged ranges separated by at most this many pages (default: 2)",
     )
     parser.add_argument(
+        "--baseline-engine",
+        choices=("markitdown", "pypdf"),
+        default="markitdown",
+        help=(
+            "Heuristic baseline extractor for triage mode (default: markitdown). "
+            "'markitdown' produces real markdown for numbered lists, code "
+            "fences, and headings; 'pypdf' is the legacy fallback that "
+            "reproduces 021-S PA3 wall-clock baseline (~50 min on cosmos vs "
+            "~75 min with markitdown — markitdown is ~250ms/page heavier but "
+            "produces materially richer output)."
+        ),
+    )
+    parser.add_argument(
+        "--similarity-threshold",
+        type=float,
+        default=0.7,
+        help=(
+            "QA tripwire Jaccard-similarity threshold (default: 0.7). "
+            "When --sample-rate > 0, a sampled page counts as a disagreement "
+            "only when content similarity falls below this threshold. Lower "
+            "values are more permissive (fewer disagreements); higher values "
+            "are stricter."
+        ),
+    )
+    parser.add_argument(
         "--sample-rate",
         type=float,
         default=0.0,
@@ -188,13 +213,16 @@ def main(argv: list[str] | None = None) -> int:
             sample_rate=args.sample_rate,
             random_seed=args.qa_random_seed,
             max_sampled_pages=args.qa_max_pages,
+            similarity_threshold=args.similarity_threshold,
         )
         log.info(
-            "QA tripwire enabled: sample_rate=%.3f, max_pages=%d, seed=%s",
+            "QA tripwire enabled: rate=%.3f, max=%d, seed=%s, similarity_threshold=%.2f",
             qa_sampling.sample_rate,
             qa_sampling.max_sampled_pages,
             qa_sampling.random_seed,
+            qa_sampling.similarity_threshold,
         )
+    log.info("Baseline engine: %s", args.baseline_engine)
     try:
         result = process_pdf_triaged(
             args.pdf,
@@ -202,6 +230,7 @@ def main(argv: list[str] | None = None) -> int:
             buffer=args.buffer,
             merge_gap=args.merge_gap,
             qa_sampling=qa_sampling,
+            baseline_engine=args.baseline_engine,
         )
     except Exception as err:  # noqa: BLE001 — surface full traceback for diagnosis
         elapsed = time.monotonic() - start
