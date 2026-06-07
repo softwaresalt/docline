@@ -127,8 +127,53 @@ Carried forward from plan hardening. Each must reach `applied` or
 |---|---|---|---|
 | **PA1** | Land `--pdf-mode triage` wired to production batch path | moderate | **applied** (commit `15e3036`; CLI wiring fix in `603f3cd`) |
 | **PA2** | Add `engine` field to part frontmatter `docline:` namespace | moderate | **applied** (commit `14e7856`) |
-| **PA3** | First end-to-end triage run on `azure-cosmos-db.pdf` | low | **planned** — operator action; must run from plain shell per RCA; capture wall-clock + per-page engine distribution as evidence |
-| **PA4** | Lock-in default `_SIGNAL_WEIGHTS` based on calibration | low | **planned** — depends on PA3 sample data; commits `fidelity_weights.json` |
+| **PA3** | First end-to-end triage run on `azure-cosmos-db.pdf` | low | **applied** — operator ran `scripts/pa3_triage_cosmos.py` on 2026-06-06; **50 min wall-clock vs. ~9.5 h baseline (~11.4× speedup, 3× under the ≤ 2.4 h Acceptance Criterion 6 target)**; engine distribution 103 docling / 3,323 heuristic (3.0 % flag rate); 29 coalesced ranges; 0 subprocess fallbacks. Raw evidence: `.elt/output/cosmos-triage/pa3-summary.json`. |
+| **PA4** | Lock-in default `_SIGNAL_WEIGHTS` based on calibration | low | **planned with conditions** — PA3 confirmed wall-clock target but produced a **3 % flag rate, below the 5 % calibration sanity-band floor** (see PA3 calibration finding below). Recommended next step: QA tripwire run via `scripts/pa3_triage_cosmos.py --sample-rate 0.01` (~30 min) to measure false-negative rate before locking weights. |
+
+## PA3 calibration finding (2026-06-06)
+
+The PA3 run on `azure-cosmos-db.pdf` produced a **3.0 % flag rate**,
+which is below the 5 % floor of the recommended sanity band documented
+in the plan-hardening calibration gate. Two interpretations carry
+forward to PA4:
+
+* **Interpretation A** (charitable): cosmos really is ~97 % clean prose
+  with the dense layout concentrated in a few chapters. The flagged
+  ranges cluster tightly around plausible regions — cover/TOC, two
+  dense chapter clusters around pages 1197–1353 and 2743–2858, and a
+  late reference section. The 5 % floor is a universal heuristic that
+  may not apply uniformly to all corpora.
+* **Interpretation B** (defensive): the scorer is missing pages it
+  should have flagged (false negatives), the speedup is genuine but
+  the fidelity on the 97 % heuristic pages may be compromised.
+
+**Resolution path** (do this BEFORE locking PA4 weights):
+
+1. Run the QA tripwire to empirically measure false-negative rate:
+
+   ```powershell
+   .\.venv\Scripts\python.exe scripts\pa3_triage_cosmos.py `
+       --output-dir .elt\output\cosmos-tripwire `
+       --log-path logs\pa3-cosmos-tripwire.log `
+       --sample-rate 0.01 --qa-random-seed 42
+   ```
+
+   That randomly re-runs ~1 % of unflagged pages (~33 pages, capped at
+   `--qa-max-pages 50`) through docling and diffs against heuristic.
+   Disagreement count is recorded as `qa_disagreements` in the new
+   summary. Wall-clock impact: ~30 min on top of the baseline triage
+   run.
+
+2. Interpret the result:
+   - `qa_disagreements / qa_sampled_count < 5 %`: scorer judgments are
+     genuinely correct on this corpus; lock current weights as
+     defaults; transition this closure to `production-ready`.
+   - `qa_disagreements / qa_sampled_count >= 5 %`: scorer is missing
+     content; tune `_SIGNAL_WEIGHTS` (e.g., lower `_HARD_FLAG_THRESHOLD`,
+     raise `non_ascii_ratio` weight); re-run PA3; iterate.
+
+3. After tuning, commit `src/docline/process/fidelity_weights.json`
+   (PA4 close).
 
 ## Healthy signals (what success looks like)
 
