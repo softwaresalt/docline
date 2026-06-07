@@ -65,6 +65,8 @@ def build_output_document_parts(
     *,
     layout_engine: str = "heuristic",
     picture_sink: PictureSink | None = None,
+    pdf_mode: str = "auto",
+    triage_output_dir: Path | None = None,
 ) -> list[OutputDocumentPart]:
     """Plan the emitted markdown parts for a staged source file.
 
@@ -91,6 +93,16 @@ def build_output_document_parts(
         picture_sink: Optional ``PictureSink`` instance scoped to this
             source. When provided, DOCX image extraction is enabled and
             sidecar references flow into ``OutputDocumentPart.media_files``.
+        pdf_mode: PDF processing pipeline mode (019-F / U4). ``"auto"``
+            (default) uses the existing ``read_pdf`` path. ``"triage"``
+            routes PDFs through :func:`process_pdf_triaged` for selective
+            docling re-extraction; the resulting per-page outputs are
+            joined and segmented through the same downstream pipeline.
+            Non-PDF inputs ignore ``pdf_mode``.
+        triage_output_dir: Output directory for triage splice cache.
+            Required when ``pdf_mode == "triage"`` and the source is a
+            PDF. Should be a per-source subdirectory of the job output
+            root so splice caches don't collide across sources.
 
     Returns:
         Ordered markdown output parts for the source file.
@@ -98,8 +110,20 @@ def build_output_document_parts(
     suffix = file_path.suffix.lower()
     media_references: list[MediaReference] = []
     if suffix == ".pdf":
-        rendered = read_pdf(file_path, layout_engine=layout_engine, picture_sink=picture_sink)
-        segment_bodies = segment_markdown(rendered) if rendered.strip() else [""]
+        if pdf_mode == "triage":
+            if triage_output_dir is None:
+                raise ValueError(
+                    "build_output_document_parts: pdf_mode='triage' requires "
+                    "triage_output_dir (a per-source cache directory)"
+                )
+            from docline.process.pdf_triage import process_pdf_triaged
+
+            triage_result = process_pdf_triaged(file_path, output_dir=triage_output_dir)
+            rendered = "\n\n".join(p for p in triage_result.pages if p.strip())
+            segment_bodies = segment_markdown(rendered) if rendered.strip() else [""]
+        else:
+            rendered = read_pdf(file_path, layout_engine=layout_engine, picture_sink=picture_sink)
+            segment_bodies = segment_markdown(rendered) if rendered.strip() else [""]
     elif suffix == ".docx":
         if picture_sink is not None:
             blocks, media_references = read_docx_blocks_with_media(file_path, picture_sink)
@@ -149,4 +173,77 @@ def build_output_document_parts(
     return parts
 
 
-__all__ = ["OutputDocumentPart", "build_output_document_parts"]
+def apply_triage_attribution(
+    payload: dict[str, object],
+    engine: str | None,
+) -> None:
+    """Merge the per-page ``engine`` attribution into ``payload['docline']``.
+
+    Merges with existing ``docline:`` namespace keys (does not overwrite —
+    see ``docs/compound/2026-06-04-pydantic-namespace-merge-vs-overwrite.md``).
+
+    Args:
+        payload: Mutable payload dict that may already contain a ``docline``
+            namespace populated by upstream validators (e.g. ``source_url``,
+            ``crawl_depth``).
+        engine: ``"heuristic"`` or ``"docling"``; ``None`` to leave the
+            payload unchanged (non-triage runs).
+    """
+    if engine is None:
+        return
+    docline_ns = payload.setdefault("docline", {})
+    if not isinstance(docline_ns, dict):
+        raise ValueError(
+            f"payload['docline'] must be a dict to merge engine attribution, "
+            f"got {type(docline_ns).__name__}"
+        )
+    docline_ns["engine"] = engine
+
+
+def build_triage_part_payloads(triage_result: object) -> list[dict[str, object]]:
+    """Build per-page frontmatter payloads from a ``TriageResult``.
+
+    Args:
+        triage_result: :class:`docline.process.pdf_triage.TriageResult`.
+
+    Returns:
+        One payload dict per page, with the ``engine`` field merged into
+        each payload's ``docline:`` namespace.
+    """
+    engines = getattr(triage_result, "engine_per_page", ())
+    payloads: list[dict[str, object]] = []
+    for engine in engines:
+        payload: dict[str, object] = {}
+        apply_triage_attribution(payload, engine)
+        payloads.append(payload)
+    return payloads
+
+
+def build_triage_manifest_stats(triage_result: object) -> dict[str, int]:
+    """Build the manifest-level ``triage_stats`` summary block.
+
+    Args:
+        triage_result: :class:`docline.process.pdf_triage.TriageResult`.
+
+    Returns:
+        Mapping with keys ``pages_total``, ``pages_docling``,
+        ``pages_heuristic``, ``flagged_ranges``.
+    """
+    pages = getattr(triage_result, "pages", ())
+    engines = getattr(triage_result, "engine_per_page", ())
+    flagged_ranges = getattr(triage_result, "flagged_ranges", ())
+    return {
+        "pages_total": len(pages),
+        "pages_docling": sum(1 for e in engines if e == "docling"),
+        "pages_heuristic": sum(1 for e in engines if e == "heuristic"),
+        "flagged_ranges": len(flagged_ranges),
+    }
+
+
+__all__ = [
+    "OutputDocumentPart",
+    "apply_triage_attribution",
+    "build_output_document_parts",
+    "build_triage_manifest_stats",
+    "build_triage_part_payloads",
+]

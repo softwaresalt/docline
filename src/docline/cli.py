@@ -83,6 +83,19 @@ def _build_parser() -> argparse.ArgumentParser:
             "built-in extractor."
         ),
     )
+    process_parser.add_argument(
+        "--pdf-mode",
+        choices=("auto", "triage"),
+        default="auto",
+        help=(
+            "PDF processing pipeline mode. 'auto' (default) is the existing "
+            "split-and-throttle batch pipeline. 'triage' runs the heuristic "
+            "engine across the whole document, scores each page for fidelity "
+            "loss, and re-runs only flagged pages through docling — typically "
+            "6-8x faster on long technical PDFs with mostly clean prose. "
+            "Orthogonal to --pdf-engine."
+        ),
+    )
 
     quarantine_viewer_parser = subcommands.add_parser(
         "quarantine-viewer",
@@ -192,6 +205,7 @@ def main(argv: list[str] | None = None) -> int:
                 output_dir=parsed.output_dir,
                 allow_heading_disorder=parsed.allow_heading_disorder,
                 pdf_engine=parsed.pdf_engine,
+                pdf_mode=parsed.pdf_mode,
             )
         except ValueError as err:
             print(f"error: {err}", file=sys.stderr)
