@@ -92,16 +92,16 @@ def test_content_similarity_code_fence_vs_no_fence_high_similarity() -> None:
 
     plain = (
         '"defaultConsistencyLevel": "ConsistentPrefix"\n'
-        '      },\n'
+        "      },\n"
         '      "Session": {\n'
         '        "defaultConsistencyLevel": "Session"\n'
-        '      }'
+        "      }"
     )
     fenced = (
-        '```\n'
+        "```\n"
         '"defaultConsistencyLevel": "ConsistentPrefix" }, '
         '"Session": { "defaultConsistencyLevel": "Session" }\n'
-        '```'
+        "```"
     )
     score = _content_similarity(plain, fenced)
     assert score >= 0.9, f"code-fence formatting variant must score >=0.9; got {score!r}"

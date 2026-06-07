@@ -30,7 +30,9 @@ Plan: ``docs/plans/2026-06-06-triage-then-repair-plan.md`` § U3, U6, U7.
 from __future__ import annotations
 
 import csv
+import logging
 import random
+import re
 import subprocess
 import sys
 import time
@@ -43,6 +45,8 @@ import pypdf
 from docline.process.fidelity_scorer import PageScore, score_page
 from docline.process.page_range import coalesce_ranges
 from docline.runtime.resource_probe import ResourceBudget
+
+_log = logging.getLogger(__name__)
 
 ChunkRunner = Callable[[list[str]], "subprocess.CompletedProcess[str]"]
 PageScorer = Callable[[int, str, object | None], PageScore]
@@ -126,10 +130,14 @@ def _normalize_markdown(text: str) -> str:
     return "\n".join(normalized).strip()
 
 
+_TOKEN_RE = re.compile(r"\w+", re.UNICODE)
+
+
 def _content_similarity(a: str, b: str) -> float:
     """Jaccard similarity of lowercased + tokenized content (020.003-T / U2).
 
-    Stub — implementation lands in task 020.003-T.
+    Tokenization uses ``re.findall(r"\\w+", text.lower())`` — Unicode-aware,
+    case-insensitive, handles whitespace + punctuation in one pass.
 
     Args:
         a: First text.
@@ -137,11 +145,18 @@ def _content_similarity(a: str, b: str) -> float:
 
     Returns:
         Float in ``[0.0, 1.0]``. ``1.0`` means substantially identical
-        token sets; ``0.0`` means no overlap. Empty inputs both empty
-        return ``1.0`` (vacuously identical); one empty + one non-empty
-        returns ``0.0``.
+        token sets; ``0.0`` means no token overlap. Both empty returns
+        ``1.0`` (vacuously identical); exactly one empty returns ``0.0``.
     """
-    raise NotImplementedError("020.003-T: _content_similarity")
+    tokens_a = set(_TOKEN_RE.findall(a.lower()))
+    tokens_b = set(_TOKEN_RE.findall(b.lower()))
+    if not tokens_a and not tokens_b:
+        return 1.0
+    if not tokens_a or not tokens_b:
+        return 0.0
+    intersection = len(tokens_a & tokens_b)
+    union = len(tokens_a | tokens_b)
+    return intersection / union
 
 
 def _heuristic_extract(
@@ -149,10 +164,8 @@ def _heuristic_extract(
     page_idx: int,
     engine: str,
     splice_cache: Path,
-) -> str:
+) -> tuple[str, bool]:
     """Extract heuristic baseline text for one page via the chosen engine.
-
-    Stub — implementation lands in task 020.002-T (U1).
 
     Args:
         reader: ``pypdf.PdfReader`` instance for the source PDF.
@@ -165,12 +178,40 @@ def _heuristic_extract(
         splice_cache: Directory under ``output_dir`` for splice temp PDFs.
 
     Returns:
-        Extracted text (possibly empty).
-
-    Raises:
-        NotImplementedError: Until 020.002-T lands.
+        Tuple of ``(extracted_text, fallback_triggered)``. ``fallback_triggered``
+        is ``True`` when markitdown was requested but failed and the function
+        fell back to pypdf for this page.
     """
-    raise NotImplementedError("020.002-T: _heuristic_extract")
+    if engine == "pypdf":
+        try:
+            return reader.pages[page_idx].extract_text() or "", False  # type: ignore[attr-defined]
+        except Exception:  # noqa: BLE001 — keep batch alive on per-page failure
+            return "", False
+
+    if engine == "markitdown":
+        splice_cache.mkdir(parents=True, exist_ok=True)
+        splice_pdf = splice_cache / f"baseline-{page_idx:04d}.pdf"
+        try:
+            writer = pypdf.PdfWriter()
+            writer.add_page(reader.pages[page_idx])  # type: ignore[attr-defined]
+            with splice_pdf.open("wb") as fh:
+                writer.write(fh)
+            from markitdown import MarkItDown
+
+            md = MarkItDown(enable_plugins=False)
+            result = md.convert(str(splice_pdf))
+            text = result.text_content or ""
+            return text, False
+        except Exception:  # noqa: BLE001 — defensive: markitdown can fail on weird PDFs
+            _log.warning(
+                "markitdown failed on page %d; falling back to pypdf", page_idx, exc_info=True
+            )
+            try:
+                return reader.pages[page_idx].extract_text() or "", True  # type: ignore[attr-defined]
+            except Exception:  # noqa: BLE001
+                return "", True
+
+    raise ValueError(f"unknown baseline_engine {engine!r}; expected 'markitdown' or 'pypdf'")
 
 
 def process_pdf_triaged(
@@ -183,7 +224,7 @@ def process_pdf_triaged(
     buffer: int = 1,
     merge_gap: int = 2,
     qa_sampling: QASampling | None = None,
-    baseline_engine: str = "pypdf",
+    baseline_engine: str = "markitdown",
 ) -> TriageResult:
     """Process a PDF via heuristic baseline + selective docling repair.
 
@@ -232,13 +273,15 @@ def process_pdf_triaged(
     # orchestrator requires for splice-back.
     reader = pypdf.PdfReader(str(path), strict=False)
     total_pages = len(reader.pages)
+    splice_cache = output_dir / "splices"
+    splice_cache.mkdir(parents=True, exist_ok=True)
     heuristic_pages: list[str] = []
+    baseline_engine_fallback = 0
     for page_idx in range(total_pages):
-        try:
-            text = reader.pages[page_idx].extract_text() or ""
-        except Exception:  # noqa: BLE001 — keep batch alive on per-page extraction failure
-            text = ""
+        text, fallback = _heuristic_extract(reader, page_idx, baseline_engine, splice_cache)
         heuristic_pages.append(text)
+        if fallback:
+            baseline_engine_fallback += 1
 
     # Pass 2: Score each page.
     scores: list[PageScore] = []
@@ -259,9 +302,6 @@ def process_pdf_triaged(
     final_pages: list[str] = list(heuristic_pages)
     engine_per_page: list[str] = ["heuristic"] * total_pages
     subprocess_fallback_count = 0
-
-    splice_cache = output_dir / "splices"
-    splice_cache.mkdir(parents=True, exist_ok=True)
 
     for start, end in flagged_ranges:
         splice_pdf = splice_cache / f"splice-{start:04d}-{end:04d}.pdf"
@@ -310,7 +350,7 @@ def process_pdf_triaged(
         "buffer": buffer,
         "merge_gap": merge_gap,
         "baseline_engine": baseline_engine,
-        "baseline_engine_fallback": 0,
+        "baseline_engine_fallback": baseline_engine_fallback,
     }
 
     # QA tripwire: sample unflagged pages, run docling on each, count
@@ -330,6 +370,7 @@ def process_pdf_triaged(
         sampled = sorted(rng.sample(unflagged_indices, target_count)) if target_count > 0 else []
 
         qa_disagreements = 0
+        bucket_counts: dict[str, int] = {">=0.9": 0, "0.7-0.9": 0, "0.5-0.7": 0, "<0.5": 0}
         for page_idx in sampled:
             qa_pdf = splice_cache / f"qa-{page_idx:04d}.pdf"
             qa_md = splice_cache / f"qa-{page_idx:04d}.md"
@@ -350,12 +391,22 @@ def process_pdf_triaged(
             if qa_completed.returncode == 0 and qa_md.exists():
                 docling_text = qa_md.read_text(encoding="utf-8")
                 heuristic_text = heuristic_pages[page_idx]
-                if _normalize_markdown(docling_text) != _normalize_markdown(heuristic_text):
+                similarity = _content_similarity(docling_text, heuristic_text)
+                if similarity >= 0.9:
+                    bucket_counts[">=0.9"] += 1
+                elif similarity >= 0.7:
+                    bucket_counts["0.7-0.9"] += 1
+                elif similarity >= 0.5:
+                    bucket_counts["0.5-0.7"] += 1
+                else:
+                    bucket_counts["<0.5"] += 1
+                if similarity < qa_sampling.similarity_threshold:
                     qa_disagreements += 1
 
         metadata["qa_sampled_count"] = len(sampled)
         metadata["qa_disagreements"] = qa_disagreements
         metadata["qa_random_seed_used"] = seed_used
+        metadata["qa_similarity_histogram"] = bucket_counts
 
     return TriageResult(
         source=path,
@@ -374,7 +425,7 @@ def triage_report_only(
     scorer: PageScorer | None = None,
     buffer: int = 1,
     merge_gap: int = 2,
-    baseline_engine: str = "pypdf",
+    baseline_engine: str = "markitdown",
 ) -> TriageResult:
     """Run heuristic + score only; emit per-page TSV; never call docling.
 
@@ -404,15 +455,17 @@ def triage_report_only(
 
     reader = pypdf.PdfReader(str(path), strict=False)
     total_pages = len(reader.pages)
+    splice_cache = output_dir / "splices"
+    splice_cache.mkdir(parents=True, exist_ok=True)
 
     scores: list[PageScore] = []
     heuristic_pages: list[str] = []
+    baseline_engine_fallback = 0
     for page_idx in range(total_pages):
-        try:
-            text = reader.pages[page_idx].extract_text() or ""
-        except Exception:  # noqa: BLE001
-            text = ""
+        text, fallback = _heuristic_extract(reader, page_idx, baseline_engine, splice_cache)
         heuristic_pages.append(text)
+        if fallback:
+            baseline_engine_fallback += 1
         scores.append(scorer(page_idx, text, reader.pages[page_idx]))
 
     flagged_indices = [s.page_index for s in scores if s.needs_docling]
@@ -453,7 +506,7 @@ def triage_report_only(
             "flagged_ranges_count": len(flagged_ranges),
             "report_only": True,
             "baseline_engine": baseline_engine,
-            "baseline_engine_fallback": 0,
+            "baseline_engine_fallback": baseline_engine_fallback,
         },
     )
 

@@ -19,12 +19,15 @@ Plan: ``docs/plans/2026-06-06-triage-then-repair-plan.md`` § U1.
 from __future__ import annotations
 
 import json
+import logging
 import re
 import unicodedata
 from dataclasses import dataclass, field
 from pathlib import Path
 
 from docline.schema.models import DoclineError
+
+_log = logging.getLogger(__name__)
 
 # -------------------------------------------------------------------------
 # Tunable thresholds. These start as reasonable defaults; calibrate against
@@ -51,6 +54,7 @@ _DEFAULT_SIGNAL_WEIGHTS: dict[str, float] = {
     "table_char_density": 1.0,
     "image_heavy": 0.9,
     "form_fields": 1.2,
+    "layout_complexity": 1.1,
 }
 
 _SIGNAL_NAMES: tuple[str, ...] = (
@@ -61,6 +65,7 @@ _SIGNAL_NAMES: tuple[str, ...] = (
     "table_char_density",
     "image_heavy",
     "form_fields",
+    "layout_complexity",
 )
 
 
@@ -207,29 +212,113 @@ def _page_image_count(page_metadata: object) -> int:
 def signal_layout_complexity(text: str, page_metadata: object | None = None) -> float:
     """Flag pages whose source PDF layout has structural complexity (020.004-T / U3).
 
-    Stub — implementation lands in task 020.004-T.
-
     Inspects the source ``pypdf.PageObject`` for text-run X-coordinate
-    clustering, column count, line density vs page area, and grid-like
-    positioning. Fires (returns positive value in ``[0, 1]``) when the
-    source PDF has columns / grid structure that the heuristic extractor
-    flattened into prose-looking text.
+    clustering and compares the column count against the heuristic-text
+    line count. Fires (returns positive value in ``[0, 1]``) when the
+    source PDF has multiple distinct X-positioned text runs but the
+    extracted text reads as a small number of lines — the canonical
+    signature of a table or multi-column layout that pypdf flattened
+    into ordinary-looking prose.
 
     Returns ``0.0`` when ``page_metadata`` is ``None`` (charitable-
     when-no-metadata; matches the pattern from ``signal_char_density``).
 
     Args:
-        text: Heuristic-extracted page text (used to compare flat-line-
-            count vs source X-cluster-count).
+        text: Heuristic-extracted page text.
         page_metadata: ``pypdf.PageObject`` for the source page.
 
     Returns:
-        Score in ``[0.0, 1.0]``.
-
-    Raises:
-        NotImplementedError: Until 020.004-T lands.
+        Score in ``[0.0, 1.0]``. Higher means more layout structure
+        was detected in the source that the heuristic failed to surface.
     """
-    raise NotImplementedError("020.004-T: signal_layout_complexity")
+    if page_metadata is None:
+        return 0.0
+    x_clusters = _count_x_clusters(page_metadata)
+    if x_clusters == 0:
+        return 0.0
+    line_count = max(1, len([ln for ln in text.splitlines() if ln.strip()]))
+    excess = x_clusters - line_count
+    if excess <= 0:
+        return 0.0
+    return min(1.0, excess / 4.0)
+
+
+def _count_x_clusters(page_metadata: object, tolerance: float = 10.0) -> int:
+    """Count distinct X-coordinate clusters of text runs on a pypdf page.
+
+    Walks the page content stream and extracts the X-coordinate of each
+    ``Tm`` (text matrix), ``Td`` / ``TD`` (text-position offset) operator.
+    Clusters positions within ``tolerance`` PDF units into a single column.
+
+    Defensive: returns ``0`` on any pypdf API error so the signal degrades
+    gracefully when the content stream cannot be parsed.
+
+    Args:
+        page_metadata: ``pypdf.PageObject``.
+        tolerance: Cluster-merge tolerance in PDF units (default 10 ≈ 1/7.2 inch).
+
+    Returns:
+        Count of distinct X-coordinate clusters.
+    """
+    try:
+        contents = getattr(page_metadata, "get_contents", lambda: None)()
+        if contents is None:
+            return 0
+        get_data = getattr(contents, "get_data", None)
+        if get_data is None:
+            return 0
+        raw = get_data()
+    except (AttributeError, KeyError, TypeError):
+        return 0
+    except Exception:  # noqa: BLE001 — pypdf content-stream APIs vary; degrade gracefully
+        _log.warning("layout_complexity: content stream extraction failed", exc_info=True)
+        return 0
+
+    if not isinstance(raw, bytes):
+        return 0
+
+    x_positions: list[float] = []
+    current_x = 0.0
+    try:
+        text = raw.decode("latin-1", errors="ignore")
+    except (UnicodeDecodeError, AttributeError):
+        return 0
+
+    # Parse Tm (text matrix), Td/TD (text position) operators.
+    # Tm: a b c d e f Tm  → e is X
+    # Td: tx ty Td  → tx adjusts current X
+    # TD: tx ty TD  → tx adjusts current X + leading
+    pattern = re.compile(
+        r"((?:-?\d+\.?\d*\s+){5}-?\d+\.?\d*)\s+Tm|"
+        r"(-?\d+\.?\d*)\s+(-?\d+\.?\d*)\s+Td|"
+        r"(-?\d+\.?\d*)\s+(-?\d+\.?\d*)\s+TD"
+    )
+    for match in pattern.finditer(text):
+        tm_group, td_x, _td_y, td_cap_x, _td_cap_y = match.groups()
+        try:
+            if tm_group is not None:
+                parts = tm_group.split()
+                current_x = float(parts[4])
+            elif td_x is not None:
+                current_x += float(td_x)
+            elif td_cap_x is not None:
+                current_x += float(td_cap_x)
+        except (ValueError, IndexError):
+            continue
+        x_positions.append(current_x)
+
+    if not x_positions:
+        return 0
+
+    # Cluster positions within tolerance.
+    sorted_xs = sorted(x_positions)
+    clusters = 1
+    last_x = sorted_xs[0]
+    for x in sorted_xs[1:]:
+        if x - last_x > tolerance:
+            clusters += 1
+            last_x = x
+    return clusters
 
 
 # -------------------------------------------------------------------------
@@ -324,6 +413,7 @@ def score_page(
         "table_char_density": signal_table_char_density(text),
         "image_heavy": signal_image_heavy(page_metadata),
         "form_fields": signal_form_fields(page_metadata),
+        "layout_complexity": signal_layout_complexity(text, page_metadata),
     }
 
     weighted: dict[str, float] = {
