@@ -444,6 +444,11 @@ def triage_report_only(
             :func:`docline.process.fidelity_scorer.score_page`.
         buffer: Pages of context (recorded only — no docling invocation).
         merge_gap: Merge gap (recorded only — no docling invocation).
+        baseline_engine: Heuristic baseline extractor selection.
+            ``"markitdown"`` (default, 020.002-T / U1) routes each
+            page through :class:`markitdown.MarkItDown`. ``"pypdf"``
+            uses ``reader.pages[i].extract_text()`` directly — used
+            for regression coverage of the pre-020.002-T behavior.
 
     Returns:
         :class:`TriageResult` with ``engine_per_page`` all-heuristic and
