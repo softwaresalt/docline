@@ -132,10 +132,8 @@ def _get_markitdown() -> object:
     """
     global _MARKITDOWN_INSTANCE
     if _MARKITDOWN_INSTANCE is None:
-        import logging as _logging
-
         for _name in ("pdfminer.pdffont", "pdfminer.pdfinterp"):
-            _logging.getLogger(_name).setLevel(_logging.ERROR)
+            logging.getLogger(_name).setLevel(logging.ERROR)
 
         from markitdown import MarkItDown
 
