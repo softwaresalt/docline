@@ -101,10 +101,12 @@ def test_build_output_document_parts_no_frontmatter(tmp_path: Path) -> None:
 
 
 def test_parse_md_frontmatter_handles_multiline_yaml_values() -> None:
-    """YAML values containing newlines or hyphens must not trip the fence finder.
+    """YAML block scalar values that span multiple lines parse correctly.
 
-    Specifically, a quoted YAML value with ``---`` inside should not be
-    confused with the closing fence.
+    Microsoft Learn / Hugo frontmatter sometimes uses YAML block scalars
+    (``|`` literal or ``>`` folded) for multi-line description fields.
+    The fence-finder must not be tripped by the indented continuation
+    lines that follow the block-scalar marker.
     """
     from docline.process.output_contract import _parse_md_frontmatter
 
@@ -122,6 +124,31 @@ def test_parse_md_frontmatter_handles_multiline_yaml_values() -> None:
     assert fm is not None
     assert fm["title"] == "Doc title"
     assert "spans several lines" in str(fm.get("description", ""))
+    assert body.startswith("# Body")
+
+
+def test_parse_md_frontmatter_handles_triple_dash_inside_value() -> None:
+    """A quoted YAML value containing ``---`` MUST NOT be mistaken for the
+    closing fence. The fence-finder requires ``---`` to be on its own line
+    (followed by newline or EOF), so embedded ``---`` in a string value
+    should be preserved as part of the parsed value, not split the document.
+    """
+    from docline.process.output_contract import _parse_md_frontmatter
+
+    text = (
+        "---\n"
+        "title: Doc with separator in description\n"
+        "description: 'Has --- in value but inline only'\n"
+        "notes: 'Another --- inline'\n"
+        "---\n"
+        "# Body\n\n"
+        "Real body text.\n"
+    )
+    fm, body = _parse_md_frontmatter(text)
+    assert fm is not None
+    assert fm["title"] == "Doc with separator in description"
+    assert fm["description"] == "Has --- in value but inline only"
+    assert fm["notes"] == "Another --- inline"
     assert body.startswith("# Body")
 
 
