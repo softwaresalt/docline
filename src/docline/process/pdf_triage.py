@@ -120,9 +120,21 @@ def _get_markitdown() -> object:
     its plugins; doing this on every page would multiply the per-page
     overhead by 3,000+ on a cosmos-class document. Hoist to a module-
     level singleton instead.
+
+    Also silences two noisy pdfminer loggers that fire per-page on PDFs
+    with malformed font descriptors or CMaps. The warnings are
+    informational only — pdfminer recovers and produces correct text —
+    but on a 3,426-page corpus they produce thousands of spurious lines
+    that drown out real diagnostics. Suppressed loggers:
+
+    * ``pdfminer.pdffont`` (FontBBox / CMap parse failures)
+    * ``pdfminer.pdfinterp`` (uncommon operator warnings)
     """
     global _MARKITDOWN_INSTANCE
     if _MARKITDOWN_INSTANCE is None:
+        for _name in ("pdfminer.pdffont", "pdfminer.pdfinterp"):
+            logging.getLogger(_name).setLevel(logging.ERROR)
+
         from markitdown import MarkItDown
 
         _MARKITDOWN_INSTANCE = MarkItDown(enable_plugins=False)

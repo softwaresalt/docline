@@ -8,6 +8,7 @@ from typing import Any
 from unittest.mock import MagicMock
 
 import pypdf
+import pytest
 
 
 def _make_pdf(path: Path, page_count: int) -> Path:
@@ -88,3 +89,48 @@ def test_baseline_engine_markitdown_invokes_heuristic_extract_helper(tmp_path: P
     assert isinstance(fallback, int) and fallback >= 0, (
         f"baseline_engine_fallback must be a non-negative int; got {fallback!r}"
     )
+
+
+def test_get_markitdown_silences_noisy_pdfminer_loggers(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """`_get_markitdown` MUST suppress pdfminer's per-page font / interp
+    warnings to ERROR level.
+
+    The cosmos PDF has malformed FontBBox entries on thousands of pages.
+    Without suppression pdfminer.pdffont emits one WARNING per affected
+    page, drowning out real diagnostics on long runs. The suppression is
+    applied at module-load-time of MarkItDown (inside `_get_markitdown`)
+    so it covers every subsequent pdfminer call in the process.
+
+    Uses ``monkeypatch`` so the singleton reset and logger-level mutations
+    are restored automatically on test teardown — preventing cross-test
+    contamination from this test's mutation of process-wide state.
+    """
+    import logging
+
+    from docline.process import pdf_triage
+
+    # Reset both loggers and the singleton so we exercise the install
+    # path. monkeypatch.setattr restores the original singleton value on
+    # teardown; logger levels are restored by capturing + setting back.
+    pdffont_logger = logging.getLogger("pdfminer.pdffont")
+    pdfinterp_logger = logging.getLogger("pdfminer.pdfinterp")
+    original_pdffont_level = pdffont_logger.level
+    original_pdfinterp_level = pdfinterp_logger.level
+
+    pdffont_logger.setLevel(logging.NOTSET)
+    pdfinterp_logger.setLevel(logging.NOTSET)
+    monkeypatch.setattr(pdf_triage, "_MARKITDOWN_INSTANCE", None)
+
+    try:
+        pdf_triage._get_markitdown()
+
+        for name in ("pdfminer.pdffont", "pdfminer.pdfinterp"):
+            assert logging.getLogger(name).level >= logging.ERROR, (
+                f"{name} logger should be suppressed to ERROR; "
+                f"got level {logging.getLogger(name).level}"
+            )
+    finally:
+        pdffont_logger.setLevel(original_pdffont_level)
+        pdfinterp_logger.setLevel(original_pdfinterp_level)
