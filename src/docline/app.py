@@ -523,7 +523,17 @@ def execute_process(request: ProcessRequest) -> ProcessResult:
                 continue
 
             page_metadata = _load_staged_page_metadata(file_path)
-            base_title = _derive_document_title(
+            # Prefer source MD's frontmatter title when present (023.001-T / 025-S):
+            # authorial title is more reliable than H1 derivation, especially for
+            # Microsoft Learn / DocFx / Hugo / Jekyll content that uses ``title:``
+            # for short doc titles distinct from longer H1 headings.
+            source_fm = document_parts[0].source_frontmatter
+            source_title: str | None = None
+            if isinstance(source_fm, Mapping):
+                raw_title = source_fm.get("title")
+                if isinstance(raw_title, str) and raw_title.strip():
+                    source_title = raw_title.strip()
+            base_title = source_title or _derive_document_title(
                 file_path,
                 document_parts[0].body,
                 job.metadata.source,
@@ -537,11 +547,18 @@ def execute_process(request: ProcessRequest) -> ProcessResult:
 
             for part_index, document_part in enumerate(document_parts):
                 part_ingest_order = current_ingest_order + part_index
-                title_override = (
-                    f"{base_title} {document_part.title_suffix}"
-                    if document_part.title_suffix is not None
-                    else None
-                )
+                # title_override resolution (priority order):
+                #   1. base_title + part suffix when multi-part (e.g. "Doc Title Part 2")
+                #   2. base_title when source frontmatter provided an authoritative
+                #      title (023.001-T / 025-S) — overrides body-H1 derivation
+                #   3. None — defer to _build_markdown_with_frontmatter's internal
+                #      _derive_document_title (existing pre-025-S behavior)
+                if document_part.title_suffix is not None:
+                    title_override = f"{base_title} {document_part.title_suffix}"
+                elif source_title is not None and part_index == 0:
+                    title_override = base_title
+                else:
+                    title_override = None
                 docline_namespace = _build_docline_namespace(
                     parent_document_id=parent_document_id,
                     part_index=part_index + 1,
@@ -550,6 +567,13 @@ def execute_process(request: ProcessRequest) -> ProcessResult:
                     all_output_paths=all_part_output_paths,
                     section_title=document_part.section_title,
                 )
+                # Preserve authorial frontmatter under docline:source_frontmatter
+                # so downstream consumers see ms.author / ms.topic / ms.date / etc.
+                # (023.001-T / 025-S). Attached only to the first part to avoid
+                # duplication across multi-part outputs.
+                if part_index == 0 and isinstance(document_part.source_frontmatter, Mapping):
+                    docline_namespace = dict(docline_namespace)
+                    docline_namespace["source_frontmatter"] = dict(document_part.source_frontmatter)
                 try:
                     markdown_text = _build_markdown_with_frontmatter(
                         job,
