@@ -37,6 +37,13 @@ class OutputDocumentPart:
             the application layer so downstream consumers see authorial
             metadata (``ms.author``, ``ms.topic``, etc.) preserved
             (023.001-T / 025-S).
+        cross_doc_links: Tuple of ``{target_path, anchor, link_text}``
+            dicts collected from intra-corpus ``[text](other.md)``
+            references in the body. Empty tuple when the source had no
+            cross-doc links or was not an MD/TXT source. Surfaced into
+            ``docline.cross_doc_links`` as a list of dicts so downstream
+            graph extraction can treat each as a first-class edge
+            (024.003-T / 026-S T3).
     """
 
     body: str
@@ -45,6 +52,7 @@ class OutputDocumentPart:
     section_title: str | None = None
     media_files: tuple[str, ...] = field(default_factory=tuple)
     source_frontmatter: Mapping[str, Any] | None = None
+    cross_doc_links: tuple[Mapping[str, Any], ...] = field(default_factory=tuple)
 
 
 def _parse_md_frontmatter(text: str) -> tuple[Mapping[str, Any] | None, str]:
@@ -182,6 +190,7 @@ def build_output_document_parts(
     suffix = file_path.suffix.lower()
     media_references: list[MediaReference] = []
     source_frontmatter: Mapping[str, Any] | None = None
+    md_cross_doc_links: tuple[Mapping[str, Any], ...] = ()
     if suffix == ".pdf":
         if pdf_mode == "triage":
             if triage_output_dir is None:
@@ -220,10 +229,38 @@ def build_output_document_parts(
             # through OutputDocumentPart.source_frontmatter so the application
             # layer can preserve it under docline:source_frontmatter.
             raw_text = file_path.read_text(encoding="utf-8", errors="replace")
-            source_frontmatter, stripped_body = _parse_md_frontmatter(raw_text)
-            segment_bodies = [stripped_body]
+
+            # 024.002-T / 026-S T2: expand DocFx [!INCLUDE [name](path.md)]
+            # directives BEFORE frontmatter strip + segmenter pass. Include
+            # paths resolve relative to the host file's directory. Missing
+            # includes degrade gracefully to inline comments + warnings.
+            from docline.process.docfx_includes import resolve_docfx_includes
+
+            expanded_text = resolve_docfx_includes(raw_text, base_dir=file_path.parent)
+
+            source_frontmatter, stripped_body = _parse_md_frontmatter(expanded_text)
+            # 024.001-T / 026-S T1: normalize DocFx container syntax (:::image,
+            # :::moniker) into standard CommonMark so downstream consumers
+            # see graphable alt-text + structural intent instead of opaque
+            # ``:::container:::`` markers.
+            from docline.process.docfx_normalize import normalize_docfx_containers
+
+            normalized_body = normalize_docfx_containers(stripped_body)
+
+            # 024.003-T / 026-S T3: collect cross-doc markdown links as
+            # graph-edge metadata. Body content is unchanged; the link
+            # list is attached to the OutputDocumentPart and surfaced
+            # into docline:cross_doc_links by the application layer.
+            from docline.process.cross_doc_links import resolve_cross_doc_links
+
+            _, link_list = resolve_cross_doc_links(
+                normalized_body, current_rel_path=relative_input_path, deduplicate=True
+            )
+            md_cross_doc_links = tuple(link_list)
+            segment_bodies = [normalized_body]
         else:
             segment_bodies = [file_path.read_text(encoding="utf-8", errors="replace")]
+            md_cross_doc_links = ()
 
     part_count = len(segment_bodies)
     has_media = bool(media_references)
@@ -236,9 +273,11 @@ def build_output_document_parts(
         # Media files are attached only to the first part of a source so the
         # manifest entries do not duplicate the references across siblings.
         part_media = media_files if has_media and index == 0 else ()
-        # source_frontmatter is attached only to the first part for the same
-        # reason — downstream consumers see authorial metadata once per source.
+        # source_frontmatter and cross_doc_links are attached only to the
+        # first part for the same reason — downstream consumers see authorial
+        # metadata + graph edges once per source.
         part_frontmatter = source_frontmatter if index == 0 else None
+        part_cross_doc_links = md_cross_doc_links if index == 0 else ()
         parts.append(
             OutputDocumentPart(
                 body=body,
@@ -252,6 +291,7 @@ def build_output_document_parts(
                 section_title=extract_section_title(body) if body.strip() else None,
                 media_files=part_media,
                 source_frontmatter=part_frontmatter,
+                cross_doc_links=part_cross_doc_links,
             )
         )
     return parts

@@ -574,6 +574,15 @@ def execute_process(request: ProcessRequest) -> ProcessResult:
                 if part_index == 0 and isinstance(document_part.source_frontmatter, Mapping):
                     docline_namespace = dict(docline_namespace)
                     docline_namespace["source_frontmatter"] = dict(document_part.source_frontmatter)
+                # Preserve cross-doc link metadata under docline:cross_doc_links
+                # so downstream graph extraction can treat each as an edge
+                # (024.003-T / 026-S T3). Attached only to first part.
+                if part_index == 0 and document_part.cross_doc_links:
+                    if not isinstance(docline_namespace, dict):
+                        docline_namespace = dict(docline_namespace)
+                    docline_namespace["cross_doc_links"] = [
+                        dict(link) for link in document_part.cross_doc_links
+                    ]
                 try:
                     markdown_text = _build_markdown_with_frontmatter(
                         job,
