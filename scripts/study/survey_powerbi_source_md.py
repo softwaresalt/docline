@@ -17,9 +17,6 @@ pathway) design. Specifically:
 from __future__ import annotations
 
 import json
-
-# Default corpus path matches the operator's local Power BI docs checkout.
-# Override via DOCLINE_SURVEY_ROOT environment variable for portability.
 import os
 import statistics
 import sys
@@ -30,6 +27,8 @@ from pathlib import Path
 # or by running this script with the repo's venv interpreter.
 from docline.process import compute_quality_metrics
 
+# Default corpus path matches the operator's local Power BI docs checkout.
+# Override via DOCLINE_SURVEY_ROOT environment variable for portability.
 DEFAULT_ROOT = r"E:\Source\powerbi-docs\powerbi-docs"
 ROOT = Path(os.environ.get("DOCLINE_SURVEY_ROOT", DEFAULT_ROOT))
 # Output path is relative to the current working directory so the script
