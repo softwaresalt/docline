@@ -17,16 +17,25 @@ pathway) design. Specifically:
 from __future__ import annotations
 
 import json
+
+# Default corpus path matches the operator's local Power BI docs checkout.
+# Override via DOCLINE_SURVEY_ROOT environment variable for portability.
+import os
 import statistics
 import sys
 import time
 from pathlib import Path
 
-sys.path.insert(0, r"D:\Source\GitHub\docline\src")
-from docline.process import compute_quality_metrics  # type: ignore  # noqa: E402
+# docline must be importable: either via `pip install -e .` from the repo root
+# or by running this script with the repo's venv interpreter.
+from docline.process import compute_quality_metrics
 
-ROOT = Path(r"E:\Source\powerbi-docs\powerbi-docs")
-OUT_DIR = Path(r"D:\Source\GitHub\docline\.elt\output\powerbi-source-survey")
+DEFAULT_ROOT = r"E:\Source\powerbi-docs\powerbi-docs"
+ROOT = Path(os.environ.get("DOCLINE_SURVEY_ROOT", DEFAULT_ROOT))
+# Output path is relative to the current working directory so the script
+# behaves consistently with other scripts/study/ entries when run from
+# the repo root.
+OUT_DIR = Path(".elt/output/powerbi-source-survey")
 
 
 def strip_frontmatter(text: str) -> tuple[str, str]:

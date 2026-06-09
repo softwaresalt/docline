@@ -130,7 +130,7 @@ script (see `survey_powerbi_source_md.py`) before running
 files. The issue is purely the YAML-fence handling in docline's
 ingestion path.
 
-## Gap analysis: what 026-F needs to close
+## Gap analysis: what 023-F needs to close
 
 | # | Gap | Impact | Difficulty |
 |---|---|---|---|
@@ -156,34 +156,34 @@ ingestion path.
 * ✅ AST-aware quality metrics (`compute_quality_metrics` from 023-S)
 * ✅ Multi-format dispatch (PDF / DOCX / HTML / MD / TXT) already in place
 
-## Recommended 026-F shape (revised based on this finding)
+## Recommended 023-F shape (revised based on this finding)
 
-The full 026-F as planned in the source-MD ingestion extension decision
+The full 023-F as planned in the source-MD ingestion extension decision
 (`docs/decisions/2026-06-08-source-md-ingestion-extension.md`) is the
 right architectural target, but the **minimum-viable first slice**
-(call it 026.001-T) is much smaller than the original 8-task
+(call it 023.001-T) is much smaller than the original 8-task
 decomposition suggested:
 
-* **026.001-T (minimum-viable source-MD)**: Strip YAML frontmatter
+* **023.001-T (minimum-viable source-MD)**: Strip YAML frontmatter
   before markdown parsing; preserve ms.* fields under `docline:`
   namespace; pass through DocFx extensions verbatim (still readable
   by graph extraction even if not parsed). **This single task alone
   would change "all 10 files fail" to "all 10 files succeed with
   basic provenance"** — immediate value for the Power BI corpus.
 
-* 026.002-T: TOC.yml parser for topological ingest order
-* 026.003-T: DocFx include resolver
-* 026.004-T: Cross-doc link resolution → graph-edge metadata
-* 026.005-T: DocFx container parser (`:::image:::`, `:::moniker:::`)
-* 026.006-T: Source provenance fields in manifest
-* 026.007-T: Incremental sync via prior-manifest diff
+* 023.002-T: TOC.yml parser for topological ingest order
+* 023.003-T: DocFx include resolver
+* 023.004-T: Cross-doc link resolution → graph-edge metadata
+* 023.005-T: DocFx container parser (`:::image:::`, `:::moniker:::`)
+* 023.006-T: Source provenance fields in manifest
+* 023.007-T: Incremental sync via prior-manifest diff
 
 Each task is ~2 hours; the feature ships incrementally with each
 task delivering operator-visible value.
 
 ## Decision points for operator review
 
-1. **Should we proceed with 026.001-T as a quick small win?** It would
+1. **Should we proceed with 023.001-T as a quick small win?** It would
    unblock Power BI ingestion (and AWS / K8s / React / Python / etc.)
    with one well-scoped change.
 2. **Should the frontmatter passthrough be lossy (strip + reformat) or
@@ -191,7 +191,7 @@ task delivering operator-visible value.
    Recommended: lossless preservation under `docline:source_frontmatter`,
    plus extract well-known fields (title, description, ms.author,
    ms.topic, ms.date) into the standard docline frontmatter top-level.
-3. **Should 026.001-T also include a basic DocFx `:::image:::` parser?**
+3. **Should 023.001-T also include a basic DocFx `:::image:::` parser?**
    It's a 1-line change and downstream consumers care a lot about
    alt-text. Recommended: yes.
 
@@ -215,13 +215,13 @@ task delivering operator-visible value.
 next-tier capability.** The corpus quality is in the "excellent" tier
 (matching docling output at zero compute cost), and the existing
 docline scaffolding (manifest, document_id, picture_sink, multi-format
-dispatch) provides about 60% of what 026-F needs. The single biggest
-unblock is frontmatter stripping (026.001-T), which would change
+dispatch) provides about 60% of what 023-F needs. The single biggest
+unblock is frontmatter stripping (023.001-T), which would change
 "all 10 files fail" to "all 10 files succeed with provenance" for ANY
 corpus that uses YAML frontmatter (Microsoft Learn, AWS, K8s, React,
 Hugo, Jekyll, MkDocs, Sphinx, Astro — essentially all modern docs).
 
-A small 026-S shipment carrying just 026.001-T (frontmatter strip +
+A small 025-S shipment carrying just 023.001-T (frontmatter strip +
 DocFx image parser + manifest provenance fields) would deliver
 operator-visible value on the Power BI corpus and serve as the
-foundation for the larger 026-F feature work that follows.
+foundation for the larger 023-F feature work that follows.

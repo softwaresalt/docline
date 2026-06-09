@@ -2,7 +2,7 @@
 title: Implementation plan — 023-S strategy alignment (AST metrics + doc updates)
 date: 2026-06-09
 shipment: 023-S
-feature: 023-F
+feature: 021-F
 status: planned
 related_decisions:
   - docs/decisions/2026-06-08-extraction-strategy-study.md
@@ -34,7 +34,7 @@ new default-mode guidance is official.
 
 ## Decomposition
 
-4 tasks under feature `023-F`. Estimated total effort: 7-10 hours.
+4 tasks under feature `021-F`. Estimated total effort: 7-10 hours.
 
 ### T1 — Compound learning capture (stash `13F608BA`)
 
@@ -251,7 +251,8 @@ already works end-to-end on real data (verified during the study run).
 1. T2 unit tests: 12+ tests covering all edge cases
 2. T2 lint + format + pyright clean
 3. Full pytest suite green (no regressions)
-4. T1 + T3 markdown lint (if any) — confirm format conformance
+4. T1 + T4 markdown lint (if any) — confirm format conformance on
+   the documentation-only tasks
 5. Manual smoke: import `QualityMetrics` from `docline.process`
    namespace and compute on a small markdown sample
 
@@ -262,10 +263,11 @@ explicit.
 
 ## Rollback plan
 
-T1 + T3 are documentation only — revert is trivial. T2 introduces a
-new module with no callers (intentionally — integration into
-`triage_report_only` would be a follow-on shipment); revert removes
-the module without affecting any existing code path.
+T1 + T4 are documentation only — revert is trivial. T2 introduces a
+new module with no callers in the existing codebase; T3 integrates
+that new module into `triage_report_only` (in-scope for this shipment).
+A full T2 + T3 revert removes both the new module and its sole call
+site, leaving `triage_report_only` exactly as it was pre-023-S.
 
 ## Plan-review notes
 

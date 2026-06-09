@@ -4,20 +4,32 @@ docline staging format and run ``docline process`` against them.
 
 Tests whether docline's existing local-file processing path handles
 production Microsoft Learn source MD cleanly, characterizing what
-works today vs what 026-F (source-MD ingestion pathway) would add.
+works today vs what 023-F (source-MD ingestion pathway) would add.
 """
 
 from __future__ import annotations
 
 import hashlib
 import json
+import os
 import shutil
 import sys
 from datetime import UTC, datetime
 from pathlib import Path
 
-POWERBI_ROOT = Path(r"E:\Source\powerbi-docs\powerbi-docs")
-DOCLINE_ROOT = Path(r"D:\Source\GitHub\docline")
+# Resolve docline repo root from this script's location so the script is
+# portable across machines / clones. Falls back to cwd if the relative
+# resolution fails (e.g., script copied out of tree).
+_SCRIPT_DIR = Path(__file__).resolve().parent
+_REPO_ROOT_CANDIDATE = _SCRIPT_DIR.parent.parent
+DOCLINE_ROOT = (
+    _REPO_ROOT_CANDIDATE if (_REPO_ROOT_CANDIDATE / "pyproject.toml").exists() else Path.cwd()
+)
+
+# Default corpus path matches the operator's local Power BI docs checkout.
+# Override via POWERBI_DOCS_ROOT environment variable for portability.
+_DEFAULT_POWERBI_ROOT = r"E:\Source\powerbi-docs\powerbi-docs"
+POWERBI_ROOT = Path(os.environ.get("POWERBI_DOCS_ROOT", _DEFAULT_POWERBI_ROOT))
 STAGING_ROOT = DOCLINE_ROOT / ".elt" / "staging-powerbi-test"
 OUTPUT_ROOT = DOCLINE_ROOT / ".elt" / "output" / "powerbi-test"
 

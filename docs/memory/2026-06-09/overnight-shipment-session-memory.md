@@ -1,3 +1,12 @@
+---
+type: session-memory
+date: 2026-06-09
+status: archived
+session: overnight-autonomous-shipment
+prs_merged: [46, 47, 48, 49, 50, 51, 52, 53, 54]
+shipments_closed: [023-S, 024-S]
+---
+
 # 2026-06-09 — Overnight autonomous shipment session
 
 ## Mission
