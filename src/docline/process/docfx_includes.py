@@ -20,7 +20,6 @@ from __future__ import annotations
 
 import logging
 import re
-from collections.abc import Iterable
 from pathlib import Path
 
 _log = logging.getLogger(__name__)
@@ -124,4 +123,4 @@ def resolve_docfx_includes_with_stats(body: str, *, base_dir: Path) -> tuple[str
     return out, stats
 
 
-__all__: Iterable[str] = ["resolve_docfx_includes", "resolve_docfx_includes_with_stats"]
+__all__ = ["resolve_docfx_includes", "resolve_docfx_includes_with_stats"]

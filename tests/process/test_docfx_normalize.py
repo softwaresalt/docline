@@ -98,6 +98,59 @@ def test_normalize_unknown_container_passes_through() -> None:
     assert "Column content." in out
 
 
+def test_normalize_image_alt_text_containing_colon() -> None:
+    """Alt-text values may contain colons (e.g., 'Figure 1: Overview').
+    The image regex MUST NOT break on attribute values that contain colons.
+    """
+    from docline.process.docfx_normalize import normalize_docfx_containers
+
+    body = ':::image type="content" source="img.png" alt-text="Figure 1: Overview":::'
+    out = normalize_docfx_containers(body)
+    assert "![Figure 1: Overview](img.png)" in out
+    assert ":::image" not in out
+
+
+def test_normalize_image_block_form_emits_no_spurious_image() -> None:
+    """The block form `:::image:::...:::image-end:::` MUST produce exactly ONE
+    image markdown reference, not a spurious extra `![](* )` from
+    accidentally matching `:::image-end:::` as an opening tag.
+    """
+    from docline.process.docfx_normalize import normalize_docfx_containers
+
+    body = (
+        ':::image type="complex" source="chart.png" alt-text="Chart caption":::\n'
+        "Long description body.\n"
+        ":::image-end:::\n"
+    )
+    out = normalize_docfx_containers(body)
+    # Exactly one image markdown reference
+    image_count = out.count("![")
+    assert image_count == 1, f"expected 1 image ref, got {image_count}; output:\n{out}"
+    assert "![Chart caption](chart.png)" in out
+    # Spurious empty image ![](* ) MUST NOT appear
+    assert "![]()" not in out
+
+
+def test_normalize_multiple_block_form_images() -> None:
+    """Two adjacent block-form images each emit one image reference."""
+    from docline.process.docfx_normalize import normalize_docfx_containers
+
+    body = (
+        ':::image type="complex" source="a.png" alt-text="A":::\n'
+        "Desc A.\n"
+        ":::image-end:::\n\n"
+        ':::image type="complex" source="b.png" alt-text="B":::\n'
+        "Desc B.\n"
+        ":::image-end:::\n"
+    )
+    out = normalize_docfx_containers(body)
+    assert out.count("![") == 2
+    assert "![A](a.png)" in out
+    assert "![B](b.png)" in out
+    assert "Desc A." in out
+    assert "Desc B." in out
+
+
 def test_normalize_handles_empty_body() -> None:
     from docline.process.docfx_normalize import normalize_docfx_containers
 

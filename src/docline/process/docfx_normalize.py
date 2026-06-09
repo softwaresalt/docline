@@ -33,18 +33,37 @@ from __future__ import annotations
 
 import re
 
-# :::image type="..." source="..." alt-text="..." ::: [optional long description] :::image-end:::
-# Attributes use either single or double quotes. The trailing ::: may
-# appear on the same line (self-closing) or paired with :::image-end:::
-# on a later line (block form with optional long description).
-_IMAGE_OPEN_RE = re.compile(
-    r":::image\b"  # opening tag
-    r"(?P<attrs>[^:]*?)"  # attribute text up to closing :::
-    r":::"  # opening close
-    r"(?P<long_desc>"  # capture optional long description
-    r"(?:(?!:::image-end:::).)*?"
-    r")"
-    r"(?P<has_end>:::image-end:::)?",
+# :::image type="..." source="..." alt-text="..." :::
+# Two forms supported, matched by distinct regexes:
+#
+#   1. Self-closing form on a single conceptual unit:
+#        :::image type="X" source="Y" alt-text="Z":::
+#      Attributes may span multiple lines and contain colons (e.g.
+#      ``alt-text="Figure 1: Overview"``), so the attribute group uses
+#      ``.+?`` with ``re.DOTALL`` rather than ``[^:]+?``.
+#
+#   2. Block form with optional long description body:
+#        :::image type="complex" source="X" alt-text="Y":::
+#        Long description paragraph.
+#        :::image-end:::
+#      The block form has an explicit ``:::image-end:::`` terminator;
+#      we match it greedily so the long description is captured.
+#
+# The block form is matched FIRST so its terminator is consumed before
+# the self-closing form gets a chance to false-match ``:::image-end:::``
+# as another opening tag.
+_IMAGE_BLOCK_RE = re.compile(
+    r":::image\b"
+    r"(?P<attrs>.+?)"  # attribute text including colons in values
+    r":::\s*\n"
+    r"(?P<long_desc>.*?)"
+    r":::image-end:::",
+    re.DOTALL,
+)
+_IMAGE_SELF_CLOSING_RE = re.compile(
+    r":::image\b"
+    r"(?P<attrs>.+?)"  # attribute text including colons in values
+    r":::",
     re.DOTALL,
 )
 _ATTR_RE = re.compile(r'([\w-]+)\s*=\s*["\']([^"\']*)["\']')
@@ -64,16 +83,24 @@ def _extract_attrs(attr_text: str) -> dict[str, str]:
     return dict(_ATTR_RE.findall(attr_text or ""))
 
 
-def _render_image(match: re.Match[str]) -> str:
+def _render_image_block(match: re.Match[str]) -> str:
+    """Render the block form :::image:::...:::image-end::: with long description."""
     attrs = _extract_attrs(match.group("attrs"))
     source = attrs.get("source", "")
     alt_text = attrs.get("alt-text") or attrs.get("alt") or ""
-    long_desc = match.group("long_desc") or ""
-    long_desc = long_desc.strip()
+    long_desc = (match.group("long_desc") or "").strip()
     image_md = f"![{alt_text}]({source})"
     if long_desc:
         return f"{image_md}\n\n{long_desc}"
     return image_md
+
+
+def _render_image_self_closing(match: re.Match[str]) -> str:
+    """Render the self-closing form :::image type=... :::."""
+    attrs = _extract_attrs(match.group("attrs"))
+    source = attrs.get("source", "")
+    alt_text = attrs.get("alt-text") or attrs.get("alt") or ""
+    return f"![{alt_text}]({source})"
 
 
 def _render_moniker(match: re.Match[str]) -> str:
@@ -106,7 +133,11 @@ def normalize_docfx_containers(body: str) -> str:
     # Process moniker wrappers first so their content participates in
     # subsequent image transforms.
     out = _MONIKER_RE.sub(_render_moniker, body)
-    out = _IMAGE_OPEN_RE.sub(_render_image, out)
+    # Process block form FIRST so its :::image-end::: terminator is
+    # consumed before the self-closing pattern gets a chance to
+    # false-match it as another opening tag.
+    out = _IMAGE_BLOCK_RE.sub(_render_image_block, out)
+    out = _IMAGE_SELF_CLOSING_RE.sub(_render_image_self_closing, out)
     return out
 
 

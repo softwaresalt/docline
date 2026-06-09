@@ -37,8 +37,8 @@ class OutputDocumentPart:
             the application layer so downstream consumers see authorial
             metadata (``ms.author``, ``ms.topic``, etc.) preserved
             (023.001-T / 025-S).
-        cross_doc_links: Tuple of ``(target_path, anchor, link_text)``
-            tuples collected from intra-corpus ``[text](other.md)``
+        cross_doc_links: Tuple of ``{target_path, anchor, link_text}``
+            dicts collected from intra-corpus ``[text](other.md)``
             references in the body. Empty tuple when the source had no
             cross-doc links or was not an MD/TXT source. Surfaced into
             ``docline.cross_doc_links`` as a list of dicts so downstream
