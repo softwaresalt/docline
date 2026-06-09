@@ -47,14 +47,6 @@ def _silence_pdfminer() -> None:
         logging.getLogger(name).setLevel(logging.ERROR)
 
 
-def _markitdown_one(pdf_path: Path) -> str:
-    from markitdown import MarkItDown
-
-    md = MarkItDown(enable_plugins=False)
-    result = md.convert(str(pdf_path))
-    return result.text_content
-
-
 _MD_SINGLETON = {"value": None}
 
 

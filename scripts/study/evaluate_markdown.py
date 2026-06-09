@@ -2,7 +2,7 @@
 """Compute structural + semantic + graphability metrics on extracted markdown.
 
 For each range pair in the dataset, parses both ``markitdown.md`` and
-``docling.md`` with markdown-it-py and computes ~12 metrics covering:
+``docling.md`` with markdown-it-py and computes 25 metrics covering:
 
 * AST parseability (parse success, total token count, depth)
 * Structural density (heading count, list item count, code block count,
@@ -13,7 +13,8 @@ For each range pair in the dataset, parses both ``markitdown.md`` and
 * Graphability (heading depth distribution, code-block density,
   table presence)
 
-Writes ``study/results/per-range.tsv`` and ``study/results/per-engine-aggregate.json``.
+Writes ``study/results/per-range-metrics.tsv`` and
+``study/results/per-range-metrics.json``.
 
 The metrics are deliberately AST-aware (markdown-it tokens) rather than
 naive regex / char counts, because the goal use cases (graph DB,
