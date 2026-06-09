@@ -223,6 +223,85 @@ def _heuristic_extract(
     raise ValueError(f"unknown baseline_engine {engine!r}; expected 'markitdown' or 'pypdf'")
 
 
+@dataclass(frozen=True)
+class _Pass12Result:
+    """Immutable result of the shared Pass 1 (heuristic) + Pass 2 (score) preamble.
+
+    Centralizes state common to :func:`process_pdf_triaged` and
+    :func:`triage_report_only` (022.001-T / 024-S refactor).
+    """
+
+    reader: pypdf.PdfReader
+    total_pages: int
+    splice_cache: Path
+    heuristic_pages: tuple[str, ...]
+    scores: tuple[PageScore, ...]
+    baseline_engine_fallback: int
+
+
+def _heuristic_and_score_pass(
+    path: Path,
+    *,
+    output_dir: Path,
+    scorer: PageScorer,
+    baseline_engine: str,
+) -> _Pass12Result:
+    """Run Pass 1 (per-page heuristic extraction) + Pass 2 (per-page scoring).
+
+    Iterates ``pypdf`` pages directly so per-page index alignment is
+    preserved even when individual pages have no extractable text
+    (e.g. blank pages, image-only pages). The public ``read_pdf_pages``
+    helper filters out empty pages, which loses the alignment that
+    splice-back requires.
+
+    Args:
+        path: Source PDF path.
+        output_dir: Directory where the splice cache subdirectory is
+            created. Must be writable.
+        scorer: Per-page scorer; receives ``(page_index, text,
+            page_metadata)`` for each page.
+        baseline_engine: Heuristic baseline extractor selection
+            (``"markitdown"`` or ``"pypdf"``).
+
+    Returns:
+        :class:`_Pass12Result` with reader, page count, splice cache
+        path, immutable tuples of per-page text and scores, and the
+        baseline-engine fallback counter.
+
+    Raises:
+        FileNotFoundError: If ``path`` does not exist.
+    """
+    if not path.exists():
+        raise FileNotFoundError(f"PDF not found: {path}")
+
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    reader = pypdf.PdfReader(str(path), strict=False)
+    total_pages = len(reader.pages)
+    splice_cache = output_dir / "splices"
+    splice_cache.mkdir(parents=True, exist_ok=True)
+
+    heuristic_pages: list[str] = []
+    scores: list[PageScore] = []
+    baseline_engine_fallback = 0
+    for page_idx in range(total_pages):
+        text, fallback = _heuristic_extract(reader, page_idx, baseline_engine, splice_cache)
+        heuristic_pages.append(text)
+        if fallback:
+            baseline_engine_fallback += 1
+        page_metadata = reader.pages[page_idx] if page_idx < len(reader.pages) else None
+        scores.append(scorer(page_idx, text, page_metadata))
+
+    return _Pass12Result(
+        reader=reader,
+        total_pages=total_pages,
+        splice_cache=splice_cache,
+        heuristic_pages=tuple(heuristic_pages),
+        scores=tuple(scores),
+        baseline_engine_fallback=baseline_engine_fallback,
+    )
+
+
 def process_pdf_triaged(
     path: Path,
     *,
@@ -282,29 +361,23 @@ def process_pdf_triaged(
     if scorer is None:
         scorer = score_page
 
-    # Pass 1: Heuristic baseline across the whole PDF.
-    # Iterate pypdf pages directly so the per-page mapping is preserved
-    # even when individual pages have no extractable text (e.g. blank
-    # pages, image-only pages). The public read_pdf_pages helper filters
-    # out empty pages, which loses page-index alignment that this
-    # orchestrator requires for splice-back.
-    reader = pypdf.PdfReader(str(path), strict=False)
-    total_pages = len(reader.pages)
-    splice_cache = output_dir / "splices"
-    splice_cache.mkdir(parents=True, exist_ok=True)
-    heuristic_pages: list[str] = []
-    baseline_engine_fallback = 0
-    for page_idx in range(total_pages):
-        text, fallback = _heuristic_extract(reader, page_idx, baseline_engine, splice_cache)
-        heuristic_pages.append(text)
-        if fallback:
-            baseline_engine_fallback += 1
+    # Passes 1 + 2: heuristic baseline extraction + per-page scoring
+    # (shared with triage_report_only via _heuristic_and_score_pass).
+    pass12 = _heuristic_and_score_pass(
+        path,
+        output_dir=output_dir,
+        scorer=scorer,
+        baseline_engine=baseline_engine,
+    )
+    reader = pass12.reader
+    total_pages = pass12.total_pages
+    splice_cache = pass12.splice_cache
+    # Convert to mutable list because Pass 5 splices docling output back
+    # into per-page positions.
+    heuristic_pages: list[str] = list(pass12.heuristic_pages)
+    scores: list[PageScore] = list(pass12.scores)
+    baseline_engine_fallback = pass12.baseline_engine_fallback
 
-    # Pass 2: Score each page.
-    scores: list[PageScore] = []
-    for idx, text in enumerate(heuristic_pages):
-        page_metadata = reader.pages[idx] if idx < len(reader.pages) else None
-        scores.append(scorer(idx, text, page_metadata))
     flagged_indices = [s.page_index for s in scores if s.needs_docling]
 
     # Pass 3: Coalesce flagged indices into ranges.
@@ -486,20 +559,18 @@ def triage_report_only(
     if scorer is None:
         scorer = score_page
 
-    reader = pypdf.PdfReader(str(path), strict=False)
-    total_pages = len(reader.pages)
-    splice_cache = output_dir / "splices"
-    splice_cache.mkdir(parents=True, exist_ok=True)
-
-    scores: list[PageScore] = []
-    heuristic_pages: list[str] = []
-    baseline_engine_fallback = 0
-    for page_idx in range(total_pages):
-        text, fallback = _heuristic_extract(reader, page_idx, baseline_engine, splice_cache)
-        heuristic_pages.append(text)
-        if fallback:
-            baseline_engine_fallback += 1
-        scores.append(scorer(page_idx, text, reader.pages[page_idx]))
+    # Passes 1 + 2: heuristic baseline extraction + per-page scoring
+    # (shared with process_pdf_triaged via _heuristic_and_score_pass).
+    pass12 = _heuristic_and_score_pass(
+        path,
+        output_dir=output_dir,
+        scorer=scorer,
+        baseline_engine=baseline_engine,
+    )
+    total_pages = pass12.total_pages
+    heuristic_pages = list(pass12.heuristic_pages)
+    scores: list[PageScore] = list(pass12.scores)
+    baseline_engine_fallback = pass12.baseline_engine_fallback
 
     flagged_indices = [s.page_index for s in scores if s.needs_docling]
     flagged_ranges = coalesce_ranges(
