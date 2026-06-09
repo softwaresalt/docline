@@ -33,6 +33,7 @@ import csv
 import logging
 import random
 import re
+import statistics
 import subprocess
 import sys
 import time
@@ -41,9 +42,11 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 import pypdf
+from markdown_it import MarkdownIt
 
 from docline.process.fidelity_scorer import PageScore, score_page
 from docline.process.page_range import coalesce_ranges
+from docline.process.quality_metrics import compute_quality_metrics
 from docline.runtime.resource_probe import ResourceBudget
 
 _log = logging.getLogger(__name__)
@@ -450,8 +453,15 @@ def triage_report_only(
         path: Source PDF path.
         output_dir: Directory for any heuristic outputs (no docling
             splices written).
-        report_tsv_path: Path where the per-page TSV is written. Columns:
-            ``page_index, <signal_name>..., aggregate, needs_docling, reason``.
+        report_tsv_path: Path where the per-page TSV is written.
+            Columns:
+            ``page_index, <signal_name>..., aggregate, needs_docling,
+            reason, qm_parse_ok, qm_heading_count, qm_section_count,
+            qm_table_count, qm_table_cell_count,
+            qm_structural_density_per_1k, qm_median_section_chars``.
+            The ``qm_*`` columns are appended after the existing columns
+            for backward compatibility with positional TSV consumers
+            (021.003-T / 023-S T3).
         scorer: Injectable page scorer; defaults to
             :func:`docline.process.fidelity_scorer.score_page`.
         buffer: Pages of context (recorded only — no docling invocation).
@@ -465,6 +475,10 @@ def triage_report_only(
     Returns:
         :class:`TriageResult` with ``engine_per_page`` all-heuristic and
         ``flagged_ranges`` populated for downstream review.
+        :attr:`TriageResult.metadata` contains a ``quality_metrics_summary``
+        block with mean+median of ``structural_density_per_1k``,
+        ``heading_count``, ``section_count``, and ``table_cell_count``
+        across all pages (021.003-T / 023-S T3).
     """
     if not path.exists():
         raise FileNotFoundError(f"PDF not found: {path}")
@@ -495,24 +509,76 @@ def triage_report_only(
         merge_gap=merge_gap,
     )
 
-    # Emit TSV.
+    # Emit TSV with both fidelity-signal columns and AST-aware quality
+    # metric columns (qm_*). qm_* columns are appended AFTER the existing
+    # signal/aggregate/needs_docling/reason columns for backward compat
+    # with positional-read consumers (021.003-T / 023-S T3).
     signal_names: list[str] = list(scores[0].signals.keys()) if scores else []
-    fieldnames = ["page_index", *signal_names, "aggregate", "needs_docling", "reason"]
+    qm_columns = [
+        "qm_parse_ok",
+        "qm_heading_count",
+        "qm_section_count",
+        "qm_table_count",
+        "qm_table_cell_count",
+        "qm_structural_density_per_1k",
+        "qm_median_section_chars",
+    ]
+    fieldnames = [
+        "page_index",
+        *signal_names,
+        "aggregate",
+        "needs_docling",
+        "reason",
+        *qm_columns,
+    ]
+
+    # Construct a single markdown parser and reuse across all pages.
+    # Avoids per-page MarkdownIt construction overhead which would
+    # multiply by total_pages (3000+ for cosmos-class corpora).
+    _qm_parser = MarkdownIt("commonmark", {"html": True}).enable("table")
+    per_page_quality = [
+        compute_quality_metrics(text, md_parser=_qm_parser) for text in heuristic_pages
+    ]
 
     report_tsv_path.parent.mkdir(parents=True, exist_ok=True)
     with report_tsv_path.open("w", encoding="utf-8", newline="") as fh:
         writer = csv.DictWriter(fh, fieldnames=fieldnames, delimiter="\t")
         writer.writeheader()
-        for score in scores:
+        for score, qm in zip(scores, per_page_quality, strict=True):
             row: dict[str, object] = {
                 "page_index": score.page_index,
                 "aggregate": f"{score.aggregate:.4f}",
                 "needs_docling": int(score.needs_docling),
                 "reason": score.reason,
+                "qm_parse_ok": int(qm.parse_ok),
+                "qm_heading_count": qm.heading_count,
+                "qm_section_count": qm.section_count,
+                "qm_table_count": qm.table_count,
+                "qm_table_cell_count": qm.table_cell_count,
+                "qm_structural_density_per_1k": f"{qm.structural_density_per_1k:.3f}",
+                "qm_median_section_chars": qm.median_section_chars,
             }
             for name in signal_names:
                 row[name] = f"{score.signals.get(name, 0.0):.4f}"
             writer.writerow(row)
+
+    # Build per-engine aggregate summary block (mean + median across pages)
+    # for the 4 most operationally relevant metrics (021.003-T / 023-S T3).
+    quality_metrics_summary: dict[str, dict[str, float]] = {}
+    for metric in (
+        "structural_density_per_1k",
+        "heading_count",
+        "section_count",
+        "table_cell_count",
+    ):
+        values = [float(getattr(qm, metric)) for qm in per_page_quality]
+        if values:
+            quality_metrics_summary[metric] = {
+                "mean": round(statistics.mean(values), 3),
+                "median": round(statistics.median(values), 3),
+            }
+        else:
+            quality_metrics_summary[metric] = {"mean": 0.0, "median": 0.0}
 
     return TriageResult(
         source=path,
@@ -526,6 +592,7 @@ def triage_report_only(
             "report_only": True,
             "baseline_engine": baseline_engine,
             "baseline_engine_fallback": baseline_engine_fallback,
+            "quality_metrics_summary": quality_metrics_summary,
         },
     )
 

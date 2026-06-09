@@ -20,6 +20,14 @@ The metrics are deliberately AST-aware (markdown-it tokens) rather than
 naive regex / char counts, because the goal use cases (graph DB,
 embeddings, LLM context) all benefit from semantic-structural quality
 over raw text length.
+
+Production note (021.002-T / 023-S T2): the operationally stable subset
+of 12 metrics from this prototype has been promoted to
+:mod:`docline.process.quality_metrics`. New production callers should
+use :func:`docline.process.compute_quality_metrics` for the stable
+12-field :class:`docline.process.QualityMetrics` dataclass. This study
+script retains the larger 25-field exploratory output for research /
+calibration use only.
 """
 
 from __future__ import annotations
