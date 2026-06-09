@@ -453,8 +453,15 @@ def triage_report_only(
         path: Source PDF path.
         output_dir: Directory for any heuristic outputs (no docling
             splices written).
-        report_tsv_path: Path where the per-page TSV is written. Columns:
-            ``page_index, <signal_name>..., aggregate, needs_docling, reason``.
+        report_tsv_path: Path where the per-page TSV is written.
+            Columns:
+            ``page_index, <signal_name>..., aggregate, needs_docling,
+            reason, qm_parse_ok, qm_heading_count, qm_section_count,
+            qm_table_count, qm_table_cell_count,
+            qm_structural_density_per_1k, qm_median_section_chars``.
+            The ``qm_*`` columns are appended after the existing columns
+            for backward compatibility with positional TSV consumers
+            (021.003-T / 023-S T3).
         scorer: Injectable page scorer; defaults to
             :func:`docline.process.fidelity_scorer.score_page`.
         buffer: Pages of context (recorded only — no docling invocation).
@@ -468,6 +475,10 @@ def triage_report_only(
     Returns:
         :class:`TriageResult` with ``engine_per_page`` all-heuristic and
         ``flagged_ranges`` populated for downstream review.
+        :attr:`TriageResult.metadata` contains a ``quality_metrics_summary``
+        block with mean+median of ``structural_density_per_1k``,
+        ``heading_count``, ``section_count``, and ``table_cell_count``
+        across all pages (021.003-T / 023-S T3).
     """
     if not path.exists():
         raise FileNotFoundError(f"PDF not found: {path}")

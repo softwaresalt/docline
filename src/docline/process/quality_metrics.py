@@ -26,15 +26,12 @@ Implementation note:
 
 from __future__ import annotations
 
-import re
 import statistics
 from collections import Counter
 from dataclasses import dataclass
 from typing import Any
 
 from markdown_it import MarkdownIt
-
-_HEADING_LINE_RE = re.compile(r"^#{1,6}\s")
 
 
 def _default_parser() -> MarkdownIt:
@@ -101,29 +98,37 @@ def _parse_tokens(parser: MarkdownIt, text: str) -> list[Any]:
         return []
 
 
-def _section_lengths(text: str, heading_count: int, char_len: int) -> list[int]:
+def _section_lengths(text: str, headings_open: list[Any], char_len: int) -> list[int]:
     """Split text on heading lines and return the char length of each section.
 
-    When the document has no headings (``heading_count == 0``), returns
-    a single-element list ``[char_len]`` representing the whole document
-    as one section.
+    Uses the AST ``heading_open`` token positions (via ``token.map`` line
+    info) so both ATX (``# Heading``) and Setext (``Heading\\n=====``)
+    headings produce section boundaries consistently with ``heading_count``.
+
+    When the document has no headings (``len(headings_open) == 0``),
+    returns a single-element list ``[char_len]`` representing the whole
+    document as one section.
     """
-    if heading_count == 0:
+    if not headings_open:
         return [char_len]
 
     lines = text.split("\n")
+    # token.map is [start_line, end_line] (0-indexed); for ATX headings
+    # the whole heading is on start_line. For Setext, the heading text
+    # is on start_line and the underline is on start_line+1. Use
+    # start_line as the section boundary either way.
+    boundary_lines = sorted({t.map[0] for t in headings_open if t.map is not None})
+    if not boundary_lines:
+        return [char_len]
+
     sections: list[list[str]] = []
-    cur: list[str] = []
-    for line in lines:
-        if _HEADING_LINE_RE.match(line):
-            if cur:
-                sections.append(cur)
-            cur = [line]
-        else:
-            cur.append(line)
-    if cur:
-        sections.append(cur)
-    return [len("\n".join(s)) for s in sections]
+    cur_start = 0
+    for boundary in boundary_lines:
+        if boundary > cur_start:
+            sections.append(lines[cur_start:boundary])
+        cur_start = boundary
+    sections.append(lines[cur_start:])
+    return [len("\n".join(s)) for s in sections if s]
 
 
 def compute_quality_metrics(text: str, *, md_parser: MarkdownIt | None = None) -> QualityMetrics:
@@ -185,7 +190,7 @@ def compute_quality_metrics(text: str, *, md_parser: MarkdownIt | None = None) -
     )
     structural_density_per_1k = (structural_total / char_len * 1000) if char_len else 0.0
 
-    section_lengths = _section_lengths(text, heading_count, char_len)
+    section_lengths = _section_lengths(text, headings_open, char_len)
     section_count = len(section_lengths)
     median_section_chars = int(statistics.median(section_lengths)) if section_lengths else 0
 

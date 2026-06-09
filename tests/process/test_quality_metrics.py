@@ -220,6 +220,24 @@ def test_compute_metrics_heading_depth_max_tracks_deepest_level() -> None:
     assert skip_levels.heading_depth_max == 6
 
 
+def test_compute_metrics_setext_headings_produce_sections() -> None:
+    """Setext-style headings (``Title\\n=====``) MUST also produce sections,
+    not just ATX-style (``# Title``).
+
+    Regression coverage for the PR #49 review finding: the prior regex-based
+    section splitter only matched ATX headings, while heading_count
+    correctly included Setext. The AST-based splitter must keep the two in
+    sync.
+    """
+    from docline.process.quality_metrics import compute_quality_metrics
+
+    text = "Title One\n=========\n\nbody one\n\nTitle Two\n---------\n\nbody two\n"
+    m = compute_quality_metrics(text)
+    assert m.heading_count == 2, "Setext headings should be counted"
+    # Old regex impl returned 1 section; AST impl correctly returns 2.
+    assert m.section_count == 2, "Setext headings should produce 2 sections"
+
+
 def test_compute_metrics_token_count_increases_with_more_content() -> None:
     from docline.process.quality_metrics import compute_quality_metrics
 

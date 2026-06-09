@@ -50,7 +50,7 @@ documentation, chat exports).
 * **Prose corpora** (novels, articles, transcripts): use `--pdf-mode triage`
   to trade some structural fidelity for speed.
 * **Source markdown available** (Microsoft Learn, AWS Docs, K8s,
-  React, Python, most OSS): a future shipment (026-S) will add a
+  React, Python, most OSS): a future feature (**026-F**) will add a
   `--source-mode` flag that bypasses PDF extraction entirely; see the
   [source-MD ingestion extension](docs/decisions/2026-06-08-source-md-ingestion-extension.md).
 
