@@ -213,9 +213,25 @@ merge commit `f4ef7f1`). The tokenized Jaccard QA metric and the
 `signal_layout_complexity` PDF-introspection signal are now on `main`.
 See `docs/closure/022-S-pa4-closure.md` for the resolution details.
 
-After an operator re-run of PA3 confirms the cosmos table pages flag
-correctly and produces a meaningful Jaccard disagreement rate, this
-closure transitions to `status: production-ready`.
+**Update (2026-06-08): PA3 + PA4 cosmos re-run + strategic reversal**
+(`docs/decisions/2026-06-08-extraction-strategy-study.md`,
+shipment 023-S). The cosmos re-run produced 53 % flag rate at 4h07m
+wall-clock — initially diagnosed as scorer over-fire. The 2026-06-08
+AST-aware extraction-strategy study found docling wins 14/15 sampled
+cosmos ranges on goal-aligned metrics (structural density 2.6×,
+section count 37×, heading count 71×, median section length 0.02×
+which means much better embedding-chunk friendliness), **inverting the
+earlier over-fire diagnosis**. The scorer was correctly flagging pages
+whose AST quality genuinely benefits from docling. Char count was the
+wrong measurement lens.
+
+**Net effect**: triage is repositioned as an opt-in optimization for
+**prose-dominated corpora only**. For technical reference PDFs
+(cosmos-class), `--pdf-mode auto` (all-docling) is now the recommended
+default. The triage architecture remains valid for its narrower
+scope. 023-S landed the documentation realignment and AST-aware QA
+metrics via `src/docline/process/quality_metrics.py` and
+`docs/compound/2026-06-08-ast-fidelity-metrics.md`.
 
 ### Operator workaround until PA4 closes
 
@@ -226,15 +242,41 @@ reference material.
 
 ### Closure status
 
-This closure remains at `status: verified`. It will transition to
-`production-ready` only after:
+This closure remains at `status: verified`. Transition to
+`production-ready` is deferred pending further shipments that
+collectively close the throughput-vs-quality tradeoff:
 
-1. Stashes `60E6157D` + `1380BD85` are harvested, implemented, and
-   shipped (target follow-on shipment).
-2. Re-run of PA3 confirms page 470 (and analogous table pages)
-   flag correctly under the new layout-complexity signal.
-3. PA4 re-run with the improved diff metric produces a disagreement
-   rate below 5 % on the cosmos corpus.
+1. **Scoring-model inversion** (stash `EFC6C84E`, target 024-S):
+   score source-PDF structural complexity BEFORE running any
+   extractor, eliminating wasted heuristic work on pages destined
+   for docling.
+2. **Docling speedup** (stash `51332802`, target 025-S):
+   per-subprocess batching to reduce model-load overhead.
+3. **Source-MD pathway** (stash `6A4E8059`, target 026-F): the
+   pre-extraction shortcut that bypasses the triage decision
+   entirely for corpora with public source markdown
+   (`docs/decisions/2026-06-08-source-md-ingestion-extension.md`).
+
+Until those land, triage retains "experimental opt-in for prose
+corpora" status; technical reference PDFs should use `--pdf-mode auto`.
+
+### Triage diagnostic artifacts
+
+`--pdf-mode triage` produces per-page baseline PDFs
+(`baseline-NNNN.pdf`) and per-range splice PDFs/outputs
+(`splice-AAAA-BBBB.{pdf,md}`) under `{output_dir}/splices/`. These
+files are **preserved by default** (no cleanup at run end) for
+offline calibration and diagnostic inspection. The 2026-06-08
+extraction study `scripts/study/` pipeline reuses these artifacts
+without re-running docling. Disk usage on a cosmos-scale corpus
+(3,400 pages): ~150 MB of baseline PDFs plus ~150 MB of splices.
+
+When `--triage-report-only` is used, additional AST-aware quality
+metrics (`qm_*` TSV columns + `quality_metrics_summary` block in
+metadata) emit alongside the existing 8 fidelity signals. See
+`src/docline/process/quality_metrics.py` and the compound learning
+`docs/compound/2026-06-08-ast-fidelity-metrics.md` for the decision
+rule on interpreting these metrics.
 
 ## Healthy signals (what success looks like)
 
