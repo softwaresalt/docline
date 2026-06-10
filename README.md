@@ -2,6 +2,58 @@
 
 A document to markdown ingestion and normalization pipeline CLI tool and MCP server.
 
+## Quick start: ingest a local docs repo
+
+The fastest way to convert a cloned Microsoft Learn (or any DocFx-style)
+docs repository into graphtor-ready Markdown is the `ingest local-dir`
+command:
+
+```powershell
+# Clone a docs repo (one-time)
+git clone https://github.com/MicrosoftDocs/powerbi-docs.git E:\Source\powerbi-docs
+
+# Convert the whole tree in one command
+docline ingest local-dir E:\Source\powerbi-docs\powerbi-docs --output .elt\output\powerbi
+```
+
+Each output file carries graphtor-ready frontmatter (`chunk_strategy`,
+`content_sha256`, `doc_type`, `title`, `source_path`, `source`,
+`docline.source_frontmatter`, `docline.cross_doc_links`), preserves source
+directory structure, and follows TOC.yml ingest order when present.
+
+The CLI mirrors the equivalent `.elt/config/<name>.sources.yaml` manifest
+form for parity:
+
+```yaml
+# .elt/config/powerbi.sources.yaml
+sources:
+  - id: powerbi
+    type: local
+    path: E:\Source\powerbi-docs\powerbi-docs
+    include: ["**/*.md", "**/TOC.yml"]
+```
+
+Both surfaces produce identical staging + processing output because they
+share the same `execute_source_configs` and `execute_process` code paths.
+
+Other Microsoft Learn docs sources that work out of the box:
+
+| Content | Repo | Subpath |
+|---|---|---|
+| Power BI | `MicrosoftDocs/powerbi-docs` | `powerbi-docs/` |
+| Microsoft Fabric | `MicrosoftDocs/fabric-docs` | repo root |
+| DAX language reference | `MicrosoftDocs/query-docs` | `query-languages/dax/` |
+| Power Query M language reference | `MicrosoftDocs/query-docs` | `query-languages/m/` |
+| Analysis Services | `MicrosoftDocs/bi-shared-docs` | `docs/analysis-services/` |
+
+Useful flags:
+
+* `--include PATTERN` (repeatable) — glob to include, default `**/*.md` + `**/TOC.yml`
+* `--exclude PATTERN` (repeatable) — glob to exclude
+* `--staging-dir PATH` — keep staging artifacts under a known path (default: tempdir, removed after run)
+* `--keep-staging` — retain staging directory for debugging
+* `--allow-heading-disorder` — bypass strict H1→H2→H3 validation (for legacy authoring)
+
 ## Documentation
 
 * [docline → graphtor-docs ingestion contract](docs/design-docs/graphtor-docs-ingestion-contract.md) —

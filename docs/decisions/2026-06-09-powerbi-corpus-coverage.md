@@ -2,6 +2,7 @@
 title: Power BI corpus end-to-end evaluation — coverage, throughput, and content gaps
 date: 2026-06-09
 status: decided
+follow_up_shipment: 027-S (shipped 2026-06-10) — see docs/plans/2026-06-10-local-dir-ingest-plan.md
 related_decisions:
   - docs/decisions/2026-06-08-source-md-ingestion-extension.md
   - docs/decisions/2026-06-09-powerbi-source-md-gap-analysis.md

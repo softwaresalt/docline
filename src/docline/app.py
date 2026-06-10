@@ -406,6 +406,53 @@ def get_manifest() -> Manifest:
                     "additionalProperties": False,
                 },
             ),
+            ManifestTool(
+                name="ingest_local_dir",
+                description=(
+                    "One-shot fetch+process for an already-cloned local source. "
+                    "Mirrors a `type: local` ManifestLocalSource YAML entry "
+                    "behind a CLI command. Source path is staged, then "
+                    "execute_process runs against the staging dir."
+                ),
+                parameters={
+                    "type": "object",
+                    "properties": {
+                        "source_path": {
+                            "type": "string",
+                            "description": "Path to the source directory.",
+                        },
+                        "output": {
+                            "type": "string",
+                            "description": "Output directory for processed Markdown.",
+                        },
+                        "include": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                            "default": ["**/*.md", "**/TOC.yml", "**/toc.yml"],
+                        },
+                        "exclude": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                            "default": [],
+                        },
+                        "staging_dir": {"type": "string"},
+                        "keep_staging": {"type": "boolean", "default": False},
+                        "allow_heading_disorder": {"type": "boolean", "default": False},
+                        "pdf_engine": {
+                            "type": "string",
+                            "enum": ["auto", "docling", "heuristic"],
+                            "default": "auto",
+                        },
+                        "pdf_mode": {
+                            "type": "string",
+                            "enum": ["auto", "triage"],
+                            "default": "auto",
+                        },
+                    },
+                    "required": ["source_path", "output"],
+                    "additionalProperties": False,
+                },
+            ),
         ]
     )
 

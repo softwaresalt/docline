@@ -13,6 +13,7 @@ Verifies that:
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from pathlib import Path
 
 MS_LEARN_SAMPLE = """---
@@ -283,3 +284,137 @@ def test_execute_process_no_longer_fails_frontmatter_assembly_on_ms_learn_md(
     # Source frontmatter MUST be nested under docline:source_frontmatter
     assert "source_frontmatter:" in body
     assert "ms.topic" in body or "ms_topic" in body or "ms.author" in body or "ms_author" in body
+
+
+# ---------------------------------------------------------------------------
+# T3 (027-S / 025.001-T) — robustness against Microsoft Learn include
+# fragments whose YAML frontmatter has uniform leading whitespace or mixed
+# indentation. The Power BI corpus evaluation
+# (docs/decisions/2026-06-09-powerbi-corpus-coverage.md, Category B failure
+# analysis) identified 8 of 1,340 files in includes/ that fail to parse
+# because yaml.safe_load rejects the indentation style. Microsoft Learn's
+# build pipeline accepts these forms; docline must too.
+# ---------------------------------------------------------------------------
+
+
+def test_parse_md_frontmatter_handles_uniform_leading_space() -> None:
+    """YAML frontmatter where every key line has the same N>0 leading spaces
+    MUST parse correctly. This is the Microsoft Learn include-fragment
+    pattern (see includes/copilot-notes.md in the Power BI corpus).
+    """
+    from docline.process.output_contract import _parse_md_frontmatter
+
+    text = (
+        "---\n"
+        " title: include file\n"
+        " description: include file\n"
+        " services: powerbi\n"
+        " author: julcsc\n"
+        " ms.service: powerbi\n"
+        " ms.topic: include\n"
+        " ms.date: 05/15/2025\n"
+        " ms.author: juliacawthra\n"
+        "---\n"
+        "Body content here.\n"
+    )
+    fm, body = _parse_md_frontmatter(text)
+    assert fm is not None
+    assert fm["title"] == "include file"
+    assert fm["ms.topic"] == "include"
+    assert fm["author"] == "julcsc"
+    assert body.startswith("Body content")
+
+
+def test_parse_md_frontmatter_handles_mixed_indentation() -> None:
+    """YAML frontmatter where SOME key lines are indented and others are not
+    MUST fall back to regex-based key extraction (yaml.safe_load fails on
+    this form). This is the includes/yes-paginated.md pattern.
+    """
+    from docline.process.output_contract import _parse_md_frontmatter
+
+    text = (
+        "---\n"
+        " title: include file\n"
+        " description: include file\n"
+        " services: powerbi\n"
+        " author: JulCsc\n"
+        " ms.service: powerbi\n"
+        "ms.topic: include\n"
+        "ms.date: 12/01/2025\n"
+        "ms.author: juliacawthra\n"
+        " ms.custom: include file\n"
+        "---\n"
+        ":::image type=icon source=foo.svg::: Body\n"
+    )
+    fm, body = _parse_md_frontmatter(text)
+    assert fm is not None, "mixed indentation should fall back to regex extraction"
+    assert fm["title"] == "include file"
+    assert fm["ms.topic"] == "include"
+    assert fm["ms.author"] == "juliacawthra"
+    assert body.startswith(":::image")
+
+
+def test_parse_md_frontmatter_handles_no_loc_brackets_and_indented_keys() -> None:
+    """Real-world Power BI corpus regression: copilot-notes.md has uniform
+    leading-space keys AND a YAML list value with brackets. Both must work.
+    """
+    from docline.process.output_contract import _parse_md_frontmatter
+
+    text = (
+        "---\n"
+        " title: include file\n"
+        " description: include file\n"
+        " services: powerbi\n"
+        " author: julcsc\n"
+        " ms.service: powerbi\n"
+        " ms.topic: include\n"
+        " ms.date: 05/15/2025\n"
+        " ms.author: juliacawthra\n"
+        " ms.custom: include file\n"
+        "no-loc: [Copilot]\n"
+        "ms.collection: ce-skilling-ai-copilot\n"
+        "---\n"
+        "> [!NOTE]\n"
+        "> Keep the following requirements in mind:\n"
+    )
+    fm, body = _parse_md_frontmatter(text)
+    assert fm is not None
+    assert fm["title"] == "include file"
+    # Either parser path is acceptable; both should preserve the key value.
+    # Regex fallback returns the raw "[Copilot]" string; yaml.safe_load on
+    # whitespace-stripped form returns the list ["Copilot"].
+    no_loc_value = fm["no-loc"]
+    assert "Copilot" in str(no_loc_value)
+    assert body.startswith("> [!NOTE]")
+
+
+def test_parse_md_frontmatter_truly_malformed_returns_none() -> None:
+    """When NEITHER yaml.safe_load NOR the regex fallback can extract any
+    key/value pair, _parse_md_frontmatter MUST return (None, original_text)
+    so the caller's existing no-frontmatter path is preserved.
+    """
+    from docline.process.output_contract import _parse_md_frontmatter
+
+    text = "---\n: : :\n@@@ not yaml at all\n---\nBody.\n"
+    fm, _body = _parse_md_frontmatter(text)
+    # Either None (truly unparseable) or an empty Mapping (regex found
+    # nothing) is acceptable; the strict requirement is "no crash".
+    assert fm is None or (isinstance(fm, Mapping) and len(fm) == 0)
+
+
+def test_parse_md_frontmatter_clean_yaml_unaffected_by_fallback() -> None:
+    """Regression: well-formed YAML MUST take the yaml.safe_load path and
+    return native types (not strings stringified by the regex fallback).
+    """
+    from docline.process.output_contract import _parse_md_frontmatter
+
+    text = (
+        "---\ntitle: Doc\nms.date: 2026-06-10\ndraft: true\ntags:\n  - one\n  - two\n---\nBody.\n"
+    )
+    fm, _body = _parse_md_frontmatter(text)
+    assert fm is not None
+    assert fm["title"] == "Doc"
+    # yaml.safe_load parses booleans and lists natively; regex fallback would
+    # not. Use this to verify the canonical path was taken.
+    assert fm["draft"] is True
+    assert fm["tags"] == ["one", "two"]
