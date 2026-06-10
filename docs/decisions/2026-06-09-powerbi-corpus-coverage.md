@@ -124,7 +124,7 @@ Three distinct categories:
 
 **Category A: DocFx tabbed content (`#tab/` directives)** — 4 files
 
-```
+```markdown
 ### [Drill enabled](#tab/drill-enabled)
 ### [Drill disabled](#tab/drill-disabled)
 ```
@@ -288,8 +288,15 @@ Stashed at the end of this session.
 
 ### Stashes captured
 
-* (this session) F10EB5CB — ADI third pdf_engine spike (separate concern)
-* (this session, TBD) — items 1-5 above to be stashed
+All seven items below were captured in this session via `backlogit_stash`:
+
+* `F10EB5CB` (medium, feature) — ADI third `pdf_engine` spike (separate concern, not from this evaluation)
+* `62E6FAF4` (high, task) — local-dir fetch source type — item 4 above (the unblocker)
+* `0FC71B03` (medium, bug) — frontmatter parser robustness — item 1 above
+* `2C74D31B` (medium, feature) — DocFx tabbed content handler — item 2 above
+* `8A5D3AC2` (medium, feature) — cross-product absolute-path link extraction — item 3 above
+* `4A650FFD` (low, feature) — multi-repo corpus orchestration — item 5 above
+* `F8E142A1` (low, epic) — OpenAPI / Swagger source type — item 6 above
 
 ## Verification
 
