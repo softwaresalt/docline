@@ -97,7 +97,7 @@ def _build_fixture(root: Path) -> None:
 
 @pytest.mark.integration
 def test_ingest_local_dir_e2e_fixture_produces_all_outputs(tmp_path: Path) -> None:
-    """AC1 + AC2: single command ingests fixture; all 6 .md files yield outputs."""
+    """AC1 + AC2: single command ingests fixture; all 7 .md files yield outputs."""
     src = tmp_path / "fixture-repo"
     src.mkdir()
     _build_fixture(src)
@@ -109,7 +109,7 @@ def test_ingest_local_dir_e2e_fixture_produces_all_outputs(tmp_path: Path) -> No
     )
     assert result.returncode == 0, f"stderr: {result.stderr}\nstdout: {result.stdout}"
     output_files = sorted(out.rglob("*.md"))
-    # 6 inputs (clean, include-uniform, include-mixed, guide/getting-started,
+    # 7 inputs (clean, include-uniform, include-mixed, guide/getting-started,
     # guide/advanced, reference, orphan) = 7 .md files total. AC2: structure preserved.
     assert len(output_files) == 7, (
         f"expected 7 outputs from 7 fixture files; got {len(output_files)}: "

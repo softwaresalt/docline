@@ -428,7 +428,7 @@ def get_manifest() -> Manifest:
                         "include": {
                             "type": "array",
                             "items": {"type": "string"},
-                            "default": ["**/*.md"],
+                            "default": ["**/*.md", "**/TOC.yml", "**/toc.yml"],
                         },
                         "exclude": {
                             "type": "array",

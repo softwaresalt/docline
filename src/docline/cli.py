@@ -352,7 +352,6 @@ def _run_ingest_local_dir(parsed: argparse.Namespace) -> int:
         return 1
 
     output_path = Path(parsed.output).resolve()
-    output_path.mkdir(parents=True, exist_ok=True)
 
     source_resolved = source_path.resolve()
     source_id = source_resolved.name or "ingest-source"
@@ -393,6 +392,10 @@ def _run_ingest_local_dir(parsed: argparse.Namespace) -> int:
             file=sys.stderr,
         )
         return 1
+    # Create the output dir only AFTER both containment checks pass so we
+    # never leave an empty directory behind on a rejected request
+    # (Constitution Principle III — workspace isolation).
+    output_path.mkdir(parents=True, exist_ok=True)
     output_dir_arg = str(output_path.relative_to(workspace).as_posix())
 
     config = ManifestLocalSource(

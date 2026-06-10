@@ -21,8 +21,6 @@ import subprocess
 import sys
 from pathlib import Path
 
-import pytest
-
 
 def _write_fixture(root: Path) -> None:
     """Build a small repo fixture: 3 .md files + 1 file to exclude."""
@@ -237,13 +235,7 @@ def test_ingest_local_dir_output_frontmatter_is_graphtor_compatible(tmp_path: Pa
     assert "docline:" in sample
 
 
-@pytest.mark.skip(
-    reason="Requires the in-development ingest subcommand and validates AC4/AC5 end-to-end"
-)
-def test_ingest_local_dir_with_toc_orders_correctly(tmp_path: Path) -> None:
-    """When a TOC.yml is present, output ordering follows TOC order.
-
-    Validated separately in T2 (tests/elt/test_fetch_manifest_local_toc.py) and
-    T4 (tests/elt/test_ingest_local_dir_e2e.py::test_ingest_local_dir_e2e_toc_*).
-    """
-    pass
+# TOC.yml ingest ordering is verified end-to-end by
+# tests/elt/test_fetch_manifest_local_toc.py and
+# tests/elt/test_ingest_local_dir_e2e.py::test_ingest_local_dir_e2e_toc_*;
+# no stub needed here.

@@ -355,8 +355,10 @@ def _fetch_manifest_local(config: ManifestLocalSource, root: Path, files_dir: Pa
 
     seen: set[Path] = set()
     excluded: set[Path] = set()
-    # Pre-compute exclude matches once so we don't re-glob per include pattern
-    for pattern in getattr(config, "exclude", []) or []:
+    # Pre-compute exclude matches once so we don't re-glob per include pattern.
+    # ``exclude`` is a declared field on ManifestLocalSource with default [],
+    # so we can index it directly the same way ``include`` is accessed below.
+    for pattern in config.exclude:
         for src in list(base.glob(pattern)):
             excluded.add(src.resolve())
     for pattern in config.include:
