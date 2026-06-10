@@ -13,6 +13,12 @@ from docline.readers.docx import read_docx_blocks, read_docx_blocks_with_media
 from docline.readers.pdf import read_pdf
 from docline.readers.picture_sink import MediaReference, PictureSink
 
+# Module-level compiled regex per codebase convention (mirrors _HEADING_RE in
+# app.py, _LINK_RE in cross_doc_links.py, _INCLUDE_RE in docfx_includes.py).
+# Matches the YAML "plain key" subset that Microsoft Learn frontmatter uses
+# (alnum, underscore, dot, hyphen). Tolerates trailing whitespace on values.
+_FRONTMATTER_KEY_VALUE_RE = re.compile(r"^\s*([A-Za-z_][A-Za-z0-9._-]*)\s*:\s*(.*?)\s*$")
+
 
 @dataclass(frozen=True)
 class OutputDocumentPart:
@@ -71,15 +77,13 @@ def _try_regex_frontmatter_fallback(yaml_text: str) -> Mapping[str, Any] | None:
         A ``Mapping`` of extracted ``key: value`` pairs when the regex
         finds at least one match; ``None`` otherwise.
     """
-    # Match lines of the form `[whitespace]key: value` where key matches the
-    # YAML "plain key" subset that Microsoft Learn frontmatter uses (alnum,
-    # underscore, dot, hyphen). Tolerates trailing whitespace on values.
-    key_value_re = re.compile(r"^\s*([A-Za-z_][A-Za-z0-9._-]*)\s*:\s*(.*?)\s*$")
+    # Use the module-level _FRONTMATTER_KEY_VALUE_RE (compiled once) per
+    # codebase convention.
     extracted: dict[str, Any] = {}
     for line in yaml_text.splitlines():
         if not line.strip():
             continue
-        m = key_value_re.match(line)
+        m = _FRONTMATTER_KEY_VALUE_RE.match(line)
         if m is None:
             continue
         key, value = m.group(1), m.group(2)
