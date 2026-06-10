@@ -125,4 +125,9 @@ def test_manifest_tool_names_match_operation_names() -> None:
     """Manifest tool names match the CLI and MCP operation names."""
     manifest = get_manifest()
 
-    assert [tool.name for tool in manifest.tools] == ["fetch", "process", "export_schema"]
+    assert [tool.name for tool in manifest.tools] == [
+        "fetch",
+        "process",
+        "export_schema",
+        "ingest_local_dir",
+    ]

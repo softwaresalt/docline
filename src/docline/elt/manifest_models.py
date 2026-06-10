@@ -22,6 +22,8 @@ class ManifestLocalSource(BaseModel):
         id: Unique source identifier within the manifest.
         path: Workspace-relative (or stale-path) base directory.
         include: Glob patterns for files to include.  Defaults to ``["**/*"]``.
+        exclude: Glob patterns (relative to ``path``) of files to exclude
+            from the include set.  Defaults to ``[]`` (no exclusions).
         formats: Optional list of format hints (e.g. ``["pdf"]``).  Informational
             only; unused by the fetch pipeline.
     """
@@ -32,6 +34,7 @@ class ManifestLocalSource(BaseModel):
     id: str
     path: str
     include: list[str] = ["**/*"]
+    exclude: list[str] = []
     formats: list[str] = []
 
 

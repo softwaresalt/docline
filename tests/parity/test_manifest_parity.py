@@ -16,10 +16,17 @@ def test_get_manifest_returns_manifest() -> None:
     assert isinstance(manifest, Manifest)
 
 
-def test_manifest_has_three_tools() -> None:
-    """Manifest contains the three documented tools: fetch, process, and export_schema."""
+def test_manifest_has_four_tools() -> None:
+    """Manifest contains four documented tools: fetch, process, export_schema, ingest_local_dir."""
     manifest = get_manifest()
-    assert len(manifest.tools) == 3
+    assert len(manifest.tools) == 4
+
+
+def test_manifest_has_ingest_local_dir_tool() -> None:
+    """Manifest contains an 'ingest_local_dir' tool (027-S / 025.002-T)."""
+    manifest = get_manifest()
+    names = [t.name for t in manifest.tools]
+    assert "ingest_local_dir" in names
 
 
 def test_manifest_has_fetch_tool() -> None:

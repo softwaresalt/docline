@@ -1,5 +1,6 @@
 """Helpers for standardized processed-output planning across source types."""
 
+import re
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -55,6 +56,45 @@ class OutputDocumentPart:
     cross_doc_links: tuple[Mapping[str, Any], ...] = field(default_factory=tuple)
 
 
+def _try_regex_frontmatter_fallback(yaml_text: str) -> Mapping[str, Any] | None:
+    """Best-effort key/value extraction when ``yaml.safe_load`` rejects input.
+
+    Handles the Microsoft Learn include-fragment pattern where some keys are
+    indented and others are not — a form their build pipeline accepts but
+    PyYAML rejects with ``YAMLError`` (see Power BI corpus evaluation,
+    docs/decisions/2026-06-09-powerbi-corpus-coverage.md Category B).
+
+    Args:
+        yaml_text: Raw YAML content between the frontmatter fences.
+
+    Returns:
+        A ``Mapping`` of extracted ``key: value`` pairs when the regex
+        finds at least one match; ``None`` otherwise.
+    """
+    # Match lines of the form `[whitespace]key: value` where key matches the
+    # YAML "plain key" subset that Microsoft Learn frontmatter uses (alnum,
+    # underscore, dot, hyphen). Tolerates trailing whitespace on values.
+    key_value_re = re.compile(r"^\s*([A-Za-z_][A-Za-z0-9._-]*)\s*:\s*(.*?)\s*$")
+    extracted: dict[str, Any] = {}
+    for line in yaml_text.splitlines():
+        if not line.strip():
+            continue
+        m = key_value_re.match(line)
+        if m is None:
+            continue
+        key, value = m.group(1), m.group(2)
+        if value == "":
+            extracted[key] = None
+            continue
+        # Strip matching quotes from value if present
+        if len(value) >= 2 and value[0] == value[-1] and value[0] in ("'", '"'):
+            value = value[1:-1]
+        extracted[key] = value
+    if not extracted:
+        return None
+    return extracted
+
+
 def _parse_md_frontmatter(text: str) -> tuple[Mapping[str, Any] | None, str]:
     """Parse and strip a leading YAML frontmatter fence from MD/TXT content.
 
@@ -62,15 +102,24 @@ def _parse_md_frontmatter(text: str) -> tuple[Mapping[str, Any] | None, str]:
     frontmatter form: a ``---`` fence on the very first line, followed by
     YAML key-value pairs, followed by a closing ``---`` fence.
 
+    When ``yaml.safe_load`` rejects the YAML payload (or returns a non-
+    Mapping scalar), falls back to regex-based key extraction so that
+    Microsoft Learn include-fragment patterns with mixed-indentation YAML
+    keys still produce usable frontmatter rather than silently bleeding
+    into the markdown body. Truly-unparseable input still returns
+    ``(None, text)`` to preserve the no-frontmatter caller path.
+
     Args:
         text: Raw file contents.
 
     Returns:
         A ``(frontmatter, body)`` tuple. ``frontmatter`` is a ``Mapping``
-        of the parsed YAML when present and parseable; ``None`` when the
-        file had no frontmatter or the YAML was malformed. ``body`` is the
-        markdown body with the frontmatter fence removed (or the original
-        text when no valid frontmatter was found).
+        of the parsed YAML when present and parseable (by either the
+        canonical parser or the regex fallback); ``None`` when the file
+        had no frontmatter fence or neither parser path could extract
+        any keys. ``body`` is the markdown body with the frontmatter
+        fence removed (or the original text when no valid frontmatter
+        was found).
     """
     if not text:
         return None, text
@@ -107,11 +156,18 @@ def _parse_md_frontmatter(text: str) -> tuple[Mapping[str, Any] | None, str]:
     try:
         parsed = yaml.safe_load(yaml_text)
     except yaml.YAMLError:
-        return None, text
-    if not isinstance(parsed, Mapping):
-        # YAML parsed to a scalar / list / None — not usable as frontmatter
-        return None, text
-    return parsed, body
+        parsed = None
+    if isinstance(parsed, Mapping):
+        return parsed, body
+    # Canonical YAML path didn't yield a Mapping. Try the regex fallback so
+    # Microsoft Learn include-fragment frontmatter with mixed indentation
+    # still produces usable metadata instead of leaking the fence content
+    # into the body where the heading extractor misreads ``---`` as a
+    # setext H2 marker.
+    fallback = _try_regex_frontmatter_fallback(yaml_text)
+    if fallback is not None:
+        return fallback, body
+    return None, text
 
 
 def _relative_output_path(

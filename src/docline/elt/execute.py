@@ -134,6 +134,33 @@ def execute_elt_fetch(
     safe_workspace_path(staging_dir, root_resolved)
 
     configs = discover_configs(config_dir_resolved)
+    return execute_source_configs(configs, staging_dir, root)
+
+
+def execute_source_configs(
+    configs: list[SourceConfig],
+    staging_dir: str,
+    workspace_root: Path | str | None = None,
+) -> list[StagingJob]:
+    """Fetch each in-memory source config into the staging area.
+
+    Public helper for callers (e.g. the ``docline ingest local-dir`` CLI
+    subcommand) that have already constructed :class:`SourceConfig`
+    instances and don't need YAML discovery. Produces the same per-source
+    side effects as :func:`execute_elt_fetch` so the CLI surface and the
+    YAML manifest surface stay strictly functionally equivalent.
+
+    Args:
+        configs: Pre-built source configurations to execute.
+        staging_dir: Workspace-relative staging root.
+        workspace_root: Workspace root for resolving relative paths.
+            Defaults to the current working directory when ``None``.
+
+    Returns:
+        A list of :class:`~docline.fetch.models.StagingJob` records, one
+        per config.
+    """
+    root = Path.cwd() if workspace_root is None else Path(workspace_root)
     return [_execute_single_source(config, staging_dir, root) for config in configs]
 
 
@@ -327,6 +354,11 @@ def _fetch_manifest_local(config: ManifestLocalSource, root: Path, files_dir: Pa
         return  # Nothing to copy; job still marked complete
 
     seen: set[Path] = set()
+    excluded: set[Path] = set()
+    # Pre-compute exclude matches once so we don't re-glob per include pattern
+    for pattern in getattr(config, "exclude", []) or []:
+        for src in list(base.glob(pattern)):
+            excluded.add(src.resolve())
     for pattern in config.include:
         # Materialise the generator before copying to avoid the copied files
         # being discovered by the generator when files_dir is inside base.
@@ -338,12 +370,108 @@ def _fetch_manifest_local(config: ManifestLocalSource, root: Path, files_dir: Pa
                 # previous outputs.
                 if _is_elt_generated_artifact(src, base):
                     continue
+                if src.resolve() in excluded:
+                    continue
                 seen.add(src)
                 # Preserve relative directory structure within base
                 rel = src.relative_to(base)
                 dest = files_dir / rel
                 dest.parent.mkdir(parents=True, exist_ok=True)
                 shutil.copy2(str(src), str(dest))
+
+    # 025.003-T / T2: emit crawl-manifest.json with TOC.yml-aware ingest
+    # ordering so the downstream process pipeline preserves authorial
+    # sequence (graph parents before children, stable chunk IDs across
+    # re-runs). Only emit when at least one file was staged; otherwise the
+    # caller treats the job as empty and downstream walks the dir anyway.
+    if seen:
+        _write_local_crawl_manifest(files_dir)
+
+
+def _write_local_crawl_manifest(files_dir: Path) -> None:
+    """Emit a TOC.yml-aware crawl-manifest.json for the staged file set.
+
+    Walks ``files_dir`` for ``TOC.yml`` / ``toc.yml`` and, when found,
+    calls :func:`docline.process.toc_parser.merge_toc_files` to derive an
+    ordered list of relative .md paths. Files present in the stage but
+    not referenced by any TOC are appended in alphabetical order with
+    ``toc_referenced: false``.
+
+    When no TOC.yml is present, all files appear in alphabetical order
+    with ``toc_referenced: false``.
+
+    The emitted manifest uses the ``"pages"`` key required by
+    :func:`docline.app._load_crawl_manifest`. Each entry has keys
+    ``path``, ``order``, ``crawl_order``, and ``toc_referenced``.
+    """
+    from docline.process.toc_parser import merge_toc_files
+
+    # Collect all staged files (POSIX-relative paths from files_dir)
+    all_files: list[str] = []
+    for f in sorted(files_dir.rglob("*")):
+        if f.is_file():
+            rel = f.relative_to(files_dir).as_posix()
+            all_files.append(rel)
+
+    # Locate TOC.yml files anywhere in the staged tree
+    toc_paths = [
+        p
+        for p in sorted(files_dir.rglob("*.yml"))
+        if p.is_file() and p.name in ("TOC.yml", "toc.yml")
+    ]
+
+    toc_ordered_paths: list[str] = []
+    if toc_paths:
+        try:
+            toc_entries = merge_toc_files(toc_paths, base_dir=files_dir)
+            toc_ordered_paths = [
+                e["target_path"]
+                for e in toc_entries
+                if isinstance(e, dict) and e.get("target_path")
+            ]
+        except Exception as exc:  # noqa: BLE001
+            # Defensive: merge_toc_files already logs warnings per-file, but
+            # if the merge itself raises we fall back to alphabetical
+            # ordering for the whole stage so the job still completes.
+            _log.warning("TOC merge failed under %s: %s", files_dir, exc)
+            toc_ordered_paths = []
+
+    staged_set = set(all_files)
+    seen_in_toc: set[str] = set()
+    pages: list[dict[str, object]] = []
+    crawl_order = 0
+    for path in toc_ordered_paths:
+        if path in staged_set and path not in seen_in_toc:
+            pages.append(
+                {
+                    "path": path,
+                    "relative_path": path,
+                    "order": crawl_order,
+                    "crawl_order": crawl_order,
+                    "toc_referenced": True,
+                }
+            )
+            seen_in_toc.add(path)
+            crawl_order += 1
+    # Append remaining (non-TOC-referenced) files in alphabetical order
+    remainder = sorted(p for p in all_files if p not in seen_in_toc)
+    for path in remainder:
+        pages.append(
+            {
+                "path": path,
+                "relative_path": path,
+                "order": crawl_order,
+                "crawl_order": crawl_order,
+                "toc_referenced": False,
+            }
+        )
+        crawl_order += 1
+
+    manifest_path = files_dir.parent / "crawl-manifest.json"
+    manifest_path.write_text(
+        json.dumps({"pages": pages}, indent=2),
+        encoding="utf-8",
+    )
 
 
 def _fetch_url(config: WebCrawlSource | ManifestUrlSource, files_dir: Path) -> int:
@@ -433,4 +561,5 @@ def _fetch_github(config: GitHubRepoSource | ManifestGitSource, files_dir: Path)
 
 __all__ = [
     "execute_elt_fetch",
+    "execute_source_configs",
 ]
