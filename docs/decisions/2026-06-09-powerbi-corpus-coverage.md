@@ -120,7 +120,7 @@ extracted, every anchor preserved with its target path.
 
 ### Failure mode analysis (16 frontmatter failures)
 
-Two distinct categories:
+Three distinct categories:
 
 **Category A: DocFx tabbed content (`#tab/` directives)** — 4 files
 

@@ -43,9 +43,12 @@ POWERBI_ROOT = Path(os.environ.get("POWERBI_DOCS_ROOT", _DEFAULT_POWERBI_ROOT))
 STAGING_ROOT = DOCLINE_ROOT / ".elt" / "staging-powerbi-full"
 OUTPUT_ROOT = DOCLINE_ROOT / ".elt" / "output" / "powerbi-full"
 
-# Skip patterns: TOC files (process pipeline does not yet handle YAML TOCs);
-# README/LICENSE/CHANGELOG (repo metadata, not product docs).
-_SKIP_NAMES = {"TOC.yml", "toc.yml", "README.md", "LICENSE.md", "CHANGELOG.md"}
+# Skip patterns: docline.process does not yet handle YAML TOCs (.yml files
+# aren't matched by rglob("*.md") anyway, but listing them here documents the
+# intent so future maintainers extending discover_md_files to also walk *.yml
+# know to keep skipping them); README/LICENSE/CHANGELOG (repo metadata, not
+# product docs).
+_SKIP_NAMES = {"README.md", "LICENSE.md", "CHANGELOG.md"}
 
 
 def discover_md_files(root: Path) -> list[Path]:
