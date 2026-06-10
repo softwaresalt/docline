@@ -144,7 +144,9 @@ def _build_parser() -> argparse.ArgumentParser:
         default=None,
         help=(
             "Glob pattern (relative to source_path) of files to include. "
-            "Repeatable. Defaults to ['**/*.md'] when omitted."
+            "Repeatable. Defaults to ['**/*.md', '**/TOC.yml', '**/toc.yml'] "
+            "when omitted (TOC files are staged so the manifest emitter can "
+            "derive ingest order; they are filtered out of the process pass)."
         ),
     )
     local_dir_parser.add_argument(
