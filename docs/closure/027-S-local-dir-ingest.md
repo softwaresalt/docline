@@ -133,8 +133,9 @@ Run locally (matches what CI will run):
 ruff check .
 ruff format --check .
 pyright src/
-pytest -m "not integration"
-python -m build  # sdist + wheel
+pytest                # mirrors CI exactly (no marker filter; the env-gated
+                      # AC5 parity test self-skips when POWERBI_DOCS_ROOT is unset)
+python -m build       # sdist + wheel
 ```
 
 Optional AC5 parity check:
