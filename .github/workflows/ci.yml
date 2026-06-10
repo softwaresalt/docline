@@ -1,11 +1,41 @@
 ---
 name: CI
 
+# CI is PAUSED while we pace GitHub Actions minute consumption (private
+# repo + macOS matrix = ~19.5 billable min/run; PR #62 alone burned ~273
+# min across its fix cycles, and the 3,000 monthly allotment was
+# exhausted on 2026-06-10).
+#
+# To re-enable for everyday PR / push validation, restore these triggers
+# (originals preserved for reference):
+#   on:
+#     pull_request:
+#     push:
+#       branches:
+#         - main
+#
+# Recommended cost-reduction changes before re-enabling (each independent):
+# 1. Drop the macos-latest entry from the test matrix (saves ~10 billable
+#    min per run — the largest single line item).
+# 2. Drop the windows-latest entry too if Windows-specific coverage is
+#    handled locally (operator already runs the suite on Windows).
+# 3. Add paths-ignore at the top-level `on:` block so doc-only / backlog-
+#    only pushes don't trigger the heavy matrix:
+#       paths-ignore:
+#         - '.backlogit/**'
+#         - 'docs/**'
+#         - '**/*.md'
+#         - 'README.md'
+#
+# Current triggers below intentionally fire only on release tags or
+# explicit manual runs from the Actions tab.
 on:
-  pull_request:
+  workflow_dispatch: {}
+  release:
+    types: [published]
   push:
-    branches:
-      - main
+    tags:
+      - 'v*'
 
 permissions:
   contents: read
