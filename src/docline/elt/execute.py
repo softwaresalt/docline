@@ -469,7 +469,7 @@ def _write_local_crawl_manifest(files_dir: Path) -> None:
         )
         crawl_order += 1
 
-    manifest_path = files_dir.parent / "crawl-manifest.json"
+    manifest_path = _crawl_manifest_path(files_dir)
     manifest_path.write_text(
         json.dumps({"pages": pages}, indent=2),
         encoding="utf-8",
