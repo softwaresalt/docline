@@ -113,7 +113,8 @@ category) is captured as a follow-up stash.
 * `tests/elt/test_ingest_local_dir_e2e.py` — 5 always-run fixture tests
   covering AC1, AC2, AC3, AC4, and the T3 robustness regression
 * `test_powerbi_corpus_parity` — env-gated parity test enforcing AC5
-  thresholds (≥99.5 % frontmatter, ≥7,600 cross_doc_links, ≤300 s wall time)
+  thresholds (strict ≥98.5 % non-regression, permissive ≥99.9 % frontmatter,
+  ≥7,600 cross_doc_links, ≤300 s wall time)
 * `pytest -m "not integration"` skips all of them for the standard CI lane
 
 ### Documentation (T5)
