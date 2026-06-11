@@ -15,11 +15,11 @@ name: CI
 #         - main
 #
 # Recommended cost-reduction changes before re-enabling (each independent):
-# 1. Drop the macos-latest entry from the test matrix (saves ~10 billable
-#    min per run — the largest single line item).
-# 2. Drop the windows-latest entry too if Windows-specific coverage is
-#    handled locally (operator already runs the suite on Windows).
-# 3. Add paths-ignore at the top-level `on:` block so doc-only / backlog-
+# 1. ✅ APPLIED — windows-latest dropped from matrix (~4 billable min/run; operator
+#    validates locally on Windows). Done in this commit.
+# 2. ✅ APPLIED — macos-latest dropped from matrix (~10 billable min/run; the
+#    largest single line item). Done in this commit.
+# 3. PENDING — add paths-ignore at the top-level `on:` block so doc-only / backlog-
 #    only pushes don't trigger the heavy matrix:
 #       paths-ignore:
 #         - '.backlogit/**'
@@ -117,7 +117,11 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
+        # Cost-conserving matrix:
+        # - macos-latest removed (10x billing multiplier — single largest savings)
+        # - windows-latest removed (2x multiplier; operator validates locally on Windows)
+        # Restore by adding back: macos-latest, windows-latest
+        os: [ubuntu-latest]
     steps:
       - name: Checkout
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10  # v6.0.3
