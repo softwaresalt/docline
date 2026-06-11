@@ -96,6 +96,31 @@ def _build_parser() -> argparse.ArgumentParser:
             "Orthogonal to --pdf-engine."
         ),
     )
+    process_parser.add_argument(
+        "--triage-pre-score",
+        action="store_true",
+        default=False,
+        help=(
+            "Opt-in pre-extraction triage scoring (028-F / 030-S). When set "
+            "alongside --pdf-mode triage, runs a 5-signal source-aware "
+            "scorer BEFORE heuristic extraction and short-circuits "
+            "obviously-complex pages directly to docling. When unset "
+            "(default), behavior is identical to the existing --pdf-mode "
+            "triage flow for backward compatibility."
+        ),
+    )
+    process_parser.add_argument(
+        "--triage-pre-score-report-only",
+        action="store_true",
+        default=False,
+        help=(
+            "Calibration mode for --triage-pre-score. Emits a per-page TSV "
+            "with the 5 pre-extraction signal scores + classification + "
+            "reason without invoking heuristic extraction or docling. Use "
+            "to validate the pre-triage scorer against a corpus before "
+            "enabling --triage-pre-score in production runs."
+        ),
+    )
 
     quarantine_viewer_parser = subcommands.add_parser(
         "quarantine-viewer",

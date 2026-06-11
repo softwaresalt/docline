@@ -44,7 +44,12 @@ from pathlib import Path
 import pypdf
 from markdown_it import MarkdownIt
 
-from docline.process.fidelity_scorer import PageScore, score_page
+from docline.process.fidelity_scorer import (
+    PageScore,
+    PreTriageDecision,
+    pre_triage_score,
+    score_page,
+)
 from docline.process.page_range import coalesce_ranges
 from docline.process.quality_metrics import compute_quality_metrics
 from docline.runtime.resource_probe import ResourceBudget
@@ -53,6 +58,7 @@ _log = logging.getLogger(__name__)
 
 ChunkRunner = Callable[[list[str]], "subprocess.CompletedProcess[str]"]
 PageScorer = Callable[[int, str, object | None], PageScore]
+PreScorer = Callable[[int, object | None], PreTriageDecision]
 
 
 @dataclass(frozen=True)
@@ -245,6 +251,7 @@ def _heuristic_and_score_pass(
     output_dir: Path,
     scorer: PageScorer,
     baseline_engine: str,
+    pre_scorer: PreScorer | None = None,
 ) -> _Pass12Result:
     """Run Pass 1 (per-page heuristic extraction) + Pass 2 (per-page scoring).
 
@@ -254,6 +261,17 @@ def _heuristic_and_score_pass(
     helper filters out empty pages, which loses the alignment that
     splice-back requires.
 
+    When ``pre_scorer`` is provided (028.003-T), the loop applies the
+    pre-extraction routing decision per page:
+
+    * ``route_to_docling`` — skip heuristic extraction; synthesize a
+      ``PageScore(needs_docling=True)`` so downstream coalescing picks
+      the page up. The heuristic text slot is left empty.
+    * ``route_to_heuristic`` — run heuristic extraction but skip the
+      post-extraction scorer; synthesize a ``PageScore(needs_docling=False)``.
+    * ``uncertain`` — fall through to the existing heuristic + post-score
+      path (the same behavior as ``pre_scorer=None``).
+
     Args:
         path: Source PDF path.
         output_dir: Directory where the splice cache subdirectory is
@@ -262,6 +280,10 @@ def _heuristic_and_score_pass(
             page_metadata)`` for each page.
         baseline_engine: Heuristic baseline extractor selection
             (``"markitdown"`` or ``"pypdf"``).
+        pre_scorer: Optional pre-extraction scorer. When provided,
+            short-circuits the loop per the rules above. When ``None``
+            (default), every page runs heuristic + post-scoring (the
+            legacy behavior).
 
     Returns:
         :class:`_Pass12Result` with reader, page count, splice cache
@@ -285,11 +307,43 @@ def _heuristic_and_score_pass(
     scores: list[PageScore] = []
     baseline_engine_fallback = 0
     for page_idx in range(total_pages):
+        page_metadata = reader.pages[page_idx] if page_idx < len(reader.pages) else None
+
+        if pre_scorer is not None:
+            pre_decision = pre_scorer(page_idx, page_metadata)
+            if pre_decision.classification == "route_to_docling":
+                heuristic_pages.append("")
+                scores.append(
+                    PageScore(
+                        page_index=page_idx,
+                        signals={},
+                        aggregate=1.0,
+                        needs_docling=True,
+                        reason=f"pre_triage:{pre_decision.reason}",
+                    )
+                )
+                continue
+            if pre_decision.classification == "route_to_heuristic":
+                text, fallback = _heuristic_extract(reader, page_idx, baseline_engine, splice_cache)
+                heuristic_pages.append(text)
+                if fallback:
+                    baseline_engine_fallback += 1
+                scores.append(
+                    PageScore(
+                        page_index=page_idx,
+                        signals={},
+                        aggregate=0.0,
+                        needs_docling=False,
+                        reason="pre_triage:clean",
+                    )
+                )
+                continue
+            # "uncertain" falls through to the legacy heuristic + score path.
+
         text, fallback = _heuristic_extract(reader, page_idx, baseline_engine, splice_cache)
         heuristic_pages.append(text)
         if fallback:
             baseline_engine_fallback += 1
-        page_metadata = reader.pages[page_idx] if page_idx < len(reader.pages) else None
         scores.append(scorer(page_idx, text, page_metadata))
 
     return _Pass12Result(
@@ -666,6 +720,97 @@ def triage_report_only(
             "quality_metrics_summary": quality_metrics_summary,
         },
     )
+
+
+def triage_pre_score_report_only(
+    path: Path,
+    *,
+    output_dir: Path,
+    report_tsv_path: Path,
+    pre_scorer: PreScorer | None = None,
+) -> dict[str, object]:
+    """Run pre-extraction triage scoring only; emit per-page TSV; no heuristic, no docling.
+
+    Used by operators to calibrate the pre-triage signals + thresholds
+    against a real corpus before enabling ``--triage-pre-score`` in
+    production runs. Mirrors the role of :func:`triage_report_only` for
+    the existing post-extraction scoring path.
+
+    Args:
+        path: Source PDF path.
+        output_dir: Directory for any per-page intermediates (currently
+            unused; reserved for future page-level diagnostic dumps).
+            Must be writable.
+        report_tsv_path: Path where the per-page TSV is written. Columns:
+            ``page_index, image_heavy, form_fields, layout_complexity,
+            font_diversity, text_flow_consistency, aggregate,
+            classification, reason``.
+        pre_scorer: Injectable pre-extraction scorer; defaults to
+            :func:`docline.process.fidelity_scorer.pre_triage_score`.
+
+    Returns:
+        A summary dict with ``total_pages``, ``route_to_docling_count``,
+        ``route_to_heuristic_count``, ``uncertain_count``, and
+        ``report_tsv_path`` (the absolute path string).
+
+    Raises:
+        FileNotFoundError: If ``path`` does not exist.
+    """
+    if not path.exists():
+        raise FileNotFoundError(f"PDF not found: {path}")
+    output_dir.mkdir(parents=True, exist_ok=True)
+    if pre_scorer is None:
+        pre_scorer = pre_triage_score
+
+    reader = pypdf.PdfReader(str(path), strict=False)
+    total_pages = len(reader.pages)
+
+    decisions: list[PreTriageDecision] = []
+    for page_idx in range(total_pages):
+        page_metadata = reader.pages[page_idx] if page_idx < len(reader.pages) else None
+        decisions.append(pre_scorer(page_idx, page_metadata))
+
+    report_tsv_path.parent.mkdir(parents=True, exist_ok=True)
+    header = [
+        "page_index",
+        "image_heavy",
+        "form_fields",
+        "layout_complexity",
+        "font_diversity",
+        "text_flow_consistency",
+        "aggregate",
+        "classification",
+        "reason",
+    ]
+    with report_tsv_path.open("w", encoding="utf-8", newline="") as fh:
+        writer = csv.writer(fh, delimiter="\t", lineterminator="\n")
+        writer.writerow(header)
+        for d in decisions:
+            writer.writerow(
+                [
+                    d.page_index,
+                    f"{d.signals.get('image_heavy', 0.0):.3f}",
+                    f"{d.signals.get('form_fields', 0.0):.3f}",
+                    f"{d.signals.get('layout_complexity', 0.0):.3f}",
+                    f"{d.signals.get('font_diversity', 0.0):.3f}",
+                    f"{d.signals.get('text_flow_consistency', 0.0):.3f}",
+                    f"{d.aggregate:.3f}",
+                    d.classification,
+                    d.reason,
+                ]
+            )
+
+    return {
+        "total_pages": total_pages,
+        "route_to_docling_count": sum(
+            1 for d in decisions if d.classification == "route_to_docling"
+        ),
+        "route_to_heuristic_count": sum(
+            1 for d in decisions if d.classification == "route_to_heuristic"
+        ),
+        "uncertain_count": sum(1 for d in decisions if d.classification == "uncertain"),
+        "report_tsv_path": str(report_tsv_path.resolve()),
+    }
 
 
 def dispatch_pdf_mode(

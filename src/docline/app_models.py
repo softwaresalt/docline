@@ -105,6 +105,27 @@ class ProcessRequest(BaseModel):
             "PDFs with mostly clean prose. Orthogonal to --pdf-engine."
         ),
     )
+    triage_pre_score: bool = Field(
+        default=False,
+        description=(
+            "Opt-in pre-extraction triage scoring (CLI: --triage-pre-score). "
+            "When True, pdf-mode=triage runs a 5-signal source-aware scorer "
+            "BEFORE heuristic extraction and short-circuits obviously-complex "
+            "pages directly to docling. When False (default), behavior is "
+            "identical to the existing pdf-mode=triage flow for backward "
+            "compatibility. See 028-F / 030-S."
+        ),
+    )
+    triage_pre_score_report_only: bool = Field(
+        default=False,
+        description=(
+            "Calibration mode for --triage-pre-score (CLI: "
+            "--triage-pre-score-report-only). When True, emits a per-page "
+            "TSV with the 5 pre-extraction signal scores + classification + "
+            "reason without invoking heuristic extraction or docling. "
+            "Mutually orthogonal to --triage-pre-score."
+        ),
+    )
 
     @field_validator("staging_dir", "output_dir")
     @classmethod
