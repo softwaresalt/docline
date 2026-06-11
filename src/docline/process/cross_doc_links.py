@@ -1,15 +1,26 @@
-"""Cross-doc markdown link resolver (024.003-T / 026-S T3).
+"""Cross-doc markdown link resolver (024.003-T / 026-S T3 / 028-S T3).
 
 Scans markdown body content for ``[text](relative/path.md)`` cross-doc
-links and collects them as graph-edge metadata. The collected list is
-surfaced via the application layer under ``docline.cross_doc_links``
-so downstream graph extraction can treat each link as a first-class
-edge {source, target, anchor, link_text} without re-parsing.
+links and ``[text](/absolute/cross-product-path)`` cross-product links,
+collecting both as graph-edge metadata. The collected list is surfaced
+via the application layer under ``docline.cross_doc_links`` so downstream
+graph extraction can treat each link as a first-class edge
+``{target_path, anchor, link_text, cross_product}`` without re-parsing.
 
-External links (``https://``, ``mailto:``, ``ftp://`` etc.), media
-asset links (``./media/x.png``, ``media/x.png``), and same-page
-anchor-only links (``#fragment``) pass through unchanged and are NOT
-collected as cross-doc edges.
+Three link categories:
+
+1. **In-corpus cross-doc** (relative ``.md`` paths) — resolved relative
+   to the host file's directory. ``cross_product: False``.
+2. **Cross-product** (absolute ``/path`` paths, e.g. ``/fabric/admin``,
+   ``/dax/abs-function-dax``) — preserved verbatim with leading slash.
+   ``cross_product: True``. Microsoft Learn uses these for cross-product
+   references (Fabric, DAX, Azure, Power Platform) that target sibling
+   docs sites not present in the local corpus.
+3. **Skipped**: external schemes (``https://``, ``mailto:``, ``ftp://``
+   etc.), media asset paths (``./media/x.png``, ``media/x.png``,
+   ``/media/x.png``), and same-page anchor-only links (``#fragment``).
+   Images (``![alt](path)``) are skipped at the regex level via a
+   negative lookbehind.
 
 Public API:
     :func:`resolve_cross_doc_links` — returns ``(body, links)`` tuple
@@ -43,6 +54,18 @@ def _is_media_asset(href: str) -> bool:
 
 def _is_anchor_only(href: str) -> bool:
     return href.startswith("#")
+
+
+def _is_absolute_cross_product(href: str) -> bool:
+    """True when href is an absolute path (``/...``) indicating a cross-product link.
+
+    Microsoft Learn uses absolute paths like ``/fabric/admin``,
+    ``/dax/abs-function-dax``, ``/azure/storage/blobs/overview`` to link
+    across product documentation sites. These are not in the local
+    corpus and must be flagged separately so graphtor can model them
+    as external graph edges.
+    """
+    return href.startswith("/") and not _is_anchor_only(href) and not _is_media_asset(href)
 
 
 def _split_anchor(href: str) -> tuple[str, str | None]:
@@ -86,7 +109,7 @@ def resolve_cross_doc_links(
     current_rel_path: Path,
     deduplicate: bool = False,
 ) -> tuple[str, list[dict[str, Any]]]:
-    """Scan body for cross-doc markdown links and collect them as graph edges.
+    """Scan body for cross-doc / cross-product links and collect them as graph edges.
 
     Args:
         body: Markdown body content.
@@ -104,8 +127,10 @@ def resolve_cross_doc_links(
         * ``body``: Unchanged input body (this resolver does not rewrite
           link text; downstream tooling can use the link list to do that).
         * ``links``: List of ``dict`` entries with keys ``target_path``
-          (posix), ``anchor`` (str or None), ``link_text`` (str).
-          External / media / anchor-only links are excluded.
+          (posix; leading-slash retained for cross-product entries),
+          ``anchor`` (str or None), ``link_text`` (str), and
+          ``cross_product`` (bool). External / media / anchor-only links
+          are excluded.
     """
     if not body:
         return body, []
@@ -121,11 +146,19 @@ def resolve_cross_doc_links(
             continue
 
         path_part, anchor = _split_anchor(href)
-        if not path_part.endswith(".md"):
-            # Not a markdown cross-doc link; skip
+
+        if _is_absolute_cross_product(href):
+            # Cross-product link — preserve the leading slash so graphtor can
+            # distinguish in-corpus targets from cross-product references.
+            target_path = path_part
+            cross_product = True
+        elif path_part.endswith(".md"):
+            target_path = _resolve_relative(current_rel_path, path_part)
+            cross_product = False
+        else:
+            # Not a markdown cross-doc link and not a cross-product link; skip
             continue
 
-        target_path = _resolve_relative(current_rel_path, path_part)
         if deduplicate:
             key = (target_path, anchor)
             if key in seen:
@@ -136,6 +169,7 @@ def resolve_cross_doc_links(
                 "target_path": target_path,
                 "anchor": anchor,
                 "link_text": text,
+                "cross_product": cross_product,
             }
         )
 

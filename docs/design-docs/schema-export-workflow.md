@@ -17,9 +17,13 @@ docline emits document frontmatter using the Pydantic model `BaseFrontmatter`
 `graphtor-docs` — validate ingested documents against a published JSON Schema
 representation of that model.
 
-The exported schema is **generated on demand** from the live Pydantic model. It
-is not committed to the repository. Successive exports are byte-identical
-because the JSON serializer uses `sort_keys=True` and two-space indentation.
+The exported schema is **generated on demand** from the live Pydantic model.
+A snapshot is committed alongside this workflow doc at
+[`base-frontmatter-v1.schema.json`](./base-frontmatter-v1.schema.json) for
+convenience — graphtor-docs can either consume that file directly or
+regenerate from the live model. The snapshot is byte-stable across
+successive exports (the JSON serializer uses `sort_keys=True` and two-space
+indentation).
 
 ## Surfaces
 

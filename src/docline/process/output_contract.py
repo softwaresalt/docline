@@ -307,6 +307,15 @@ def build_output_document_parts(
 
             normalized_body = normalize_docfx_containers(stripped_body)
 
+            # 026.002-T / 028-S T2: flatten DocFx tab blocks (### [Label](#tab/key)
+            # ... ---) into plain H3 sections so the heading-hierarchy validator
+            # and downstream chunkers treat them as ordinary section boundaries
+            # instead of choking on the link-wrapped heading text or
+            # misinterpreting the `---` terminator as a setext H2 underline.
+            from docline.process.docfx_tabs import normalize_docfx_tabs
+
+            normalized_body = normalize_docfx_tabs(normalized_body)
+
             # 024.003-T / 026-S T3: collect cross-doc markdown links as
             # graph-edge metadata. Body content is unchanged; the link
             # list is attached to the OutputDocumentPart and surfaced

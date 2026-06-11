@@ -1,8 +1,16 @@
 """Workflow lint tests for .github/workflows/ci.yml.
 
-These tests assert structural invariants of the CI workflow so that accidental
-regressions (matrix removal, OS coverage shrink, fail-fast inversion) are caught
-in the local test suite.
+These tests assert structural invariants of the CI workflow so that
+accidental regressions (matrix removal, fail-fast inversion, runs-on
+drift) are caught in the local test suite.
+
+The CI workflow OS coverage was reduced to ``ubuntu-latest`` only on
+2026-06-10 as a cost-conservation measure after the 3,000-minute
+private-repo allotment was exhausted (see ``.github/workflows/ci.yml``
+header comment for the rationale). The matrix is preserved as a
+structural feature so cost-reduction items #1 (macos) and #2 (windows)
+can be reverted by re-adding entries without touching the workflow's
+shape.
 """
 
 from __future__ import annotations
@@ -15,7 +23,7 @@ import yaml
 REPO_ROOT = Path(__file__).resolve().parents[1]
 CI_WORKFLOW = REPO_ROOT / ".github" / "workflows" / "ci.yml"
 
-EXPECTED_OS_TARGETS = {"ubuntu-latest", "windows-latest", "macos-latest"}
+EXPECTED_OS_TARGETS = {"ubuntu-latest"}
 UBUNTU_ONLY_JOBS = {"lint", "format", "typecheck", "build"}
 
 
@@ -41,8 +49,14 @@ def test_test_job_runs_on_matrix(workflow: dict) -> None:
     assert "os" in matrix, "test job matrix must enumerate os"
 
 
-def test_test_job_matrix_includes_three_oses(workflow: dict) -> None:
-    """The matrix covers ubuntu-latest, windows-latest, and macos-latest."""
+def test_test_job_matrix_matches_expected_oses(workflow: dict) -> None:
+    """The matrix covers the configured OS targets.
+
+    Currently ``{ubuntu-latest}`` only after the 2026-06-10 cost-conservation
+    change. Re-adding ``windows-latest`` and/or ``macos-latest`` requires
+    updating ``EXPECTED_OS_TARGETS`` above and the cost-reduction tracker
+    comment block at the top of ``.github/workflows/ci.yml``.
+    """
     matrix_os = workflow["jobs"]["test"]["strategy"]["matrix"]["os"]
     assert set(matrix_os) == EXPECTED_OS_TARGETS, (
         f"expected matrix os {EXPECTED_OS_TARGETS}, got {set(matrix_os)}"
@@ -50,11 +64,15 @@ def test_test_job_matrix_includes_three_oses(workflow: dict) -> None:
 
 
 def test_test_job_fail_fast_disabled(workflow: dict) -> None:
-    """The test job sets fail-fast: false so per-OS failures don't cancel siblings."""
+    """The test job sets fail-fast: false so per-OS failures don't cancel siblings.
+
+    Preserved even though the matrix is currently single-OS, so re-adding
+    OS entries doesn't require revisiting the fail-fast policy.
+    """
     strategy = workflow["jobs"]["test"]["strategy"]
     assert strategy.get("fail-fast") is False, (
         "test job strategy must set fail-fast: false so a single-platform failure "
-        "does not cancel the others"
+        "does not cancel the others (preserved for matrix re-expansion)"
     )
 
 
