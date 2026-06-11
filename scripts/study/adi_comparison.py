@@ -205,7 +205,7 @@ def _pct_delta(adi_val: float, docling_val: float) -> float | None:
     return round(100.0 * (adi_val - docling_val) / docling_val, 1)
 
 
-def _fmt_pct(value: object) -> str:
+def _fmt_pct(value: float | None) -> str:
     """Format a percent-delta value for the Markdown table.
 
     Renders ``None`` (the docling=0 divide-by-zero sentinel) as
