@@ -69,6 +69,11 @@ _DEFAULT_MODEL_ID = "prebuilt-layout"
 # v1.0+ (older versions return only 'text').
 _DEFAULT_OUTPUT_FORMAT = "markdown"
 
+# Per-page cost for the prebuilt-layout model (USD, list price).
+# Keep this in sync with the matching constant in
+# scripts/study/adi_comparison.py.
+_COST_PER_PAGE_USD = 0.0015
+
 
 class AdiCredentialError(DoclineError):
     """Raised when ADI credentials (endpoint + key) are missing or invalid."""
@@ -180,7 +185,7 @@ def read_pdf_adi(
 
     # Telemetry: page count + wall time + projected cost line item.
     page_count = len(getattr(result, "pages", []) or [])
-    projected_cost_usd = page_count * 0.0015  # prebuilt-layout list price
+    projected_cost_usd = page_count * _COST_PER_PAGE_USD
     _log.info(
         "ADI analyze complete: path=%s pages=%d wall_s=%.2f projected_cost_usd=%.4f",
         path,

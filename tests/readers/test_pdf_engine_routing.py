@@ -109,8 +109,8 @@ def test_cli_accepts_pdf_engine_azure_di(tmp_path: Path) -> None:
     assert "azure_di" in result.stdout
 
 
-def test_cli_ingest_accepts_pdf_engine_azure_di(tmp_path: Path) -> None:
-    """`docline ingest local-dir --pdf-engine azure_di` is also accepted."""
+def test_cli_ingest_help_advertises_azure_di(tmp_path: Path) -> None:
+    """`docline ingest local-dir --help` lists azure_di as a pdf-engine choice."""
     result = subprocess.run(
         [
             sys.executable,
