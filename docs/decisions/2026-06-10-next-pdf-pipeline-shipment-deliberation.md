@@ -69,7 +69,10 @@ Rationale:
 1. **Highest expected throughput improvement** by orders of magnitude — the operator's headline pain.
 2. **Largest reduction in operational complexity** — eliminates the entire `pdf_batch.py` subprocess containment surface that exists *solely* to work around docling's failure modes.
 3. **Time-boxed spike scope** — bounded risk; if ADI quality is worse than docling on our corpus, abandon and try Option A next.
-4. **Operator-pulled** — earlier in this session the operator asked about ADI specifically and noted having an Azure subscription. Direct alignment with stated interest.
+4. **Operator-pulled** — the ADI strategic Q&A on 2026-06-09 (recorded
+   alongside this deliberation; stash `F10EB5CB` captures the spike
+   intent) confirmed operator interest in ADI and existing Azure
+   subscription availability. Direct alignment with stated interest.
 5. **Cost is operational, not architectural** — $6.75 per cosmos run, scaling linearly. Cheap enough to be a budget item, not a capital decision.
 
 EFC6C84E (invert scoring) and 378C8BC0 (QA mode) **stay stashed** as the natural follow-ups:
