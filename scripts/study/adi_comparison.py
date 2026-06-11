@@ -50,7 +50,11 @@ from pathlib import Path
 
 _SCRIPT_DIR = Path(__file__).resolve().parent
 _REPO_ROOT = _SCRIPT_DIR.parent.parent
+# Both ``src`` and the repo root must be on sys.path:
+# - ``src`` so ``import docline`` resolves to the source-tree package
+# - repo root so ``from scripts.study.evaluate_markdown import ...`` resolves
 sys.path.insert(0, str(_REPO_ROOT / "src"))
+sys.path.insert(0, str(_REPO_ROOT))
 
 _STUDY_ROOT = _REPO_ROOT / ".elt" / "output" / "cosmos-triage-022" / "study"
 _DATASET_ROOT = _STUDY_ROOT / "dataset"

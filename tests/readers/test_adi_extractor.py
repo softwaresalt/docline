@@ -70,38 +70,42 @@ def test_resolve_credentials_both_missing_raises(monkeypatch: pytest.MonkeyPatch
 # ---------------------------------------------------------------------------
 
 
-def _install_fake_adi_sdk(content: str = "# Mock content\n\nbody") -> None:
-    """Install a fake azure.ai.documentintelligence module hierarchy.
+def _install_fake_adi_sdk(
+    monkeypatch: pytest.MonkeyPatch,
+    content: str = "# Mock content\n\nbody",
+) -> None:
+    """Install fake ``azure.*`` modules via ``monkeypatch.setitem`` so they
+    are automatically rolled back at test teardown.
 
-    Stubs only the minimum surface read_pdf_adi touches. After test,
-    sys.modules cleanup happens automatically because each test that
-    calls this also installs sys.modules entries that pytest removes
-    on test teardown.
+    Stubs only the minimum surface ``read_pdf_adi`` touches. Using
+    ``monkeypatch.setitem(sys.modules, ...)`` (rather than direct
+    assignment) guarantees teardown restores the prior state, so the
+    test suite has no order-dependent isolation hazard between this
+    test file and any other that touches the real ``azure`` package.
     """
     # azure package skeleton
-    if "azure" not in sys.modules:
-        sys.modules["azure"] = types.ModuleType("azure")
-    if "azure.core" not in sys.modules:
-        sys.modules["azure.core"] = types.ModuleType("azure.core")
-    if "azure.core.credentials" not in sys.modules:
-        creds_mod = types.ModuleType("azure.core.credentials")
+    monkeypatch.setitem(sys.modules, "azure", types.ModuleType("azure"))
+    monkeypatch.setitem(sys.modules, "azure.core", types.ModuleType("azure.core"))
 
-        class _FakeAzureKeyCredential:
-            def __init__(self, key: str) -> None:
-                self.key = key
+    creds_mod = types.ModuleType("azure.core.credentials")
 
-        creds_mod.AzureKeyCredential = _FakeAzureKeyCredential
-        sys.modules["azure.core.credentials"] = creds_mod
-    if "azure.core.exceptions" not in sys.modules:
-        exc_mod = types.ModuleType("azure.core.exceptions")
+    class _FakeAzureKeyCredential:
+        def __init__(self, key: str) -> None:
+            self.key = key
 
-        class _FakeAzureError(Exception):
-            pass
+    creds_mod.AzureKeyCredential = _FakeAzureKeyCredential
+    monkeypatch.setitem(sys.modules, "azure.core.credentials", creds_mod)
 
-        exc_mod.AzureError = _FakeAzureError
-        sys.modules["azure.core.exceptions"] = exc_mod
-    if "azure.ai" not in sys.modules:
-        sys.modules["azure.ai"] = types.ModuleType("azure.ai")
+    exc_mod = types.ModuleType("azure.core.exceptions")
+
+    class _FakeAzureError(Exception):
+        pass
+
+    exc_mod.AzureError = _FakeAzureError
+    monkeypatch.setitem(sys.modules, "azure.core.exceptions", exc_mod)
+
+    monkeypatch.setitem(sys.modules, "azure.ai", types.ModuleType("azure.ai"))
+
     di_mod = types.ModuleType("azure.ai.documentintelligence")
 
     class _FakeResult:
@@ -128,7 +132,7 @@ def _install_fake_adi_sdk(content: str = "# Mock content\n\nbody") -> None:
             return _FakePoller(_FakeResult(content, pages=3))
 
     di_mod.DocumentIntelligenceClient = _FakeClient
-    sys.modules["azure.ai.documentintelligence"] = di_mod
+    monkeypatch.setitem(sys.modules, "azure.ai.documentintelligence", di_mod)
 
 
 def test_read_pdf_adi_returns_markdown_content(
@@ -136,7 +140,7 @@ def test_read_pdf_adi_returns_markdown_content(
 ) -> None:
     monkeypatch.setenv("AZURE_DOCUMENT_INTELLIGENCE_ENDPOINT", "https://x/")
     monkeypatch.setenv("AZURE_DOCUMENT_INTELLIGENCE_KEY", "k")
-    _install_fake_adi_sdk(content="# Hello\n\nbody text")
+    _install_fake_adi_sdk(monkeypatch, content="# Hello\n\nbody text")
     pdf = tmp_path / "doc.pdf"
     pdf.write_bytes(b"%PDF-1.4 minimal placeholder")
 
@@ -151,7 +155,7 @@ def test_read_pdf_adi_passes_layout_model_and_markdown_format(
 ) -> None:
     monkeypatch.setenv("AZURE_DOCUMENT_INTELLIGENCE_ENDPOINT", "https://x/")
     monkeypatch.setenv("AZURE_DOCUMENT_INTELLIGENCE_KEY", "k")
-    _install_fake_adi_sdk()
+    _install_fake_adi_sdk(monkeypatch)
     pdf = tmp_path / "doc.pdf"
     pdf.write_bytes(b"%PDF placeholder")
 
@@ -171,7 +175,7 @@ def test_read_pdf_adi_passes_layout_model_and_markdown_format(
 def test_read_pdf_adi_missing_file_raises(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("AZURE_DOCUMENT_INTELLIGENCE_ENDPOINT", "https://x/")
     monkeypatch.setenv("AZURE_DOCUMENT_INTELLIGENCE_KEY", "k")
-    _install_fake_adi_sdk()
+    _install_fake_adi_sdk(monkeypatch)
     missing = tmp_path / "nonexistent.pdf"
     with pytest.raises(FileNotFoundError):
         read_pdf_adi(missing)
@@ -183,7 +187,7 @@ def test_read_pdf_adi_no_credentials_raises_credential_error(
 ) -> None:
     monkeypatch.delenv("AZURE_DOCUMENT_INTELLIGENCE_ENDPOINT", raising=False)
     monkeypatch.delenv("AZURE_DOCUMENT_INTELLIGENCE_KEY", raising=False)
-    _install_fake_adi_sdk()
+    _install_fake_adi_sdk(monkeypatch)
     pdf = tmp_path / "doc.pdf"
     pdf.write_bytes(b"%PDF")
     with pytest.raises(AdiCredentialError):
@@ -196,7 +200,7 @@ def test_read_pdf_adi_explicit_credentials_bypass_env(
 ) -> None:
     monkeypatch.delenv("AZURE_DOCUMENT_INTELLIGENCE_ENDPOINT", raising=False)
     monkeypatch.delenv("AZURE_DOCUMENT_INTELLIGENCE_KEY", raising=False)
-    _install_fake_adi_sdk()
+    _install_fake_adi_sdk(monkeypatch)
     pdf = tmp_path / "doc.pdf"
     pdf.write_bytes(b"%PDF")
     # Should NOT raise — explicit args bypass env-var check.
@@ -208,19 +212,20 @@ def test_read_pdf_adi_sdk_missing_raises_dependency_error(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """When [adi] extra is not installed, raise a clear DependencyUnavailableError."""
+    """When [adi] extra is not installed, raise a clear DependencyUnavailableError.
+
+    Uses ``monkeypatch.setitem(sys.modules, name, None)`` to simulate
+    the SDK being absent EVEN WHEN the real ``azure-ai-documentintelligence``
+    package is installed via ``pip install -e .[adi]``. Setting a
+    sys.modules entry to ``None`` causes the next ``import`` of that
+    name (or ``importlib.import_module``) to raise ``ImportError``
+    immediately rather than re-importing from site-packages.
+    """
     monkeypatch.setenv("AZURE_DOCUMENT_INTELLIGENCE_ENDPOINT", "https://x/")
     monkeypatch.setenv("AZURE_DOCUMENT_INTELLIGENCE_KEY", "k")
-    # Remove the fake SDK module if a prior test installed one.
-    for mod_name in [
-        "azure.ai.documentintelligence",
-        "azure.ai",
-        "azure.core.credentials",
-        "azure.core.exceptions",
-        "azure.core",
-        "azure",
-    ]:
-        sys.modules.pop(mod_name, None)
+    # The dependency check is on the top-level package name; setting it
+    # to None makes importlib.import_module raise ImportError.
+    monkeypatch.setitem(sys.modules, "azure.ai.documentintelligence", None)
     pdf = tmp_path / "doc.pdf"
     pdf.write_bytes(b"%PDF")
     with pytest.raises(DependencyUnavailableError, match="adi"):
