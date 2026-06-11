@@ -55,13 +55,24 @@ class ProcessRequest(BaseModel):
         output_dir: Directory where processed output files are written.
         allow_heading_disorder: When ``True``, bypass the H1->H2->H3 heading
             hierarchy validation during Markdown assembly. Default ``False``.
-        pdf_engine: PDF layout extractor selection. ``"auto"`` (default,
-            G3c / 014-S) resolves to ``"docling"`` when the optional
-            ``docline[pdf]`` extras are installed and transparently falls
-            back to ``"heuristic"`` when docling is unavailable or fails
-            to load a particular PDF. ``"docling"`` opts in explicitly
-            (and raises when not installed); ``"heuristic"`` uses the
-            built-in extractor.
+        pdf_engine: PDF layout extractor selection. Four choices:
+
+            * ``"auto"`` (default) prefers ``"azure_di"`` when the
+              ``AZURE_DOCUMENT_INTELLIGENCE_ENDPOINT`` env var is set
+              AND the ``docline[adi]`` extra is installed (027-F /
+              029-S spike), falls back to ``"docling"`` when the
+              ``docline[pdf]`` extras are installed, and falls back to
+              ``"heuristic"`` otherwise. The ``"auto"`` path also
+              transparently catches docling / ADI failures and
+              degrades to the heuristic engine so a single hostile PDF
+              cannot abort the batch.
+            * ``"docling"`` opts in to the local docling layout model
+              explicitly (raises when not installed).
+            * ``"azure_di"`` opts in to Azure Document Intelligence via
+              the optional ``docline[adi]`` extra (raises when the SDK
+              is missing or when ``AZURE_DOCUMENT_INTELLIGENCE_ENDPOINT``
+              + ``AZURE_DOCUMENT_INTELLIGENCE_KEY`` env vars are not set).
+            * ``"heuristic"`` uses the built-in extractor.
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -69,7 +80,7 @@ class ProcessRequest(BaseModel):
     staging_dir: str = ".cache/staging"
     output_dir: str = "output"
     allow_heading_disorder: bool = False
-    pdf_engine: Literal["auto", "docling", "heuristic"] = "auto"
+    pdf_engine: Literal["auto", "docling", "azure_di", "heuristic"] = "auto"
     pdf_mode: Literal["auto", "triage"] = Field(
         default="auto",
         description=(
