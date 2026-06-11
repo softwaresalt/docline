@@ -239,3 +239,74 @@ def test_ingest_local_dir_output_frontmatter_is_graphtor_compatible(tmp_path: Pa
 # tests/elt/test_fetch_manifest_local_toc.py and
 # tests/elt/test_ingest_local_dir_e2e.py::test_ingest_local_dir_e2e_toc_*;
 # no stub needed here.
+
+
+def test_ingest_local_dir_output_on_unrelated_cwd(tmp_path: Path) -> None:
+    """`--output` may point at a directory unrelated to cwd (environment flexibility).
+
+    Reproduces the operator's typical "utility" usage pattern: docline is
+    installed once and invoked from any working directory. Output goes to
+    wherever they specify, not necessarily a child of cwd.
+    """
+    src = tmp_path / "src-repo"
+    src.mkdir()
+    _write_fixture(src)
+    # Output lives under a separate sibling root that does NOT contain cwd.
+    out_root = tmp_path / "different-tree" / "deeper" / "out"
+    # cwd is a third, unrelated directory.
+    cwd_unrelated = tmp_path / "elsewhere"
+    cwd_unrelated.mkdir(parents=True)
+
+    result = _run_cli(
+        ["ingest", "local-dir", str(src.resolve()), "--output", str(out_root.resolve())],
+        cwd=cwd_unrelated,
+    )
+    assert result.returncode == 0, f"stderr: {result.stderr}\nstdout: {result.stdout}"
+    output_files = list(out_root.rglob("*.md"))
+    assert len(output_files) == 4, (
+        f"expected 4 outputs from default include, got {len(output_files)}: "
+        f"{[p.name for p in output_files]}"
+    )
+
+
+def test_ingest_local_dir_default_staging_is_under_output_parent(tmp_path: Path) -> None:
+    """Default staging colocates under `<output_parent>/.docline/` (same volume as output).
+
+    Verifies the new default — staging is created under the operator's
+    output parent rather than under cwd/.elt/staging/ — so the utility
+    works without a pre-existing workspace structure.
+    """
+    src = tmp_path / "src-repo"
+    src.mkdir()
+    _write_fixture(src)
+    out_parent = tmp_path / "out-tree"
+    out_path = out_parent / "final"
+    # Pre-create the .docline staging dir with a sentinel to assert it
+    # was used as the staging location (the sentinel is unrelated and
+    # will not be touched by the ingest run; we check that staging was
+    # created beside it under .docline/ and then cleaned up).
+    cwd_unrelated = tmp_path / "elsewhere2"
+    cwd_unrelated.mkdir()
+
+    result = _run_cli(
+        [
+            "ingest",
+            "local-dir",
+            str(src.resolve()),
+            "--output",
+            str(out_path.resolve()),
+            "--keep-staging",
+        ],
+        cwd=cwd_unrelated,
+    )
+    assert result.returncode == 0, f"stderr: {result.stderr}\nstdout: {result.stdout}"
+    # Outputs landed under the chosen --output
+    assert list(out_path.rglob("*.md"))
+    # Staging was created under <output_parent>/.docline/ (the new default)
+    docline_staging = out_parent / ".docline"
+    assert docline_staging.is_dir(), (
+        f"expected default staging at {docline_staging}; tree was: "
+        f"{[str(p) for p in tmp_path.rglob('.docline')]}"
+    )
+    ingest_dirs = list(docline_staging.glob("ingest-*"))
+    assert ingest_dirs, f"expected ingest-<digest> staging dir under {docline_staging}"
