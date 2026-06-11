@@ -199,20 +199,40 @@ def test_auto_falls_back_on_transient_adi_error(
     """A non-credential, non-dependency ADI failure (e.g. transient
     cloud blip) MUST trigger a WARNING log and fall back to the next
     engine in the chain (docling, then heuristic) rather than aborting
-    the batch."""
+    the batch.
+
+    Simulates a real 503-like failure by having the fake client raise
+    the FakeAzureError installed by the shared fixture. read_pdf_adi's
+    ``except AzureError`` catch then re-wraps it as DoclineError, which
+    is what the read_pdf_pages auto path catches and degrades from.
+    Exercising the full error-wrapping chain (AzureError -> DoclineError
+    -> WARNING + fallback) matches the production code path.
+    """
     import logging
 
     from docline.readers.pdf import read_pdf_pages
-    from docline.schema.models import DoclineError
 
-    class _BlippyClient:
-        def __init__(self, *, endpoint, credential) -> None:
-            pass
+    # Build a client that uses the fake AzureError installed by the
+    # shared fixture (mirrors the real 503 path: SDK raises AzureError,
+    # read_pdf_adi re-wraps as DoclineError, auto path catches and falls
+    # back). We can't reference the fake exception type until after the
+    # fixture installs the SDK tree, so build the client inside a thunk.
+    def _make_blippy_client(azure_error_cls: type[Exception]) -> type:
+        class _BlippyClient:
+            def __init__(self, *, endpoint, credential) -> None:
+                pass
 
-        def begin_analyze_document(self, **kwargs):
-            raise DoclineError("transient: simulated 503 from ADI")
+            def begin_analyze_document(self, **kwargs):
+                raise azure_error_cls("transient: simulated 503 from ADI")
 
-    install_fake_adi_sdk(client_cls=_BlippyClient)
+        return _BlippyClient
+
+    # Install the default SDK first to get a stable FakeAzureError reference,
+    # then swap in the blippy client that uses it.
+    install_fake_adi_sdk()
+    from azure.core.exceptions import AzureError  # type: ignore[attr-defined]
+
+    install_fake_adi_sdk(client_cls=_make_blippy_client(AzureError))
 
     pdf = tmp_path / "doc.pdf"
     pdf.write_bytes(
