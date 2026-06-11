@@ -4,7 +4,9 @@ Optional third PDF layout extractor, peer to ``docling`` and the
 built-in heuristic engine. Wraps Microsoft's
 ``azure.ai.documentintelligence.DocumentIntelligenceClient`` and uses
 the ``prebuilt-layout`` model with ``output_content_format='markdown'``
-to return graphtor-docs-ready Markdown directly from Azure's cloud API.
+to return Markdown ready for the docline → graphtor-docs ingestion
+pipeline (see docs/design-docs/graphtor-docs-ingestion-contract.md)
+directly from Azure's cloud API.
 
 Spike intent (per deliberation
 ``docs/decisions/2026-06-10-next-pdf-pipeline-shipment-deliberation.md``):
