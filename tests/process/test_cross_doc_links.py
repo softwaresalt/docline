@@ -113,3 +113,129 @@ def test_resolve_links_deduplicates_when_requested() -> None:
     # Dedup is by (target_path, anchor) tuple
     keys = {(link["target_path"], link["anchor"]) for link in links}
     assert keys == {("docs/a.md", None), ("docs/a.md", "sec")}
+
+
+# ---------------------------------------------------------------------------
+# T3 (028-S / 026.003-T) — cross-product absolute-path link extraction
+# ---------------------------------------------------------------------------
+
+
+def test_relative_md_link_marks_cross_product_false() -> None:
+    """Existing relative .md links carry cross_product=False on the typed edge."""
+    from pathlib import Path
+
+    from docline.process.cross_doc_links import resolve_cross_doc_links
+
+    body = "See [Other](other.md) for details.\n"
+    _, links = resolve_cross_doc_links(body, current_rel_path=Path("docs/here.md"))
+    assert len(links) == 1
+    assert links[0]["cross_product"] is False
+
+
+def test_absolute_path_link_marks_cross_product_true() -> None:
+    """[text](/fabric/...) absolute path is captured as a cross-product edge."""
+    from pathlib import Path
+
+    from docline.process.cross_doc_links import resolve_cross_doc_links
+
+    body = "See [Fabric admin](/fabric/admin/overview) for cross-product info.\n"
+    _, links = resolve_cross_doc_links(body, current_rel_path=Path("docs/here.md"))
+    assert len(links) == 1
+    assert links[0]["cross_product"] is True
+    assert links[0]["target_path"] == "/fabric/admin/overview"
+    assert links[0]["anchor"] is None
+    assert links[0]["link_text"] == "Fabric admin"
+
+
+def test_absolute_path_link_with_anchor_captures_anchor() -> None:
+    from pathlib import Path
+
+    from docline.process.cross_doc_links import resolve_cross_doc_links
+
+    body = "See [Fabric Copilot](/fabric/get-started/copilot-fabric-overview#enable-copilot).\n"
+    _, links = resolve_cross_doc_links(body, current_rel_path=Path("docs/here.md"))
+    assert len(links) == 1
+    assert links[0]["cross_product"] is True
+    assert links[0]["target_path"] == "/fabric/get-started/copilot-fabric-overview"
+    assert links[0]["anchor"] == "enable-copilot"
+
+
+def test_multiple_cross_product_links_all_captured() -> None:
+    """Per-corpus expectation: ~416 Fabric refs + hundreds more across other products."""
+    from pathlib import Path
+
+    from docline.process.cross_doc_links import resolve_cross_doc_links
+
+    body = (
+        "See [Fabric](/fabric/foo) and [DAX](/dax/abs-function-dax) and "
+        "[Azure docs](/azure/storage/blobs/overview) and "
+        "[Power Platform](/power-platform/foo).\n"
+    )
+    _, links = resolve_cross_doc_links(body, current_rel_path=Path("docs/here.md"))
+    assert len(links) == 4
+    for link in links:
+        assert link["cross_product"] is True
+        assert link["target_path"].startswith("/")
+
+
+def test_cross_product_does_not_clash_with_external_http() -> None:
+    """https://github.com/... is still skipped (external scheme)."""
+    from pathlib import Path
+
+    from docline.process.cross_doc_links import resolve_cross_doc_links
+
+    body = "[GitHub](https://github.com/foo/bar) and [Fabric](/fabric/admin).\n"
+    _, links = resolve_cross_doc_links(body, current_rel_path=Path("docs/here.md"))
+    assert len(links) == 1
+    assert links[0]["target_path"] == "/fabric/admin"
+    assert links[0]["cross_product"] is True
+
+
+def test_absolute_path_under_media_still_skipped() -> None:
+    """/media/* absolute paths are still treated as media assets (skipped)."""
+    from pathlib import Path
+
+    from docline.process.cross_doc_links import resolve_cross_doc_links
+
+    body = "![alt](/media/figure.png) and [text](/media/x.svg).\n"
+    _, links = resolve_cross_doc_links(body, current_rel_path=Path("docs/here.md"))
+    assert links == []
+
+
+def test_absolute_path_with_md_extension_still_captured_as_cross_product() -> None:
+    """An absolute path ending in .md is still cross-product (NOT in local corpus)."""
+    from pathlib import Path
+
+    from docline.process.cross_doc_links import resolve_cross_doc_links
+
+    body = "See [Foo](/fabric/admin/foo.md) for info.\n"
+    _, links = resolve_cross_doc_links(body, current_rel_path=Path("docs/here.md"))
+    assert len(links) == 1
+    # Absolute /paths are always cross-product, regardless of .md suffix
+    assert links[0]["cross_product"] is True
+    assert links[0]["target_path"] == "/fabric/admin/foo.md"
+
+
+def test_image_with_absolute_path_still_skipped() -> None:
+    """![alt](/fabric/img.png) is an image — must be skipped."""
+    from pathlib import Path
+
+    from docline.process.cross_doc_links import resolve_cross_doc_links
+
+    body = "![Fabric icon](/fabric/img.png) and [Real link](/fabric/admin).\n"
+    _, links = resolve_cross_doc_links(body, current_rel_path=Path("docs/here.md"))
+    assert len(links) == 1
+    assert links[0]["target_path"] == "/fabric/admin"
+
+
+def test_dedupe_works_for_cross_product_links() -> None:
+    from pathlib import Path
+
+    from docline.process.cross_doc_links import resolve_cross_doc_links
+
+    body = "[A](/fabric/a) and [A again](/fabric/a) and [A anchor](/fabric/a#sec)\n"
+    _, links = resolve_cross_doc_links(
+        body, current_rel_path=Path("docs/here.md"), deduplicate=True
+    )
+    keys = {(link["target_path"], link["anchor"]) for link in links}
+    assert keys == {("/fabric/a", None), ("/fabric/a", "sec")}

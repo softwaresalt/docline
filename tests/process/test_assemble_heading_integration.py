@@ -16,19 +16,25 @@ from docline.process.heading_validation import HeadingHierarchyError
 
 
 def test_assemble_rejects_disordered_headings_by_default() -> None:
-    """Default ``assemble_markdown`` raises on H3-before-H2 documents."""
+    """Default ``assemble_markdown`` raises on a real authoring-bug pattern.
+
+    Per 028-S T1 extension, the H1+H3 (no H2) "sparse hierarchy" pattern
+    is now auto-tolerated as a legitimate Microsoft Learn convention.
+    The remaining catch is H2-before-any-H1 (an orphan H2 with no parent
+    doc title) — that case still raises by default.
+    """
     frontmatter = {"title": "Doc", "source": "test"}
-    body = "# Top\n\n### Orphan Subsection\n\nBody\n"
+    body = "## Orphan H2 with no parent\n\n# H1 comes too late\n"
     with pytest.raises(HeadingHierarchyError):
         assemble_markdown(frontmatter, body)
 
 
 def test_assemble_accepts_disorder_with_override_flag() -> None:
-    """``allow_heading_disorder=True`` bypasses validation."""
+    """``allow_heading_disorder=True`` bypasses validation entirely."""
     frontmatter = {"title": "Doc", "source": "test"}
-    body = "# Top\n\n### Orphan Subsection\n\nBody\n"
+    body = "## Orphan H2\n\n# H1\n"
     output = assemble_markdown(frontmatter, body, allow_heading_disorder=True)
-    assert "### Orphan Subsection" in output
+    assert "## Orphan H2" in output
     assert output.startswith("---\n")
 
 

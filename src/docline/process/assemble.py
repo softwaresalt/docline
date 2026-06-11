@@ -4,7 +4,10 @@ import json
 import re
 from collections.abc import Mapping
 
-from docline.process.heading_validation import validate_heading_hierarchy
+from docline.process.heading_validation import (
+    body_should_skip_heading_validation,
+    validate_heading_hierarchy,
+)
 
 _CHUNK_ANCHOR_HEADING_RE = re.compile(r"^(#{1,3})\s+\S")
 _CHUNK_ANCHOR_FENCE_RE = re.compile(r"^\s{0,3}(```|~~~)")
@@ -128,7 +131,15 @@ def assemble_markdown(
             ``body`` contains an H2 or H3 heading without a required ancestor.
     """
     if not allow_heading_disorder:
-        validate_heading_hierarchy(body)
+        # 028-S T1 / 026.001-T: auto-tolerate Microsoft Learn sparse-hierarchy
+        # patterns where H1->H2->H3 enforcement is moot:
+        #   * include fragments (no H1 anywhere) — embedded under a host H1
+        #   * sparse hierarchies (no H2 anywhere) — common in changelogs,
+        #     reference pages, tutorial steps that go H1 + H3 directly
+        # Documents containing an H2 still get strict validation, preserving
+        # the quality-signal feedback loop on real H3-before-H2 bugs.
+        if not body_should_skip_heading_validation(body):
+            validate_heading_hierarchy(body)
     if emit_chunk_anchors:
         body = _inject_chunk_anchors(body)
     yaml_text = "\n".join(_serialize_yaml(frontmatter))
