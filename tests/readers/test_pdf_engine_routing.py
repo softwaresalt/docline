@@ -163,30 +163,18 @@ def test_process_request_rejects_unknown_engine() -> None:
         ProcessRequest(pdf_engine="foobar")  # type: ignore[arg-type]
 
 
-def test_auto_surfaces_adi_credential_error_immediately(tmp_path, monkeypatch) -> None:
+def test_auto_surfaces_adi_credential_error_immediately(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+    install_fake_adi_sdk,
+) -> None:
     """When --pdf-engine auto routes to ADI but credentials are missing,
     AdiCredentialError MUST surface immediately rather than fall back to
     docling silently per-file (which would just spam warnings)."""
-    import types
-
     from docline.readers.adi import AdiCredentialError
     from docline.readers.pdf import read_pdf_pages
 
-    # Install a minimal fake azure.* SDK so require_extra's import check
-    # passes; the test specifically exercises the credential-missing branch
-    # AFTER the SDK gate.
-    monkeypatch.setitem(sys.modules, "azure", types.ModuleType("azure"))
-    monkeypatch.setitem(sys.modules, "azure.core", types.ModuleType("azure.core"))
-    creds_mod = types.ModuleType("azure.core.credentials")
-    creds_mod.AzureKeyCredential = type("FakeCred", (), {"__init__": lambda self, k: None})
-    monkeypatch.setitem(sys.modules, "azure.core.credentials", creds_mod)
-    exc_mod = types.ModuleType("azure.core.exceptions")
-    exc_mod.AzureError = type("FakeAzureError", (Exception,), {})
-    monkeypatch.setitem(sys.modules, "azure.core.exceptions", exc_mod)
-    monkeypatch.setitem(sys.modules, "azure.ai", types.ModuleType("azure.ai"))
-    di_mod = types.ModuleType("azure.ai.documentintelligence")
-    di_mod.DocumentIntelligenceClient = type("FakeClient", (), {})
-    monkeypatch.setitem(sys.modules, "azure.ai.documentintelligence", di_mod)
+    install_fake_adi_sdk()
 
     pdf = tmp_path / "doc.pdf"
     pdf.write_bytes(b"%PDF-1.4 placeholder")
@@ -202,45 +190,31 @@ def test_auto_surfaces_adi_credential_error_immediately(tmp_path, monkeypatch) -
         read_pdf_pages(pdf, layout_engine="auto")
 
 
-def test_auto_falls_back_on_transient_adi_error(tmp_path, monkeypatch, caplog) -> None:
+def test_auto_falls_back_on_transient_adi_error(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+    install_fake_adi_sdk,
+    caplog,
+) -> None:
     """A non-credential, non-dependency ADI failure (e.g. transient
     cloud blip) MUST trigger a WARNING log and fall back to the next
     engine in the chain (docling, then heuristic) rather than aborting
     the batch."""
     import logging
-    import types
 
     from docline.readers.pdf import read_pdf_pages
     from docline.schema.models import DoclineError
-
-    # Install a minimal fake azure.* SDK so the SDK gate passes; the
-    # FakeClient below raises a transient-looking DoclineError when
-    # begin_analyze_document is called.
-    monkeypatch.setitem(sys.modules, "azure", types.ModuleType("azure"))
-    monkeypatch.setitem(sys.modules, "azure.core", types.ModuleType("azure.core"))
-    creds_mod = types.ModuleType("azure.core.credentials")
-    creds_mod.AzureKeyCredential = type("FakeCred", (), {"__init__": lambda self, k: None})
-    monkeypatch.setitem(sys.modules, "azure.core.credentials", creds_mod)
-    exc_mod = types.ModuleType("azure.core.exceptions")
-    exc_mod.AzureError = type("FakeAzureError", (Exception,), {})
-    monkeypatch.setitem(sys.modules, "azure.core.exceptions", exc_mod)
-    monkeypatch.setitem(sys.modules, "azure.ai", types.ModuleType("azure.ai"))
-    di_mod = types.ModuleType("azure.ai.documentintelligence")
 
     class _BlippyClient:
         def __init__(self, *, endpoint, credential) -> None:
             pass
 
         def begin_analyze_document(self, **kwargs):
-            # Simulate a transient cloud failure (anything other than
-            # FileNotFoundError, DependencyUnavailableError, AdiCredentialError)
             raise DoclineError("transient: simulated 503 from ADI")
 
-    di_mod.DocumentIntelligenceClient = _BlippyClient
-    monkeypatch.setitem(sys.modules, "azure.ai.documentintelligence", di_mod)
+    install_fake_adi_sdk(client_cls=_BlippyClient)
 
     pdf = tmp_path / "doc.pdf"
-    # Write a minimal valid PDF so the heuristic fallback can read it.
     pdf.write_bytes(
         b"%PDF-1.4\n1 0 obj <<>> endobj\nxref\n0 1\n0000000000 65535 f \n"
         b"trailer <</Size 1>>\nstartxref\n40\n%%EOF\n"
@@ -249,20 +223,12 @@ def test_auto_falls_back_on_transient_adi_error(tmp_path, monkeypatch, caplog) -
     monkeypatch.setenv("AZURE_DOCUMENT_INTELLIGENCE_ENDPOINT", "https://x/")
     monkeypatch.setenv("AZURE_DOCUMENT_INTELLIGENCE_KEY", "k")
 
-    # Force auto policy to resolve to azure_di; pdf_available=False so
-    # the fallback path lands at heuristic (deterministic test outcome
-    # that doesn't depend on whether docling is installed in CI).
     monkeypatch.setattr(dependencies, "adi_available", lambda: True)
     monkeypatch.setattr(dependencies, "pdf_available", lambda: False)
 
     with caplog.at_level(logging.WARNING, logger="docline.readers.pdf"):
-        # Should NOT raise — the transient error should be caught, a
-        # warning logged, and the heuristic engine should produce output
-        # (possibly empty, depending on the placeholder PDF parseability).
         result = read_pdf_pages(pdf, layout_engine="auto")
 
-    # The fallback path returned something (list, possibly empty) rather
-    # than raising; the warning was emitted.
     assert isinstance(result, list)
     assert any(
         "ADI failed" in record.getMessage() and "falling back" in record.getMessage()

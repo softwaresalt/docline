@@ -205,6 +205,17 @@ def _pct_delta(adi_val: float, docling_val: float) -> float | None:
     return round(100.0 * (adi_val - docling_val) / docling_val, 1)
 
 
+def _fmt_delta(value: float | None) -> str:
+    """Format a raw delta value (not a percent) for the Markdown table.
+
+    Renders ``None`` (defensive guard for failed/missing metric values)
+    as ``"n/a"`` and numeric values with a leading sign + 2 decimals.
+    """
+    if value is None:
+        return "n/a"
+    return f"{value:+.2f}"
+
+
 def _fmt_pct(value: float | None) -> str:
     """Format a percent-delta value for the Markdown table.
 
@@ -313,7 +324,7 @@ def main() -> int:
                 continue
             d = m["deltas"]
             md_lines.append(
-                f"| {m['range']} | {d['structural_density_per_1k']:+.2f} | "
+                f"| {m['range']} | {_fmt_delta(d['structural_density_per_1k'])} | "
                 f"{_fmt_pct(d['heading_count_pct'])} | "
                 f"{_fmt_pct(d['table_count_pct'])} | "
                 f"{_fmt_pct(d['list_item_count_pct'])} | "

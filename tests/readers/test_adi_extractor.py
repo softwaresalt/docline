@@ -11,7 +11,6 @@ from __future__ import annotations
 
 import os
 import sys
-import types
 from pathlib import Path
 
 import pytest
@@ -67,80 +66,21 @@ def test_resolve_credentials_both_missing_raises(monkeypatch: pytest.MonkeyPatch
 
 # ---------------------------------------------------------------------------
 # read_pdf_adi behavior — uses installed-SDK fake to verify call shape
+#
+# Tests in this section consume the ``install_fake_adi_sdk`` fixture from
+# ``tests/readers/conftest.py`` (shared across this file and
+# ``test_pdf_engine_routing.py`` per 029-S R5 Copilot review).
 # ---------------------------------------------------------------------------
 
 
-def _install_fake_adi_sdk(
-    monkeypatch: pytest.MonkeyPatch,
-    content: str = "# Mock content\n\nbody",
-) -> None:
-    """Install fake ``azure.*`` modules via ``monkeypatch.setitem`` so they
-    are automatically rolled back at test teardown.
-
-    Stubs only the minimum surface ``read_pdf_adi`` touches. Using
-    ``monkeypatch.setitem(sys.modules, ...)`` (rather than direct
-    assignment) guarantees teardown restores the prior state, so the
-    test suite has no order-dependent isolation hazard between this
-    test file and any other that touches the real ``azure`` package.
-    """
-    # azure package skeleton
-    monkeypatch.setitem(sys.modules, "azure", types.ModuleType("azure"))
-    monkeypatch.setitem(sys.modules, "azure.core", types.ModuleType("azure.core"))
-
-    creds_mod = types.ModuleType("azure.core.credentials")
-
-    class _FakeAzureKeyCredential:
-        def __init__(self, key: str) -> None:
-            self.key = key
-
-    creds_mod.AzureKeyCredential = _FakeAzureKeyCredential
-    monkeypatch.setitem(sys.modules, "azure.core.credentials", creds_mod)
-
-    exc_mod = types.ModuleType("azure.core.exceptions")
-
-    class _FakeAzureError(Exception):
-        pass
-
-    exc_mod.AzureError = _FakeAzureError
-    monkeypatch.setitem(sys.modules, "azure.core.exceptions", exc_mod)
-
-    monkeypatch.setitem(sys.modules, "azure.ai", types.ModuleType("azure.ai"))
-
-    di_mod = types.ModuleType("azure.ai.documentintelligence")
-
-    class _FakeResult:
-        def __init__(self, content_value: str, pages: int) -> None:
-            self.content = content_value
-            self.pages = [object()] * pages
-
-    class _FakePoller:
-        def __init__(self, result_value: object) -> None:
-            self._r = result_value
-
-        def result(self) -> object:
-            return self._r
-
-    class _FakeClient:
-        last_call: dict[str, object] = {}
-
-        def __init__(self, *, endpoint: str, credential: object) -> None:
-            self.endpoint = endpoint
-            self.credential = credential
-
-        def begin_analyze_document(self, **kwargs: object) -> _FakePoller:
-            _FakeClient.last_call = kwargs
-            return _FakePoller(_FakeResult(content, pages=3))
-
-    di_mod.DocumentIntelligenceClient = _FakeClient
-    monkeypatch.setitem(sys.modules, "azure.ai.documentintelligence", di_mod)
-
-
 def test_read_pdf_adi_returns_markdown_content(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    install_fake_adi_sdk,
 ) -> None:
     monkeypatch.setenv("AZURE_DOCUMENT_INTELLIGENCE_ENDPOINT", "https://x/")
     monkeypatch.setenv("AZURE_DOCUMENT_INTELLIGENCE_KEY", "k")
-    _install_fake_adi_sdk(monkeypatch, content="# Hello\n\nbody text")
+    install_fake_adi_sdk(content="# Hello\n\nbody text")
     pdf = tmp_path / "doc.pdf"
     pdf.write_bytes(b"%PDF-1.4 minimal placeholder")
 
@@ -152,10 +92,11 @@ def test_read_pdf_adi_returns_markdown_content(
 def test_read_pdf_adi_passes_layout_model_and_markdown_format(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+    install_fake_adi_sdk,
 ) -> None:
     monkeypatch.setenv("AZURE_DOCUMENT_INTELLIGENCE_ENDPOINT", "https://x/")
     monkeypatch.setenv("AZURE_DOCUMENT_INTELLIGENCE_KEY", "k")
-    _install_fake_adi_sdk(monkeypatch)
+    install_fake_adi_sdk()
     pdf = tmp_path / "doc.pdf"
     pdf.write_bytes(b"%PDF placeholder")
 
@@ -172,10 +113,14 @@ def test_read_pdf_adi_passes_layout_model_and_markdown_format(
     assert last["body"] == pdf.read_bytes()
 
 
-def test_read_pdf_adi_missing_file_raises(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_read_pdf_adi_missing_file_raises(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    install_fake_adi_sdk,
+) -> None:
     monkeypatch.setenv("AZURE_DOCUMENT_INTELLIGENCE_ENDPOINT", "https://x/")
     monkeypatch.setenv("AZURE_DOCUMENT_INTELLIGENCE_KEY", "k")
-    _install_fake_adi_sdk(monkeypatch)
+    install_fake_adi_sdk()
     missing = tmp_path / "nonexistent.pdf"
     with pytest.raises(FileNotFoundError):
         read_pdf_adi(missing)
@@ -184,10 +129,11 @@ def test_read_pdf_adi_missing_file_raises(tmp_path: Path, monkeypatch: pytest.Mo
 def test_read_pdf_adi_no_credentials_raises_credential_error(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+    install_fake_adi_sdk,
 ) -> None:
     monkeypatch.delenv("AZURE_DOCUMENT_INTELLIGENCE_ENDPOINT", raising=False)
     monkeypatch.delenv("AZURE_DOCUMENT_INTELLIGENCE_KEY", raising=False)
-    _install_fake_adi_sdk(monkeypatch)
+    install_fake_adi_sdk()
     pdf = tmp_path / "doc.pdf"
     pdf.write_bytes(b"%PDF")
     with pytest.raises(AdiCredentialError):
@@ -197,10 +143,11 @@ def test_read_pdf_adi_no_credentials_raises_credential_error(
 def test_read_pdf_adi_explicit_credentials_bypass_env(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+    install_fake_adi_sdk,
 ) -> None:
     monkeypatch.delenv("AZURE_DOCUMENT_INTELLIGENCE_ENDPOINT", raising=False)
     monkeypatch.delenv("AZURE_DOCUMENT_INTELLIGENCE_KEY", raising=False)
-    _install_fake_adi_sdk(monkeypatch)
+    install_fake_adi_sdk()
     pdf = tmp_path / "doc.pdf"
     pdf.write_bytes(b"%PDF")
     # Should NOT raise — explicit args bypass env-var check.
