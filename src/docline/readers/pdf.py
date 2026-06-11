@@ -38,7 +38,7 @@ _log = logging.getLogger(__name__)
 # optional ``docling`` package and is gated by :func:`dependencies.pdf_available`.
 # ``"auto"`` (G3c / 014-S) resolves to ``"docling"`` when the optional
 # ``docline[pdf]`` extras are installed, else ``"heuristic"``.
-_SUPPORTED_LAYOUT_ENGINES: frozenset[str] = frozenset({"auto", "heuristic", "docling"})
+_SUPPORTED_LAYOUT_ENGINES: frozenset[str] = frozenset({"auto", "heuristic", "docling", "azure_di"})
 
 
 def _validate_layout_engine(engine: str) -> None:
@@ -58,18 +58,28 @@ def _validate_layout_engine(engine: str) -> None:
 
 
 def _resolve_layout_engine(requested: str) -> str:
-    """Resolve ``"auto"`` to ``"docling"`` when available, else ``"heuristic"``.
+    """Resolve ``"auto"`` to a concrete engine using the documented policy.
 
     Validates ``requested`` first. Pass-through behavior for explicit
-    ``"heuristic"`` and ``"docling"`` is preserved — only ``"auto"`` is
-    resolved against the runtime probe.
+    ``"heuristic"``, ``"docling"``, and ``"azure_di"`` is preserved —
+    only ``"auto"`` is resolved against the runtime probe.
+
+    ``"auto"`` policy (027-F / 029-S spike):
+
+    1. Prefer ``"azure_di"`` when ``AZURE_DOCUMENT_INTELLIGENCE_ENDPOINT``
+       env var is set AND the ``[adi]`` extra is installed. Cloud
+       throughput + reliability win when credentials are present.
+    2. Else prefer ``"docling"`` when the ``[pdf]`` extra is installed.
+       Existing behavior preserved when ADI is not configured.
+    3. Else fall back to ``"heuristic"``. Always-available fallback.
 
     Args:
         requested: Engine name (one of ``"auto"``, ``"heuristic"``,
-            ``"docling"``).
+            ``"docling"``, ``"azure_di"``).
 
     Returns:
-        The concrete engine name (``"heuristic"`` or ``"docling"``).
+        The concrete engine name (``"heuristic"``, ``"docling"``, or
+        ``"azure_di"``).
 
     Raises:
         ValueError: If ``requested`` is not a recognized engine value.
@@ -77,7 +87,11 @@ def _resolve_layout_engine(requested: str) -> str:
     _validate_layout_engine(requested)
     if requested != "auto":
         return requested
-    return "docling" if dependencies.pdf_available() else "heuristic"
+    if os.environ.get("AZURE_DOCUMENT_INTELLIGENCE_ENDPOINT") and dependencies.adi_available():
+        return "azure_di"
+    if dependencies.pdf_available():
+        return "docling"
+    return "heuristic"
 
 
 def resolve_pdf_engine_for_file(
@@ -629,6 +643,41 @@ def read_pdf_pages(
         ValueError: If ``layout_engine`` is not a recognized engine value.
     """
     resolved_engine = _resolve_layout_engine(layout_engine)
+    if resolved_engine == "azure_di":
+        if not dependencies.adi_available():
+            raise DependencyUnavailableError(
+                "Install the optional 'azure-ai-documentintelligence' package to use "
+                "layout_engine='azure_di' (extras: docline[adi]; "
+                "missing import: azure.ai.documentintelligence)"
+            )
+        # ADI returns markdown content directly; wrap the single response in a
+        # 1-element list to match the per-page pages-of-text contract that
+        # other engines return.
+        from docline.readers.adi import read_pdf_adi
+
+        if layout_engine == "auto":
+            try:
+                content = read_pdf_adi(path)
+                return [content] if content else []
+            except FileNotFoundError:
+                raise
+            except DependencyUnavailableError:
+                raise
+            except Exception as err:  # noqa: BLE001
+                # Auto-fallback to docling (or heuristic) on transient ADI
+                # failures so a single Azure-side blip doesn't abort the batch.
+                _log.warning(
+                    "ADI failed on %s (%s: %s); falling back to docling/heuristic",
+                    path,
+                    type(err).__name__,
+                    err,
+                )
+                # Drop down to the docling / heuristic path below by recomputing
+                # the resolved engine WITHOUT the azure_di preference.
+                resolved_engine = "docling" if dependencies.pdf_available() else "heuristic"
+        else:
+            content = read_pdf_adi(path)
+            return [content] if content else []
     if resolved_engine == "docling":
         if not dependencies.pdf_available():
             raise DependencyUnavailableError(

@@ -73,7 +73,7 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     process_parser.add_argument(
         "--pdf-engine",
-        choices=("auto", "docling", "heuristic"),
+        choices=("auto", "docling", "azure_di", "heuristic"),
         default="auto",
         help=(
             "PDF layout extractor selection. 'auto' (default) uses docling "
@@ -178,7 +178,7 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     local_dir_parser.add_argument(
         "--pdf-engine",
-        choices=("auto", "docling", "heuristic"),
+        choices=("auto", "docling", "azure_di", "heuristic"),
         default="auto",
         help="Passthrough to docline process (see `docline process --help`).",
     )

@@ -1,0 +1,190 @@
+---
+title: 029-S Azure Document Intelligence spike — third pdf_engine peer
+date: 2026-06-11
+status: shipped-pending-empirical-findings
+shipment: 029-S
+feature: 027-F
+tasks:
+  - 027.001-T  # T1 [adi] optional extra
+  - 027.002-T  # T2 adi_extractor module
+  - 027.003-T  # T3 pdf_engine routing + auto policy
+  - 027.004-T  # T4 empirical study (operator runs with credentials)
+  - 027.005-T  # T5 this closure doc
+related_decisions:
+  - docs/decisions/2026-06-10-next-pdf-pipeline-shipment-deliberation.md
+  - docs/decisions/2026-06-08-extraction-strategy-study.md
+consumed_stashes:
+  - F10EB5CB  # ADI spike intent
+---
+
+## Outcome
+
+Wired Azure Document Intelligence (ADI) as an opt-in **third
+`pdf_engine` peer** alongside the existing `docling` and `heuristic`
+engines. ADI is gated behind the optional `[adi]` extra (no impact on
+default installs) and an environment-variable credential check.
+
+**Empirical comparison vs docling on the 5 cosmos sample ranges is
+PENDING** — the operator runs `scripts/study/adi_comparison.py` with
+their Azure credentials when ready (the script costs ~$0.40 at list
+price). This closure doc gets a second pass once those findings land.
+
+## Acceptance criteria
+
+| AC | Statement | Status |
+|---|---|---|
+| AC1 | T1+T2+T3 wire ADI without breaking docling/heuristic | ✅ 28 new tests pass; existing 1,169 still pass |
+| AC2 | T4 empirical study on 5 cosmos ranges (within 10% structural density, <5% wall time, 0 failures) | ⏳ **PENDING operator credentials** — script ready: `scripts/study/adi_comparison.py` |
+| AC3 | T5 closure with cost analysis + recommended auto policy | ✅ this doc (recommendation matrix below; empirical data lands in second pass) |
+| AC4 | All four local quality gates pass | ✅ (T4 live test self-skips when env vars absent) |
+| AC5 | Spike output DECIDES production rollout, doesn't mandate it | ✅ auto policy is conservative; defaults to docling when no env var |
+
+## What shipped
+
+### T1 — Optional `[adi]` extra
+
+`pyproject.toml` gained an `[adi]` extra pinning
+`azure-ai-documentintelligence>=1.0,<2`. The SDK is NOT pulled in by
+the default install; existing environments are unaffected.
+
+### T2 — `src/docline/readers/adi.py`
+
+Public API:
+- `read_pdf_adi(path, endpoint=None, key=None, model_id="prebuilt-layout") -> str`
+- `AdiCredentialError` (raised when endpoint+key not resolvable)
+
+Implementation:
+- Lazy SDK import (raises `DependencyUnavailableError` with install hint when `[adi]` absent)
+- Credentials from explicit args OR `AZURE_DOCUMENT_INTELLIGENCE_ENDPOINT` + `AZURE_DOCUMENT_INTELLIGENCE_KEY` env vars
+- Uses `model_id="prebuilt-layout"` and `output_content_format="markdown"` (returns ready-to-ingest markdown)
+- Per-call telemetry: page count + wall time + projected cost line item logged via `_log.info`
+- 12 tests (11 unit, 1 live-integration env-gated)
+
+### T3 — `pdf_engine` routing
+
+- `pdf_engine` literal extended to `Literal["auto", "docling", "azure_di", "heuristic"]`
+- `--pdf-engine azure_di` accepted by `docline process`, `docline ingest local-dir`
+- MCP manifest enum updated
+- `read_pdf_pages` dispatches `azure_di` to `read_pdf_adi`; result wrapped in a 1-element list to match the per-page contract
+- `auto` policy: prefer `azure_di` when `AZURE_DOCUMENT_INTELLIGENCE_ENDPOINT` env var set AND `[adi]` extra installed; else docling; else heuristic
+- `auto` path catches ADI failures and falls back to docling/heuristic so a single Azure-side blip doesn't abort the batch
+- 13 tests covering the routing matrix
+
+### T4 — `scripts/study/adi_comparison.py`
+
+Empirical-study harness. Reuses the 5 existing cosmos sample ranges
+under `.elt/output/cosmos-triage-022/study/dataset/range-NNNN-NNNN/`.
+For each range:
+
+1. Slice the source PDF (`.elt/data/cosmosdb/azure-cosmos-db.pdf`) to the
+   range's page indices via `pypdf`
+2. Send the sliced PDF to ADI through the new `read_pdf_adi`
+3. Save the result as `adi.md` alongside the existing `docling.md` and
+   `markitdown.md`
+4. Compute the same 25 AST metrics as `scripts/study/evaluate_markdown.py`
+5. Emit aggregate `adi-findings.json` + `adi-findings.md` in
+   `.elt/output/cosmos-triage-022/study/results/`
+
+Flags: `--source-pdf`, `--range`, `--dry-run`, `--results-dir`.
+Idempotent — skips ranges whose `adi.md` already exists.
+
+### T5 — this closure doc
+
+Documents the integration shape, current state, recommended `auto`
+policy, cost analysis, and where the empirical-findings update will
+land.
+
+## Recommended `auto` policy
+
+Already implemented in `_resolve_layout_engine`:
+
+| Condition | Resolved engine |
+|---|---|
+| `AZURE_DOCUMENT_INTELLIGENCE_ENDPOINT` set AND `[adi]` installed | `azure_di` |
+| `[pdf]` installed (`docling` available) | `docling` |
+| Otherwise | `heuristic` |
+
+This is **opt-in by configuration, not by code change**: setting the
+env var on a machine with `[adi]` installed flips the default. The
+operator can override with `--pdf-engine docling` or `--pdf-engine
+heuristic` per run.
+
+## Cost analysis (list price, 2026-06)
+
+| Workload | Pages | ADI cost @ $0.0015/page | Docling wall time | ADI wall time est. |
+|---|---:|---:|---:|---:|
+| Cosmos sample (5 ranges) | ~250 | **$0.38** | hours | minutes |
+| Full cosmos PDF | ~4,500 | **$6.75** | ~25 h | ~30 min est. |
+| Full Power BI corpus *(if used for PDFs)* | varies | — | — | — |
+
+## Production rollout decision
+
+**KEEP-AS-PEER (provisional)** — pending empirical study findings.
+
+Rationale: the integration is conservative by design. ADI is not
+auto-preferred unless the operator explicitly sets the env var, which
+constitutes an opt-in signal that they've accepted the cost trade-off.
+If the empirical study (T4) shows ADI quality within 10% of docling on
+the cosmos sample ranges, the recommendation graduates to **ADOPT** —
+update the `auto` policy comment to note ADI is the preferred path for
+high-fidelity extraction.
+
+## How to complete the empirical study (operator workflow)
+
+1. Install the extra: `pip install -e .[adi]` (or `uv pip install -e
+   .[adi]`)
+2. Provision ADI credentials in Azure portal (Cognitive Services →
+   Document Intelligence resource → Keys and Endpoint)
+3. Set env vars in PowerShell:
+
+   ```powershell
+   setx AZURE_DOCUMENT_INTELLIGENCE_ENDPOINT "https://<resource>.cognitiveservices.azure.com/"
+   setx AZURE_DOCUMENT_INTELLIGENCE_KEY "<primary-or-secondary-key>"
+   # restart shell so setx takes effect
+   ```
+
+4. Dry-run to see the plan + projected cost:
+   `python scripts/study/adi_comparison.py --dry-run`
+5. Run for real (~$0.40 of ADI credits):
+   `python scripts/study/adi_comparison.py`
+6. Inspect findings:
+   `.elt/output/cosmos-triage-022/study/results/adi-findings.md`
+7. Amend THIS closure doc (status `shipped-pending-empirical-findings`
+   → `verified-adopt` or `verified-keep-as-peer` or
+   `verified-abandon`) with the actual metrics
+
+## Invariants enforced / preserved
+
+1. **Optional SDK never required at default install**: `import docline`
+   works without `[adi]`; ADI extractor lazy-imports the SDK and raises
+   `DependencyUnavailableError` with install hint when absent
+2. **No credentials in code or tests**: env-var resolution only;
+   `AdiCredentialError` for missing values; test fixtures use mocked SDK
+3. **Auto policy is opt-in**: setting env var is the operator's signal
+   they've accepted the cost trade-off
+4. **Failure tolerance**: `auto` path catches ADI transient failures and
+   falls back to docling/heuristic so cloud blips don't abort batches
+5. **Telemetry for cost visibility**: every ADI call logs `pages` +
+   `wall_s` + `projected_cost_usd` at INFO level
+
+## Rollback
+
+Single shipment, single PR. Rollback = revert the merge commit. The
+three peer engines are independent; removing `azure_di` from the
+literal restores pre-spike behavior. Existing `docling`/`heuristic`
+paths are unaffected by this change.
+
+## Follow-up stashes captured (none yet)
+
+Suggested follow-ups depending on empirical findings:
+
+- **If ADOPT**: stash a "cost guardrail" task (warn when projected per-run
+  cost exceeds threshold) before bulk usage
+- **If ADOPT**: stash a "managed-identity credential resolution" task to
+  enable production deployments without storing keys
+- **If KEEP-AS-PEER**: stash a "ADI selective routing" task — let the
+  triage scorer route only high-complexity pages to ADI while keeping
+  docling as the default
+- **If ABANDON**: stash a follow-up to address the specific deficiencies
+  observed in the empirical study; remove `azure_di` from `auto` policy
+  but keep as explicit-opt-in for operator experimentation

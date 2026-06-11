@@ -69,7 +69,7 @@ class ProcessRequest(BaseModel):
     staging_dir: str = ".cache/staging"
     output_dir: str = "output"
     allow_heading_disorder: bool = False
-    pdf_engine: Literal["auto", "docling", "heuristic"] = "auto"
+    pdf_engine: Literal["auto", "docling", "azure_di", "heuristic"] = "auto"
     pdf_mode: Literal["auto", "triage"] = Field(
         default="auto",
         description=(

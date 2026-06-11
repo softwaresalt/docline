@@ -440,7 +440,7 @@ def get_manifest() -> Manifest:
                         "allow_heading_disorder": {"type": "boolean", "default": False},
                         "pdf_engine": {
                             "type": "string",
-                            "enum": ["auto", "docling", "heuristic"],
+                            "enum": ["auto", "docling", "azure_di", "heuristic"],
                             "default": "auto",
                         },
                         "pdf_mode": {
