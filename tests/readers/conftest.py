@@ -9,6 +9,17 @@ Currently exposes:
   from the per-file duplication that crept into
   ``test_adi_extractor.py`` and ``test_pdf_engine_routing.py`` during
   the 029-S spike (R5 Copilot review).
+
+Class-identity invariant (R8 Copilot review)
+--------------------------------------------
+``_FakeAzureKeyCredential`` and ``_FakeAzureError`` are defined ONCE
+at module scope rather than inside ``_stub_azure_module_tree``. Calling
+``install_fake_adi_sdk(...)`` multiple times within a single test
+(e.g. once with the default client, then again with a custom client)
+MUST install the SAME exception class each time, otherwise
+``isinstance`` checks and ``except AzureError`` clauses inside
+production code under test would silently miss exceptions raised by
+the first-installed class.
 """
 
 from __future__ import annotations
@@ -18,6 +29,22 @@ import types
 from collections.abc import Callable
 
 import pytest
+
+
+class _FakeAzureKeyCredential:
+    """Stable fake credential class shared across all fixture invocations."""
+
+    def __init__(self, key: str) -> None:
+        self.key = key
+
+
+class _FakeAzureError(Exception):
+    """Stable fake exception class shared across all fixture invocations.
+
+    Module-scope so ``isinstance(exc, AzureError)`` works correctly
+    after multiple ``install_fake_adi_sdk(...)`` calls within the
+    same test (R8 Copilot review).
+    """
 
 
 def _stub_azure_module_tree(
@@ -33,24 +60,18 @@ def _stub_azure_module_tree(
 
     All entries are installed via ``monkeypatch.setitem(sys.modules,
     ...)`` so pytest automatically rolls them back at test teardown.
+
+    The credential and exception classes are stable module-level
+    constants (see class-identity invariant in the module docstring).
     """
     monkeypatch.setitem(sys.modules, "azure", types.ModuleType("azure"))
     monkeypatch.setitem(sys.modules, "azure.core", types.ModuleType("azure.core"))
 
     creds_mod = types.ModuleType("azure.core.credentials")
-
-    class _FakeAzureKeyCredential:
-        def __init__(self, key: str) -> None:
-            self.key = key
-
     creds_mod.AzureKeyCredential = _FakeAzureKeyCredential
     monkeypatch.setitem(sys.modules, "azure.core.credentials", creds_mod)
 
     exc_mod = types.ModuleType("azure.core.exceptions")
-
-    class _FakeAzureError(Exception):
-        pass
-
     exc_mod.AzureError = _FakeAzureError
     monkeypatch.setitem(sys.modules, "azure.core.exceptions", exc_mod)
 
@@ -78,6 +99,12 @@ def install_fake_adi_sdk(
        ``MyClient`` as the ``DocumentIntelligenceClient`` so the
        caller can fully customize behavior (e.g. raise a specific
        error to simulate a transient cloud failure).
+
+    Successive calls within a single test reuse the same
+    ``AzureKeyCredential`` and ``AzureError`` classes (see the
+    class-identity invariant in the module docstring) so production
+    code's ``except AzureError`` clauses and ``isinstance`` checks
+    behave correctly across calls.
     """
 
     def _install(
