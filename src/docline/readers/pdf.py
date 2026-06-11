@@ -653,7 +653,7 @@ def read_pdf_pages(
         # ADI returns markdown content directly; wrap the single response in a
         # 1-element list to match the per-page pages-of-text contract that
         # other engines return.
-        from docline.readers.adi import read_pdf_adi
+        from docline.readers.adi import AdiCredentialError, read_pdf_adi
 
         if layout_engine == "auto":
             try:
@@ -662,6 +662,12 @@ def read_pdf_pages(
             except FileNotFoundError:
                 raise
             except DependencyUnavailableError:
+                raise
+            except AdiCredentialError:
+                # Misconfigured credentials are a PERSISTENT operator-action
+                # error, not a transient failure. Surface immediately so the
+                # operator can fix the env vars instead of seeing the same
+                # warning fire per-file across the whole batch.
                 raise
             except Exception as err:  # noqa: BLE001
                 # Auto-fallback to docling (or heuristic) on transient ADI

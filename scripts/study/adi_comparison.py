@@ -190,10 +190,18 @@ def _compute_metrics(range_dir: Path) -> dict[str, object]:
     }
 
 
-def _pct_delta(adi_val: float, docling_val: float) -> float:
-    """Percent delta of ADI vs docling (negative = ADI is lower)."""
+def _pct_delta(adi_val: float, docling_val: float) -> float | None:
+    """Percent delta of ADI vs docling (negative = ADI is lower).
+
+    Returns ``None`` when docling's value is 0 and ADI's is positive
+    (the divide-by-zero case). Using ``None`` rather than
+    ``float("inf")`` keeps the aggregate ``adi-findings.json``
+    parseable by strict (RFC 8259) JSON consumers, which reject the
+    bare ``Infinity`` token. The Markdown formatter renders ``None``
+    as ``"n/a (docling=0)"``.
+    """
     if docling_val == 0:
-        return float("inf") if adi_val > 0 else 0.0
+        return None if adi_val > 0 else 0.0
     return round(100.0 * (adi_val - docling_val) / docling_val, 1)
 
 
@@ -293,10 +301,18 @@ def main() -> int:
             if m.get("status") != "compared":
                 continue
             d = m["deltas"]
+
+            def _fmt_pct(value: object) -> str:
+                if value is None:
+                    return "n/a (docling=0)"
+                return f"{value:+.1f}"
+
             md_lines.append(
                 f"| {m['range']} | {d['structural_density_per_1k']:+.2f} | "
-                f"{d['heading_count_pct']:+.1f} | {d['table_count_pct']:+.1f} | "
-                f"{d['list_item_count_pct']:+.1f} | {d['char_count_pct']:+.1f} |"
+                f"{_fmt_pct(d['heading_count_pct'])} | "
+                f"{_fmt_pct(d['table_count_pct'])} | "
+                f"{_fmt_pct(d['list_item_count_pct'])} | "
+                f"{_fmt_pct(d['char_count_pct'])} |"
             )
     md_path = args.results_dir / "adi-findings.md"
     md_path.write_text("\n".join(md_lines) + "\n", encoding="utf-8")

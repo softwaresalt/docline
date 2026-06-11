@@ -161,3 +161,46 @@ def test_process_request_rejects_unknown_engine() -> None:
 
     with pytest.raises(ValidationError):
         ProcessRequest(pdf_engine="foobar")  # type: ignore[arg-type]
+
+
+def test_auto_surfaces_adi_credential_error_immediately(tmp_path, monkeypatch) -> None:
+    """When --pdf-engine auto routes to ADI but credentials are missing,
+    AdiCredentialError MUST surface immediately rather than fall back to
+    docling silently per-file (which would just spam warnings)."""
+    import sys
+    import types
+
+    import pytest as _pytest
+
+    from docline import dependencies as _dep
+    from docline.readers.adi import AdiCredentialError
+    from docline.readers.pdf import read_pdf_pages
+
+    # Install a minimal fake azure.* SDK so require_extra's import check
+    # passes; the test specifically exercises the credential-missing branch
+    # AFTER the SDK gate.
+    monkeypatch.setitem(sys.modules, "azure", types.ModuleType("azure"))
+    monkeypatch.setitem(sys.modules, "azure.core", types.ModuleType("azure.core"))
+    creds_mod = types.ModuleType("azure.core.credentials")
+    creds_mod.AzureKeyCredential = type("FakeCred", (), {"__init__": lambda self, k: None})
+    monkeypatch.setitem(sys.modules, "azure.core.credentials", creds_mod)
+    exc_mod = types.ModuleType("azure.core.exceptions")
+    exc_mod.AzureError = type("FakeAzureError", (Exception,), {})
+    monkeypatch.setitem(sys.modules, "azure.core.exceptions", exc_mod)
+    monkeypatch.setitem(sys.modules, "azure.ai", types.ModuleType("azure.ai"))
+    di_mod = types.ModuleType("azure.ai.documentintelligence")
+    di_mod.DocumentIntelligenceClient = type("FakeClient", (), {})
+    monkeypatch.setitem(sys.modules, "azure.ai.documentintelligence", di_mod)
+
+    pdf = tmp_path / "doc.pdf"
+    pdf.write_bytes(b"%PDF-1.4 placeholder")
+
+    monkeypatch.setenv("AZURE_DOCUMENT_INTELLIGENCE_ENDPOINT", "https://x/")
+    monkeypatch.delenv("AZURE_DOCUMENT_INTELLIGENCE_KEY", raising=False)
+
+    # Force the auto policy to resolve to azure_di by claiming ADI is available.
+    monkeypatch.setattr(_dep, "adi_available", lambda: True)
+    monkeypatch.setattr(_dep, "pdf_available", lambda: True)
+
+    with _pytest.raises(AdiCredentialError):
+        read_pdf_pages(pdf, layout_engine="auto")
