@@ -500,7 +500,7 @@ def execute_process(request: ProcessRequest) -> ProcessResult:
     Returns:
         A process result describing the outcome.
     """
-    root = Path.cwd()
+    root = Path(request.workspace_root).resolve() if request.workspace_root else Path.cwd()
     try:
         staging_dir = safe_workspace_path(request.staging_dir, root)
     except PathContainmentError as err:

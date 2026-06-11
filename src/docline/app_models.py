@@ -52,7 +52,19 @@ class ProcessRequest(BaseModel):
 
     Attributes:
         staging_dir: Directory containing staged files to process.
+            Resolved relative to ``workspace_root`` (or ``Path.cwd()``
+            when ``workspace_root`` is unset).
         output_dir: Directory where processed output files are written.
+            Resolved relative to ``workspace_root`` (or ``Path.cwd()``
+            when ``workspace_root`` is unset).
+        workspace_root: Optional absolute path used as the containment
+            root for ``staging_dir`` and ``output_dir`` resolution. When
+            unset (default), ``Path.cwd()`` is used — the legacy MCP
+            and ``docline process`` behavior. The CLI ``ingest local-dir``
+            flow sets this so the operator can run docline from any cwd
+            and still write outputs to absolute paths (e.g.
+            ``E:\\out\\powerbi`` while sitting in
+            ``D:\\Source\\GitHub\\docline``).
         allow_heading_disorder: When ``True``, bypass the H1->H2->H3 heading
             hierarchy validation during Markdown assembly. Default ``False``.
         pdf_engine: PDF layout extractor selection. Four choices:
@@ -79,6 +91,7 @@ class ProcessRequest(BaseModel):
 
     staging_dir: str = ".cache/staging"
     output_dir: str = "output"
+    workspace_root: str | None = None
     allow_heading_disorder: bool = False
     pdf_engine: Literal["auto", "docling", "azure_di", "heuristic"] = "auto"
     pdf_mode: Literal["auto", "triage"] = Field(

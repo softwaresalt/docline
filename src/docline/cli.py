@@ -136,7 +136,11 @@ def _build_parser() -> argparse.ArgumentParser:
     local_dir_parser.add_argument(
         "--output",
         required=True,
-        help="Output directory for processed Markdown.",
+        help=(
+            "Output directory for processed Markdown. May be any absolute "
+            "path on a filesystem the operator can write to (e.g. "
+            "`E:\\out\\powerbi`); does not need to be inside the cwd."
+        ),
     )
     local_dir_parser.add_argument(
         "--include",
@@ -159,9 +163,13 @@ def _build_parser() -> argparse.ArgumentParser:
         "--staging-dir",
         default=None,
         help=(
-            "Workspace-relative staging directory. Defaults to a tempdir under "
-            "the workspace .elt/staging/ingest-<job-id>/ that is removed after "
-            "processing unless --keep-staging is passed."
+            "Directory to stage fetched files. May be any absolute path "
+            "on a filesystem the operator can write to. When omitted, "
+            "defaults to `<output_parent>/.docline/ingest-<digest>/` so "
+            "staging stays on the same volume as --output. Falls back to "
+            "the system tempdir when the output parent is not writable. "
+            "The staging dir is removed after processing unless "
+            "--keep-staging is passed."
         ),
     )
     local_dir_parser.add_argument(
@@ -335,9 +343,20 @@ def _run_ingest_local_dir(parsed: argparse.Namespace) -> int:
     ``execute_process`` against the resulting staging directory. Cleans
     up the staging directory after process completes unless
     ``--keep-staging`` is set.
+
+    Path semantics: the CLI ingest utility is intended to be invoked from
+    any cwd. ``source_path``, ``--output``, and ``--staging-dir`` are all
+    treated as operator-trusted paths that may be absolute and may live
+    on filesystems unrelated to the cwd. A "logical workspace root" is
+    derived from the output directory's parent so that the internal
+    workspace-isolation checks (``safe_workspace_path``) still apply, but
+    they apply to a root the operator implicitly chose by providing
+    ``--output`` — not to ``Path.cwd()``.
     """
     import hashlib
+    import os
     import shutil
+    import tempfile
 
     from docline.elt.execute import execute_source_configs
     from docline.elt.manifest_models import ManifestLocalSource
@@ -363,42 +382,65 @@ def _run_ingest_local_dir(parsed: argparse.Namespace) -> int:
     include = parsed.include or ["**/*.md", "**/TOC.yml", "**/toc.yml"]
     exclude = parsed.exclude or []
 
-    # Resolve staging dir. When the operator did not specify one, allocate
-    # a temp dir inside the workspace so safe_workspace_path stays happy and
-    # we can remove it after process completes.
-    workspace = Path.cwd().resolve()
+    # Derive a logical workspace root that contains both staging and
+    # output. This frees the operator from running docline from a
+    # specific cwd: --output may point anywhere on the filesystem the
+    # operator can write to. The downstream safe_workspace_path checks
+    # then apply to this derived root rather than to Path.cwd().
+    logical_root = output_path.parent
     cleanup_staging = not parsed.keep_staging
+
     if parsed.staging_dir is not None:
         staging_path = Path(parsed.staging_dir).resolve()
-        if not staging_path.is_relative_to(workspace):
-            print(
-                f"error: --staging-dir {parsed.staging_dir!r} must resolve inside "
-                f"the workspace ({workspace}); provide a workspace-relative path "
-                "or an absolute path under the workspace root.",
-                file=sys.stderr,
-            )
-            return 1
+        if not staging_path.is_relative_to(logical_root):
+            # Operator provided --staging-dir explicitly and it lives
+            # outside the output's parent. Expand the logical root to
+            # their common ancestor when one exists.
+            try:
+                common = Path(os.path.commonpath([str(staging_path), str(output_path)]))
+            except ValueError:
+                # On Windows, paths on different drives have no common
+                # ancestor. The operator's intent is ambiguous; reject
+                # rather than guess.
+                print(
+                    "error: --staging-dir and --output must share a common "
+                    "parent directory on the same filesystem "
+                    f"(staging={staging_path}, output={output_path}).",
+                    file=sys.stderr,
+                )
+                return 1
+            logical_root = common
         staging_path.mkdir(parents=True, exist_ok=True)
-        staging_dir_arg = str(staging_path.relative_to(workspace).as_posix())
     else:
         digest = hashlib.sha256(str(source_resolved).encode("utf-8")).hexdigest()[:12]
-        staging_path = workspace / ".elt" / "staging" / f"ingest-{digest}"
-        staging_path.mkdir(parents=True, exist_ok=True)
-        staging_dir_arg = str(staging_path.relative_to(workspace).as_posix())
+        # Default staging colocated under the output's parent so
+        # cross-filesystem copies are avoided and the staging dir is on
+        # the same volume the operator has confirmed write access to.
+        # Falls back to the system tempdir when output's parent is not
+        # writable (e.g. mounted read-only).
+        candidate = logical_root / ".docline" / f"ingest-{digest}"
+        try:
+            candidate.mkdir(parents=True, exist_ok=True)
+            staging_path = candidate
+        except OSError:
+            staging_path = Path(tempfile.gettempdir()).resolve() / f"docline-ingest-{digest}"
+            staging_path.mkdir(parents=True, exist_ok=True)
+            # Expand logical_root to a common ancestor so relative_to works.
+            try:
+                logical_root = Path(os.path.commonpath([str(staging_path), str(output_path)]))
+            except ValueError:
+                print(
+                    "error: unable to derive a logical workspace root that "
+                    "contains both the output directory and the system "
+                    "tempdir; pass --staging-dir explicitly to a path on "
+                    f"the same filesystem as --output (output={output_path}).",
+                    file=sys.stderr,
+                )
+                return 1
 
-    if not output_path.is_relative_to(workspace):
-        print(
-            f"error: --output {parsed.output!r} must resolve inside the workspace "
-            f"({workspace}); provide a workspace-relative path or an absolute path "
-            "under the workspace root.",
-            file=sys.stderr,
-        )
-        return 1
-    # Create the output dir only AFTER both containment checks pass so we
-    # never leave an empty directory behind on a rejected request
-    # (Constitution Principle III — workspace isolation).
     output_path.mkdir(parents=True, exist_ok=True)
-    output_dir_arg = str(output_path.relative_to(workspace).as_posix())
+    staging_dir_arg = str(staging_path.relative_to(logical_root).as_posix())
+    output_dir_arg = str(output_path.relative_to(logical_root).as_posix())
 
     config = ManifestLocalSource(
         type="local",
@@ -409,12 +451,13 @@ def _run_ingest_local_dir(parsed: argparse.Namespace) -> int:
     )
 
     try:
-        execute_source_configs([config], staging_dir_arg, workspace_root=workspace)
+        execute_source_configs([config], staging_dir_arg, workspace_root=logical_root)
 
         try:
             process_request = ProcessRequest(
                 staging_dir=staging_dir_arg,
                 output_dir=output_dir_arg,
+                workspace_root=str(logical_root),
                 allow_heading_disorder=parsed.allow_heading_disorder,
                 pdf_engine=parsed.pdf_engine,
                 pdf_mode=parsed.pdf_mode,
