@@ -167,12 +167,8 @@ def test_auto_surfaces_adi_credential_error_immediately(tmp_path, monkeypatch) -
     """When --pdf-engine auto routes to ADI but credentials are missing,
     AdiCredentialError MUST surface immediately rather than fall back to
     docling silently per-file (which would just spam warnings)."""
-    import sys
     import types
 
-    import pytest as _pytest
-
-    from docline import dependencies as _dep
     from docline.readers.adi import AdiCredentialError
     from docline.readers.pdf import read_pdf_pages
 
@@ -199,8 +195,8 @@ def test_auto_surfaces_adi_credential_error_immediately(tmp_path, monkeypatch) -
     monkeypatch.delenv("AZURE_DOCUMENT_INTELLIGENCE_KEY", raising=False)
 
     # Force the auto policy to resolve to azure_di by claiming ADI is available.
-    monkeypatch.setattr(_dep, "adi_available", lambda: True)
-    monkeypatch.setattr(_dep, "pdf_available", lambda: True)
+    monkeypatch.setattr(dependencies, "adi_available", lambda: True)
+    monkeypatch.setattr(dependencies, "pdf_available", lambda: True)
 
-    with _pytest.raises(AdiCredentialError):
+    with pytest.raises(AdiCredentialError):
         read_pdf_pages(pdf, layout_engine="auto")

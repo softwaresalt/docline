@@ -205,6 +205,17 @@ def _pct_delta(adi_val: float, docling_val: float) -> float | None:
     return round(100.0 * (adi_val - docling_val) / docling_val, 1)
 
 
+def _fmt_pct(value: object) -> str:
+    """Format a percent-delta value for the Markdown table.
+
+    Renders ``None`` (the docling=0 divide-by-zero sentinel) as
+    ``"n/a (docling=0)"`` and numeric values with a leading sign.
+    """
+    if value is None:
+        return "n/a (docling=0)"
+    return f"{value:+.1f}"
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
@@ -301,12 +312,6 @@ def main() -> int:
             if m.get("status") != "compared":
                 continue
             d = m["deltas"]
-
-            def _fmt_pct(value: object) -> str:
-                if value is None:
-                    return "n/a (docling=0)"
-                return f"{value:+.1f}"
-
             md_lines.append(
                 f"| {m['range']} | {d['structural_density_per_1k']:+.2f} | "
                 f"{_fmt_pct(d['heading_count_pct'])} | "

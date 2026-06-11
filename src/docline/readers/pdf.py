@@ -661,8 +661,6 @@ def read_pdf_pages(
                 return [content] if content else []
             except FileNotFoundError:
                 raise
-            except DependencyUnavailableError:
-                raise
             except AdiCredentialError:
                 # Misconfigured credentials are a PERSISTENT operator-action
                 # error, not a transient failure. Surface immediately so the
@@ -672,6 +670,13 @@ def read_pdf_pages(
             except Exception as err:  # noqa: BLE001
                 # Auto-fallback to docling (or heuristic) on transient ADI
                 # failures so a single Azure-side blip doesn't abort the batch.
+                # Note: ``DependencyUnavailableError`` is not caught explicitly
+                # because the guard at the top of this branch already verified
+                # ``dependencies.adi_available()`` is ``True``; the SDK
+                # cannot disappear mid-call, so the only way ``read_pdf_adi``
+                # raises ``DependencyUnavailableError`` here is the broad
+                # ``Exception`` catch — which is the correct outcome
+                # (surface as a degraded run via the fallback path).
                 _log.warning(
                     "ADI failed on %s (%s: %s); falling back to docling/heuristic",
                     path,
