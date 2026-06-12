@@ -105,6 +105,16 @@ def _list_ranges(dataset_root: Path) -> list[Path]:
     return sorted(p for p in dataset_root.iterdir() if p.is_dir() and p.name.startswith("range-"))
 
 
+# Imported lazily inside the helpers to defer the cost of materializing the
+# docline package + Azure SDK until after ``_load_dotenv_local()`` runs and
+# before any actual API call is attempted.
+def _import_docline_error() -> type:
+    """Return the DoclineError class. Lazy to avoid eager package init."""
+    from docline.schema.models import DoclineError
+
+    return DoclineError
+
+
 def _slice_pdf(source_pdf: Path, start_page: int, end_page: int) -> bytes:
     """Slice ``source_pdf`` to the [start_page, end_page] inclusive range.
 
@@ -159,18 +169,23 @@ def _run_adi_on_range(
             "projected_cost_usd": page_count * _ADI_COST_PER_PAGE,
         }
 
-    # Slice and write a temp PDF, then run through the ADI reader.
-    sliced_pdf_path = range_dir / "_adi_slice.pdf"
-    pdf_bytes = _slice_pdf(source_pdf, start, end)
-    sliced_pdf_path.write_bytes(pdf_bytes)
-
-    from docline.readers.adi import read_pdf_adi
-
+    # Slice and write a temp PDF, then run through the ADI reader. If the
+    # whole range exceeds the ADI per-request size limit, recursively split
+    # into halves and concatenate results. This handles both oversized PDFs
+    # (>500 MB at S0 / >4 MB at F0) and ranges where a single page contains
+    # an embedded image exceeding ADI's per-page limit.
     start_ts = time.monotonic()
     try:
-        content = read_pdf_adi(sliced_pdf_path)
-    finally:
-        sliced_pdf_path.unlink(missing_ok=True)
+        content = _read_pdf_adi_with_split(source_pdf, start, end, range_dir)
+    except Exception as err:
+        DoclineError = _import_docline_error()
+        # Final failure after all splits exhausted (e.g. single page still
+        # too large). Re-raise with the range context so the operator can
+        # exclude or shrink it manually.
+        raise DoclineError(
+            f"ADI failed for {range_dir.name} (pages {start}-{end}) even after "
+            f"split-and-retry; underlying error: {err}"
+        ) from err
     elapsed = time.monotonic() - start_ts
 
     adi_md_path.write_text(content, encoding="utf-8")
@@ -183,6 +198,47 @@ def _run_adi_on_range(
         "wall_seconds": round(elapsed, 2),
         "projected_cost_usd": round(page_count * _ADI_COST_PER_PAGE, 4),
     }
+
+
+def _read_pdf_adi_with_split(
+    source_pdf: Path,
+    start: int,
+    end: int,
+    workdir: Path,
+) -> str:
+    """Read ADI markdown for a [start, end] page range; split-and-retry on size error.
+
+    When ADI returns an ``InvalidContentLength`` error (the slice exceeds
+    the per-request file-size limit or contains an oversized embedded
+    image), this helper recursively halves the page range and processes
+    each half independently. Markdown content from sub-ranges is joined
+    with a single blank line so downstream metric computation still sees
+    one logical document per range.
+
+    Single-page chunks that still fail re-raise the underlying
+    :class:`DoclineError` — at that point the operator must decide whether
+    to drop the range from the study or handle the page out-of-band.
+    """
+    from docline.readers.adi import read_pdf_adi
+
+    DoclineError = _import_docline_error()
+
+    slice_name = f"_adi_slice_{start:04d}_{end:04d}.pdf"
+    slice_path = workdir / slice_name
+    try:
+        slice_path.write_bytes(_slice_pdf(source_pdf, start, end))
+        return read_pdf_adi(slice_path)
+    except DoclineError as err:
+        msg = str(err)
+        if "InvalidContentLength" not in msg or start == end:
+            raise
+        # Split the range in half and recurse.
+        mid = start + (end - start) // 2
+        left = _read_pdf_adi_with_split(source_pdf, start, mid, workdir)
+        right = _read_pdf_adi_with_split(source_pdf, mid + 1, end, workdir)
+        return f"{left}\n\n{right}"
+    finally:
+        slice_path.unlink(missing_ok=True)
 
 
 def _compute_metrics(range_dir: Path) -> dict[str, object]:
