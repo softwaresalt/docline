@@ -56,6 +56,41 @@ _REPO_ROOT = _SCRIPT_DIR.parent.parent
 sys.path.insert(0, str(_REPO_ROOT / "src"))
 sys.path.insert(0, str(_REPO_ROOT))
 
+
+def _load_dotenv_local(env_path: Path) -> None:
+    """Load `KEY=VALUE` lines from ``env_path`` into ``os.environ`` if not already set.
+
+    Zero-dependency dotenv parser supporting the common subset:
+
+    * Lines beginning with ``#`` are comments.
+    * Blank lines are ignored.
+    * ``KEY=VALUE`` pairs; surrounding whitespace and matching single or double
+      quotes around the value are stripped.
+    * Existing environment variables are NOT overwritten (so callers that set
+      vars in their shell win over the file).
+
+    Silently no-ops if the file is missing — operators may invoke this script
+    in CI / containers that inject env vars by other means.
+    """
+    if not env_path.is_file():
+        return
+    import os
+
+    for raw_line in env_path.read_text(encoding="utf-8").splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#"):
+            continue
+        if "=" not in line:
+            continue
+        key, _, value = line.partition("=")
+        key = key.strip()
+        value = value.strip().strip('"').strip("'")
+        if key and key not in os.environ:
+            os.environ[key] = value
+
+
+_load_dotenv_local(_REPO_ROOT / ".env.local")
+
 _STUDY_ROOT = _REPO_ROOT / ".elt" / "output" / "cosmos-triage-022" / "study"
 _DATASET_ROOT = _STUDY_ROOT / "dataset"
 _RESULTS_ROOT = _STUDY_ROOT / "results"
