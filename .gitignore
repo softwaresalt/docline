@@ -263,3 +263,8 @@ docs/scratch/*
 report.*.json
 isolate-*.log
 
+
+# Local environment files (secrets) — never commit. Only .env.example may be tracked.
+.env
+.env.local
+.env.*.local
