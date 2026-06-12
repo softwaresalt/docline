@@ -187,7 +187,7 @@ def _run_adi_on_range(
 
 def _compute_metrics(range_dir: Path) -> dict[str, object]:
     """Compute the same AST metrics as evaluate_markdown.py for ADI vs docling."""
-    from scripts.study.evaluate_markdown import compute_metrics  # type: ignore[import-not-found]
+    from scripts.study.evaluate_markdown import metrics_for
 
     docling_md = (range_dir / "docling.md").read_text(encoding="utf-8")
     adi_path = range_dir / "adi.md"
@@ -198,8 +198,8 @@ def _compute_metrics(range_dir: Path) -> dict[str, object]:
         }
     adi_md = adi_path.read_text(encoding="utf-8")
 
-    docling_metrics = compute_metrics(docling_md)
-    adi_metrics = compute_metrics(adi_md)
+    docling_metrics = metrics_for(docling_md)
+    adi_metrics = metrics_for(adi_md)
 
     return {
         "range": range_dir.name,
@@ -220,7 +220,7 @@ def _compute_metrics(range_dir: Path) -> dict[str, object]:
             "list_item_count_pct": _pct_delta(
                 adi_metrics["list_item_count"], docling_metrics["list_item_count"]
             ),
-            "char_count_pct": _pct_delta(adi_metrics["char_count"], docling_metrics["char_count"]),
+            "char_len_pct": _pct_delta(adi_metrics["char_len"], docling_metrics["char_len"]),
         },
     }
 
@@ -363,7 +363,7 @@ def main() -> int:
                 f"{_fmt_pct(d['heading_count_pct'])} | "
                 f"{_fmt_pct(d['table_count_pct'])} | "
                 f"{_fmt_pct(d['list_item_count_pct'])} | "
-                f"{_fmt_pct(d['char_count_pct'])} |"
+                f"{_fmt_pct(d['char_len_pct'])} |"
             )
     md_path = args.results_dir / "adi-findings.md"
     md_path.write_text("\n".join(md_lines) + "\n", encoding="utf-8")
