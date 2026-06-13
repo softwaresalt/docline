@@ -1,11 +1,13 @@
-"""Tests for pdf_engine routing including the new azure_di peer.
+"""Tests for pdf_engine routing including the azure_di peer.
 
-Covers 027-F T3 / 027.003-T:
+Covers 027-F T3 / 027.003-T plus the post-empirical-study auto-policy
+revision (docs/closure/029-S-adi-spike.md, 2026-06-12):
 - pdf_engine='azure_di' explicit dispatches to adi reader
 - pdf_engine='auto' routing policy:
-    1. azure_di when AZURE_DOCUMENT_INTELLIGENCE_ENDPOINT set + SDK installed
-    2. docling when [pdf] extra installed and ADI not preferred
-    3. heuristic fallback
+    1. docling when [pdf] extra installed (PRIMARY default)
+    2. heuristic fallback when docling not installed
+- azure_di is NEVER auto-selected, even with credentials + SDK present;
+  the operator must explicitly request --pdf-engine azure_di
 - CLI accepts --pdf-engine azure_di
 - Manifest schema includes azure_di in the enum
 - ProcessRequest pdf_engine Literal includes azure_di
@@ -46,15 +48,23 @@ def test_invalid_engine_raises() -> None:
         _resolve_layout_engine("foobar")
 
 
-def test_auto_prefers_azure_di_when_creds_and_sdk_available(
+def test_auto_never_selects_azure_di_even_with_creds_and_sdk(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    """Post-2026-06-12 empirical study: auto MUST NOT select azure_di.
+
+    ADI loses on every structural fidelity metric vs docling on the
+    docline-target corpus class (technical reference PDFs). Operators
+    who want ADI for forms/invoices or throughput-dominated use cases
+    must opt in explicitly via --pdf-engine azure_di.
+    """
     monkeypatch.setenv("AZURE_DOCUMENT_INTELLIGENCE_ENDPOINT", "https://x/")
+    monkeypatch.setenv("AZURE_DOCUMENT_INTELLIGENCE_KEY", "k")
     with (
         patch.object(dependencies, "adi_available", return_value=True),
         patch.object(dependencies, "pdf_available", return_value=True),
     ):
-        assert _resolve_layout_engine("auto") == "azure_di"
+        assert _resolve_layout_engine("auto") == "docling"
 
 
 def test_auto_falls_back_to_docling_when_no_azure_endpoint(
@@ -163,12 +173,12 @@ def test_process_request_rejects_unknown_engine() -> None:
         ProcessRequest(pdf_engine="foobar")  # type: ignore[arg-type]
 
 
-def test_auto_surfaces_adi_credential_error_immediately(
+def test_explicit_azure_di_surfaces_adi_credential_error_immediately(
     tmp_path,
     monkeypatch: pytest.MonkeyPatch,
     install_fake_adi_sdk,
 ) -> None:
-    """When --pdf-engine auto routes to ADI but credentials are missing,
+    """When --pdf-engine azure_di is explicitly requested but credentials are missing,
     AdiCredentialError MUST surface immediately rather than fall back to
     docling silently per-file (which would just spam warnings)."""
     from docline.readers.adi import AdiCredentialError
@@ -182,41 +192,31 @@ def test_auto_surfaces_adi_credential_error_immediately(
     monkeypatch.setenv("AZURE_DOCUMENT_INTELLIGENCE_ENDPOINT", "https://x/")
     monkeypatch.delenv("AZURE_DOCUMENT_INTELLIGENCE_KEY", raising=False)
 
-    # Force the auto policy to resolve to azure_di by claiming ADI is available.
     monkeypatch.setattr(dependencies, "adi_available", lambda: True)
     monkeypatch.setattr(dependencies, "pdf_available", lambda: True)
 
     with pytest.raises(AdiCredentialError):
-        read_pdf_pages(pdf, layout_engine="auto")
+        read_pdf_pages(pdf, layout_engine="azure_di")
 
 
-def test_auto_falls_back_on_transient_adi_error(
+def test_explicit_azure_di_surfaces_transient_error_loudly(
     tmp_path,
     monkeypatch: pytest.MonkeyPatch,
     install_fake_adi_sdk,
-    caplog,
 ) -> None:
-    """A non-credential, non-dependency ADI failure (e.g. transient
-    cloud blip) MUST trigger a WARNING log and fall back to the next
-    engine in the chain (docling, then heuristic) rather than aborting
-    the batch.
+    """When --pdf-engine azure_di is explicit, transient ADI errors MUST raise.
 
-    Simulates a real 503-like failure by having the fake client raise
-    the FakeAzureError installed by the shared fixture. read_pdf_adi's
-    ``except AzureError`` catch then re-wraps it as DoclineError, which
-    is what the read_pdf_pages auto path catches and degrades from.
-    Exercising the full error-wrapping chain (AzureError -> DoclineError
-    -> WARNING + fallback) matches the production code path.
+    The silent-fallback chain (warn + use docling, then heuristic) was
+    scoped to the legacy `auto` path that pre-2026-06-12 could resolve
+    to `azure_di`. Now that `auto` never selects ADI, the only path
+    into the ADI dispatch is an explicit operator request. Surprising
+    that operator by silently switching engines would be wrong;
+    surfacing the error so they can decide (retry? change engine? add
+    --pdf-engine fallback flag?) is the correct contract.
     """
-    import logging
-
     from docline.readers.pdf import read_pdf_pages
+    from docline.schema.models import DoclineError
 
-    # Build a client that uses the fake AzureError installed by the
-    # shared fixture (mirrors the real 503 path: SDK raises AzureError,
-    # read_pdf_adi re-wraps as DoclineError, auto path catches and falls
-    # back). We can't reference the fake exception type until after the
-    # fixture installs the SDK tree, so build the client inside a thunk.
     def _make_blippy_client(azure_error_cls: type[Exception]) -> type:
         class _BlippyClient:
             def __init__(self, *, endpoint, credential) -> None:
@@ -227,8 +227,6 @@ def test_auto_falls_back_on_transient_adi_error(
 
         return _BlippyClient
 
-    # Install the default SDK first to get a stable FakeAzureError reference,
-    # then swap in the blippy client that uses it.
     install_fake_adi_sdk()
     from azure.core.exceptions import AzureError  # type: ignore[attr-defined]
 
@@ -242,15 +240,7 @@ def test_auto_falls_back_on_transient_adi_error(
 
     monkeypatch.setenv("AZURE_DOCUMENT_INTELLIGENCE_ENDPOINT", "https://x/")
     monkeypatch.setenv("AZURE_DOCUMENT_INTELLIGENCE_KEY", "k")
-
     monkeypatch.setattr(dependencies, "adi_available", lambda: True)
-    monkeypatch.setattr(dependencies, "pdf_available", lambda: False)
 
-    with caplog.at_level(logging.WARNING, logger="docline.readers.pdf"):
-        result = read_pdf_pages(pdf, layout_engine="auto")
-
-    assert isinstance(result, list)
-    assert any(
-        "ADI failed" in record.getMessage() and "falling back" in record.getMessage()
-        for record in caplog.records
-    ), "expected WARNING-level log noting ADI failure + fallback to docling/heuristic"
+    with pytest.raises(DoclineError, match="transient"):
+        read_pdf_pages(pdf, layout_engine="azure_di")

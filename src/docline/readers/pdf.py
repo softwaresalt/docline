@@ -64,14 +64,24 @@ def _resolve_layout_engine(requested: str) -> str:
     ``"heuristic"``, ``"docling"``, and ``"azure_di"`` is preserved —
     only ``"auto"`` is resolved against the runtime probe.
 
-    ``"auto"`` policy (027-F / 029-S spike):
+    ``"auto"`` policy (027-F / 029-S spike; revised post-empirical study
+    documented in ``docs/closure/029-S-adi-spike.md``):
 
-    1. Prefer ``"azure_di"`` when ``AZURE_DOCUMENT_INTELLIGENCE_ENDPOINT``
-       env var is set AND the ``[adi]`` extra is installed. Cloud
-       throughput + reliability win when credentials are present.
-    2. Else prefer ``"docling"`` when the ``[pdf]`` extra is installed.
-       Existing behavior preserved when ADI is not configured.
-    3. Else fall back to ``"heuristic"``. Always-available fallback.
+    1. Prefer ``"docling"`` when the ``[pdf]`` extra is installed.
+       Docling produces substantially higher structural fidelity than
+       ADI on technical reference PDFs (the primary docline corpus
+       class for graphtor-docs ingestion).
+    2. Else fall back to ``"heuristic"``. Always-available fallback.
+
+    Azure Document Intelligence (``"azure_di"``) is intentionally NOT
+    selected by ``"auto"`` even when credentials and SDK are present.
+    The 2026-06-12 empirical study found ADI's ``prebuilt-layout``
+    model loses on every structural fidelity metric across all 15
+    cosmos-PDF sample ranges (mean −70% chars, mean −82% headings,
+    100% table loss on 11 of 15 ranges). ADI remains a peer engine
+    for explicit opt-in via ``--pdf-engine azure_di`` for use cases
+    where throughput dominates fidelity (e.g. forms / invoices) or
+    when the operator has empirically validated ADI on their corpus.
 
     Args:
         requested: Engine name (one of ``"auto"``, ``"heuristic"``,
@@ -87,8 +97,6 @@ def _resolve_layout_engine(requested: str) -> str:
     _validate_layout_engine(requested)
     if requested != "auto":
         return requested
-    if os.environ.get("AZURE_DOCUMENT_INTELLIGENCE_ENDPOINT") and dependencies.adi_available():
-        return "azure_di"
     if dependencies.pdf_available():
         return "docling"
     return "heuristic"

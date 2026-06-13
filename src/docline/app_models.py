@@ -69,21 +69,30 @@ class ProcessRequest(BaseModel):
             hierarchy validation during Markdown assembly. Default ``False``.
         pdf_engine: PDF layout extractor selection. Four choices:
 
-            * ``"auto"`` (default) prefers ``"azure_di"`` when the
-              ``AZURE_DOCUMENT_INTELLIGENCE_ENDPOINT`` env var is set
-              AND the ``docline[adi]`` extra is installed (027-F /
-              029-S spike), falls back to ``"docling"`` when the
-              ``docline[pdf]`` extras are installed, and falls back to
+            * ``"auto"`` (default) prefers ``"docling"`` when the
+              ``docline[pdf]`` extra is installed, falling back to
               ``"heuristic"`` otherwise. The ``"auto"`` path also
-              transparently catches docling / ADI failures and
-              degrades to the heuristic engine so a single hostile PDF
-              cannot abort the batch.
+              transparently catches docling failures and degrades to
+              the heuristic engine so a single hostile PDF cannot abort
+              the batch.
+
+              Azure Document Intelligence (``"azure_di"``) is NEVER
+              auto-selected even when credentials and SDK are present —
+              the 2026-06-12 empirical study (see
+              ``docs/closure/029-S-adi-spike.md``) found ADI's
+              ``prebuilt-layout`` model loses on every structural
+              fidelity metric vs docling across all 15 cosmos-PDF
+              ranges. Operators who want ADI must opt in explicitly.
+
             * ``"docling"`` opts in to the local docling layout model
               explicitly (raises when not installed).
             * ``"azure_di"`` opts in to Azure Document Intelligence via
               the optional ``docline[adi]`` extra (raises when the SDK
               is missing or when ``AZURE_DOCUMENT_INTELLIGENCE_ENDPOINT``
               + ``AZURE_DOCUMENT_INTELLIGENCE_KEY`` env vars are not set).
+              Intended for forms / invoices or throughput-dominated use
+              cases where the operator has empirically validated ADI
+              fidelity on their corpus.
             * ``"heuristic"`` uses the built-in extractor.
     """
 

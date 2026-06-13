@@ -1,7 +1,9 @@
 ---
 title: 029-S Azure Document Intelligence spike — third pdf_engine peer
 date: 2026-06-11
-status: shipped-pending-empirical-findings
+status: shipped
+verdict: KEEP-AS-PEER
+verdict_date: 2026-06-12
 shipment: 029-S
 feature: 027-F
 tasks:
@@ -15,6 +17,80 @@ related_decisions:
   - docs/decisions/2026-06-08-extraction-strategy-study.md
 consumed_stashes:
   - F10EB5CB  # ADI spike intent
+---
+
+## Verdict (2026-06-12, post-empirical study)
+
+**KEEP-AS-PEER.** ADI remains available as an explicit-opt-in third
+engine via `--pdf-engine azure_di`, but the `auto` policy has been
+revised to **never** select ADI even when credentials are present.
+
+### Why
+
+The empirical comparison study (`scripts/study/adi_comparison.py`)
+processed 15 cosmos-PDF sample ranges (551 pages) at a total cost of
+$0.83 in **5.6 minutes wall time (5,902 pages/hour)**. ADI's throughput
+advantage is genuine and enormous compared to docling's ~9.5 hours for
+the same corpus.
+
+However, **ADI loses on every structural fidelity metric** that matters
+for downstream graphtor-docs ingestion (graph DB nodes/edges, vector
+chunks, LLM context):
+
+| Metric | ADI vs docling | Notes |
+|---|---|---|
+| Char length | **−70.1% mean** (range −16% to −98%) | ADI returns drastically less text |
+| Headings | **−74.2% mean** (range 0% to −99.5%) | ADI flattens heading hierarchy |
+| Tables | **−66.7% mean; ADI returned 0 tables on 10 of 15 ranges** | Complete loss of tabular structure |
+| Lists | **−86.7% mean; ADI returned 0 lists on 13 of 15 ranges** | Complete loss of list semantics |
+| Structural density / 1k chars | **−5.57 mean** (range −1.73 to −18.95) | ADI is orders of magnitude flatter |
+
+The losses are not borderline. On range-3110-3112, ADI returned 18.95
+fewer structural elements per 1k chars than docling — equivalent to
+losing the entire AST of that range. On 11 of 15 ranges, ADI's
+`prebuilt-layout` model returned zero tables where docling correctly
+identified table cells. On 13 of 15 ranges, ADI returned zero lists.
+
+This pattern is consistent with ADI's actual product positioning —
+it is descended from "Form Recognizer," designed for invoices, receipts,
+and structured forms where layout extraction is the goal. Cosmos-class
+technical reference PDFs are dense prose-and-code-and-table content
+where docling's RT-DETR layout model + structural recovery wins
+decisively.
+
+### Auto policy change (effective 2026-06-12)
+
+`_resolve_layout_engine("auto")` now picks docling when installed and
+falls back to heuristic when not. ADI requires explicit
+`--pdf-engine azure_di`. The credential check (`AdiCredentialError`
+fast-fail) and transient-error fallback chain are preserved for the
+explicit path.
+
+### When ADI is still the right choice
+
+Keep ADI in the peer set because it remains the right tool for:
+
+1. **Forms, invoices, receipts, structured documents** — ADI's design
+   sweet spot, where docling has not been empirically validated.
+2. **Speed-critical operator workflows** where ~$0.0015/page cloud cost
+   is acceptable and fidelity loss is tolerable (e.g. quick triage of
+   a 1,000-page archive to identify which sections need manual review).
+3. **Cost-bound multi-tenant deployments** where local docling
+   inference cost (GPU/CPU time × engineer-hours) exceeds the
+   per-page Azure list price.
+
+### Follow-up stash candidates
+
+- **Re-validate ADI for forms / invoices corpus** (separate study).
+  The cosmos result generalizes the negative finding to technical
+  reference PDFs only; ADI may still win on the corpus class it was
+  designed for.
+- **Add a "fidelity vs throughput" decision matrix to the README**
+  pointing operators at the right engine for their corpus class.
+- **A029E6EB — DocumentIntelligenceClient caching** is now low-priority
+  unless the operator runs ADI in production batch mode; deprioritize
+  from medium to low.
+
 ---
 
 ## Outcome
@@ -34,10 +110,10 @@ price). This closure doc gets a second pass once those findings land.
 | AC | Statement | Status |
 |---|---|---|
 | AC1 | T1+T2+T3 wire ADI without breaking docling/heuristic | ✅ 28 new tests pass; existing 1,169 still pass |
-| AC2 | T4 empirical study on 5 cosmos ranges (within 10% structural density, <5% wall time, 0 failures) | ⏳ **PENDING operator credentials** — script ready: `scripts/study/adi_comparison.py` |
-| AC3 | T5 closure with cost analysis + recommended auto policy | ✅ this doc (recommendation matrix below; empirical data lands in second pass) |
+| AC2 | T4 empirical study on cosmos ranges (within 10% structural density, <5% wall time, 0 failures) | ❌ **ADI loses on every fidelity metric** (mean −5.57 density delta; 100% table loss on 10/15 ranges). Wall-time win is real (~5,900 pp/hr vs docling's ~360 pp/hr) but quality unacceptable for graphtor-docs ingestion. |
+| AC3 | T5 closure with cost analysis + recommended auto policy | ✅ this doc (verdict: KEEP-AS-PEER; auto policy revised) |
 | AC4 | All four local quality gates pass | ✅ (T4 live test self-skips when env vars absent) |
-| AC5 | Spike output DECIDES production rollout, doesn't mandate it | ✅ auto policy is conservative; defaults to docling when no env var |
+| AC5 | Spike output DECIDES production rollout, doesn't mandate it | ✅ auto policy now reverts to docling-first; ADI explicit opt-in only |
 
 ## What shipped
 
