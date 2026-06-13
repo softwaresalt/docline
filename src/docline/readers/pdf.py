@@ -38,7 +38,9 @@ _log = logging.getLogger(__name__)
 # optional ``docling`` package and is gated by :func:`dependencies.pdf_available`.
 # ``"auto"`` (G3c / 014-S) resolves to ``"docling"`` when the optional
 # ``docline[pdf]`` extras are installed, else ``"heuristic"``.
-_SUPPORTED_LAYOUT_ENGINES: frozenset[str] = frozenset({"auto", "heuristic", "docling", "azure_di"})
+_SUPPORTED_LAYOUT_ENGINES: frozenset[str] = frozenset(
+    {"auto", "heuristic", "docling", "mistral_ocr"}
+)
 
 
 def _validate_layout_engine(engine: str) -> None:
@@ -61,35 +63,29 @@ def _resolve_layout_engine(requested: str) -> str:
     """Resolve ``"auto"`` to a concrete engine using the documented policy.
 
     Validates ``requested`` first. Pass-through behavior for explicit
-    ``"heuristic"``, ``"docling"``, and ``"azure_di"`` is preserved —
-    only ``"auto"`` is resolved against the runtime probe.
+    ``"heuristic"`` and ``"docling"`` is preserved — only ``"auto"`` is
+    resolved against the runtime probe.
 
-    ``"auto"`` policy (027-F / 029-S spike; revised post-empirical study
-    documented in ``docs/closure/029-S-adi-spike.md``):
+    ``"auto"`` policy (post-031-S, ADI removed; Mistral OCR added but
+    stays opt-in pending its own empirical study verdict):
 
     1. Prefer ``"docling"`` when the ``[pdf]`` extra is installed.
        Docling produces substantially higher structural fidelity than
-       ADI on technical reference PDFs (the primary docline corpus
-       class for graphtor-docs ingestion).
+       cloud engines on technical reference PDFs (the primary docline
+       corpus class for graphtor-docs ingestion).
     2. Else fall back to ``"heuristic"``. Always-available fallback.
 
-    Azure Document Intelligence (``"azure_di"``) is intentionally NOT
-    selected by ``"auto"`` even when credentials and SDK are present.
-    The 2026-06-12 empirical study found ADI's ``prebuilt-layout``
-    model loses on every structural fidelity metric across all 15
-    cosmos-PDF sample ranges (mean −70% chars, mean −82% headings,
-    100% table loss on 11 of 15 ranges). ADI remains a peer engine
-    for explicit opt-in via ``--pdf-engine azure_di`` for use cases
-    where throughput dominates fidelity (e.g. forms / invoices) or
-    when the operator has empirically validated ADI on their corpus.
+    Note: ``"mistral_ocr"`` is added as an opt-in peer in 031-S but is
+    intentionally NOT auto-selected pending its empirical study verdict
+    (mirrors the ADI precedent from 029-S that was later proven correct
+    when ADI was removed in 031-S).
 
     Args:
         requested: Engine name (one of ``"auto"``, ``"heuristic"``,
-            ``"docling"``, ``"azure_di"``).
+            ``"docling"``).
 
     Returns:
-        The concrete engine name (``"heuristic"``, ``"docling"``, or
-        ``"azure_di"``).
+        The concrete engine name (``"heuristic"`` or ``"docling"``).
 
     Raises:
         ValueError: If ``requested`` is not a recognized engine value.
@@ -651,52 +647,25 @@ def read_pdf_pages(
         ValueError: If ``layout_engine`` is not a recognized engine value.
     """
     resolved_engine = _resolve_layout_engine(layout_engine)
-    if resolved_engine == "azure_di":
-        if not dependencies.adi_available():
+    if resolved_engine == "mistral_ocr":
+        if not dependencies.mistral_available():
             raise DependencyUnavailableError(
-                "Install the optional 'azure-ai-documentintelligence' package to use "
-                "layout_engine='azure_di' (extras: docline[adi]; "
-                "missing import: azure.ai.documentintelligence)"
+                "Install the optional 'httpx' package to use "
+                "layout_engine='mistral_ocr' (extras: docline[mistral]; "
+                "missing import: httpx)"
             )
-        # ADI returns markdown content directly; wrap the single response in a
-        # 1-element list to match the per-page pages-of-text contract that
-        # other engines return.
-        from docline.readers.adi import AdiCredentialError, read_pdf_adi
+        # Mistral OCR returns markdown content directly; wrap in a 1-element
+        # list to match the per-page pages-of-text contract that other
+        # engines return. Credential errors and transient HTTP failures
+        # surface loudly (no silent fallback) because mistral_ocr is only
+        # reachable via explicit operator request — surprising the operator
+        # by silently switching engines would be wrong (post-029-S explicit-
+        # request contract; auto-policy never selects mistral_ocr pending
+        # the 031-S empirical study verdict).
+        from docline.readers.mistral import read_pdf_mistral
 
-        if layout_engine == "auto":
-            try:
-                content = read_pdf_adi(path)
-                return [content] if content else []
-            except FileNotFoundError:
-                raise
-            except AdiCredentialError:
-                # Misconfigured credentials are a PERSISTENT operator-action
-                # error, not a transient failure. Surface immediately so the
-                # operator can fix the env vars instead of seeing the same
-                # warning fire per-file across the whole batch.
-                raise
-            except Exception as err:  # noqa: BLE001
-                # Auto-fallback to docling (or heuristic) on transient ADI
-                # failures so a single Azure-side blip doesn't abort the batch.
-                # Note: ``DependencyUnavailableError`` is not caught explicitly
-                # because the guard at the top of this branch already verified
-                # ``dependencies.adi_available()`` is ``True``; the SDK
-                # cannot disappear mid-call, so the only way ``read_pdf_adi``
-                # raises ``DependencyUnavailableError`` here is the broad
-                # ``Exception`` catch — which is the correct outcome
-                # (surface as a degraded run via the fallback path).
-                _log.warning(
-                    "ADI failed on %s (%s: %s); falling back to docling/heuristic",
-                    path,
-                    type(err).__name__,
-                    err,
-                )
-                # Drop down to the docling / heuristic path below by recomputing
-                # the resolved engine WITHOUT the azure_di preference.
-                resolved_engine = "docling" if dependencies.pdf_available() else "heuristic"
-        else:
-            content = read_pdf_adi(path)
-            return [content] if content else []
+        content = read_pdf_mistral(path)
+        return [content] if content else []
     if resolved_engine == "docling":
         if not dependencies.pdf_available():
             raise DependencyUnavailableError(

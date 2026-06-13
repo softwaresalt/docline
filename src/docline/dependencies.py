@@ -42,24 +42,6 @@ def pdf_available() -> bool:
         return False
 
 
-def adi_available() -> bool:
-    """Check whether Azure Document Intelligence SDK is available.
-
-    Used by the ``pdf_engine='auto'`` policy (027-F / 029-S spike) and by
-    the ``adi_extractor`` module's lazy-import path. The SDK is installed
-    via the optional ``[adi]`` extra.
-
-    Returns:
-        ``True`` if ``azure.ai.documentintelligence`` can be imported,
-        ``False`` otherwise.
-    """
-    try:
-        importlib.import_module("azure.ai.documentintelligence")
-        return True
-    except ImportError:
-        return False
-
-
 def html_available() -> bool:
     """Check whether the HTML processing dependency (trafilatura) is available.
 
@@ -68,6 +50,26 @@ def html_available() -> bool:
     """
     try:
         importlib.import_module("trafilatura")
+        return True
+    except ImportError:
+        return False
+
+
+def mistral_available() -> bool:
+    """Check whether the Mistral OCR optional dependency (httpx) is available.
+
+    The 031-S Mistral OCR reader uses raw httpx against Foundry MaaS or
+    direct Mistral REST endpoints (the mistralai SDK doesn't fit
+    path-routed Foundry endpoints — see the discovery probe note in
+    docs/plans/2026-06-13-mistral-ocr-replace-adi-plan.md). httpx is
+    gated behind the ``[mistral]`` extra to keep the no-extras install
+    minimal.
+
+    Returns:
+        ``True`` if ``httpx`` can be imported, ``False`` otherwise.
+    """
+    try:
+        importlib.import_module("httpx")
         return True
     except ImportError:
         return False
