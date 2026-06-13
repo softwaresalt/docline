@@ -1,9 +1,11 @@
 ---
 title: 029-S Azure Document Intelligence spike — third pdf_engine peer
 date: 2026-06-11
-status: shipped
-verdict: KEEP-AS-PEER
+status: superseded
+verdict: KEEP-AS-PEER (superseded by 031-S removal)
 verdict_date: 2026-06-12
+superseded_by: 031-S
+superseded_date: 2026-06-13
 shipment: 029-S
 feature: 027-F
 tasks:
@@ -18,6 +20,19 @@ related_decisions:
 consumed_stashes:
   - F10EB5CB  # ADI spike intent
 ---
+
+## Status note (2026-06-13)
+
+**Superseded by 031-S.** ADI integration was fully removed from the
+codebase per operator directive after the empirical study below
+confirmed ADI loses on every structural fidelity metric. The
+`pdf_engine="azure_di"` choice no longer exists; the `[adi]` optional
+extra is gone; `src/docline/readers/adi.py` is deleted. Mistral OCR
+took its place as the cloud peer (pending its own empirical study
+verdict in 031-S).
+
+This doc remains as the historical record of the empirical evaluation
+that motivated the removal.
 
 ## Verdict (2026-06-12, post-empirical study)
 

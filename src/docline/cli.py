@@ -73,14 +73,16 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     process_parser.add_argument(
         "--pdf-engine",
-        choices=("auto", "docling", "azure_di", "heuristic"),
+        choices=("auto", "docling", "mistral_ocr", "heuristic"),
         default="auto",
         help=(
             "PDF layout extractor selection. 'auto' (default) uses docling "
             "when the optional docline[pdf] extras are installed and falls "
             "back to the heuristic extractor otherwise. 'docling' opts in "
-            "explicitly (errors if not installed). 'heuristic' uses the "
-            "built-in extractor."
+            "explicitly (errors if not installed). 'mistral_ocr' opts in to "
+            "Mistral OCR via docline[mistral] (Foundry MaaS or direct "
+            "Mistral API; see docs/closure/031-S-mistral-ocr-spike.md). "
+            "'heuristic' uses the built-in extractor."
         ),
     )
     process_parser.add_argument(
@@ -211,7 +213,7 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     local_dir_parser.add_argument(
         "--pdf-engine",
-        choices=("auto", "docling", "azure_di", "heuristic"),
+        choices=("auto", "docling", "mistral_ocr", "heuristic"),
         default="auto",
         help="Passthrough to docline process (see `docline process --help`).",
     )

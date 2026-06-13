@@ -76,23 +76,21 @@ class ProcessRequest(BaseModel):
               the heuristic engine so a single hostile PDF cannot abort
               the batch.
 
-              Azure Document Intelligence (``"azure_di"``) is NEVER
-              auto-selected even when credentials and SDK are present —
-              the 2026-06-12 empirical study (see
-              ``docs/closure/029-S-adi-spike.md``) found ADI's
-              ``prebuilt-layout`` model loses on every structural
-              fidelity metric vs docling across all 15 cosmos-PDF
-              ranges. Operators who want ADI must opt in explicitly.
+              ``"mistral_ocr"`` is NEVER auto-selected pending the
+              031-S empirical study verdict (mirrors the ADI precedent
+              from 029-S that was later proven correct when ADI was
+              removed in 031-S). ADI itself was removed in 031-S — see
+              ``docs/closure/029-S-adi-spike.md`` for the historical
+              evaluation.
 
             * ``"docling"`` opts in to the local docling layout model
               explicitly (raises when not installed).
-            * ``"azure_di"`` opts in to Azure Document Intelligence via
-              the optional ``docline[adi]`` extra (raises when the SDK
-              is missing or when ``AZURE_DOCUMENT_INTELLIGENCE_ENDPOINT``
-              + ``AZURE_DOCUMENT_INTELLIGENCE_KEY`` env vars are not set).
-              Intended for forms / invoices or throughput-dominated use
-              cases where the operator has empirically validated ADI
-              fidelity on their corpus.
+            * ``"mistral_ocr"`` opts in to Mistral OCR via the optional
+              ``docline[mistral]`` extra (raw httpx; works against both
+              Foundry MaaS path-routed endpoints and the direct Mistral
+              REST API). Raises when ``httpx`` is missing or when
+              ``AZURE_AI_FOUNDRY_KEY`` + ``AZURE_AI_FOUNDRY_ENDPOINT``
+              (preferred) or ``MISTRAL_API_KEY`` env vars are not set.
             * ``"heuristic"`` uses the built-in extractor.
     """
 
@@ -102,7 +100,7 @@ class ProcessRequest(BaseModel):
     output_dir: str = "output"
     workspace_root: str | None = None
     allow_heading_disorder: bool = False
-    pdf_engine: Literal["auto", "docling", "azure_di", "heuristic"] = "auto"
+    pdf_engine: Literal["auto", "docling", "mistral_ocr", "heuristic"] = "auto"
     pdf_mode: Literal["auto", "triage"] = Field(
         default="auto",
         description=(
