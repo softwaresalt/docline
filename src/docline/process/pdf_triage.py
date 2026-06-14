@@ -30,6 +30,7 @@ Plan: ``docs/plans/2026-06-06-triage-then-repair-plan.md`` § U3, U6, U7.
 from __future__ import annotations
 
 import csv
+import json
 import logging
 import random
 import re
@@ -367,6 +368,7 @@ def process_pdf_triaged(
     merge_gap: int = 2,
     qa_sampling: QASampling | None = None,
     baseline_engine: str = "markitdown",
+    use_batched_worker: bool = True,
 ) -> TriageResult:
     """Process a PDF via heuristic baseline + selective docling repair.
 
@@ -398,6 +400,12 @@ def process_pdf_triaged(
             directly — preserves the pre-020.002-T behavior, used for
             regression coverage and as the fallback when markitdown
             fails on a page.
+        use_batched_worker: When True (default) AND N>=2 flagged
+            ranges, invoke the docling worker once in ``--batch`` mode
+            with a manifest of all splice PDFs. Amortizes the
+            ~5-10s docling model-load cost across N ranges (030-F T3).
+            Set to False to force the legacy per-range subprocess
+            loop.
 
     Returns:
         :class:`TriageResult` with per-page outputs, engine attribution,
@@ -447,6 +455,10 @@ def process_pdf_triaged(
     engine_per_page: list[str] = ["heuristic"] * total_pages
     subprocess_fallback_count = 0
 
+    # Pre-pass: build all splice PDFs and collect job records up-front.
+    # This lets us decide between batched and per-range execution after
+    # all temp PDFs are written.
+    splice_jobs: list[tuple[int, int, Path, Path]] = []
     for start, end in flagged_ranges:
         splice_pdf = splice_cache / f"splice-{start:04d}-{end:04d}.pdf"
         splice_md = splice_cache / f"splice-{start:04d}-{end:04d}.md"
@@ -458,33 +470,118 @@ def process_pdf_triaged(
         with splice_pdf.open("wb") as fh:
             writer.write(fh)
 
+        splice_jobs.append((start, end, splice_pdf, splice_md))
+
+    # Decide execution mode and run the docling subprocess(es).
+    use_batched_splice = use_batched_worker and len(splice_jobs) >= 2
+    batched_subprocess_returncode = 0
+    per_range_returncodes: list[int] = []
+
+    if use_batched_splice:
+        manifest_path = splice_cache / "_batch_manifest.json"
+        manifest_payload = {
+            "chunks": [{"input": str(sp), "output": str(sm)} for (_s, _e, sp, sm) in splice_jobs]
+        }
+        manifest_path.write_text(json.dumps(manifest_payload), encoding="utf-8")
         cmd = [
             sys.executable,
             "-m",
             "docline._tools.docling_worker",
-            str(splice_pdf),
-            str(splice_md),
+            "--batch",
+            str(manifest_path),
         ]
         completed = runner(cmd)
+        batched_subprocess_returncode = completed.returncode
+    else:
+        for _start, _end, splice_pdf, splice_md in splice_jobs:
+            cmd = [
+                sys.executable,
+                "-m",
+                "docline._tools.docling_worker",
+                str(splice_pdf),
+                str(splice_md),
+            ]
+            completed = runner(cmd)
+            per_range_returncodes.append(completed.returncode)
 
-        if completed.returncode == 0 and splice_md.exists():
-            blob = splice_md.read_text(encoding="utf-8")
-            # Attach the docling blob to the first page of the range; mark
-            # all pages in the range as docling-sourced. Per-page splitting
-            # of the blob is a known limitation of the docling_worker
-            # contract (single output per subprocess invocation). Downstream
-            # consumers can reconstruct page boundaries from the engine
-            # attribution + the blob content.
+    # Post-pass: inspect each splice output, do per-page envelope splice-back
+    # or fall back to heuristic with the appropriate engine attribution.
+    for job_idx, (start, end, _splice_pdf, splice_md) in enumerate(splice_jobs):
+        # Decide whether this range's docling output is usable.
+        if use_batched_splice:
+            subprocess_ok = batched_subprocess_returncode == 0
+        else:
+            subprocess_ok = per_range_returncodes[job_idx] == 0
+
+        if not subprocess_ok or not splice_md.exists():
+            # Subprocess failed (per-range or whole batch); keep heuristic
+            # output and record fallback.
+            subprocess_fallback_count += 1
+            continue
+
+        raw = splice_md.read_text(encoding="utf-8")
+        pages_from_envelope: list[str] | None = None
+        is_error_envelope = False
+        try:
+            envelope = json.loads(raw)
+            if isinstance(envelope, dict):
+                if "error" in envelope:
+                    is_error_envelope = True
+                elif isinstance(envelope.get("pages"), list) and all(
+                    isinstance(p, str) for p in envelope["pages"]
+                ):
+                    pages_from_envelope = list(envelope["pages"])
+        except (json.JSONDecodeError, ValueError):
+            pages_from_envelope = None
+
+        if is_error_envelope:
+            # Batched mode wrote an error envelope for this chunk; treat as
+            # subprocess failure for fallback accounting.
+            subprocess_fallback_count += 1
+            continue
+
+        expected_len = end - start + 1
+        if pages_from_envelope is not None and len(pages_from_envelope) == expected_len:
+            # Happy path (030-F T2): per-page envelope assignment restores
+            # per-page fidelity in the splice-back. Each envelope page maps
+            # to its corresponding final_pages slot.
+            for offset, page_md in enumerate(pages_from_envelope):
+                final_pages[start + offset] = page_md
+                engine_per_page[start + offset] = "docling"
+        else:
+            # Fallback: either the body was legacy flat markdown
+            # (JSONDecodeError → pages_from_envelope is None) or the
+            # envelope reported a different page count than the splice
+            # range expected. Either way, keep the legacy "first page
+            # gets the blob, rest empty" behavior but flip the engine
+            # attribution to "docling-collapsed" so downstream
+            # consumers see the per-page contract was not honored.
+            if pages_from_envelope is not None:
+                _log.warning(
+                    (
+                        "docling worker envelope length mismatch for range %d-%d: "
+                        "envelope.pages had %d entries, range expected %d"
+                    ),
+                    start,
+                    end,
+                    len(pages_from_envelope),
+                    expected_len,
+                )
+            blob: str
+            if pages_from_envelope is not None:
+                try:
+                    envelope2 = json.loads(raw)
+                    blob = envelope2.get("text", raw) if isinstance(envelope2, dict) else raw
+                except (json.JSONDecodeError, ValueError):
+                    blob = raw
+            else:
+                blob = raw
             for page_idx in range(start, end + 1):
                 if page_idx == start:
                     final_pages[page_idx] = blob
                 else:
                     final_pages[page_idx] = ""
-                engine_per_page[page_idx] = "docling"
-        else:
-            # Subprocess failed — keep heuristic output for this range and
-            # record the fallback in metadata. Batch continues.
-            subprocess_fallback_count += 1
+                engine_per_page[page_idx] = "docling-collapsed"
 
     metadata: dict[str, object] = {
         "total_pages": total_pages,
@@ -495,6 +592,7 @@ def process_pdf_triaged(
         "merge_gap": merge_gap,
         "baseline_engine": baseline_engine,
         "baseline_engine_fallback": baseline_engine_fallback,
+        "batched_worker": use_batched_splice,
     }
 
     # QA tripwire: sample unflagged pages, run docling on each, count
