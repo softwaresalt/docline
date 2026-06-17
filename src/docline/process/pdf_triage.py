@@ -395,7 +395,7 @@ def process_pdf_triaged(
     merge_gap: int = 2,
     qa_sampling: QASampling | None = None,
     baseline_engine: str = "markitdown",
-    use_batched_worker: bool = True,
+    use_batched_worker: bool = False,
 ) -> TriageResult:
     """Process a PDF via heuristic baseline + selective docling repair.
 
@@ -427,12 +427,21 @@ def process_pdf_triaged(
             directly — preserves the pre-020.002-T behavior, used for
             regression coverage and as the fallback when markitdown
             fails on a page.
-        use_batched_worker: When True (default) AND N>=2 flagged
-            ranges, invoke the docling worker once in ``--batch`` mode
-            with a manifest of all splice PDFs. Amortizes the
-            ~5-10s docling model-load cost across N ranges (030-F T3).
-            Set to False to force the legacy per-range subprocess
-            loop.
+        use_batched_worker: **Opt-in (default False since 033-S).** When
+            True AND N>=2 flagged ranges, invoke the docling worker once
+            in ``--batch`` mode with a manifest of all splice PDFs,
+            amortizing the ~5-10s docling model-load cost across N ranges
+            (030-F T3).
+
+            **WARNING — large-corpus memory risk:** batched mode runs ALL
+            ranges in a single long-lived subprocess, defeating the
+            per-range torch-memory reclaim the per-range default relies
+            on. On large jobs (the cosmos PDF coalesces to ~86 ranges /
+            1818 pages) the batched process exhausts memory and is killed,
+            forcing the entire run to fall back to heuristic (observed
+            2026-06-16: subprocess_fallback_count 86/86). Keep this False
+            for large corpora until bounded sub-batching ships. The
+            default is the proven per-range subprocess loop.
 
     Returns:
         :class:`TriageResult` with per-page outputs, engine attribution,

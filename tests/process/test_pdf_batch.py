@@ -516,6 +516,7 @@ def test_batched_mode_invoked_when_two_or_more_chunks(tmp_path: Path) -> None:
         output_dir=out,
         budget=_budget(recommended_docling_max_pages=10),
         runner=counting_runner,
+        use_batched_worker=True,
     )
 
     assert result.metadata["batched_worker"] is True
@@ -540,6 +541,7 @@ def test_batched_mode_skipped_for_single_chunk(tmp_path: Path) -> None:
         output_dir=out,
         budget=_budget(recommended_docling_max_pages=10),
         runner=_runner_factory("# Single"),
+        use_batched_worker=True,
     )
 
     assert result.metadata["batched_worker"] is False
@@ -560,9 +562,45 @@ def test_batched_mode_disabled_when_serialize_docling(tmp_path: Path) -> None:
         budget=_budget(recommended_docling_max_pages=10, serialize_docling=True),
         runner=_runner_factory("# Per-chunk"),
         reclaim_pause_seconds=0,
+        use_batched_worker=True,
     )
 
     assert result.metadata["batched_worker"] is False
+    assert len(result.chunks) >= 2
+
+
+def test_per_chunk_loop_is_the_default_for_multi_chunk(tmp_path: Path) -> None:
+    """033-S regression guard: batched mode is OPT-IN; default is per-chunk.
+
+    032-S shipped ``use_batched_worker=True`` by default, which ran all
+    chunks in one long-lived subprocess and exhausted memory on large
+    corpora (cosmos: 86/86 docling fallback). The default reverted to the
+    proven per-chunk subprocess loop. A multi-chunk PDF with no explicit
+    flag must use per-chunk (one subprocess per chunk).
+    """
+
+    from docline.process.pdf_batch import process_pdf_in_chunks
+
+    pdf = _make_pdf(tmp_path / "big.pdf", page_count=25)
+    out = tmp_path / "out"
+
+    call_count = {"n": 0}
+
+    def counting_runner(args: list[str]) -> subprocess.CompletedProcess[str]:
+        call_count["n"] += 1
+        assert "--batch" not in args, "default must not invoke batched mode"
+        return _runner_factory("# Per-chunk default")(args)
+
+    result = process_pdf_in_chunks(
+        pdf,
+        output_dir=out,
+        budget=_budget(recommended_docling_max_pages=10),
+        runner=counting_runner,
+        reclaim_pause_seconds=0,
+    )
+
+    assert result.metadata["batched_worker"] is False
+    assert call_count["n"] == len(result.chunks)  # one subprocess per chunk
     assert len(result.chunks) >= 2
 
 
@@ -634,6 +672,7 @@ def test_batched_mode_per_chunk_error_envelope_routes_to_heuristic(tmp_path: Pat
         output_dir=out,
         budget=_budget(recommended_docling_max_pages=10),
         runner=batched_runner_with_one_failure,
+        use_batched_worker=True,
     )
 
     assert result.metadata["batched_worker"] is True
@@ -661,6 +700,7 @@ def test_batched_mode_subprocess_failure_routes_all_to_heuristic(tmp_path: Path)
         output_dir=out,
         budget=_budget(recommended_docling_max_pages=10),
         runner=failing_batched_runner,
+        use_batched_worker=True,
     )
 
     assert result.metadata["batched_worker"] is True
