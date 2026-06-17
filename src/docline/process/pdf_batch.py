@@ -242,9 +242,11 @@ def _run_chunks_batched(
     batch_subprocess_failed = completed.returncode != 0
     if batch_subprocess_failed:
         _log.warning(
-            "Batched docling worker failed (exit=%s); falling back to heuristic for all %d chunks",
+            "Batched docling worker failed (exit=%s); falling back to heuristic "
+            "for all %d chunks. Worker stderr: %s",
             completed.returncode,
             len(chunks),
+            (getattr(completed, "stderr", "") or "").strip() or "<none captured>",
         )
 
     chunk_results: list[ChunkResult] = []
@@ -358,9 +360,11 @@ def _process_one_chunk(
 
     # Subprocess failed — fall back to the heuristic engine for this chunk only.
     _log.warning(
-        "Docling worker failed for chunk %s (exit=%s); falling back to heuristic",
+        "Docling worker failed for chunk %s (exit=%s); falling back to heuristic. "
+        "Worker stderr: %s",
         chunk_path,
         completed.returncode,
+        (getattr(completed, "stderr", "") or "").strip() or "<none captured>",
     )
     try:
         pages = read_pdf_pages(chunk_path, layout_engine="heuristic")

@@ -1,7 +1,7 @@
 ---
 title: docling batch-size probe results
-date: 2026-06-14
-status: pending-empirical
+date: 2026-06-16
+status: empirical
 shipment: 032-S
 feature: 030-F
 task: 030.004-T
@@ -11,13 +11,61 @@ references:
   - docs/decisions/2026-06-08-extraction-strategy-study.md
 ---
 
-# docling batch-size probe — pending empirical run
+# docling batch-size probe — empirical results (2026-06-16)
 
-This decision doc is **pending operator empirical run** as of the 032-S merge.
-The probe script (``scripts/study/docling_batch_size_probe.py``) is committed
-and runnable; the empirical values below will be filled in by the operator
-post-merge when a representative cosmos splice PDF is available and docling
-is installed on the running host.
+Operator ran the probe against a 30-page splice (pages 859–888 of the
+cosmos PDF, from the table-heavy ``range-0859-1056`` flagged region).
+
+## Results
+
+| Probe | Pages | Wall (s) | Throughput (pp/min) | Peak RSS (MB) | Chars |
+|---|---:|---:|---:|---:|---:|
+| layout_bs=1 | 30 | 74.46 | 24.2 | 1226 | 54685 |
+| layout_bs=4 | 30 | 61.59 | 29.2 | 2043 | 54685 |
+| layout_bs=8 | 30 | 61.63 | 29.2 | 2048 | 54685 |
+| layout_bs=16 | 30 | 61.97 | 29.0 | 2089 | 54685 |
+| layout_bs=32 | 30 | 62.88 | 28.6 | 2108 | 54685 |
+| per-page-loop | 30 | 136.43 | 13.2 | 2262 | 54630 |
+
+## Conclusions
+
+- **Chosen ``layout_batch_size``: 4 (docling's existing default — no code change needed).**
+  Going 1→4 is a **17% speedup** (74.5s → 61.6s). Beyond 4 there is **no
+  throughput gain** (4/8/16/32 all land at ~61–63s) while peak RSS keeps
+  climbing (2043 → 2108 MB). Batch size 4 is the clean knee of the
+  latency/memory curve. Output chars are **identical** (54685) across all
+  batch sizes, confirming batch size affects only speed/memory, never
+  fidelity.
+
+- **``ocr_batch_size`` / ``table_batch_size``: keep defaults (4).** The
+  identical char counts across the sweep indicate these knobs did not
+  materially change extraction on this digital (non-scanned, OCR-off)
+  corpus.
+
+- **Per-page invocation overhead: 2.22×** (136.43s vs 61.59s for the same
+  30 pages) for **near-identical content** (54630 vs 54685 chars ≈ 99.9%).
+  This is the cost signal for the deferred per-page fidelity restoration
+  (deliberation 001-DL Option 2, stash ``D771B78E``).
+
+- **Recommended action on per-page restoration: DEFER / KEEP-AS-OPT-IN.**
+  2.22× is just above the 2× feasibility threshold from the 032-S closure.
+  Per-page restoration via ``page_range=(i,i)`` works and gives identical
+  fidelity, but at >2× wall-clock it is an expensive way to retire the
+  ``docling-collapsed`` attribution. Given Mistral OCR is ~10× faster and
+  the stronger lever for table-heavy fidelity (031-S), spend that effort
+  only if a docling-only, fidelity-critical path specifically needs true
+  per-page output. The stash item stays open but down-prioritized.
+
+- **No production code change results from this probe.** The empirical
+  winner (batch size 4) is already docling's default, so
+  ``_read_pdf_docling_pages`` needs no new constant. The probe confirmed
+  the default is optimal and quantified the per-page cost.
+
+---
+
+## Original pre-run notes (retained for context)
+
+This decision doc was **pending operator empirical run** as of the 032-S merge.
 
 ## Knob landscape (discovered during 030-F T4 grounding)
 
