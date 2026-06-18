@@ -98,7 +98,7 @@ def process_pdf_in_chunks(
     budget: ResourceBudget | None = None,
     runner: ChunkRunner | None = None,
     reclaim_pause_seconds: float = _RECLAIM_PAUSE_SECONDS,
-    use_batched_worker: bool = True,
+    use_batched_worker: bool = False,
 ) -> BatchResult:
     """Process a (possibly oversized) PDF via split + subprocess + stitch.
 
@@ -117,12 +117,22 @@ def process_pdf_in_chunks(
             True, sleep this many seconds between docling subprocess
             invocations so the OS can release torch tensor pages.
             Ignored when batched worker mode is active.
-        use_batched_worker: When True (default) AND N>=2 chunks AND
-            ``budget.serialize_docling`` is False, invoke the docling
-            worker once in ``--batch`` mode with a manifest of all
-            chunks. This amortizes the ~5-10s docling model-load cost
-            across N chunks (030-F T3). Set to False to force the
-            legacy per-chunk subprocess loop.
+        use_batched_worker: **Opt-in (default False since 033-S).** When
+            True AND N>=2 chunks AND ``budget.serialize_docling`` is
+            False, invoke the docling worker once in ``--batch`` mode
+            with a manifest of all chunks, amortizing the ~5-10s docling
+            model-load cost across N chunks (030-F T3).
+
+            **WARNING — large-corpus memory risk:** batched mode runs
+            ALL chunks in a single long-lived subprocess, which defeats
+            the per-chunk torch-memory reclaim that the per-chunk default
+            relies on (PyTorch's CPU allocator does not reliably return
+            memory to the OS). On large jobs (hundreds+ of pages) the
+            batched process can exhaust memory and be killed, causing the
+            entire batch to fall back to heuristic. Keep this False for
+            large corpora until bounded sub-batching ships. The default
+            is the proven per-chunk-subprocess loop (one process per
+            chunk = memory reclaimed between chunks).
 
     Returns:
         :class:`BatchResult` with one :class:`ChunkResult` per chunk
@@ -242,9 +252,11 @@ def _run_chunks_batched(
     batch_subprocess_failed = completed.returncode != 0
     if batch_subprocess_failed:
         _log.warning(
-            "Batched docling worker failed (exit=%s); falling back to heuristic for all %d chunks",
+            "Batched docling worker failed (exit=%s); falling back to heuristic "
+            "for all %d chunks. Worker stderr: %s",
             completed.returncode,
             len(chunks),
+            (getattr(completed, "stderr", "") or "").strip() or "<none captured>",
         )
 
     chunk_results: list[ChunkResult] = []
@@ -358,9 +370,11 @@ def _process_one_chunk(
 
     # Subprocess failed — fall back to the heuristic engine for this chunk only.
     _log.warning(
-        "Docling worker failed for chunk %s (exit=%s); falling back to heuristic",
+        "Docling worker failed for chunk %s (exit=%s); falling back to heuristic. "
+        "Worker stderr: %s",
         chunk_path,
         completed.returncode,
+        (getattr(completed, "stderr", "") or "").strip() or "<none captured>",
     )
     try:
         pages = read_pdf_pages(chunk_path, layout_engine="heuristic")

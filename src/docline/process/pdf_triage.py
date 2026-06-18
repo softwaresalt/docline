@@ -62,6 +62,33 @@ PageScorer = Callable[[int, str, object | None], PageScore]
 PreScorer = Callable[[int, object | None], PreTriageDecision]
 
 
+def _worker_output_text(raw: str) -> str:
+    """Extract the markdown text from a docling-worker output envelope.
+
+    The worker writes a JSON envelope (030-F T1) of the shape
+    ``{"schema_version": 1, "pages": [...], "page_count": N, "text": "..."}``.
+    Consumers that only need the joined markdown (e.g. the QA tripwire
+    similarity check) should read the ``text`` field rather than the raw
+    file body.
+
+    Args:
+        raw: Raw file body from a worker output path.
+
+    Returns:
+        The envelope's ``text`` field when ``raw`` is a valid envelope;
+        otherwise ``raw`` unchanged (defensive fallback for legacy
+        flat-markdown output or partial rollouts).
+    """
+
+    try:
+        envelope = json.loads(raw)
+    except (json.JSONDecodeError, ValueError):
+        return raw
+    if isinstance(envelope, dict) and isinstance(envelope.get("text"), str):
+        return envelope["text"]
+    return raw
+
+
 @dataclass(frozen=True)
 class TriageResult:
     """Aggregated outcome of :func:`process_pdf_triaged`.
@@ -368,7 +395,7 @@ def process_pdf_triaged(
     merge_gap: int = 2,
     qa_sampling: QASampling | None = None,
     baseline_engine: str = "markitdown",
-    use_batched_worker: bool = True,
+    use_batched_worker: bool = False,
 ) -> TriageResult:
     """Process a PDF via heuristic baseline + selective docling repair.
 
@@ -400,12 +427,21 @@ def process_pdf_triaged(
             directly — preserves the pre-020.002-T behavior, used for
             regression coverage and as the fallback when markitdown
             fails on a page.
-        use_batched_worker: When True (default) AND N>=2 flagged
-            ranges, invoke the docling worker once in ``--batch`` mode
-            with a manifest of all splice PDFs. Amortizes the
-            ~5-10s docling model-load cost across N ranges (030-F T3).
-            Set to False to force the legacy per-range subprocess
-            loop.
+        use_batched_worker: **Opt-in (default False since 033-S).** When
+            True AND N>=2 flagged ranges, invoke the docling worker once
+            in ``--batch`` mode with a manifest of all splice PDFs,
+            amortizing the ~5-10s docling model-load cost across N ranges
+            (030-F T3).
+
+            **WARNING — large-corpus memory risk:** batched mode runs ALL
+            ranges in a single long-lived subprocess, defeating the
+            per-range torch-memory reclaim the per-range default relies
+            on. On large jobs (the cosmos PDF coalesces to ~86 ranges /
+            1818 pages) the batched process exhausts memory and is killed,
+            forcing the entire run to fall back to heuristic (observed
+            2026-06-16: subprocess_fallback_count 86/86). Keep this False
+            for large corpora until bounded sub-batching ships. The
+            default is the proven per-range subprocess loop.
 
     Returns:
         :class:`TriageResult` with per-page outputs, engine attribution,
@@ -492,6 +528,14 @@ def process_pdf_triaged(
         ]
         completed = runner(cmd)
         batched_subprocess_returncode = completed.returncode
+        if batched_subprocess_returncode != 0:
+            _log.warning(
+                "Batched docling worker failed (exit=%s) for %d range(s); "
+                "all fall back to heuristic. Worker stderr: %s",
+                batched_subprocess_returncode,
+                len(splice_jobs),
+                (getattr(completed, "stderr", "") or "").strip() or "<none captured>",
+            )
     else:
         for _start, _end, splice_pdf, splice_md in splice_jobs:
             cmd = [
@@ -503,6 +547,15 @@ def process_pdf_triaged(
             ]
             completed = runner(cmd)
             per_range_returncodes.append(completed.returncode)
+            if completed.returncode != 0:
+                _log.warning(
+                    "Docling worker failed for range %d-%d (exit=%s); "
+                    "falling back to heuristic. Worker stderr: %s",
+                    _start,
+                    _end,
+                    completed.returncode,
+                    (getattr(completed, "stderr", "") or "").strip() or "<none captured>",
+                )
 
     # Post-pass: inspect each splice output, do per-page envelope splice-back
     # or fall back to heuristic with the appropriate engine attribution.
@@ -536,7 +589,18 @@ def process_pdf_triaged(
 
         if is_error_envelope:
             # Batched mode wrote an error envelope for this chunk; treat as
-            # subprocess failure for fallback accounting.
+            # subprocess failure for fallback accounting and surface the
+            # worker's error detail for diagnosis (Constitution V).
+            err_detail = "<no detail>"
+            if isinstance(envelope, dict):
+                err_detail = str(envelope.get("error", "<no detail>"))
+            _log.warning(
+                "Docling worker error envelope for range %d-%d; "
+                "falling back to heuristic. Worker error: %s",
+                start,
+                end,
+                err_detail,
+            )
             subprocess_fallback_count += 1
             continue
 
@@ -631,7 +695,7 @@ def process_pdf_triaged(
             ]
             qa_completed = runner(qa_cmd)
             if qa_completed.returncode == 0 and qa_md.exists():
-                docling_text = qa_md.read_text(encoding="utf-8")
+                docling_text = _worker_output_text(qa_md.read_text(encoding="utf-8"))
                 heuristic_text = heuristic_pages[page_idx]
                 similarity = _content_similarity(docling_text, heuristic_text)
                 if similarity >= 0.9:
@@ -644,6 +708,14 @@ def process_pdf_triaged(
                     bucket_counts["<0.5"] += 1
                 if similarity < qa_sampling.similarity_threshold:
                     qa_disagreements += 1
+            else:
+                _log.warning(
+                    "QA tripwire docling worker failed for page %d (exit=%s); "
+                    "skipping this sample. Worker stderr: %s",
+                    page_idx,
+                    qa_completed.returncode,
+                    (getattr(qa_completed, "stderr", "") or "").strip() or "<none captured>",
+                )
 
         metadata["qa_sampled_count"] = len(sampled)
         metadata["qa_disagreements"] = qa_disagreements

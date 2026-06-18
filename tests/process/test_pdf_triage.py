@@ -397,6 +397,7 @@ def test_triage_batched_mode_invoked_when_two_or_more_ranges(tmp_path: Path) -> 
         scorer=_make_scorer(flagged={3, 4, 10, 11}),  # 2 ranges after coalesce
         buffer=0,
         merge_gap=2,
+        use_batched_worker=True,
     )
 
     assert result.metadata["batched_worker"] is True
@@ -422,10 +423,45 @@ def test_triage_per_range_mode_when_single_range(tmp_path: Path) -> None:
         runner=runner,
         scorer=_make_scorer(flagged={4, 5, 6}),  # 1 range
         buffer=0,
+        use_batched_worker=True,
     )
 
     assert result.metadata["batched_worker"] is False
     assert runner.call_count == 1
+
+
+def test_triage_per_range_is_the_default_for_multi_range(tmp_path: Path) -> None:
+    """033-S regression guard: batched mode is OPT-IN; default is per-range.
+
+    032-S shipped ``use_batched_worker=True`` by default, which ran all
+    flagged ranges in one long-lived subprocess and exhausted memory on
+    the cosmos corpus (86 ranges / 1818 pages → 86/86 docling fallback).
+    The default reverted to the proven per-range subprocess loop. A
+    multi-range triage with no explicit flag must NOT invoke ``--batch``.
+    """
+
+    from docline.process.pdf_triage import process_pdf_triaged
+
+    pdf = _make_pdf(tmp_path / "doc.pdf", page_count=20)
+
+    def runner(args: list[str]) -> subprocess.CompletedProcess[str]:
+        assert "--batch" not in args, "default must not invoke batched mode"
+        return _runner_factory("# Per-range default")(args)
+
+    spy = MagicMock(side_effect=runner)
+    result = process_pdf_triaged(
+        pdf,
+        output_dir=tmp_path / "out",
+        runner=spy,
+        scorer=_make_scorer(flagged={3, 4, 10, 11}),  # 2 ranges after coalesce
+        buffer=0,
+        merge_gap=2,
+    )
+
+    assert result.metadata["batched_worker"] is False
+    assert spy.call_count == 2  # one subprocess per range
+    for idx in (3, 4, 10, 11):
+        assert result.engine_per_page[idx] == "docling"
 
 
 def test_triage_batched_mode_opt_out_forces_per_range_loop(tmp_path: Path) -> None:
@@ -470,6 +506,7 @@ def test_triage_batched_subprocess_failure_routes_all_ranges_to_heuristic(
         scorer=_make_scorer(flagged={3, 4, 10, 11}),
         buffer=0,
         merge_gap=2,
+        use_batched_worker=True,
     )
 
     assert result.metadata["batched_worker"] is True
@@ -521,6 +558,7 @@ def test_triage_batched_per_range_error_envelope_falls_back(tmp_path: Path) -> N
         scorer=_make_scorer(flagged={3, 4, 10, 11}),
         buffer=0,
         merge_gap=2,
+        use_batched_worker=True,
     )
 
     assert result.metadata["batched_worker"] is True
