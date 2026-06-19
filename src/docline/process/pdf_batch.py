@@ -261,7 +261,11 @@ def _run_chunks_batched(
 
     chunk_results: list[ChunkResult] = []
     for chunk_path, chunk_out in zip(chunks, chunk_outputs):
-        if (not batch_subprocess_failed) and chunk_out.exists():
+        # 032.002-T: gate each chunk on its OWN output envelope rather than the
+        # whole-batch returncode. A partial batch crash must not discard chunks
+        # that wrote valid envelopes before the crash; the batch is only fully
+        # failed when no chunk produced an envelope (``chunk_out.exists()``).
+        if chunk_out.exists():
             raw = chunk_out.read_text(encoding="utf-8")
             try:
                 envelope = json.loads(raw)

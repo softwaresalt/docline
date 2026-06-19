@@ -706,3 +706,57 @@ def test_batched_mode_subprocess_failure_routes_all_to_heuristic(tmp_path: Path)
     assert result.metadata["batched_worker"] is True
     assert all(cr.engine == "heuristic" for cr in result.chunks)
     assert result.fallback_chunk_count == len(result.chunks)
+
+
+def test_batched_mode_partial_crash_recovers_written_envelopes(tmp_path: Path) -> None:
+    """032.002-T: a batched worker that writes K valid chunk envelopes then
+    crashes (non-zero exit) must NOT discard the K usable chunks.
+
+    Regression target: the prior gate keyed every chunk's usability on the
+    whole-batch returncode, so a partial crash after writing K valid
+    envelopes routed ALL chunks to heuristic, throwing away real work. The
+    batch is only fully failed when NO chunk produced an envelope.
+    """
+
+    from docline.process.pdf_batch import process_pdf_in_chunks
+
+    pdf = _make_pdf(tmp_path / "big.pdf", page_count=25)
+    out = tmp_path / "out"
+
+    def partial_crash_runner(args: list[str]) -> subprocess.CompletedProcess[str]:
+        assert "--batch" in args
+        manifest = json.loads(Path(args[-1]).read_text(encoding="utf-8"))
+        chunks = manifest["chunks"]
+        # Write valid envelopes for every chunk EXCEPT the last, then "crash":
+        # the worker was OS-killed before the final chunk was written.
+        for chunk in chunks[:-1]:
+            input_pdf = Path(chunk["input"])
+            output_path = Path(chunk["output"])
+            reader = pypdf.PdfReader(str(input_pdf))
+            pages_out = ["# Recovered chunk" for _ in range(len(reader.pages))]
+            envelope = {
+                "schema_version": 1,
+                "pages": pages_out,
+                "page_count": len(pages_out),
+                "text": "\n\n".join(pages_out),
+            }
+            output_path.parent.mkdir(parents=True, exist_ok=True)
+            output_path.write_text(json.dumps(envelope), encoding="utf-8")
+        # Non-zero exit (e.g. SIGKILL) with the last chunk's envelope missing.
+        return subprocess.CompletedProcess(args=args, returncode=-9, stdout="", stderr="Killed")
+
+    result = process_pdf_in_chunks(
+        pdf,
+        output_dir=out,
+        budget=_budget(recommended_docling_max_pages=10),
+        runner=partial_crash_runner,
+        use_batched_worker=True,
+    )
+
+    assert result.metadata["batched_worker"] is True
+    engines = [cr.engine for cr in result.chunks]
+    # Chunks whose envelopes were written before the crash are recovered.
+    assert "docling" in engines, "valid pre-crash envelopes must not be discarded"
+    # Exactly the one chunk with no envelope falls back.
+    assert engines.count("heuristic") == 1
+    assert result.fallback_chunk_count == 1

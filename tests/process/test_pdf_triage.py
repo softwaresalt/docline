@@ -569,3 +569,61 @@ def test_triage_batched_per_range_error_envelope_falls_back(tmp_path: Path) -> N
     assert result.engine_per_page[10] == "heuristic"
     assert result.engine_per_page[11] == "heuristic"
     assert result.metadata["subprocess_fallback_count"] == 1
+
+
+def test_triage_batched_partial_crash_recovers_written_ranges(tmp_path: Path) -> None:
+    """032.002-T: a batched worker that writes K valid range envelopes then
+    crashes (non-zero exit) must not discard the written ranges.
+
+    Only ranges with no envelope fall back; the whole batch is failed solely
+    when no envelope was produced. Mirrors the pdf_batch partial-crash guard
+    for the triage splice-back path.
+    """
+
+    from docline.process.pdf_triage import process_pdf_triaged
+
+    pdf = _make_pdf(tmp_path / "doc.pdf", page_count=20)
+
+    def partial_crash_runner(args: list[str]) -> subprocess.CompletedProcess[str]:
+        assert "--batch" in args
+        manifest_idx = args.index("--batch") + 1
+        manifest = json.loads(Path(args[manifest_idx]).read_text(encoding="utf-8"))
+        chunks = manifest["chunks"]
+        # Write a valid envelope for the FIRST range only, then "crash" before
+        # the second range's envelope is written.
+        first = chunks[0]
+        input_pdf = Path(first["input"])
+        output_path = Path(first["output"])
+        reader = pypdf.PdfReader(str(input_pdf))
+        pages_out = [f"# Recovered range page {i}" for i in range(len(reader.pages))]
+        envelope = {
+            "schema_version": 1,
+            "pages": pages_out,
+            "page_count": len(pages_out),
+            "text": "\n\n".join(pages_out),
+        }
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        output_path.write_text(json.dumps(envelope), encoding="utf-8")
+        # OS-killed mid-batch: the second range envelope is never written.
+        return subprocess.CompletedProcess(args=args, returncode=-9, stdout="", stderr="Killed")
+
+    result = process_pdf_triaged(
+        pdf,
+        output_dir=tmp_path / "out",
+        runner=partial_crash_runner,
+        scorer=_make_scorer(flagged={3, 4, 10, 11}),
+        buffer=0,
+        merge_gap=2,
+        use_batched_worker=True,
+    )
+
+    assert result.metadata["batched_worker"] is True
+    # First range (pages 3-4): a valid envelope was written before the crash,
+    # so it must be recovered rather than discarded.
+    assert result.engine_per_page[3] == "docling"
+    assert result.engine_per_page[4] == "docling"
+    # Second range (pages 10-11): no envelope was written, so it falls back.
+    assert result.engine_per_page[10] == "heuristic"
+    assert result.engine_per_page[11] == "heuristic"
+    # Only the range with no envelope counts as a fallback.
+    assert result.metadata["subprocess_fallback_count"] == 1
