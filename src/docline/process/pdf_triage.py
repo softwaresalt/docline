@@ -562,7 +562,13 @@ def process_pdf_triaged(
     for job_idx, (start, end, _splice_pdf, splice_md) in enumerate(splice_jobs):
         # Decide whether this range's docling output is usable.
         if use_batched_splice:
-            subprocess_ok = batched_subprocess_returncode == 0
+            # 032.002-T: gate each range on its OWN envelope (existence and
+            # not-an-error-envelope, both checked below) rather than the
+            # whole-batch returncode. A partial batch crash must not discard
+            # ranges that wrote valid envelopes before the crash; the batch is
+            # only fully failed when no envelope was produced (handled per
+            # range by ``splice_md.exists()`` below).
+            subprocess_ok = True
         else:
             subprocess_ok = per_range_returncodes[job_idx] == 0
 
