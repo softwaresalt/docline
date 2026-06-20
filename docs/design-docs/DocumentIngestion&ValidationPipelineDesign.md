@@ -18,6 +18,7 @@ This solution operates simultaneously as a standalone CLI tool for local CI/CD p
 * **Extraction Engines (The "Readers"):** \* *docling (IBM):* For physical layout analysis of PDFs/DOCX, extracting bounding boxes and tables.  
   * *yt-dlp / webvtt-py:* For scraping media metadata and parsing transcript files.  
   * *Trafilatura \+ Turndown (Python ports):* For asynchronous HTML crawling and extraction.  
+  * *Mistral OCR (opt-in peer):* Cloud OCR engine promoted to a docling peer in 031-S — wins decisively on tables (mean +33.9%) at ~10× throughput, slightly weaker on heading depth. Never auto-selected; selected explicitly via `--pdf-engine mistral_ocr`. See the [PDF engine selection matrix](../../README.md#choosing-a-pdf-engine) for corpus-class guidance.
 * **Schema Definition & Enforcement:** Pydantic (Python)  
   * Provides strict runtime typing, validation, and automated JSON Schema generation for frontmatter and AST rules.  
 * **AST Generation & Linting:** markdown-it-py  

@@ -106,6 +106,40 @@ documentation, chat exports).
   `--source-mode` flag that bypasses PDF extraction entirely; see the
   [source-MD ingestion extension](docs/decisions/2026-06-08-source-md-ingestion-extension.md).
 
+### Choosing a PDF engine
+
+`--pdf-engine` selects *which* layout extractor runs and is orthogonal to
+`--pdf-mode` (which selects whole-document vs. triage). Four choices: `auto`
+(default), `docling`, `mistral_ocr`, and `heuristic`.
+
+| Engine | Strengths | Trade-offs | Requirements |
+|---|---|---|---|
+| `auto` (default) | Prefers `docling`; transparently degrades to `heuristic` on failure so one hostile PDF can't abort a batch | Never selects `mistral_ocr` | `docline[pdf]` for docling, else heuristic |
+| `docling` | Best structural fidelity on headings and dense layout; deterministic; fully local/offline | ~360 pages/hour (031-S bench) | `docline[pdf]` extra (raises if missing) |
+| `mistral_ocr` | Wins decisively on tables (mean +33.9% vs. docling, 8/4/2 wins); ~3,732 pages/hour (~10× docling) | Heading depth ~8.4% weaker than docling; per-page cloud cost (~$1 / 1,000 pages); network + credentials; non-deterministic | `docline[mistral]` + `AZURE_AI_FOUNDRY_KEY`/`_ENDPOINT` or `MISTRAL_API_KEY` |
+| `heuristic` | Fastest; no model download; fully local | Flattens tables and complex layout to plain text | None (built in) |
+
+**Fidelity vs. throughput — recommended engine by corpus class:**
+
+| Corpus class | Throughput priority | Cost sensitivity | Recommended `--pdf-engine` |
+|---|---|---|---|
+| Technical reference (vendor/framework docs, manuals) | Low | Any | `docling` (or `auto`) |
+| Table-heavy (financial reports, spec sheets, data appendices) | Low | Low | `mistral_ocr` |
+| Table-heavy at scale | High | Tolerant of cloud cost | `mistral_ocr` |
+| Scientific papers (dense layout + tables) | Low | Any | `docling`; `mistral_ocr` if tables dominate |
+| Forms / invoices (scanned, OCR-dependent) | Any | Tolerant | `mistral_ocr` (OCR strength) — re-validate per corpus |
+| Prose (novels, articles, transcripts) | High | Any | `heuristic` (or `--pdf-mode triage`) |
+| Offline / air-gapped / deterministic required | Any | Any | `docling` or `heuristic` (never cloud) |
+
+Evidence: the
+[031-S Mistral OCR spike](docs/closure/031-S-mistral-ocr-spike.md)
+(PROMOTE-AS-PEER — tables mean +33.9%, ~10× throughput, headings −8.4%) and
+the [2026-06-08 extraction strategy study](docs/decisions/2026-06-08-extraction-strategy-study.md)
+(docling wins 14/15 sampled technical-reference ranges on AST quality).
+`mistral_ocr` is opt-in only and is never auto-selected. Azure Document
+Intelligence was evaluated and removed in 031-S; see
+[029-S](docs/closure/029-S-adi-spike.md) for the historical record.
+
 ### Calibration & QA
 
 `docline process --pdf-mode triage --triage-report-only` emits a
