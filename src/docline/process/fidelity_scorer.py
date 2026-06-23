@@ -143,6 +143,25 @@ def signal_char_density(text: str, page_metadata: object | None = None) -> float
     return 1.0 - (char_count / _MIN_CHARS_PER_PAGE)
 
 
+def page_needs_ocr(text: str, page_metadata: object | None) -> bool:
+    """Whether a page likely needs OCR (image-only / scanned) (034-F).
+
+    A page needs OCR when it has little extractable text yet contains
+    embedded images — the signature of a scanned or image-only page.
+    Reuses :func:`signal_char_density` so the OCR gate and the sparse-text
+    fidelity signal stay consistent.
+
+    Args:
+        text: Extracted page text (pypdf or heuristic).
+        page_metadata: ``pypdf.PageObject`` for the page, or ``None``.
+
+    Returns:
+        ``True`` when the page is sparse-text-with-images (OCR likely
+        helps); ``False`` for text-bearing, blank, or metadata-less pages.
+    """
+    return signal_char_density(text, page_metadata) > 0.0
+
+
 def signal_non_ascii_ratio(text: str) -> float:
     """Flag pages with high non-printable / private-use codepoint ratio."""
     if not text:

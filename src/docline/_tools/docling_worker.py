@@ -182,9 +182,11 @@ def _run_single(input_path: Path, output_path: Path, *, do_ocr: bool = True) -> 
 
     # Forward do_ocr only when disabling OCR so the reader default and the
     # existing default-path call contract remain unchanged.
-    read_kwargs: dict[str, bool] = {} if do_ocr else {"do_ocr": False}
     try:
-        pages = _read_pdf_docling_pages(input_path, **read_kwargs)
+        if do_ocr:
+            pages = _read_pdf_docling_pages(input_path)
+        else:
+            pages = _read_pdf_docling_pages(input_path, do_ocr=False)
     except DependencyUnavailableError as err:
         _emit_diagnostic("docling-extras", "docling extras not installed", str(err))
         return 4
@@ -279,9 +281,11 @@ def _run_batched(manifest_path: Path) -> int:
             failure_count += 1
             continue
 
-        read_kwargs: dict[str, bool] = {} if chunk_do_ocr else {"do_ocr": False}
         try:
-            pages = _read_pdf_docling_pages(input_path, **read_kwargs)
+            if chunk_do_ocr:
+                pages = _read_pdf_docling_pages(input_path)
+            else:
+                pages = _read_pdf_docling_pages(input_path, do_ocr=False)
         except DependencyUnavailableError as err:
             # Extras missing affects ALL chunks identically; abort.
             _emit_diagnostic("docling-extras", "docling extras not installed", str(err))

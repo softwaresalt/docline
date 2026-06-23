@@ -43,6 +43,9 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 
+import pypdf
+
+from docline.process.fidelity_scorer import page_needs_ocr
 from docline.readers.pdf import read_pdf_pages
 from docline.readers.pdf_splitter import split_pdf
 from docline.runtime.resource_probe import ResourceBudget
@@ -212,6 +215,27 @@ def process_pdf_in_chunks(
     )
 
 
+def _chunk_needs_ocr(chunk_path: Path) -> bool:
+    """Whether any page in a chunk PDF needs OCR (image-only/scanned) (034-F).
+
+    Conservative: an unreadable chunk keeps OCR on. Uses cheap pypdf text
+    extraction (not docling) so the gate adds negligible cost relative to
+    the OCR it can skip.
+    """
+    try:
+        reader = pypdf.PdfReader(str(chunk_path), strict=False)
+    except Exception:  # noqa: BLE001 — unreadable chunk: keep OCR on (safe)
+        return True
+    for page in reader.pages:
+        try:
+            text = page.extract_text() or ""  # type: ignore[attr-defined]
+        except Exception:  # noqa: BLE001
+            text = ""
+        if page_needs_ocr(text, page):
+            return True
+    return False
+
+
 def _run_chunks_batched(
     chunks: list[Path],
     chunk_outputs: list[Path],
@@ -235,7 +259,8 @@ def _run_chunks_batched(
     manifest_path = output_dir / "_batch_manifest.json"
     manifest_payload = {
         "chunks": [
-            {"input": str(inp), "output": str(out)} for inp, out in zip(chunks, chunk_outputs)
+            {"input": str(inp), "output": str(out), "do_ocr": _chunk_needs_ocr(inp)}
+            for inp, out in zip(chunks, chunk_outputs)
         ]
     }
     manifest_path.write_text(json.dumps(manifest_payload), encoding="utf-8")
@@ -358,7 +383,10 @@ def _process_one_chunk(
     Falls back to the in-process heuristic engine on any non-zero exit.
     """
 
-    cmd = [sys.executable, "-m", "docline._tools.docling_worker", str(chunk_path), str(output_path)]
+    cmd = [sys.executable, "-m", "docline._tools.docling_worker"]
+    if not _chunk_needs_ocr(chunk_path):
+        cmd.append("--no-ocr")
+    cmd += [str(chunk_path), str(output_path)]
     completed = runner(cmd)
     if completed.returncode == 0 and output_path.exists():
         raw = output_path.read_text(encoding="utf-8")
