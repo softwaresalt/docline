@@ -715,6 +715,7 @@ def _read_pdf_docling_pages(
     path: Path,
     *,
     picture_sink: PictureSink | None = None,
+    do_ocr: bool = True,
 ) -> list[str]:
     """Extract text via the optional ``docling`` package.
 
@@ -730,6 +731,11 @@ def _read_pdf_docling_pages(
         path: Path to the PDF file.
         picture_sink: Optional ``PictureSink`` that receives rendered
             picture bytes.
+        do_ocr: When ``True`` (default) docling runs its OCR engine on the
+            page. Set ``False`` to skip OCR for pages that already carry an
+            extractable text layer — OCR is the dominant per-page cost on
+            native-text corpora. Defaulting to ``True`` preserves prior
+            behavior for callers that do not supply a decision.
 
     Returns:
         Single-element list containing the docling-rendered Markdown, or an
@@ -760,6 +766,7 @@ def _read_pdf_docling_pages(
         ) from err
     try:
         pipeline_options = PdfPipelineOptions(
+            do_ocr=do_ocr,
             do_table_structure=True,
             table_structure_options=TableStructureOptions(do_cell_matching=True),
             generate_picture_images=picture_sink is not None,
