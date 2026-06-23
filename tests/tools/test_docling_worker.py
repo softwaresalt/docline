@@ -445,3 +445,95 @@ def test_batched_mode_chunk_entry_missing_fields_returns_exit_2(tmp_path: Path, 
     diag = json.loads(captured.err.strip().splitlines()[-1])
     assert exit_code == 2
     assert diag["stage"] == "batch-manifest"
+
+
+# ---------------------------------------------------------------------------
+# 034.005-T: do_ocr plumbing (single-chunk --no-ocr flag + batched manifest field)
+# ---------------------------------------------------------------------------
+
+
+def test_single_chunk_no_ocr_flag_disables_ocr(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """``--no-ocr`` in single-chunk mode forwards ``do_ocr=False`` to the reader."""
+
+    from docline._tools import docling_worker
+
+    pdf = tmp_path / "doc.pdf"
+    pdf.write_bytes(b"%PDF-1.4\n")
+    output = tmp_path / "out.md"
+
+    seen: dict[str, bool] = {}
+
+    def fake_read(path: Path, *, picture_sink: Any | None = None, do_ocr: bool = True) -> list[str]:
+        seen["do_ocr"] = do_ocr
+        return ["x"]
+
+    monkeypatch.setattr("docline.readers.pdf._read_pdf_docling_pages", fake_read)
+
+    exit_code = docling_worker.main([str(pdf), str(output), "--no-ocr"])
+
+    assert exit_code == 0
+    assert seen["do_ocr"] is False
+    assert output.exists()
+
+
+def test_single_chunk_defaults_to_ocr_on(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Single-chunk mode without ``--no-ocr`` leaves OCR enabled (default behavior)."""
+
+    from docline._tools import docling_worker
+
+    pdf = tmp_path / "doc.pdf"
+    pdf.write_bytes(b"%PDF-1.4\n")
+    output = tmp_path / "out.md"
+
+    seen: dict[str, bool] = {"do_ocr": True}
+
+    def fake_read(path: Path, *, picture_sink: Any | None = None, do_ocr: bool = True) -> list[str]:
+        seen["do_ocr"] = do_ocr
+        return ["x"]
+
+    monkeypatch.setattr("docline.readers.pdf._read_pdf_docling_pages", fake_read)
+
+    exit_code = docling_worker.main([str(pdf), str(output)])
+
+    assert exit_code == 0
+    assert seen["do_ocr"] is True
+
+
+def test_batched_manifest_do_ocr_field_routes_per_chunk(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A per-chunk ``do_ocr`` manifest field forwards to the reader; absent defaults to True."""
+
+    from docline._tools import docling_worker
+
+    inp0 = tmp_path / "chunk-0.pdf"
+    inp0.write_bytes(b"%PDF-1.4\n")
+    inp1 = tmp_path / "chunk-1.pdf"
+    inp1.write_bytes(b"%PDF-1.4\n")
+    out0 = tmp_path / "chunk-0.md"
+    out1 = tmp_path / "chunk-1.md"
+
+    manifest = {
+        "chunks": [
+            {"input": str(inp0), "output": str(out0), "do_ocr": False},
+            {"input": str(inp1), "output": str(out1)},  # no do_ocr -> default True
+        ]
+    }
+    manifest_path = tmp_path / "manifest.json"
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+
+    seen: dict[str, bool] = {}
+
+    def fake_read(path: Path, *, picture_sink: Any | None = None, do_ocr: bool = True) -> list[str]:
+        seen[path.stem] = do_ocr
+        return ["content"]
+
+    monkeypatch.setattr("docline.readers.pdf._read_pdf_docling_pages", fake_read)
+
+    exit_code = docling_worker.main(["--batch", str(manifest_path)])
+
+    assert exit_code == 0
+    assert seen["chunk-0"] is False
+    assert seen["chunk-1"] is True

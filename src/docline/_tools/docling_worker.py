@@ -5,7 +5,7 @@ Invoked by :mod:`docline.process.pdf_batch` and
 
 Single-chunk mode (legacy)::
 
-    python -m docline._tools.docling_worker INPUT_PDF OUTPUT_MD
+    python -m docline._tools.docling_worker INPUT_PDF OUTPUT_MD [--no-ocr]
 
 Batched mode (030-F T3)::
 
@@ -22,6 +22,11 @@ N chunks instead of paying it per invocation. The manifest format is::
             {"input": "/abs/path/chunk-2.pdf", "output": "/abs/path/chunk-2.md"}
         ]
     }
+
+Each chunk may include an optional ``"do_ocr"`` boolean (default ``true``);
+set it ``false`` to skip OCR for ranges whose pages already carry an
+extractable text layer (034-F). The single-chunk CLI exposes the same
+control via the optional ``--no-ocr`` flag.
 
 Per-chunk failures during batched processing write an error envelope to
 that chunk's output path (with the legacy schema_version=1 plus an
@@ -153,8 +158,13 @@ def _write_envelope(output_path: Path, envelope: dict[str, object]) -> None:
     output_path.write_text(body, encoding="utf-8")
 
 
-def _run_single(input_path: Path, output_path: Path) -> int:
+def _run_single(input_path: Path, output_path: Path, *, do_ocr: bool = True) -> int:
     """Single-chunk mode entry point.
+
+    Args:
+        input_path: Source PDF path.
+        output_path: Envelope output path.
+        do_ocr: When ``False`` the docling OCR engine is skipped (034-F).
 
     Returns the process exit code per the table in the module docstring.
     """
@@ -170,8 +180,11 @@ def _run_single(input_path: Path, output_path: Path) -> int:
         _emit_diagnostic("import", "could not import docline.readers.pdf", str(err))
         return 6
 
+    # Forward do_ocr only when disabling OCR so the reader default and the
+    # existing default-path call contract remain unchanged.
+    read_kwargs: dict[str, bool] = {} if do_ocr else {"do_ocr": False}
     try:
-        pages = _read_pdf_docling_pages(input_path)
+        pages = _read_pdf_docling_pages(input_path, **read_kwargs)
     except DependencyUnavailableError as err:
         _emit_diagnostic("docling-extras", "docling extras not installed", str(err))
         return 4
@@ -249,6 +262,7 @@ def _run_batched(manifest_path: Path) -> int:
     for i, entry in enumerate(chunks):
         input_path = Path(entry["input"])
         output_path = Path(entry["output"])
+        chunk_do_ocr = bool(entry.get("do_ocr", True))
 
         if not input_path.exists():
             err_env = _build_error_envelope(FileNotFoundError(f"input PDF not found: {input_path}"))
@@ -265,8 +279,9 @@ def _run_batched(manifest_path: Path) -> int:
             failure_count += 1
             continue
 
+        read_kwargs: dict[str, bool] = {} if chunk_do_ocr else {"do_ocr": False}
         try:
-            pages = _read_pdf_docling_pages(input_path)
+            pages = _read_pdf_docling_pages(input_path, **read_kwargs)
         except DependencyUnavailableError as err:
             # Extras missing affects ALL chunks identically; abort.
             _emit_diagnostic("docling-extras", "docling extras not installed", str(err))
@@ -329,14 +344,26 @@ def main(argv: list[str] | None = None) -> int:
     if len(args) == 2 and args[0] == "--batch":
         return _run_batched(Path(args[1]))
 
-    if len(args) != 2 or args[0].startswith("--"):
+    # Single-chunk mode: an optional --no-ocr flag may appear among the args.
+    do_ocr = True
+    positional: list[str] = []
+    for arg in args:
+        if arg == "--no-ocr":
+            do_ocr = False
+        elif arg.startswith("--"):
+            _emit_diagnostic("cli", f"unknown flag: {arg}")
+            return 2
+        else:
+            positional.append(arg)
+
+    if len(positional) != 2:
         _emit_diagnostic(
             "cli",
-            "expected: INPUT_PDF OUTPUT_MD  |  --batch MANIFEST_JSON",
+            "expected: INPUT_PDF OUTPUT_MD [--no-ocr]  |  --batch MANIFEST_JSON",
         )
         return 2
 
-    return _run_single(Path(args[0]), Path(args[1]))
+    return _run_single(Path(positional[0]), Path(positional[1]), do_ocr=do_ocr)
 
 
 if __name__ == "__main__":
