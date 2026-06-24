@@ -38,7 +38,7 @@ import statistics
 import subprocess
 import sys
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -48,6 +48,7 @@ from markdown_it import MarkdownIt
 from docline.process.fidelity_scorer import (
     PageScore,
     PreTriageDecision,
+    page_needs_ocr,
     pre_triage_score,
     score_page,
 )
@@ -255,6 +256,35 @@ def _heuristic_extract(
                 return "", True
 
     raise ValueError(f"unknown baseline_engine {engine!r}; expected 'markitdown' or 'pypdf'")
+
+
+def _range_needs_ocr(
+    reader: pypdf.PdfReader,
+    start: int,
+    end: int,
+    heuristic_pages: Sequence[str],
+) -> bool:
+    """Whether any page in ``[start, end]`` needs OCR (034-F).
+
+    Reuses the per-page text the heuristic pass already extracted; for
+    docling-routed pages (empty heuristic slot) it does a cheap pypdf
+    text extraction so the empty slot does not masquerade as an
+    image-only page. Conservative: the range needs OCR if ANY page is
+    image-only, preserving scanned-PDF fidelity.
+    """
+    for idx in range(start, end + 1):
+        if idx >= len(reader.pages):
+            continue
+        page = reader.pages[idx]
+        text = heuristic_pages[idx] if idx < len(heuristic_pages) else ""
+        if not text:
+            try:
+                text = page.extract_text() or ""  # type: ignore[attr-defined]
+            except Exception:  # noqa: BLE001 — best-effort text-layer probe
+                text = ""
+        if page_needs_ocr(text, page):
+            return True
+    return False
 
 
 @dataclass(frozen=True)
@@ -495,6 +525,7 @@ def process_pdf_triaged(
     # This lets us decide between batched and per-range execution after
     # all temp PDFs are written.
     splice_jobs: list[tuple[int, int, Path, Path]] = []
+    range_do_ocr: list[bool] = []
     for start, end in flagged_ranges:
         splice_pdf = splice_cache / f"splice-{start:04d}-{end:04d}.pdf"
         splice_md = splice_cache / f"splice-{start:04d}-{end:04d}.md"
@@ -507,6 +538,7 @@ def process_pdf_triaged(
             writer.write(fh)
 
         splice_jobs.append((start, end, splice_pdf, splice_md))
+        range_do_ocr.append(_range_needs_ocr(reader, start, end, heuristic_pages))
 
     # Decide execution mode and run the docling subprocess(es).
     use_batched_splice = use_batched_worker and len(splice_jobs) >= 2
@@ -516,7 +548,10 @@ def process_pdf_triaged(
     if use_batched_splice:
         manifest_path = splice_cache / "_batch_manifest.json"
         manifest_payload = {
-            "chunks": [{"input": str(sp), "output": str(sm)} for (_s, _e, sp, sm) in splice_jobs]
+            "chunks": [
+                {"input": str(sp), "output": str(sm), "do_ocr": ocr}
+                for (_s, _e, sp, sm), ocr in zip(splice_jobs, range_do_ocr)
+            ]
         }
         manifest_path.write_text(json.dumps(manifest_payload), encoding="utf-8")
         cmd = [
@@ -537,14 +572,11 @@ def process_pdf_triaged(
                 (getattr(completed, "stderr", "") or "").strip() or "<none captured>",
             )
     else:
-        for _start, _end, splice_pdf, splice_md in splice_jobs:
-            cmd = [
-                sys.executable,
-                "-m",
-                "docline._tools.docling_worker",
-                str(splice_pdf),
-                str(splice_md),
-            ]
+        for (_start, _end, splice_pdf, splice_md), do_ocr in zip(splice_jobs, range_do_ocr):
+            cmd = [sys.executable, "-m", "docline._tools.docling_worker"]
+            if not do_ocr:
+                cmd.append("--no-ocr")
+            cmd += [str(splice_pdf), str(splice_md)]
             completed = runner(cmd)
             per_range_returncodes.append(completed.returncode)
             if completed.returncode != 0:
@@ -692,13 +724,10 @@ def process_pdf_triaged(
             with qa_pdf.open("wb") as fh:
                 qa_writer.write(fh)
 
-            qa_cmd = [
-                sys.executable,
-                "-m",
-                "docline._tools.docling_worker",
-                str(qa_pdf),
-                str(qa_md),
-            ]
+            qa_cmd = [sys.executable, "-m", "docline._tools.docling_worker"]
+            if not page_needs_ocr(heuristic_pages[page_idx], reader.pages[page_idx]):
+                qa_cmd.append("--no-ocr")
+            qa_cmd += [str(qa_pdf), str(qa_md)]
             qa_completed = runner(qa_cmd)
             if qa_completed.returncode == 0 and qa_md.exists():
                 docling_text = _worker_output_text(qa_md.read_text(encoding="utf-8"))

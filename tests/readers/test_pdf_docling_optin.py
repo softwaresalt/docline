@@ -212,3 +212,78 @@ def test_docling_pipeline_tuning_options_enabled_when_available(
     pipeline_options = pdf_format_option.pipeline_options
     assert pipeline_options.do_table_structure is True
     assert pipeline_options.generate_picture_images is True
+
+
+# ---------------------------------------------------------------------------
+# 034-F — conditional docling OCR (do_ocr threading)
+# ---------------------------------------------------------------------------
+
+
+def _capture_pipeline_options(monkeypatch: pytest.MonkeyPatch, captured: dict[str, object]) -> None:
+    """Monkeypatch ``DocumentConverter`` to capture ``format_options`` without inference."""
+
+    def fake_converter_factory(
+        *, format_options: dict[object, object] | None = None, **_kw: object
+    ) -> object:
+        captured["format_options"] = format_options
+
+        class _Stub:
+            def convert(self, _path: str) -> object:
+                class _Result:
+                    class document:  # type: ignore[no-untyped-def]
+                        @staticmethod
+                        def export_to_markdown() -> str:
+                            return ""
+
+                return _Result()
+
+        return _Stub()
+
+    import docling.document_converter as dc_module  # type: ignore[import-untyped]
+
+    monkeypatch.setattr(dc_module, "DocumentConverter", fake_converter_factory)
+
+
+def _captured_pipeline_options(captured: dict[str, object]) -> object:
+    from docling.datamodel.base_models import InputFormat  # type: ignore[import-untyped]
+
+    fmt_opts = captured["format_options"]
+    return fmt_opts[InputFormat.PDF].pipeline_options  # type: ignore[index]
+
+
+def test_read_pdf_docling_pages_do_ocr_false_disables_ocr(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """``_read_pdf_docling_pages(path, do_ocr=False)`` must disable OCR in the options."""
+    if not dependencies_module.pdf_available():
+        pytest.skip("docling not installed; skipping do_ocr option test")
+
+    from docline.readers.pdf import _read_pdf_docling_pages
+
+    captured: dict[str, object] = {}
+    _capture_pipeline_options(monkeypatch, captured)
+
+    pdf_path = _build_three_band_pdf(tmp_path)
+    _read_pdf_docling_pages(pdf_path, do_ocr=False)
+
+    pipeline_options = _captured_pipeline_options(captured)
+    assert pipeline_options.do_ocr is False
+
+
+def test_read_pdf_docling_pages_do_ocr_defaults_true(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Omitting ``do_ocr`` must preserve today's behavior (OCR on)."""
+    if not dependencies_module.pdf_available():
+        pytest.skip("docling not installed; skipping do_ocr default test")
+
+    from docline.readers.pdf import _read_pdf_docling_pages
+
+    captured: dict[str, object] = {}
+    _capture_pipeline_options(monkeypatch, captured)
+
+    pdf_path = _build_three_band_pdf(tmp_path)
+    _read_pdf_docling_pages(pdf_path)
+
+    pipeline_options = _captured_pipeline_options(captured)
+    assert pipeline_options.do_ocr is True
