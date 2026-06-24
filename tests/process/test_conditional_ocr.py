@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import Any
 
 import pypdf
+import pytest
 
 from docline.process.fidelity_scorer import PageScore, page_needs_ocr
 from docline.process.pdf_batch import process_pdf_in_chunks
@@ -39,6 +40,20 @@ def _make_blank_pdf(path: Path, page_count: int) -> Path:
         writer.add_blank_page(width=612, height=792)
     with path.open("wb") as fh:
         writer.write(fh)
+    return path
+
+
+def _make_image_only_pdf(path: Path, page_count: int = 1) -> Path:
+    """Build an image-only PDF (embedded image, no text layer) via Pillow.
+
+    Skip-gated by callers via ``pytest.importorskip("PIL")`` — Pillow is an
+    optional/transitive dependency, so tests that need a real scanned-page
+    fixture are skipped when it is unavailable.
+    """
+    from PIL import Image
+
+    images = [Image.new("RGB", (200, 120), (180, 180, 180)) for _ in range(page_count)]
+    images[0].save(str(path), "PDF", save_all=True, append_images=images[1:])
     return path
 
 
@@ -248,3 +263,54 @@ def test_batch_batched_manifest_carries_do_ocr(tmp_path: Path) -> None:
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     assert manifest["chunks"], "expected at least one chunk in the manifest"
     assert all(chunk.get("do_ocr") is False for chunk in manifest["chunks"])
+
+
+# ---------------------------------------------------------------------------
+# Real image-only PDF fixture (034.006-T acceptance criterion) — end-to-end
+# ---------------------------------------------------------------------------
+
+
+def test_image_only_pdf_page_needs_ocr(tmp_path: Path) -> None:
+    """A real image-only page (embedded image, no text layer) needs OCR."""
+    pytest.importorskip("PIL")
+    pdf = _make_image_only_pdf(tmp_path / "scan.pdf")
+    page = pypdf.PdfReader(str(pdf)).pages[0]
+    assert page_needs_ocr(page.extract_text() or "", page) is True
+
+
+def test_triage_keeps_ocr_for_real_image_only_pdf(tmp_path: Path) -> None:
+    """End-to-end: a real image-only PDF keeps OCR on (no ``--no-ocr``)."""
+    pytest.importorskip("PIL")
+    pdf = _make_image_only_pdf(tmp_path / "scan.pdf", page_count=2)
+    captured: list[list[str]] = []
+
+    process_pdf_triaged(
+        pdf,
+        output_dir=tmp_path / "out",
+        budget=_budget(),
+        runner=_capturing_runner(captured),
+        scorer=_flag_all_scorer,
+        baseline_engine="pypdf",
+    )
+
+    range_cmds = _range_cmds(captured)
+    assert range_cmds, "expected at least one per-range worker cmd"
+    assert all("--no-ocr" not in cmd for cmd in range_cmds)
+
+
+def test_batch_keeps_ocr_for_real_image_only_pdf(tmp_path: Path) -> None:
+    """End-to-end: a real image-only PDF keeps OCR on in the pdf_batch path."""
+    pytest.importorskip("PIL")
+    pdf = _make_image_only_pdf(tmp_path / "scan.pdf", page_count=3)
+    captured: list[list[str]] = []
+
+    process_pdf_in_chunks(
+        pdf,
+        output_dir=tmp_path / "out",
+        budget=_budget(recommended_docling_max_pages=4),
+        runner=_capturing_runner(captured),
+    )
+
+    range_cmds = _range_cmds(captured)
+    assert range_cmds, "expected at least one single-chunk worker cmd"
+    assert all("--no-ocr" not in cmd for cmd in range_cmds)
