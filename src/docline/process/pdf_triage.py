@@ -52,7 +52,7 @@ from docline.process.fidelity_scorer import (
     pre_triage_score,
     score_page,
 )
-from docline.process.page_range import coalesce_ranges
+from docline.process.page_range import coalesce_ranges, group_by_page_count
 from docline.process.quality_metrics import compute_quality_metrics
 from docline.runtime.resource_probe import ResourceBudget
 
@@ -542,35 +542,48 @@ def process_pdf_triaged(
 
     # Decide execution mode and run the docling subprocess(es).
     use_batched_splice = use_batched_worker and len(splice_jobs) >= 2
-    batched_subprocess_returncode = 0
     per_range_returncodes: list[int] = []
 
     if use_batched_splice:
-        manifest_path = splice_cache / "_batch_manifest.json"
-        manifest_payload = {
-            "chunks": [
-                {"input": str(sp), "output": str(sm), "do_ocr": ocr}
-                for (_s, _e, sp, sm), ocr in zip(splice_jobs, range_do_ocr)
+        # Bounded sub-batching (032.003-T): split the ranges into GROUPS capped
+        # by MAX_BATCHED_PAGES cumulative pages and spawn one --batch worker per
+        # group. A fresh subprocess per group reclaims torch memory between
+        # groups (avoiding the 032-S single-process OOM) while amortizing the
+        # docling model load within a group. The post-pass below gates each
+        # range on its OWN envelope, so per-group dispatch is transparent to it.
+        page_counts = [end - start + 1 for (start, end, _sp, _sm) in splice_jobs]
+        groups = group_by_page_count(page_counts)
+        for group_idx, group in enumerate(groups):
+            manifest_path = splice_cache / f"_batch_manifest_{group_idx:03d}.json"
+            manifest_payload = {
+                "chunks": [
+                    {
+                        "input": str(splice_jobs[i][2]),
+                        "output": str(splice_jobs[i][3]),
+                        "do_ocr": range_do_ocr[i],
+                    }
+                    for i in group
+                ]
+            }
+            manifest_path.write_text(json.dumps(manifest_payload), encoding="utf-8")
+            cmd = [
+                sys.executable,
+                "-m",
+                "docline._tools.docling_worker",
+                "--batch",
+                str(manifest_path),
             ]
-        }
-        manifest_path.write_text(json.dumps(manifest_payload), encoding="utf-8")
-        cmd = [
-            sys.executable,
-            "-m",
-            "docline._tools.docling_worker",
-            "--batch",
-            str(manifest_path),
-        ]
-        completed = runner(cmd)
-        batched_subprocess_returncode = completed.returncode
-        if batched_subprocess_returncode != 0:
-            _log.warning(
-                "Batched docling worker failed (exit=%s) for %d range(s); "
-                "all fall back to heuristic. Worker stderr: %s",
-                batched_subprocess_returncode,
-                len(splice_jobs),
-                (getattr(completed, "stderr", "") or "").strip() or "<none captured>",
-            )
+            completed = runner(cmd)
+            if completed.returncode != 0:
+                _log.warning(
+                    "Batched docling worker group %d/%d failed (exit=%s) for %d range(s); "
+                    "those ranges fall back to heuristic. Worker stderr: %s",
+                    group_idx + 1,
+                    len(groups),
+                    completed.returncode,
+                    len(group),
+                    (getattr(completed, "stderr", "") or "").strip() or "<none captured>",
+                )
     else:
         for (_start, _end, splice_pdf, splice_md), do_ocr in zip(splice_jobs, range_do_ocr):
             cmd = [sys.executable, "-m", "docline._tools.docling_worker"]
