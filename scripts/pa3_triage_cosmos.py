@@ -22,6 +22,10 @@ Usage::
         --output-dir .\\.elt\\output\\cosmos-triage \\
         --log-path logs\\pa3-cosmos-triage.log
 
+    # to exercise 037-S bounded sub-batching (opt-in batched mode):
+    .\\.venv\\Scripts\\python.exe scripts\\pa3_triage_cosmos.py \\
+        --use-batched-worker
+
 Outputs (under ``--output-dir``):
 
 * ``pa3-summary.json`` — wall-clock, per-page engine distribution,
@@ -180,6 +184,18 @@ def main(argv: list[str] | None = None) -> int:
             "long documents."
         ),
     )
+    parser.add_argument(
+        "--use-batched-worker",
+        action="store_true",
+        help=(
+            "Enable bounded sub-batching of the docling worker (037-S). When "
+            "set (and >=2 flagged ranges), ranges are grouped by cumulative "
+            "page count (cap MAX_BATCHED_PAGES) and dispatched one --batch "
+            "worker per group, amortizing docling model load within a group "
+            "while reclaiming torch memory between groups. Default off "
+            "(per-chunk subprocess loop, the 033-S memory-safe default)."
+        ),
+    )
     args = parser.parse_args(argv)
 
     args.log_path.parent.mkdir(parents=True, exist_ok=True)
@@ -223,6 +239,7 @@ def main(argv: list[str] | None = None) -> int:
             qa_sampling.similarity_threshold,
         )
     log.info("Baseline engine: %s", args.baseline_engine)
+    log.info("Batched worker (037-S bounded sub-batching): %s", args.use_batched_worker)
     try:
         result = process_pdf_triaged(
             args.pdf,
@@ -231,6 +248,7 @@ def main(argv: list[str] | None = None) -> int:
             merge_gap=args.merge_gap,
             qa_sampling=qa_sampling,
             baseline_engine=args.baseline_engine,
+            use_batched_worker=args.use_batched_worker,
         )
     except Exception as err:  # noqa: BLE001 — surface full traceback for diagnosis
         elapsed = time.monotonic() - start
@@ -249,6 +267,7 @@ def main(argv: list[str] | None = None) -> int:
         "wall_clock_human": _human_duration(elapsed),
         "buffer": args.buffer,
         "merge_gap": args.merge_gap,
+        "use_batched_worker": args.use_batched_worker,
         "qa_sampling": (
             {
                 "sample_rate": qa_sampling.sample_rate,
