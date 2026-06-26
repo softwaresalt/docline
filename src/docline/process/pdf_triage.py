@@ -471,9 +471,14 @@ def process_pdf_triaged(
             default is safe and faster: **0/86 fallback** on the full
             1,818-page flagged set and **~9.5% faster** than the per-range
             loop, with identical output. Set ``False`` to force the per-range
-            subprocess loop (one process per range) — useful on
-            memory-constrained hosts; the resource probe also forces per-range
-            when ``budget.serialize_docling`` is True regardless of this flag.
+            subprocess loop (one process per range) on memory-constrained
+            hosts. Note: unlike :func:`process_pdf_in_chunks`, the triage path
+            does **not** consult ``budget.serialize_docling`` (the triage
+            ``budget`` is informational); batched mode here is gated solely on
+            the range count, and its memory safety comes from the bounded
+            :data:`~docline.process.page_range.MAX_BATCHED_PAGES` per-group cap
+            (a single range larger than the cap forms its own group, the same
+            peak as the per-range loop).
 
     Returns:
         :class:`TriageResult` with per-page outputs, engine attribution,
