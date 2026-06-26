@@ -430,23 +430,27 @@ def test_triage_per_range_mode_when_single_range(tmp_path: Path) -> None:
     assert runner.call_count == 1
 
 
-def test_triage_per_range_is_the_default_for_multi_range(tmp_path: Path) -> None:
-    """033-S regression guard: batched mode is OPT-IN; default is per-range.
+def test_triage_batched_is_the_default_for_multi_range(tmp_path: Path) -> None:
+    """037-S verification flip: bounded sub-batching is the DEFAULT for multi-range.
 
-    032-S shipped ``use_batched_worker=True`` by default, which ran all
-    flagged ranges in one long-lived subprocess and exhausted memory on
-    the cosmos corpus (86 ranges / 1818 pages → 86/86 docling fallback).
-    The default reverted to the proven per-range subprocess loop. A
-    multi-range triage with no explicit flag must NOT invoke ``--batch``.
+    032-S shipped ``use_batched_worker=True`` by default but ran all flagged
+    ranges in ONE subprocess → cosmos OOM (86/86 fallback). 033-S reverted to
+    per-range. 037-S added bounded sub-batching and the cosmos runtime
+    verification (0/86 fallback, ~9.5% faster) justified making batched the
+    default again. A multi-range triage with no explicit flag must invoke
+    ``--batch``.
     """
 
     from docline.process.pdf_triage import process_pdf_triaged
 
     pdf = _make_pdf(tmp_path / "doc.pdf", page_count=20)
 
+    batch_calls = {"n": 0}
+
     def runner(args: list[str]) -> subprocess.CompletedProcess[str]:
-        assert "--batch" not in args, "default must not invoke batched mode"
-        return _runner_factory("# Per-range default")(args)
+        if "--batch" in args:
+            batch_calls["n"] += 1
+        return _runner_factory("# Batched default")(args)
 
     spy = MagicMock(side_effect=runner)
     result = process_pdf_triaged(
@@ -458,8 +462,9 @@ def test_triage_per_range_is_the_default_for_multi_range(tmp_path: Path) -> None
         merge_gap=2,
     )
 
-    assert result.metadata["batched_worker"] is False
-    assert spy.call_count == 2  # one subprocess per range
+    assert result.metadata["batched_worker"] is True
+    # 2 small ranges (<= MAX_BATCHED_PAGES) -> one bounded group -> one --batch.
+    assert batch_calls["n"] >= 1, "default must invoke bounded-batched mode"
     for idx in (3, 4, 10, 11):
         assert result.engine_per_page[idx] == "docling"
 

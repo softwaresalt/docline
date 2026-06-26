@@ -128,8 +128,8 @@ def test_use_batched_worker_flag_forwarded_to_process(tmp_path: Path) -> None:
     assert captured.get("use_batched_worker") is True
 
 
-def test_use_batched_worker_defaults_off(tmp_path: Path) -> None:
-    """Omitting the flag forwards ``use_batched_worker=False`` (per-chunk default)."""
+def test_omitting_flag_uses_library_default(tmp_path: Path) -> None:
+    """Omitting the flag must NOT force a value — the library default applies."""
     module = _load_script_module()
     pdf = _make_blank_pdf(tmp_path / "doc.pdf")
 
@@ -157,6 +157,45 @@ def test_use_batched_worker_defaults_off(tmp_path: Path) -> None:
             str(tmp_path / "out"),
             "--log-path",
             str(tmp_path / "run.log"),
+        ]
+    )
+
+    assert exit_code == 0
+    # No explicit flag -> the script must not pass use_batched_worker at all,
+    # so the library default (batched since 037-S) governs.
+    assert "use_batched_worker" not in captured
+
+
+def test_no_use_batched_worker_forces_per_chunk(tmp_path: Path) -> None:
+    """`--no-use-batched-worker` must forward ``use_batched_worker=False``."""
+    module = _load_script_module()
+    pdf = _make_blank_pdf(tmp_path / "doc.pdf")
+
+    captured: dict[str, Any] = {}
+
+    def fake_process(path: Path, **kwargs: Any) -> Any:
+        captured.update(kwargs)
+        from docline.process.pdf_triage import TriageResult
+
+        return TriageResult(
+            source=path,
+            pages=("",),
+            engine_per_page=("heuristic",),
+            flagged_ranges=(),
+            metadata={},
+        )
+
+    module.process_pdf_triaged = fake_process  # type: ignore[attr-defined]
+
+    exit_code = module.main(
+        [
+            "--pdf",
+            str(pdf),
+            "--output-dir",
+            str(tmp_path / "out"),
+            "--log-path",
+            str(tmp_path / "run.log"),
+            "--no-use-batched-worker",
         ]
     )
 

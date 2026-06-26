@@ -425,7 +425,7 @@ def process_pdf_triaged(
     merge_gap: int = 2,
     qa_sampling: QASampling | None = None,
     baseline_engine: str = "markitdown",
-    use_batched_worker: bool = False,
+    use_batched_worker: bool = True,
 ) -> TriageResult:
     """Process a PDF via heuristic baseline + selective docling repair.
 
@@ -457,21 +457,23 @@ def process_pdf_triaged(
             directly — preserves the pre-020.002-T behavior, used for
             regression coverage and as the fallback when markitdown
             fails on a page.
-        use_batched_worker: **Opt-in (default False since 033-S).** When
-            True AND N>=2 flagged ranges, invoke the docling worker once
-            in ``--batch`` mode with a manifest of all splice PDFs,
-            amortizing the ~5-10s docling model-load cost across N ranges
-            (030-F T3).
+        use_batched_worker: **Default True since the 037-S cosmos runtime
+            verification.** When True AND N>=2 flagged ranges, the ranges
+            are split into bounded GROUPS capped by
+            :data:`~docline.process.page_range.MAX_BATCHED_PAGES` cumulative
+            pages and dispatched one ``--batch`` worker per group (032.003-T),
+            amortizing the ~5-10s docling model-load cost within a group while
+            reclaiming torch memory between groups.
 
-            **WARNING — large-corpus memory risk:** batched mode runs ALL
-            ranges in a single long-lived subprocess, defeating the
-            per-range torch-memory reclaim the per-range default relies
-            on. On large jobs (the cosmos PDF coalesces to ~86 ranges /
-            1818 pages) the batched process exhausts memory and is killed,
-            forcing the entire run to fall back to heuristic (observed
-            2026-06-16: subprocess_fallback_count 86/86). Keep this False
-            for large corpora until bounded sub-batching ships. The
-            default is the proven per-range subprocess loop.
+            Bounded sub-batching replaced the 032-S all-ranges-in-one-process
+            mode that exhausted memory on the cosmos corpus (86/86 fallback).
+            The 2026-06-25 cosmos runtime verification confirmed the new
+            default is safe and faster: **0/86 fallback** on the full
+            1,818-page flagged set and **~9.5% faster** than the per-range
+            loop, with identical output. Set ``False`` to force the per-range
+            subprocess loop (one process per range) — useful on
+            memory-constrained hosts; the resource probe also forces per-range
+            when ``budget.serialize_docling`` is True regardless of this flag.
 
     Returns:
         :class:`TriageResult` with per-page outputs, engine attribution,
