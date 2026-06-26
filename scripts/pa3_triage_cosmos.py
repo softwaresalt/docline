@@ -186,14 +186,15 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument(
         "--use-batched-worker",
-        action="store_true",
+        action=argparse.BooleanOptionalAction,
+        default=None,
         help=(
-            "Enable bounded sub-batching of the docling worker (037-S). When "
-            "set (and >=2 flagged ranges), ranges are grouped by cumulative "
-            "page count (cap MAX_BATCHED_PAGES) and dispatched one --batch "
-            "worker per group, amortizing docling model load within a group "
-            "while reclaiming torch memory between groups. Default off "
-            "(per-chunk subprocess loop, the 033-S memory-safe default)."
+            "Force bounded sub-batching of the docling worker on/off (037-S). "
+            "When omitted, the library default applies (batched since the "
+            "037-S cosmos runtime verification). Pass --use-batched-worker to "
+            "force bounded-batched groups (one --batch worker per "
+            "MAX_BATCHED_PAGES-capped group), or --no-use-batched-worker to "
+            "force the per-range subprocess loop (one process per range)."
         ),
     )
     args = parser.parse_args(argv)
@@ -239,17 +240,31 @@ def main(argv: list[str] | None = None) -> int:
             qa_sampling.similarity_threshold,
         )
     log.info("Baseline engine: %s", args.baseline_engine)
-    log.info("Batched worker (037-S bounded sub-batching): %s", args.use_batched_worker)
+    log.info(
+        "Batched worker (037-S): %s",
+        "library default" if args.use_batched_worker is None else args.use_batched_worker,
+    )
+    # Only override the library default when the operator set the flag.
     try:
-        result = process_pdf_triaged(
-            args.pdf,
-            output_dir=args.output_dir,
-            buffer=args.buffer,
-            merge_gap=args.merge_gap,
-            qa_sampling=qa_sampling,
-            baseline_engine=args.baseline_engine,
-            use_batched_worker=args.use_batched_worker,
-        )
+        if args.use_batched_worker is None:
+            result = process_pdf_triaged(
+                args.pdf,
+                output_dir=args.output_dir,
+                buffer=args.buffer,
+                merge_gap=args.merge_gap,
+                qa_sampling=qa_sampling,
+                baseline_engine=args.baseline_engine,
+            )
+        else:
+            result = process_pdf_triaged(
+                args.pdf,
+                output_dir=args.output_dir,
+                buffer=args.buffer,
+                merge_gap=args.merge_gap,
+                qa_sampling=qa_sampling,
+                baseline_engine=args.baseline_engine,
+                use_batched_worker=args.use_batched_worker,
+            )
     except Exception as err:  # noqa: BLE001 — surface full traceback for diagnosis
         elapsed = time.monotonic() - start
         log.error("process_pdf_triaged raised after %s: %s", _human_duration(elapsed), err)
@@ -267,7 +282,7 @@ def main(argv: list[str] | None = None) -> int:
         "wall_clock_human": _human_duration(elapsed),
         "buffer": args.buffer,
         "merge_gap": args.merge_gap,
-        "use_batched_worker": args.use_batched_worker,
+        "use_batched_worker": result.metadata.get("batched_worker"),
         "qa_sampling": (
             {
                 "sample_rate": qa_sampling.sample_rate,

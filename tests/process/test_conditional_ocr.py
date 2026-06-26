@@ -232,11 +232,14 @@ def test_batch_single_chunk_passes_no_ocr_for_text_layer_pages(tmp_path: Path) -
     pdf = _make_blank_pdf(tmp_path / "doc.pdf", 6)
     captured: list[list[str]] = []
 
+    # Force per-chunk mode: this test targets the single-chunk worker cmd shape
+    # (batched is the default since 037-S; its do_ocr is covered separately).
     process_pdf_in_chunks(
         pdf,
         output_dir=tmp_path / "out",
         budget=_budget(recommended_docling_max_pages=4),
         runner=_capturing_runner(captured),
+        use_batched_worker=False,
     )
 
     range_cmds = _range_cmds(captured)

@@ -102,7 +102,7 @@ def process_pdf_in_chunks(
     budget: ResourceBudget | None = None,
     runner: ChunkRunner | None = None,
     reclaim_pause_seconds: float = _RECLAIM_PAUSE_SECONDS,
-    use_batched_worker: bool = False,
+    use_batched_worker: bool = True,
 ) -> BatchResult:
     """Process a (possibly oversized) PDF via split + subprocess + stitch.
 
@@ -121,22 +121,22 @@ def process_pdf_in_chunks(
             True, sleep this many seconds between docling subprocess
             invocations so the OS can release torch tensor pages.
             Ignored when batched worker mode is active.
-        use_batched_worker: **Opt-in (default False since 033-S).** When
-            True AND N>=2 chunks AND ``budget.serialize_docling`` is
-            False, invoke the docling worker once in ``--batch`` mode
-            with a manifest of all chunks, amortizing the ~5-10s docling
-            model-load cost across N chunks (030-F T3).
+        use_batched_worker: **Default True since the 037-S cosmos runtime
+            verification.** When True AND N>=2 chunks AND
+            ``budget.serialize_docling`` is False, the chunks are split into
+            bounded GROUPS capped by
+            :data:`~docline.process.page_range.MAX_BATCHED_PAGES` cumulative
+            pages and dispatched one ``--batch`` worker per group (032.003-T).
+            A fresh subprocess per group reclaims torch memory between groups
+            while amortizing the docling model-load cost within a group.
 
-            **WARNING — large-corpus memory risk:** batched mode runs
-            ALL chunks in a single long-lived subprocess, which defeats
-            the per-chunk torch-memory reclaim that the per-chunk default
-            relies on (PyTorch's CPU allocator does not reliably return
-            memory to the OS). On large jobs (hundreds+ of pages) the
-            batched process can exhaust memory and be killed, causing the
-            entire batch to fall back to heuristic. Keep this False for
-            large corpora until bounded sub-batching ships. The default
-            is the proven per-chunk-subprocess loop (one process per
-            chunk = memory reclaimed between chunks).
+            Bounded sub-batching replaced the 032-S all-chunks-in-one-process
+            mode that exhausted memory on large corpora. The 2026-06-25 cosmos
+            runtime verification confirmed the new default is safe and faster
+            (0/86 fallback, ~9.5% faster, identical output). Set ``False`` to
+            force the per-chunk subprocess loop (one process per chunk) on
+            memory-constrained hosts; the resource probe also forces per-chunk
+            when ``budget.serialize_docling`` is True regardless of this flag.
 
     Returns:
         :class:`BatchResult` with one :class:`ChunkResult` per chunk
