@@ -71,6 +71,48 @@ def _human_duration(seconds: float) -> str:
     return f"{hours}h{minutes:02d}m{secs:02d}s"
 
 
+def _docling_attribution(
+    pages: tuple[str, ...],
+    engines: tuple[str, ...],
+    flagged_ranges: tuple[tuple[int, int], ...],
+) -> dict[str, int]:
+    """Range-level docling stats so collapsed placeholders don't mislead.
+
+    A multi-page docling range concatenates its markdown onto the range's
+    first page, leaving the rest as empty ``docling-collapsed`` placeholders
+    (030-F T2). The per-page ``engine_distribution`` therefore overstates
+    docling coverage. This reports the honest picture: one blob per range,
+    how many docling pages actually carry content vs. are empty placeholders,
+    and the total docling character volume.
+
+    Args:
+        pages: Per-page final markdown.
+        engines: Per-page engine attribution.
+        flagged_ranges: Page ranges routed through docling.
+
+    Returns:
+        Dict with ``ranges``, ``content_pages``, ``collapsed_placeholder_pages``,
+        and ``total_docling_chars``.
+    """
+    content_pages = 0
+    collapsed_placeholder_pages = 0
+    total_docling_chars = 0
+    for engine, body in zip(engines, pages, strict=True):
+        if not engine.startswith("docling"):
+            continue
+        if body:
+            content_pages += 1
+            total_docling_chars += len(body)
+        else:
+            collapsed_placeholder_pages += 1
+    return {
+        "ranges": len(flagged_ranges),
+        "content_pages": content_pages,
+        "collapsed_placeholder_pages": collapsed_placeholder_pages,
+        "total_docling_chars": total_docling_chars,
+    }
+
+
 def _write_engine_attribution_tsv(
     tsv_path: Path, pages: tuple[str, ...], engines: tuple[str, ...]
 ) -> None:
@@ -293,6 +335,9 @@ def main(argv: list[str] | None = None) -> int:
             else None
         ),
         "engine_distribution": engine_distribution,
+        "docling_attribution": _docling_attribution(
+            result.pages, result.engine_per_page, result.flagged_ranges
+        ),
         "flagged_ranges": [list(r) for r in result.flagged_ranges],
         "metadata": result.metadata,
     }
