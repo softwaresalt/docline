@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import importlib.util
+import json
 import subprocess
 import sys
 from pathlib import Path
@@ -201,3 +202,56 @@ def test_no_use_batched_worker_forces_per_chunk(tmp_path: Path) -> None:
 
     assert exit_code == 0
     assert captured.get("use_batched_worker") is False
+
+
+def test_summary_includes_range_level_docling_attribution(tmp_path: Path) -> None:
+    """035.001-T: summary reports range-level docling stats, not just per-page counts.
+
+    Reproduces the cosmos collapsed-attribution shape: each docling range
+    concatenates its markdown onto the range's first page, leaving the rest
+    as empty ``docling-collapsed`` placeholders. The summary must surface
+    range count, content pages, collapsed placeholders, and total docling
+    chars so the per-page ``engine_distribution`` is not misread.
+    """
+    module = _load_script_module()
+    pdf = _make_blank_pdf(tmp_path / "doc.pdf")
+    out = tmp_path / "out"
+
+    blob1 = "# blob one"
+    blob2 = "# blob two longer"
+
+    def fake_process(path: Path, **kwargs: Any) -> Any:
+        from docline.process.pdf_triage import TriageResult
+
+        return TriageResult(
+            source=path,
+            # 2 ranges (0,2) and (3,5): content on each range's first page,
+            # the other 4 pages are empty collapsed placeholders.
+            pages=(blob1, "", "", blob2, "", ""),
+            engine_per_page=("docling-collapsed",) * 6,
+            flagged_ranges=((0, 2), (3, 5)),
+            metadata={"total_pages": 6},
+        )
+
+    module.process_pdf_triaged = fake_process  # type: ignore[attr-defined]
+
+    exit_code = module.main(
+        [
+            "--pdf",
+            str(pdf),
+            "--output-dir",
+            str(out),
+            "--log-path",
+            str(tmp_path / "run.log"),
+        ]
+    )
+
+    assert exit_code == 0
+    summary = json.loads((out / "pa3-summary.json").read_text(encoding="utf-8"))
+    attr = summary["docling_attribution"]
+    assert attr["ranges"] == 2
+    assert attr["content_pages"] == 2
+    assert attr["collapsed_placeholder_pages"] == 4
+    assert attr["total_docling_chars"] == len(blob1) + len(blob2)
+    # engine_distribution stays for backward-compat.
+    assert summary["engine_distribution"]["docling-collapsed"] == 6
