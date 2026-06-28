@@ -60,28 +60,44 @@ largest ranges) is the fastest. QA disagreements were 0 across all three.
 
 ## Caveats (do not affect the verdict)
 
-Two real defects surfaced during the sweep. Both are filed as separate bugs;
-neither changes the KEEP-DEFAULT conclusion (the wall-clock trend is large and
-monotonic, and QA stayed clean).
+Two operational issues surfaced during the sweep. Neither changes the
+KEEP-DEFAULT conclusion (the wall-clock trend is large and monotonic, and QA
+stayed clean), and — after analysis — neither degrades the product outcome.
 
-1. **Batched-worker per-page envelope collapse** (high). The batched docling
-   worker returned a single page entry for every N-page range, so
-   `pdf_triage.py` took the `docling-collapsed` branch — the whole range blob
-   landed on the first page and the remaining pages were blanked. The summaries
-   confirm it: `content_pages` equals the range count in every run (86, 142,
-   275), with 2,400–2,700 pages collapsed. This is the same artifact seen in the
-   2026-06-25 routing investigation, and it is now the default path after the
-   PR #100 default flip.
-2. **Batched-worker OCR OOM crash** (medium). The `mg1` run hit a hard crash
-   (`exit=3221225477`, `0xC0000005` access violation) in a batched group while
-   RapidOCR ran on image pages (`std::bad_alloc`, onnxruntime "bad allocation").
-   That group fell back to heuristic (`fallback=1`). OCR ran on a native-text
-   PDF, suggesting 036-S conditional-OCR may not apply in the batched path, and
-   per-group memory is unbounded.
+1. **Docling whole-range render flagged as a "collapse"** (low; stash
+   `C0F3B979`). The docling worker returns a single coherent markdown render per
+   N-page range (`readers/pdf.py::_read_pdf_docling_pages` exports the whole
+   document and returns a one-element list), so `pdf_triage.py` logs an
+   "envelope length mismatch" and labels the range `docling-collapsed`. This is
+   **not** a quality regression and is **not** a default-flip regression: the
+   splice-back and worker envelope are shared by both batched and non-batched
+   paths. Per-page fidelity does not affect the downstream outcome — the final
+   markdown is `"\n\n".join(pages if p.strip())` (`output_contract.py:264`,
+   page boundaries erased) and heading/AST validation runs on the whole joined
+   body (`assemble.py:141-142`). A per-page split would *fragment* tables, lists,
+   and sections at page boundaries and make AST/heading quality *worse*. The only
+   real costs are WARNING log noise and an inaccurate internal routing metric
+   (`content_pages`/`docling-collapsed`). The fix direction is to treat the
+   whole-range render as expected (silence the warning, relabel attribution) —
+   not a per-page split.
+2. **Batched-worker OCR OOM crash** (medium; stash `D44A61E4`). The `mg1` run
+   hit a hard crash (`exit=3221225477`, `0xC0000005` access violation) in a
+   batched group while RapidOCR ran on image pages (`std::bad_alloc`, onnxruntime
+   "bad allocation"). That group fell back to heuristic (`fallback=1`). OCR ran
+   on a native-text PDF, suggesting 036-S conditional-OCR may not apply in the
+   batched path, and per-group memory is unbounded.
+
+The concern that actually gates graphtor-docs ingestion — whether the assembled
+output lints clean with a valid heading hierarchy across the heuristic↔docling
+seams — is filed separately as a verification spike (stash `6ED7FFD4`).
 
 ## Decision and follow-ups
 
 * **Keep `merge_gap=2`.** Close feature `036-F`. No code change.
-* File **Bug A** (envelope collapse, high) and **Bug B** (OCR OOM, medium) to the
-  stash for separate remediation. Bug A is the priority — it silently degrades
-  per-page fidelity for most flagged pages in the default path.
+* Stash items filed for separate handling:
+  * `C0F3B979` (low) — silence the docling whole-range "collapse" warning and fix
+    the internal attribution metric; **not** a per-page split.
+  * `D44A61E4` (medium) — batched-worker OCR OOM; verify 036-S conditional-OCR in
+    the batched path and bound per-group memory.
+  * `6ED7FFD4` (medium, spike) — verify cosmos output lints clean with a valid
+    heading hierarchy across the heuristic↔docling seams (the real ingestion gate).
