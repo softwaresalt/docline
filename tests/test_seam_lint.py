@@ -107,6 +107,19 @@ def test_main_returns_one_on_hierarchy_failure(tmp_path: Path, capsys) -> None:
     assert "FAIL" in out
 
 
+def test_main_reports_ast_depth_notes(tmp_path: Path, capsys) -> None:
+    mod = _load()
+    # Not sparse-tolerated (H1+H2, no H3) so hierarchy passes, and H4 triggers
+    # an AST depth note — exercises the main() report + SUMMARY ast_notes path.
+    (tmp_path / "deep.md").write_text("# T\n\n## S\n\n#### Deep\n", encoding="utf-8")
+    rc = mod.main(["--paths", str(tmp_path / "deep.md")])
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "note(s)" in out
+    assert "ast:" in out
+    assert "AST depth note(s)" in out
+
+
 def test_main_errors_on_missing_path(capsys) -> None:
     mod = _load()
     rc = mod.main(["--paths", "does-not-exist-xyz.md"])
