@@ -21,6 +21,18 @@ from collections.abc import Sequence
 # while still amortizing docling's model-load cost across the group.
 MAX_BATCHED_PAGES = 40
 
+# Tighter cap for OCR-flagged groups (038-F). OCR rendering (RapidOCR) rasterizes
+# each page to a bitmap and the onnxruntime graph allocates large intermediate
+# tensors on top of docling's ~2 GB/30-page working set — the combination caused
+# a hard 0xC0000005 / std::bad_alloc crash that killed an entire batched group
+# (036.002-T cosmos sweep, 2026-06-27). OCR-flagged items are therefore isolated
+# from OCR-free items AND bounded by this much smaller cap so that (a) an OCR OOM
+# cannot drag OCR-free docling ranges down with it, and (b) far fewer page
+# bitmaps are resident per OCR subprocess. 8 keeps docling's model-load cost
+# amortized across a short run of scanned pages while staying well inside a
+# conservative memory envelope; lower it further if OCR OOMs recur.
+OCR_MAX_BATCHED_PAGES = 8
+
 
 def coalesce_ranges(
     flagged_indices: list[int],
@@ -110,6 +122,78 @@ def group_by_page_count(
             current_sum = 0
         current.append(index)
         current_sum += count
+    if current:
+        groups.append(current)
+    return groups
+
+
+def group_by_page_count_ocr_aware(
+    page_counts: Sequence[int],
+    needs_ocr: Sequence[bool],
+    *,
+    max_pages: int = MAX_BATCHED_PAGES,
+    ocr_max_pages: int = OCR_MAX_BATCHED_PAGES,
+) -> list[list[int]]:
+    """Bin-pack item indices into groups, isolating OCR items under a tighter cap.
+
+    Extends :func:`group_by_page_count` with OCR awareness for the batched
+    docling worker (038-F). A single greedy pass over the items in document
+    order starts a new group whenever the next item's OCR-ness differs from the
+    current group's, or whenever adding it would exceed that group's cap. As a
+    result:
+
+    * **No group mixes OCR and OCR-free items.** A hard OCR OOM crash kills the
+      whole worker subprocess, so isolation guarantees only the OCR-flagged
+      items in that one group fall back to heuristic — OCR-free docling work in
+      neighbouring groups survives.
+    * **OCR-flagged items bin under** ``ocr_max_pages`` (memory driven by page
+      bitmaps), while **OCR-free items bin under** ``max_pages`` (unchanged
+      behaviour). With ``needs_ocr`` all ``False`` the result is identical to
+      :func:`group_by_page_count`.
+
+    Document order is preserved within and across groups (groups are contiguous
+    runs of ascending indices) so downstream splice-back stays aligned. A single
+    item whose page count exceeds its cap forms its own group — it cannot be
+    split below the existing range/chunk granularity.
+
+    Args:
+        page_counts: Per-item page counts in document order.
+        needs_ocr: Per-item OCR flags, parallel to ``page_counts``.
+        max_pages: Maximum cumulative pages per OCR-free group. Must be ``>= 1``.
+        ocr_max_pages: Maximum cumulative pages per OCR group. Must be ``>= 1``.
+
+    Returns:
+        A list of groups, each a list of indices into ``page_counts``. The
+        concatenation of all groups equals ``range(len(page_counts))``.
+
+    Raises:
+        ValueError: If ``max_pages < 1``, ``ocr_max_pages < 1``, or
+            ``len(page_counts) != len(needs_ocr)``.
+    """
+    if max_pages < 1:
+        raise ValueError(f"max_pages must be >= 1, got {max_pages}")
+    if ocr_max_pages < 1:
+        raise ValueError(f"ocr_max_pages must be >= 1, got {ocr_max_pages}")
+    if len(page_counts) != len(needs_ocr):
+        raise ValueError(
+            "page_counts and needs_ocr must have equal length, "
+            f"got {len(page_counts)} and {len(needs_ocr)}"
+        )
+
+    groups: list[list[int]] = []
+    current: list[int] = []
+    current_sum = 0
+    current_ocr: bool | None = None
+    for index, count in enumerate(page_counts):
+        item_ocr = bool(needs_ocr[index])
+        cap = ocr_max_pages if item_ocr else max_pages
+        if current and (item_ocr != current_ocr or current_sum + count > cap):
+            groups.append(current)
+            current = []
+            current_sum = 0
+        current.append(index)
+        current_sum += count
+        current_ocr = item_ocr
     if current:
         groups.append(current)
     return groups
