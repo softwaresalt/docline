@@ -111,3 +111,126 @@ def test_group_by_page_count_invalid_cap_raises() -> None:
 
     with pytest.raises(ValueError):
         group_by_page_count([10], max_pages=0)
+
+
+# ---------------------------------------------------------------------------
+# group_by_page_count_ocr_aware — OCR-isolated bounded sub-batching (038-F)
+# ---------------------------------------------------------------------------
+
+
+def test_ocr_max_batched_pages_constant_is_tighter_than_default() -> None:
+    """The OCR cap exists and is strictly tighter than the OCR-free cap."""
+    from docline.process.page_range import MAX_BATCHED_PAGES, OCR_MAX_BATCHED_PAGES
+
+    assert 1 <= OCR_MAX_BATCHED_PAGES < MAX_BATCHED_PAGES
+
+
+def test_ocr_aware_empty_input() -> None:
+    from docline.process.page_range import group_by_page_count_ocr_aware
+
+    assert group_by_page_count_ocr_aware([], []) == []
+
+
+def test_ocr_aware_all_ocr_free_matches_plain_grouping() -> None:
+    """With no OCR items the OCR-aware result equals plain page-count grouping."""
+    from docline.process.page_range import (
+        group_by_page_count,
+        group_by_page_count_ocr_aware,
+    )
+
+    page_counts = [15, 15, 15, 15]
+    expected = group_by_page_count(page_counts, max_pages=40)
+    actual = group_by_page_count_ocr_aware(page_counts, [False, False, False, False], max_pages=40)
+    assert actual == expected == [[0, 1], [2, 3]]
+
+
+def test_ocr_aware_never_mixes_ocr_and_ocr_free_in_a_group() -> None:
+    """An OCR item sandwiched between OCR-free items is isolated to its own group."""
+    from docline.process.page_range import group_by_page_count_ocr_aware
+
+    groups = group_by_page_count_ocr_aware(
+        [10, 10, 10],
+        [False, True, False],
+        max_pages=40,
+        ocr_max_pages=8,
+    )
+    assert groups == [[0], [1], [2]]
+    ocr = [False, True, False]
+    for group in groups:
+        assert len({ocr[i] for i in group}) == 1  # group is homogeneous
+
+
+def test_ocr_aware_ocr_items_bin_under_tighter_cap() -> None:
+    """Consecutive OCR items split at the tighter ocr_max_pages cap, not max_pages."""
+    from docline.process.page_range import group_by_page_count_ocr_aware
+
+    # Four 3-page OCR ranges: under max_pages=40 they would be one group, but
+    # ocr_max_pages=8 forces 3+3=6 (next 3 -> 9 > 8) -> split.
+    groups = group_by_page_count_ocr_aware(
+        [3, 3, 3, 3],
+        [True, True, True, True],
+        max_pages=40,
+        ocr_max_pages=8,
+    )
+    assert groups == [[0, 1], [2, 3]]
+
+
+def test_ocr_aware_ocr_free_items_still_use_full_cap() -> None:
+    """OCR-free runs continue to pack up to max_pages even with a small OCR cap."""
+    from docline.process.page_range import group_by_page_count_ocr_aware
+
+    groups = group_by_page_count_ocr_aware(
+        [20, 20, 1],
+        [False, False, False],
+        max_pages=40,
+        ocr_max_pages=8,
+    )
+    assert groups == [[0, 1], [2]]
+
+
+def test_ocr_aware_preserves_document_order() -> None:
+    """Flattened group indices remain ascending (splice-back alignment)."""
+    from docline.process.page_range import group_by_page_count_ocr_aware
+
+    groups = group_by_page_count_ocr_aware(
+        [5, 5, 5, 5, 5],
+        [False, True, True, False, False],
+        max_pages=40,
+        ocr_max_pages=8,
+    )
+    flat = [i for g in groups for i in g]
+    assert flat == [0, 1, 2, 3, 4]
+    # Each group is homogeneous in OCR-ness.
+    ocr = [False, True, True, False, False]
+    for group in groups:
+        assert len({ocr[i] for i in group}) == 1
+
+
+def test_ocr_aware_oversized_single_ocr_item_is_its_own_group() -> None:
+    """An OCR item larger than ocr_max_pages still forms its own group."""
+    from docline.process.page_range import group_by_page_count_ocr_aware
+
+    groups = group_by_page_count_ocr_aware(
+        [20, 5],
+        [True, True],
+        max_pages=40,
+        ocr_max_pages=8,
+    )
+    assert groups == [[0], [1]]
+
+
+def test_ocr_aware_length_mismatch_raises() -> None:
+    from docline.process.page_range import group_by_page_count_ocr_aware
+
+    with pytest.raises(ValueError):
+        group_by_page_count_ocr_aware([10, 10], [True])
+
+
+@pytest.mark.parametrize("max_pages,ocr_max_pages", [(0, 8), (40, 0)])
+def test_ocr_aware_invalid_caps_raise(max_pages: int, ocr_max_pages: int) -> None:
+    from docline.process.page_range import group_by_page_count_ocr_aware
+
+    with pytest.raises(ValueError):
+        group_by_page_count_ocr_aware(
+            [10], [False], max_pages=max_pages, ocr_max_pages=ocr_max_pages
+        )

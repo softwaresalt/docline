@@ -26,7 +26,7 @@ import re
 import unicodedata
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 
 from docline.schema.models import DoclineError
 
@@ -252,8 +252,11 @@ def signal_font_diversity(page_metadata: object | None) -> float:
     """
     if page_metadata is None:
         return 0.0
+    # pypdf's PageObject API surface varies (DictionaryObject / IndirectObject);
+    # alias to Any so the duck-typed .get/.get_object/.keys probes below type-check.
+    meta: Any = page_metadata
     try:
-        resources = page_metadata.get("/Resources", None)
+        resources = meta.get("/Resources", None)
         if resources is None:
             return 0.0
         # Resources may be a pypdf IndirectObject or a dict; both expose .get().
