@@ -52,7 +52,7 @@ from docline.process.fidelity_scorer import (
     pre_triage_score,
     score_page,
 )
-from docline.process.page_range import coalesce_ranges, group_by_page_count
+from docline.process.page_range import coalesce_ranges, group_by_page_count_ocr_aware
 from docline.process.quality_metrics import compute_quality_metrics
 from docline.runtime.resource_probe import ResourceBudget
 
@@ -558,8 +558,11 @@ def process_pdf_triaged(
         # groups (avoiding the 032-S single-process OOM) while amortizing the
         # docling model load within a group. The post-pass below gates each
         # range on its OWN envelope, so per-group dispatch is transparent to it.
+        # OCR-aware grouping (038-F) additionally isolates OCR-flagged ranges
+        # into their own tighter-capped groups so an OCR OOM hard-crash cannot
+        # drag OCR-free docling ranges down with it.
         page_counts = [end - start + 1 for (start, end, _sp, _sm) in splice_jobs]
-        groups = group_by_page_count(page_counts)
+        groups = group_by_page_count_ocr_aware(page_counts, range_do_ocr)
         for group_idx, group in enumerate(groups):
             manifest_path = splice_cache / f"_batch_manifest_{group_idx:03d}.json"
             manifest_payload = {
@@ -633,6 +636,7 @@ def process_pdf_triaged(
         raw = splice_md.read_text(encoding="utf-8")
         pages_from_envelope: list[str] | None = None
         is_error_envelope = False
+        envelope: object = None
         try:
             envelope = json.loads(raw)
             if isinstance(envelope, dict):

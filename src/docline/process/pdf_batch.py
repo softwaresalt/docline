@@ -46,7 +46,7 @@ from pathlib import Path
 import pypdf
 
 from docline.process.fidelity_scorer import page_needs_ocr
-from docline.process.page_range import group_by_page_count
+from docline.process.page_range import group_by_page_count_ocr_aware
 from docline.readers.pdf import read_pdf_pages
 from docline.readers.pdf_splitter import split_pdf
 from docline.runtime.resource_probe import ResourceBudget
@@ -271,8 +271,13 @@ def _run_chunks_batched(
     # (avoiding the 032-S single-process OOM) while amortizing the docling
     # model load within a group. Each chunk's usability is still gated on its
     # own envelope below (032.002-T), so the per-chunk result loop is unchanged.
+    # OCR-aware grouping (038-F) isolates OCR-flagged chunks into their own
+    # tighter-capped groups so an OCR OOM hard-crash cannot drag OCR-free
+    # docling chunks down with it. ``chunk_do_ocr`` is computed once and reused
+    # in the manifest below (one pypdf text probe per chunk, not two).
     page_counts = [_chunk_page_count(inp) for inp in chunks]
-    groups = group_by_page_count(page_counts)
+    chunk_do_ocr = [_chunk_needs_ocr(inp) for inp in chunks]
+    groups = group_by_page_count_ocr_aware(page_counts, chunk_do_ocr)
     returncode_per_chunk = [0] * len(chunks)
     for group_idx, group in enumerate(groups):
         manifest_path = output_dir / f"_batch_manifest_{group_idx:03d}.json"
@@ -281,7 +286,7 @@ def _run_chunks_batched(
                 {
                     "input": str(chunks[i]),
                     "output": str(chunk_outputs[i]),
-                    "do_ocr": _chunk_needs_ocr(chunks[i]),
+                    "do_ocr": chunk_do_ocr[i],
                 }
                 for i in group
             ]
