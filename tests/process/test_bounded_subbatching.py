@@ -318,3 +318,68 @@ def test_batch_ocr_group_crash_isolated_from_ocr_free_chunks(
     assert by_name[ocr_chunk].engine == "heuristic"
     assert by_name[ocr_chunk].reason != "ok"
     assert any(cr.engine == "docling" for cr in result.chunks)
+
+
+def _ocr_oom_above_runner(batch_manifests: list[list[dict[str, Any]]], threshold: int) -> Any:
+    """Runner that crashes a --batch group whose OCR page total exceeds ``threshold``.
+
+    Models a memory ceiling: a group with too many OCR page bitmaps OOMs (no
+    envelopes), but the same ranges succeed once downsizing shrinks the group.
+    """
+
+    def _write_one_envelope(input_pdf: Path, output_path: Path) -> None:
+        reader = pypdf.PdfReader(str(input_pdf))
+        pages_out = ["# body" for _ in range(len(reader.pages))]
+        envelope = {
+            "schema_version": 1,
+            "pages": pages_out,
+            "page_count": len(pages_out),
+            "text": "\n\n".join(pages_out),
+        }
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        output_path.write_text(json.dumps(envelope), encoding="utf-8")
+
+    def runner(args: list[str]) -> subprocess.CompletedProcess[str]:
+        manifest_path = Path(args[args.index("--batch") + 1])
+        chunks = json.loads(manifest_path.read_text(encoding="utf-8"))["chunks"]
+        batch_manifests.append(chunks)
+        ocr_pages = sum(len(pypdf.PdfReader(c["input"]).pages) for c in chunks if c["do_ocr"])
+        if ocr_pages > threshold:
+            return subprocess.CompletedProcess(
+                args=args, returncode=3221225477, stdout="", stderr="bad_alloc"
+            )
+        for chunk in chunks:
+            _write_one_envelope(Path(chunk["input"]), Path(chunk["output"]))
+        return subprocess.CompletedProcess(args=args, returncode=0, stdout="", stderr="")
+
+    return runner
+
+
+def test_triage_ocr_oom_recovers_via_adaptive_downsizing(tmp_path: Path, monkeypatch: Any) -> None:
+    """An OCR group that OOMs is shrunk and retried until every range succeeds."""
+    pdf = _make_blank_pdf(tmp_path / "doc.pdf", 30)
+    # Every flagged range needs OCR; the runner OOMs any OCR group > 2 pages.
+    monkeypatch.setattr(
+        "docline.process.pdf_triage._range_needs_ocr",
+        lambda *a, **k: True,
+    )
+    batch_manifests: list[list[dict[str, Any]]] = []
+
+    result = process_pdf_triaged(
+        pdf,
+        output_dir=tmp_path / "out",
+        budget=_budget(),
+        runner=_ocr_oom_above_runner(batch_manifests, threshold=2),
+        scorer=_flag_only({2, 6, 10, 14}),
+        baseline_engine="pypdf",
+        buffer=0,
+        merge_gap=0,
+        use_batched_worker=True,
+    )
+
+    # Full recovery: no range conceded to heuristic, all came back as docling.
+    assert result.metadata["subprocess_fallback_count"] == 0
+    for idx in (2, 6, 10, 14):
+        assert result.engine_per_page[idx] == "docling"
+    # Downsizing actually retried (more dispatches than the single initial group).
+    assert len(batch_manifests) > 1

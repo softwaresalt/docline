@@ -45,6 +45,7 @@ from pathlib import Path
 
 import pypdf
 
+from docline.process.batch_dispatch import dispatch_batched_groups_with_retry
 from docline.process.fidelity_scorer import page_needs_ocr
 from docline.process.page_range import group_by_page_count_ocr_aware
 from docline.readers.pdf import read_pdf_pages
@@ -275,43 +276,20 @@ def _run_chunks_batched(
     # tighter-capped groups so an OCR OOM hard-crash cannot drag OCR-free
     # docling chunks down with it. ``chunk_do_ocr`` is computed once and reused
     # in the manifest below (one pypdf text probe per chunk, not two).
+    # Adaptive downsizing (038.003-T): a crashed OCR group is re-split at half
+    # the cap and retried (8->4->2->1) before any chunk concedes to heuristic.
     page_counts = [_chunk_page_count(inp) for inp in chunks]
     chunk_do_ocr = [_chunk_needs_ocr(inp) for inp in chunks]
     groups = group_by_page_count_ocr_aware(page_counts, chunk_do_ocr)
-    returncode_per_chunk = [0] * len(chunks)
-    for group_idx, group in enumerate(groups):
-        manifest_path = output_dir / f"_batch_manifest_{group_idx:03d}.json"
-        manifest_payload = {
-            "chunks": [
-                {
-                    "input": str(chunks[i]),
-                    "output": str(chunk_outputs[i]),
-                    "do_ocr": chunk_do_ocr[i],
-                }
-                for i in group
-            ]
-        }
-        manifest_path.write_text(json.dumps(manifest_payload), encoding="utf-8")
-        cmd = [
-            sys.executable,
-            "-m",
-            "docline._tools.docling_worker",
-            "--batch",
-            str(manifest_path),
-        ]
-        completed = runner(cmd)
-        if completed.returncode != 0:
-            for i in group:
-                returncode_per_chunk[i] = completed.returncode
-            _log.warning(
-                "Batched docling worker group %d/%d failed (exit=%s) for %d chunk(s); "
-                "those chunks fall back to heuristic. Worker stderr: %s",
-                group_idx + 1,
-                len(groups),
-                completed.returncode,
-                len(group),
-                (getattr(completed, "stderr", "") or "").strip() or "<none captured>",
-            )
+    returncode_per_chunk = dispatch_batched_groups_with_retry(
+        groups,
+        inputs=[str(c) for c in chunks],
+        outputs=[str(o) for o in chunk_outputs],
+        do_ocr=chunk_do_ocr,
+        page_counts=page_counts,
+        runner=runner,
+        manifest_dir=output_dir,
+    )
 
     chunk_results: list[ChunkResult] = []
     for chunk_idx, (chunk_path, chunk_out) in enumerate(zip(chunks, chunk_outputs)):

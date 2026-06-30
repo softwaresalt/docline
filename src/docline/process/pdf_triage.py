@@ -45,6 +45,7 @@ from pathlib import Path
 import pypdf
 from markdown_it import MarkdownIt
 
+from docline.process.batch_dispatch import dispatch_batched_groups_with_retry
 from docline.process.fidelity_scorer import (
     PageScore,
     PreTriageDecision,
@@ -560,40 +561,20 @@ def process_pdf_triaged(
         # range on its OWN envelope, so per-group dispatch is transparent to it.
         # OCR-aware grouping (038-F) additionally isolates OCR-flagged ranges
         # into their own tighter-capped groups so an OCR OOM hard-crash cannot
-        # drag OCR-free docling ranges down with it.
+        # drag OCR-free docling ranges down with it. Adaptive downsizing
+        # (038.003-T) re-splits a crashed OCR group at half the cap and retries
+        # (8->4->2->1) before any range concedes to heuristic.
         page_counts = [end - start + 1 for (start, end, _sp, _sm) in splice_jobs]
         groups = group_by_page_count_ocr_aware(page_counts, range_do_ocr)
-        for group_idx, group in enumerate(groups):
-            manifest_path = splice_cache / f"_batch_manifest_{group_idx:03d}.json"
-            manifest_payload = {
-                "chunks": [
-                    {
-                        "input": str(splice_jobs[i][2]),
-                        "output": str(splice_jobs[i][3]),
-                        "do_ocr": range_do_ocr[i],
-                    }
-                    for i in group
-                ]
-            }
-            manifest_path.write_text(json.dumps(manifest_payload), encoding="utf-8")
-            cmd = [
-                sys.executable,
-                "-m",
-                "docline._tools.docling_worker",
-                "--batch",
-                str(manifest_path),
-            ]
-            completed = runner(cmd)
-            if completed.returncode != 0:
-                _log.warning(
-                    "Batched docling worker group %d/%d failed (exit=%s) for %d range(s); "
-                    "those ranges fall back to heuristic. Worker stderr: %s",
-                    group_idx + 1,
-                    len(groups),
-                    completed.returncode,
-                    len(group),
-                    (getattr(completed, "stderr", "") or "").strip() or "<none captured>",
-                )
+        dispatch_batched_groups_with_retry(
+            groups,
+            inputs=[str(sj[2]) for sj in splice_jobs],
+            outputs=[str(sj[3]) for sj in splice_jobs],
+            do_ocr=range_do_ocr,
+            page_counts=page_counts,
+            runner=runner,
+            manifest_dir=splice_cache,
+        )
     else:
         for (_start, _end, splice_pdf, splice_md), do_ocr in zip(splice_jobs, range_do_ocr):
             cmd = [sys.executable, "-m", "docline._tools.docling_worker"]
