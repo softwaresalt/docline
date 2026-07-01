@@ -39,14 +39,14 @@ import re
 import subprocess
 import sys
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from dataclasses import dataclass, field
 from pathlib import Path
 
 import pypdf
 
 from docline.process.batch_dispatch import dispatch_batched_groups_with_retry
-from docline.process.fidelity_scorer import page_needs_ocr
+from docline.process.fidelity_scorer import any_page_needs_ocr
 from docline.process.page_range import group_by_page_count_ocr_aware
 from docline.readers.pdf import read_pdf_pages
 from docline.readers.pdf_splitter import split_pdf
@@ -222,20 +222,23 @@ def _chunk_needs_ocr(chunk_path: Path) -> bool:
 
     Conservative: an unreadable chunk keeps OCR on. Uses cheap pypdf text
     extraction (not docling) so the gate adds negligible cost relative to
-    the OCR it can skip.
+    the OCR it can skip. Delegates the reduction to
+    :func:`fidelity_scorer.any_page_needs_ocr` (039.002-T).
     """
     try:
         reader = pypdf.PdfReader(str(chunk_path), strict=False)
     except Exception:  # noqa: BLE001 — unreadable chunk: keep OCR on (safe)
         return True
-    for page in reader.pages:
-        try:
-            text = page.extract_text() or ""  # type: ignore[attr-defined]
-        except Exception:  # noqa: BLE001
-            text = ""
-        if page_needs_ocr(text, page):
-            return True
-    return False
+
+    def _pairs() -> Iterator[tuple[str, object | None]]:
+        for page in reader.pages:
+            try:
+                text = page.extract_text() or ""  # type: ignore[attr-defined]
+            except Exception:  # noqa: BLE001
+                text = ""
+            yield text, page
+
+    return any_page_needs_ocr(_pairs())
 
 
 def _chunk_page_count(chunk_path: Path) -> int:

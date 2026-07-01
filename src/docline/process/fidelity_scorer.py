@@ -24,6 +24,7 @@ import json
 import logging
 import re
 import unicodedata
+from collections.abc import Iterable
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Literal
@@ -160,6 +161,26 @@ def page_needs_ocr(text: str, page_metadata: object | None) -> bool:
         helps); ``False`` for text-bearing, blank, or metadata-less pages.
     """
     return signal_char_density(text, page_metadata) > 0.0
+
+
+def any_page_needs_ocr(pages: Iterable[tuple[str, object | None]]) -> bool:
+    """Whether any page in an iterable of ``(text, page_metadata)`` needs OCR.
+
+    Shared OCR-gate primitive for the batched docling paths (039.002-T): both
+    the per-range gate (``pdf_triage._range_needs_ocr``) and the per-chunk gate
+    (``pdf_batch._chunk_needs_ocr``) reduce to "does any page need OCR?" over a
+    sequence of ``(text, page_metadata)`` pairs. Short-circuits on the first
+    OCR-needing page, so callers may pass a lazy generator.
+
+    Args:
+        pages: Iterable of ``(text, page_metadata)`` pairs, where ``text`` is
+            the page's extracted text and ``page_metadata`` is its
+            ``pypdf.PageObject`` (or ``None``).
+
+    Returns:
+        ``True`` if :func:`page_needs_ocr` is ``True`` for any page.
+    """
+    return any(page_needs_ocr(text, metadata) for text, metadata in pages)
 
 
 def signal_non_ascii_ratio(text: str) -> float:

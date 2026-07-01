@@ -151,6 +151,43 @@ def test_page_without_metadata_does_not_need_ocr() -> None:
 
 
 # ---------------------------------------------------------------------------
+# any_page_needs_ocr — shared OCR-gate helper (039.002-T)
+# ---------------------------------------------------------------------------
+
+
+def test_any_page_needs_ocr_empty_is_false() -> None:
+    from docline.process.fidelity_scorer import any_page_needs_ocr
+
+    assert any_page_needs_ocr([]) is False
+
+
+def test_any_page_needs_ocr_all_text_layer_is_false() -> None:
+    from docline.process.fidelity_scorer import any_page_needs_ocr
+
+    pairs = [("a" * 250, _FakePage([object()])), ("b" * 300, _FakePage([]))]
+    assert any_page_needs_ocr(pairs) is False
+
+
+def test_any_page_needs_ocr_true_when_any_image_only() -> None:
+    from docline.process.fidelity_scorer import any_page_needs_ocr
+
+    # Second page is sparse-text + image -> needs OCR.
+    pairs = [("a" * 250, _FakePage([object()])), ("", _FakePage([object()]))]
+    assert any_page_needs_ocr(pairs) is True
+
+
+def test_any_page_needs_ocr_short_circuits() -> None:
+    """Returns True on the first OCR-needing page without consuming the rest."""
+    from docline.process.fidelity_scorer import any_page_needs_ocr
+
+    def gen() -> Any:
+        yield ("", _FakePage([object()]))  # needs OCR -> True immediately
+        raise AssertionError("any_page_needs_ocr did not short-circuit")
+
+    assert any_page_needs_ocr(gen()) is True
+
+
+# ---------------------------------------------------------------------------
 # pdf_triage per-range + batched dispatch
 # ---------------------------------------------------------------------------
 

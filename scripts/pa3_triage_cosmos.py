@@ -76,14 +76,15 @@ def _docling_attribution(
     engines: tuple[str, ...],
     flagged_ranges: tuple[tuple[int, int], ...],
 ) -> dict[str, int]:
-    """Range-level docling stats so collapsed placeholders don't mislead.
+    """Range-level docling stats so whole-range renders don't mislead.
 
     A multi-page docling range concatenates its markdown onto the range's
-    first page, leaving the rest as empty ``docling-collapsed`` placeholders
-    (030-F T2). The per-page ``engine_distribution`` therefore overstates
-    docling coverage. This reports the honest picture: one blob per range,
-    how many docling pages actually carry content vs. are empty placeholders,
-    and the total docling character volume.
+    first page, leaving the rest as empty placeholders and attributing the
+    range ``"docling-range"`` (039.001-T; formerly ``"docling-collapsed"``).
+    The per-page ``engine_distribution`` therefore overstates docling coverage.
+    This reports the honest picture: one blob per range, how many docling pages
+    actually carry content vs. are empty placeholders, and the total docling
+    character volume. Any ``"docling*"`` engine label is counted.
 
     Args:
         pages: Per-page final markdown.

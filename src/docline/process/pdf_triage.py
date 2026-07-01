@@ -38,7 +38,7 @@ import statistics
 import subprocess
 import sys
 import time
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Iterator, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -49,6 +49,7 @@ from docline.process.batch_dispatch import dispatch_batched_groups_with_retry
 from docline.process.fidelity_scorer import (
     PageScore,
     PreTriageDecision,
+    any_page_needs_ocr,
     page_needs_ocr,
     pre_triage_score,
     score_page,
@@ -271,21 +272,24 @@ def _range_needs_ocr(
     docling-routed pages (empty heuristic slot) it does a cheap pypdf
     text extraction so the empty slot does not masquerade as an
     image-only page. Conservative: the range needs OCR if ANY page is
-    image-only, preserving scanned-PDF fidelity.
+    image-only, preserving scanned-PDF fidelity. Delegates the reduction
+    to :func:`fidelity_scorer.any_page_needs_ocr` (039.002-T).
     """
-    for idx in range(start, end + 1):
-        if idx >= len(reader.pages):
-            continue
-        page = reader.pages[idx]
-        text = heuristic_pages[idx] if idx < len(heuristic_pages) else ""
-        if not text:
-            try:
-                text = page.extract_text() or ""  # type: ignore[attr-defined]
-            except Exception:  # noqa: BLE001 — best-effort text-layer probe
-                text = ""
-        if page_needs_ocr(text, page):
-            return True
-    return False
+
+    def _pairs() -> Iterator[tuple[str, object | None]]:
+        for idx in range(start, end + 1):
+            if idx >= len(reader.pages):
+                continue
+            page = reader.pages[idx]
+            text = heuristic_pages[idx] if idx < len(heuristic_pages) else ""
+            if not text:
+                try:
+                    text = page.extract_text() or ""  # type: ignore[attr-defined]
+                except Exception:  # noqa: BLE001 — best-effort text-layer probe
+                    text = ""
+            yield text, page
+
+    return any_page_needs_ocr(_pairs())
 
 
 @dataclass(frozen=True)
@@ -656,14 +660,18 @@ def process_pdf_triaged(
                 final_pages[start + offset] = page_md
                 engine_per_page[start + offset] = "docling"
         else:
-            # Fallback: either the body was legacy flat markdown
-            # (JSONDecodeError → pages_from_envelope is None) or the
-            # envelope reported a different page count than the splice
-            # range expected. Either way, keep the legacy "first page
-            # gets the blob, rest empty" behavior but flip the engine
-            # attribution to "docling-collapsed" so downstream
-            # consumers see the per-page contract was not honored.
-            if pages_from_envelope is not None:
+            # A single-entry envelope (or a legacy flat blob) for a multi-page
+            # range is the EXPECTED coherent whole-range docling render, not an
+            # anomaly (039.001-T): docling's export_to_markdown over the range
+            # preserves heading nesting and tables across page breaks, and the
+            # assembled markdown joins page slots anyway. Attribute it
+            # "docling-range" and log nothing. Only a VALID envelope whose page
+            # count is >1 but still != range length is genuinely unexpected
+            # (some envelope pages would be silently dropped) — keep the
+            # diagnostic WARNING and the "docling-collapsed" label there.
+            envelope_page_count = len(pages_from_envelope) if pages_from_envelope is not None else 1
+            unexpected = pages_from_envelope is not None and envelope_page_count > 1
+            if unexpected:
                 _log.warning(
                     (
                         "docling worker envelope length mismatch for range %d-%d: "
@@ -671,9 +679,10 @@ def process_pdf_triaged(
                     ),
                     start,
                     end,
-                    len(pages_from_envelope),
+                    envelope_page_count,
                     expected_len,
                 )
+            engine_label = "docling-collapsed" if unexpected else "docling-range"
             blob: str
             if pages_from_envelope is not None:
                 try:
@@ -688,7 +697,7 @@ def process_pdf_triaged(
                     final_pages[page_idx] = blob
                 else:
                     final_pages[page_idx] = ""
-                engine_per_page[page_idx] = "docling-collapsed"
+                engine_per_page[page_idx] = engine_label
 
     metadata: dict[str, object] = {
         "total_pages": total_pages,

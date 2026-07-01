@@ -278,22 +278,23 @@ def test_per_page_splice_back_assigns_distinct_content_per_page(tmp_path: Path) 
         assert result.engine_per_page[idx] == "docling"
 
 
-def test_per_page_splice_back_length_mismatch_falls_back_to_collapsed(
+def test_per_page_splice_back_single_entry_is_docling_range_no_warning(
     tmp_path: Path, caplog: pytest.LogCaptureFixture
 ) -> None:
-    """030.002-T fallback: envelope ``pages`` length != range length.
+    """039.001-T: a single-entry envelope for an N-page range is EXPECTED.
 
-    When the envelope reports fewer (or more) pages than the splice range
-    expected, the consumer must NOT silently truncate or over-index.
-    Instead it falls back to the legacy "first-page-gets-blob, rest
-    empty" behavior with engine_per_page set to ``"docling-collapsed"``
-    so the attribution mismatch is visible downstream.
+    docling renders a coalesced range as one coherent whole-range blob (its
+    ``export_to_markdown`` over the range preserves heading nesting and tables
+    across page breaks). That single-entry envelope for an N>1 range is the
+    normal case — not an anomaly — so it is attributed ``"docling-range"`` and
+    logs NO length-mismatch warning. The blob lands on the range's first page
+    slot; the assembled markdown joins page slots anyway.
     """
 
     from docline.process.pdf_triage import process_pdf_triaged
 
     pdf = _make_pdf(tmp_path / "doc.pdf", page_count=10)
-    # Range will be (3,5) = 3 pages, but envelope only carries 1 page.
+    # Range will be (3,5) = 3 pages, but envelope carries 1 whole-range blob.
     short_envelope = [["# Single chunk blob for range\nall content here"]]
     runner = _envelope_runner_with_pages(short_envelope)
 
@@ -311,11 +312,44 @@ def test_per_page_splice_back_length_mismatch_falls_back_to_collapsed(
     assert "Single chunk blob" in result.pages[3]
     assert result.pages[4] == ""
     assert result.pages[5] == ""
-    # Attribution surfaces the mismatch.
+    # Attributed as the expected whole-range render.
+    assert result.engine_per_page[3] == "docling-range"
+    assert result.engine_per_page[4] == "docling-range"
+    assert result.engine_per_page[5] == "docling-range"
+    # No mismatch warning for the expected whole-range render.
+    assert not any("length mismatch" in r.message.lower() for r in caplog.records)
+
+
+def test_per_page_splice_back_unexpected_multientry_warns_and_collapses(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    """039.001-T: a valid envelope with >1 pages but the wrong count is anomalous.
+
+    Unlike the single-entry whole-range render, a multi-entry envelope whose
+    count still != range length would silently drop pages, so it keeps the
+    diagnostic WARNING and the ``"docling-collapsed"`` label.
+    """
+
+    from docline.process.pdf_triage import process_pdf_triaged
+
+    pdf = _make_pdf(tmp_path / "doc.pdf", page_count=10)
+    # 2 envelope pages for a 3-page range (3,5): genuinely unexpected.
+    two_page_envelope = [["# page A blob", "# page B blob"]]
+    runner = _envelope_runner_with_pages(two_page_envelope)
+
+    with caplog.at_level(logging.WARNING, logger="docline.process.pdf_triage"):
+        result = process_pdf_triaged(
+            pdf,
+            output_dir=tmp_path / "out",
+            runner=runner,
+            scorer=_make_scorer(flagged={3, 4, 5}),
+            buffer=0,
+            merge_gap=2,
+        )
+
     assert result.engine_per_page[3] == "docling-collapsed"
     assert result.engine_per_page[4] == "docling-collapsed"
     assert result.engine_per_page[5] == "docling-collapsed"
-    # A warning is logged for diagnostics.
     assert any("length mismatch" in r.message.lower() for r in caplog.records)
 
 
@@ -326,9 +360,9 @@ def test_per_page_splice_back_jsondecode_error_falls_back_defensively(
 
     A partial T1 rollout (or a downgrade) may leave a flat-markdown worker
     in place. The consumer must catch ``json.JSONDecodeError`` and treat
-    the file body as a single-blob single-page payload, attaching it to
-    ``final_pages[start]`` with engine ``"docling-collapsed"`` (since the
-    envelope-required per-page indexing was not honored).
+    the file body as a single-blob whole-range payload, attaching it to
+    ``final_pages[start]``. Because a legacy flat blob is also a coherent
+    whole-range render, it is attributed ``"docling-range"`` (039.001-T).
     """
 
     from docline.process.pdf_triage import process_pdf_triaged
@@ -345,9 +379,9 @@ def test_per_page_splice_back_jsondecode_error_falls_back_defensively(
     # First page of the range carries the legacy blob.
     assert "Pre-envelope content" in result.pages[4]
     assert result.pages[5] == ""
-    # Attribution flags the collapsed/legacy nature.
-    assert result.engine_per_page[4] == "docling-collapsed"
-    assert result.engine_per_page[5] == "docling-collapsed"
+    # Attributed as a whole-range render (coherent single blob).
+    assert result.engine_per_page[4] == "docling-range"
+    assert result.engine_per_page[5] == "docling-range"
 
 
 def test_single_page_range_assigns_envelope_page_at_index(tmp_path: Path) -> None:
