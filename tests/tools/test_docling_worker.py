@@ -664,3 +664,22 @@ def test_single_chunk_invalid_ocr_scale_returns_2(tmp_path: Path, capsys: Any) -
     assert exit_code == 2
     payload = json.loads(capsys.readouterr().err.strip().splitlines()[-1])
     assert payload["stage"] == "cli"
+
+
+@pytest.mark.parametrize("value", ["0", "-1", "-0.5"])
+def test_single_chunk_nonpositive_ocr_scale_returns_2(
+    tmp_path: Path, capsys: Any, value: str
+) -> None:
+    """A zero or negative ``--ocr-scale`` is rejected (images_scale must be > 0)."""
+
+    from docline._tools import docling_worker
+
+    inp = tmp_path / "in.pdf"
+    inp.write_bytes(b"%PDF-1.4\n")
+    out = tmp_path / "out.md"
+
+    exit_code = docling_worker.main([str(inp), str(out), f"--ocr-scale={value}"])
+
+    assert exit_code == 2
+    payload = json.loads(capsys.readouterr().err.strip().splitlines()[-1])
+    assert payload["stage"] == "cli"

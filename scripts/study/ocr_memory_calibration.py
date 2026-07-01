@@ -290,6 +290,10 @@ def _run(args: argparse.Namespace) -> int:
             writer.write(fh)
 
     def measure(cmd: list[str]) -> tuple[int, float]:
+        # NOTE: peak RSS is sampled (every 50 ms), so for OK runs it is a lower
+        # bound on true peak, and a crash between samples may under-report the
+        # peak that triggered it. The fit uses only OK rows, so this biases the
+        # cost model conservatively (slightly under-predicts) rather than unsafely.
         proc = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         peak = 0.0
         ps = psutil.Process(proc.pid)
@@ -322,6 +326,11 @@ def _run(args: argparse.Namespace) -> int:
                     f"--ocr-scale={scale}",
                 ]
                 rc, peak = measure(cmd)
+                # "oom" here means "did not produce a valid envelope" — it
+                # conflates a true OOM with any other worker failure (e.g. a
+                # docling runtime error). The operator should sanity-check the
+                # worker stderr for a run before treating a failure as the
+                # memory ceiling at that (scale, pages) point.
                 outcome = "ok" if rc == 0 and out_md.exists() else "oom"
                 rows.append(Measurement(page_class, mpx, scale, pages, peak, outcome))
                 print(

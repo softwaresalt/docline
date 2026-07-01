@@ -300,7 +300,10 @@ def _run_batched(manifest_path: Path) -> int:
             if not chunk_do_ocr:
                 reader_kwargs["do_ocr"] = False
             if chunk_ocr_scale is not None:
-                reader_kwargs["ocr_scale"] = float(chunk_ocr_scale)
+                scale_val = float(chunk_ocr_scale)
+                if scale_val <= 0:
+                    raise ValueError(f"ocr_scale must be > 0, got {scale_val}")
+                reader_kwargs["ocr_scale"] = scale_val
             pages = _read_pdf_docling_pages(input_path, **reader_kwargs)
         except DependencyUnavailableError as err:
             # Extras missing affects ALL chunks identically; abort.
@@ -377,6 +380,9 @@ def main(argv: list[str] | None = None) -> int:
                 ocr_scale = float(raw)
             except ValueError:
                 _emit_diagnostic("cli", f"invalid --ocr-scale value: {raw}")
+                return 2
+            if ocr_scale <= 0:
+                _emit_diagnostic("cli", f"--ocr-scale must be > 0, got {ocr_scale}")
                 return 2
         elif arg.startswith("--"):
             _emit_diagnostic("cli", f"unknown flag: {arg}")
