@@ -5,7 +5,7 @@ Invoked by :mod:`docline.process.pdf_batch` and
 
 Single-chunk mode (legacy)::
 
-    python -m docline._tools.docling_worker INPUT_PDF OUTPUT_MD [--no-ocr]
+    python -m docline._tools.docling_worker INPUT_PDF OUTPUT_MD [--no-ocr] [--ocr-scale=N]
 
 Batched mode (030-F T3)::
 
@@ -26,7 +26,10 @@ N chunks instead of paying it per invocation. The manifest format is::
 Each chunk may include an optional ``"do_ocr"`` boolean (default ``true``);
 set it ``false`` to skip OCR for ranges whose pages already carry an
 extractable text layer (034-F). The single-chunk CLI exposes the same
-control via the optional ``--no-ocr`` flag.
+control via the optional ``--no-ocr`` flag. Each chunk may also include an
+optional ``"ocr_scale"`` float (040-F) overriding the page render scale
+(``images_scale``); a lower value cuts OCR peak memory. The single-chunk CLI
+exposes this via ``--ocr-scale=N``.
 
 Per-chunk failures during batched processing write an error envelope to
 that chunk's output path (with the legacy schema_version=1 plus an
@@ -158,13 +161,21 @@ def _write_envelope(output_path: Path, envelope: dict[str, object]) -> None:
     output_path.write_text(body, encoding="utf-8")
 
 
-def _run_single(input_path: Path, output_path: Path, *, do_ocr: bool = True) -> int:
+def _run_single(
+    input_path: Path,
+    output_path: Path,
+    *,
+    do_ocr: bool = True,
+    ocr_scale: float | None = None,
+) -> int:
     """Single-chunk mode entry point.
 
     Args:
         input_path: Source PDF path.
         output_path: Envelope output path.
         do_ocr: When ``False`` the docling OCR engine is skipped (034-F).
+        ocr_scale: Optional page render-scale override (040-F); ``None`` keeps
+            the docling default.
 
     Returns the process exit code per the table in the module docstring.
     """
@@ -180,13 +191,15 @@ def _run_single(input_path: Path, output_path: Path, *, do_ocr: bool = True) -> 
         _emit_diagnostic("import", "could not import docline.readers.pdf", str(err))
         return 6
 
-    # Forward do_ocr only when disabling OCR so the reader default and the
-    # existing default-path call contract remain unchanged.
+    # Forward do_ocr / ocr_scale only when they diverge from the reader defaults
+    # so the existing default-path call contract remains unchanged.
+    reader_kwargs: dict[str, Any] = {}
+    if not do_ocr:
+        reader_kwargs["do_ocr"] = False
+    if ocr_scale is not None:
+        reader_kwargs["ocr_scale"] = ocr_scale
     try:
-        if do_ocr:
-            pages = _read_pdf_docling_pages(input_path)
-        else:
-            pages = _read_pdf_docling_pages(input_path, do_ocr=False)
+        pages = _read_pdf_docling_pages(input_path, **reader_kwargs)
     except DependencyUnavailableError as err:
         _emit_diagnostic("docling-extras", "docling extras not installed", str(err))
         return 4
@@ -265,6 +278,7 @@ def _run_batched(manifest_path: Path) -> int:
         input_path = Path(entry["input"])
         output_path = Path(entry["output"])
         chunk_do_ocr = bool(entry.get("do_ocr", True))
+        chunk_ocr_scale = entry.get("ocr_scale")
 
         if not input_path.exists():
             err_env = _build_error_envelope(FileNotFoundError(f"input PDF not found: {input_path}"))
@@ -282,10 +296,12 @@ def _run_batched(manifest_path: Path) -> int:
             continue
 
         try:
-            if chunk_do_ocr:
-                pages = _read_pdf_docling_pages(input_path)
-            else:
-                pages = _read_pdf_docling_pages(input_path, do_ocr=False)
+            reader_kwargs: dict[str, Any] = {}
+            if not chunk_do_ocr:
+                reader_kwargs["do_ocr"] = False
+            if chunk_ocr_scale is not None:
+                reader_kwargs["ocr_scale"] = float(chunk_ocr_scale)
+            pages = _read_pdf_docling_pages(input_path, **reader_kwargs)
         except DependencyUnavailableError as err:
             # Extras missing affects ALL chunks identically; abort.
             _emit_diagnostic("docling-extras", "docling extras not installed", str(err))
@@ -348,12 +364,20 @@ def main(argv: list[str] | None = None) -> int:
     if len(args) == 2 and args[0] == "--batch":
         return _run_batched(Path(args[1]))
 
-    # Single-chunk mode: an optional --no-ocr flag may appear among the args.
+    # Single-chunk mode: optional --no-ocr and --ocr-scale=<float> flags.
     do_ocr = True
+    ocr_scale: float | None = None
     positional: list[str] = []
     for arg in args:
         if arg == "--no-ocr":
             do_ocr = False
+        elif arg.startswith("--ocr-scale="):
+            raw = arg.split("=", 1)[1]
+            try:
+                ocr_scale = float(raw)
+            except ValueError:
+                _emit_diagnostic("cli", f"invalid --ocr-scale value: {raw}")
+                return 2
         elif arg.startswith("--"):
             _emit_diagnostic("cli", f"unknown flag: {arg}")
             return 2
@@ -363,11 +387,11 @@ def main(argv: list[str] | None = None) -> int:
     if len(positional) != 2:
         _emit_diagnostic(
             "cli",
-            "expected: INPUT_PDF OUTPUT_MD [--no-ocr]  |  --batch MANIFEST_JSON",
+            "expected: INPUT_PDF OUTPUT_MD [--no-ocr] [--ocr-scale=N]  |  --batch MANIFEST_JSON",
         )
         return 2
 
-    return _run_single(Path(positional[0]), Path(positional[1]), do_ocr=do_ocr)
+    return _run_single(Path(positional[0]), Path(positional[1]), do_ocr=do_ocr, ocr_scale=ocr_scale)
 
 
 if __name__ == "__main__":

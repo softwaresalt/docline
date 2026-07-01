@@ -537,3 +537,130 @@ def test_batched_manifest_do_ocr_field_routes_per_chunk(
     assert exit_code == 0
     assert seen["chunk-0"] is False
     assert seen["chunk-1"] is True
+
+
+# ---------------------------------------------------------------------------
+# 040.001-T: ocr_scale plumbing (single-chunk --ocr-scale flag + manifest field)
+# ---------------------------------------------------------------------------
+
+
+def test_single_chunk_ocr_scale_flag_forwards(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """``--ocr-scale=<float>`` in single-chunk mode forwards ``ocr_scale`` to the reader."""
+
+    from docline._tools import docling_worker
+
+    inp = tmp_path / "in.pdf"
+    inp.write_bytes(b"%PDF-1.4\n")
+    out = tmp_path / "out.md"
+
+    seen: dict[str, float | None] = {}
+
+    def fake_read(
+        path: Path,
+        *,
+        picture_sink: Any | None = None,
+        do_ocr: bool = True,
+        ocr_scale: float | None = None,
+    ) -> list[str]:
+        seen["ocr_scale"] = ocr_scale
+        return ["content"]
+
+    monkeypatch.setattr("docline.readers.pdf._read_pdf_docling_pages", fake_read)
+
+    exit_code = docling_worker.main([str(inp), str(out), "--ocr-scale=0.5"])
+
+    assert exit_code == 0
+    assert seen["ocr_scale"] == 0.5
+
+
+def test_single_chunk_defaults_ocr_scale_none(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Without ``--ocr-scale`` the reader is called with the default (``None``)."""
+
+    from docline._tools import docling_worker
+
+    inp = tmp_path / "in.pdf"
+    inp.write_bytes(b"%PDF-1.4\n")
+    out = tmp_path / "out.md"
+
+    seen: dict[str, float | None] = {"ocr_scale": 1.234}
+
+    def fake_read(
+        path: Path,
+        *,
+        picture_sink: Any | None = None,
+        do_ocr: bool = True,
+        ocr_scale: float | None = None,
+    ) -> list[str]:
+        seen["ocr_scale"] = ocr_scale
+        return ["content"]
+
+    monkeypatch.setattr("docline.readers.pdf._read_pdf_docling_pages", fake_read)
+
+    exit_code = docling_worker.main([str(inp), str(out)])
+
+    assert exit_code == 0
+    assert seen["ocr_scale"] is None
+
+
+def test_batched_manifest_ocr_scale_field_routes_per_chunk(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A per-chunk ``ocr_scale`` manifest field forwards to the reader; absent -> None."""
+
+    from docline._tools import docling_worker
+
+    inp0 = tmp_path / "chunk-0.pdf"
+    inp0.write_bytes(b"%PDF-1.4\n")
+    inp1 = tmp_path / "chunk-1.pdf"
+    inp1.write_bytes(b"%PDF-1.4\n")
+    out0 = tmp_path / "chunk-0.md"
+    out1 = tmp_path / "chunk-1.md"
+
+    manifest = {
+        "chunks": [
+            {"input": str(inp0), "output": str(out0), "ocr_scale": 0.25},
+            {"input": str(inp1), "output": str(out1)},  # no ocr_scale -> None
+        ]
+    }
+    manifest_path = tmp_path / "manifest.json"
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+
+    seen: dict[str, float | None] = {}
+
+    def fake_read(
+        path: Path,
+        *,
+        picture_sink: Any | None = None,
+        do_ocr: bool = True,
+        ocr_scale: float | None = None,
+    ) -> list[str]:
+        seen[path.stem] = ocr_scale
+        return ["content"]
+
+    monkeypatch.setattr("docline.readers.pdf._read_pdf_docling_pages", fake_read)
+
+    exit_code = docling_worker.main(["--batch", str(manifest_path)])
+
+    assert exit_code == 0
+    assert seen["chunk-0"] == 0.25
+    assert seen["chunk-1"] is None
+
+
+def test_single_chunk_invalid_ocr_scale_returns_2(tmp_path: Path, capsys: Any) -> None:
+    """A non-numeric ``--ocr-scale`` value is a CLI error (exit 2)."""
+
+    from docline._tools import docling_worker
+
+    inp = tmp_path / "in.pdf"
+    inp.write_bytes(b"%PDF-1.4\n")
+    out = tmp_path / "out.md"
+
+    exit_code = docling_worker.main([str(inp), str(out), "--ocr-scale=abc"])
+
+    assert exit_code == 2
+    payload = json.loads(capsys.readouterr().err.strip().splitlines()[-1])
+    assert payload["stage"] == "cli"

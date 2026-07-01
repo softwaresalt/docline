@@ -716,6 +716,7 @@ def _read_pdf_docling_pages(
     *,
     picture_sink: PictureSink | None = None,
     do_ocr: bool = True,
+    ocr_scale: float | None = None,
 ) -> list[str]:
     """Extract text via the optional ``docling`` package.
 
@@ -736,6 +737,11 @@ def _read_pdf_docling_pages(
             extractable text layer — OCR is the dominant per-page cost on
             native-text corpora. Defaulting to ``True`` preserves prior
             behavior for callers that do not supply a decision.
+        ocr_scale: Optional page render scale (``images_scale``) override
+            (040-F). ``None`` (default) keeps the standard ``2.0`` scale.
+            A lower value rasterizes the page at reduced resolution, cutting
+            OCR peak memory (~quadratic in bitmap dimensions) — used by the
+            single-page OOM downscale-retry path.
 
     Returns:
         Single-element list containing the docling-rendered Markdown, or an
@@ -770,7 +776,7 @@ def _read_pdf_docling_pages(
             do_table_structure=True,
             table_structure_options=TableStructureOptions(do_cell_matching=True),
             generate_picture_images=picture_sink is not None,
-            images_scale=2.0,
+            images_scale=ocr_scale if ocr_scale is not None else 2.0,
         )
         converter = DocumentConverter(
             format_options={
