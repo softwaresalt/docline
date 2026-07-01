@@ -160,3 +160,71 @@ def test_main_analyze_missing_file_returns_2(tmp_path: Path, capsys) -> None:
     mod = _load()
     exit_code = mod.main(["--analyze", str(tmp_path / "nope.tsv"), "--available-mb", "1000"])
     assert exit_code == 2
+
+
+class _FakeMemInfo:
+    def __init__(self, rss: int) -> None:
+        self.rss = rss
+
+
+class _FakeProc:
+    """A minimal psutil.Process stand-in for :func:`_tree_rss_mb` tests."""
+
+    def __init__(self, rss: int, descendants=()):
+        self._rss = rss
+        self._descendants = list(descendants)
+
+    def memory_info(self) -> _FakeMemInfo:
+        return _FakeMemInfo(self._rss)
+
+    def children(self, recursive: bool = False):
+        # psutil returns the flattened descendant list when recursive=True.
+        return list(self._descendants)
+
+
+def test_tree_rss_mb_sums_process_tree() -> None:
+    mod = _load()
+    # Direct process is a tiny redirector shim (4 MB); the real docling work
+    # lives in a child (1000 MB) alongside a grandchild (250 MB). psutil's
+    # children(recursive=True) returns them flattened.
+    grandchild = _FakeProc(250_000_000)
+    child = _FakeProc(1_000_000_000)
+    root = _FakeProc(4_000_000, descendants=[child, grandchild])
+    assert mod._tree_rss_mb(root) == pytest.approx(1254.0)
+
+
+def test_tree_rss_mb_no_children_is_direct_rss() -> None:
+    mod = _load()
+    root = _FakeProc(512_000_000)
+    assert mod._tree_rss_mb(root) == pytest.approx(512.0)
+
+
+class _BoomError(Exception):
+    """Stand-in for a psutil.NoSuchProcess raised by a dead descendant."""
+
+
+class _RaisingProc:
+    def memory_info(self):
+        raise _BoomError
+
+    def children(self, recursive: bool = False):
+        return []
+
+
+def test_tree_rss_mb_skips_dead_descendant_with_skip_errors() -> None:
+    mod = _load()
+    # A descendant that exited mid-walk raises when read; with skip_errors it
+    # is skipped and the surviving processes still contribute to the sum.
+    dead = _RaisingProc()
+    alive = _FakeProc(300_000_000)
+    root = _FakeProc(4_000_000, descendants=[dead, alive])
+    total = mod._tree_rss_mb(root, skip_errors=(_BoomError,))
+    assert total == pytest.approx(304.0)
+
+
+def test_tree_rss_mb_propagates_when_skip_errors_empty() -> None:
+    mod = _load()
+    # Default (no skip_errors) keeps the helper strict and psutil-free.
+    root = _FakeProc(4_000_000, descendants=[_RaisingProc()])
+    with pytest.raises(_BoomError):
+        mod._tree_rss_mb(root)
