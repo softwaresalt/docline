@@ -206,7 +206,7 @@ def parse_measurements_tsv(text: str) -> list[Measurement]:
     return rows
 
 
-def _tree_rss_mb(proc: Any) -> float:
+def _tree_rss_mb(proc: Any, *, skip_errors: tuple[type[BaseException], ...] = ()) -> float:
     """Summed resident set size (MB) of ``proc`` and all its descendant processes.
 
     Sampling only the directly-spawned process undercounts on hosts where the
@@ -221,14 +221,29 @@ def _tree_rss_mb(proc: Any) -> float:
         proc: A :class:`psutil.Process`-like handle exposing ``memory_info()``
             and ``children(recursive=True)`` (the latter returning the flattened
             descendant list).
+        skip_errors: Exception types to swallow per process while walking the
+            tree. ``children(recursive=True)`` returns a snapshot, so a
+            descendant can exit before its ``memory_info()`` is read and raise
+            (e.g. :class:`psutil.NoSuchProcess`). Callers pass the relevant
+            error types so a normal mid-walk child exit is skipped rather than
+            aborting the whole sample; the default empty tuple swallows nothing,
+            keeping the helper importable and unit-testable without psutil.
 
     Returns:
         Instantaneous summed RSS across the tree in megabytes (decimal, matching
         psutil's byte reporting convention).
     """
-    total = proc.memory_info().rss / 1_000_000.0
-    for child in proc.children(recursive=True):
-        total += child.memory_info().rss / 1_000_000.0
+    total = 0.0
+    try:
+        total += proc.memory_info().rss / 1_000_000.0
+        children = proc.children(recursive=True)
+    except skip_errors:
+        return total
+    for child in children:
+        try:
+            total += child.memory_info().rss / 1_000_000.0
+        except skip_errors:
+            continue
     return total
 
 
@@ -323,15 +338,14 @@ def _run(args: argparse.Namespace) -> int:
         # triggered it. The fit uses only OK rows, so this biases the cost
         # model conservatively (slightly under-predicts) rather than unsafely.
         # Summing the tree is required because a Windows venv python.exe is a
-        # thin redirector shim that runs docling in a child process.
+        # thin redirector shim that runs docling in a child process. A
+        # descendant that exits mid-walk raises psutil.Error; skip_errors lets
+        # _tree_rss_mb skip just that process instead of aborting the sample.
         proc = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         peak = 0.0
         ps = psutil.Process(proc.pid)
         while proc.poll() is None:
-            try:
-                peak = max(peak, _tree_rss_mb(ps))
-            except psutil.Error:
-                break
+            peak = max(peak, _tree_rss_mb(ps, skip_errors=(psutil.Error,)))
             time.sleep(0.05)
         return proc.returncode or 0, peak
 

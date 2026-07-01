@@ -197,3 +197,34 @@ def test_tree_rss_mb_no_children_is_direct_rss() -> None:
     mod = _load()
     root = _FakeProc(512_000_000)
     assert mod._tree_rss_mb(root) == pytest.approx(512.0)
+
+
+class _BoomError(Exception):
+    """Stand-in for a psutil.NoSuchProcess raised by a dead descendant."""
+
+
+class _RaisingProc:
+    def memory_info(self):
+        raise _BoomError
+
+    def children(self, recursive: bool = False):
+        return []
+
+
+def test_tree_rss_mb_skips_dead_descendant_with_skip_errors() -> None:
+    mod = _load()
+    # A descendant that exited mid-walk raises when read; with skip_errors it
+    # is skipped and the surviving processes still contribute to the sum.
+    dead = _RaisingProc()
+    alive = _FakeProc(300_000_000)
+    root = _FakeProc(4_000_000, descendants=[dead, alive])
+    total = mod._tree_rss_mb(root, skip_errors=(_BoomError,))
+    assert total == pytest.approx(304.0)
+
+
+def test_tree_rss_mb_propagates_when_skip_errors_empty() -> None:
+    mod = _load()
+    # Default (no skip_errors) keeps the helper strict and psutil-free.
+    root = _FakeProc(4_000_000, descendants=[_RaisingProc()])
+    with pytest.raises(_BoomError):
+        mod._tree_rss_mb(root)
