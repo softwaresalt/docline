@@ -47,6 +47,7 @@ import sys
 from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 _TSV_HEADER = "page_class\tpage_megapixels\tscale\tpages_per_group\tpeak_rss_mb\toutcome"
 
@@ -205,6 +206,32 @@ def parse_measurements_tsv(text: str) -> list[Measurement]:
     return rows
 
 
+def _tree_rss_mb(proc: Any) -> float:
+    """Summed resident set size (MB) of ``proc`` and all its descendant processes.
+
+    Sampling only the directly-spawned process undercounts on hosts where the
+    launched interpreter is a thin redirector shim that re-execs the real
+    interpreter as a child — notably a Windows virtual-env ``python.exe`` whose
+    own RSS is a few MB while the entire docling/OCR working set lives in the
+    child. Summing the whole process tree captures that footprint; on hosts with
+    no such shim the descendant set is empty and this reduces to the process's
+    own RSS.
+
+    Args:
+        proc: A :class:`psutil.Process`-like handle exposing ``memory_info()``
+            and ``children(recursive=True)`` (the latter returning the flattened
+            descendant list).
+
+    Returns:
+        Instantaneous summed RSS across the tree in megabytes (decimal, matching
+        psutil's byte reporting convention).
+    """
+    total = proc.memory_info().rss / 1_000_000.0
+    for child in proc.children(recursive=True):
+        total += child.memory_info().rss / 1_000_000.0
+    return total
+
+
 def _measurement_available() -> tuple[bool, str]:
     """Whether the ``--run`` measurement path can execute on this host."""
     try:
@@ -290,16 +317,19 @@ def _run(args: argparse.Namespace) -> int:
             writer.write(fh)
 
     def measure(cmd: list[str]) -> tuple[int, float]:
-        # NOTE: peak RSS is sampled (every 50 ms), so for OK runs it is a lower
-        # bound on true peak, and a crash between samples may under-report the
-        # peak that triggered it. The fit uses only OK rows, so this biases the
-        # cost model conservatively (slightly under-predicts) rather than unsafely.
+        # NOTE: peak RSS is sampled (every 50 ms) across the whole process
+        # tree (see _tree_rss_mb), so for OK runs it is a lower bound on true
+        # peak, and a crash between samples may under-report the peak that
+        # triggered it. The fit uses only OK rows, so this biases the cost
+        # model conservatively (slightly under-predicts) rather than unsafely.
+        # Summing the tree is required because a Windows venv python.exe is a
+        # thin redirector shim that runs docling in a child process.
         proc = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         peak = 0.0
         ps = psutil.Process(proc.pid)
         while proc.poll() is None:
             try:
-                peak = max(peak, ps.memory_info().rss / 1_000_000.0)
+                peak = max(peak, _tree_rss_mb(ps))
             except psutil.Error:
                 break
             time.sleep(0.05)
