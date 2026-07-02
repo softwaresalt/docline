@@ -3,7 +3,9 @@ title: Runtime host-relative OCR memory cap and scale recovery
 date: 2026-07-01
 status: planned
 stash: 699FB5DC
-feature: 040-F
+feature: 041-F
+shipment: 044-S
+origin_feature: 040-F
 references:
   - docs/decisions/2026-06-30-ocr-memory-calibration.md
   - src/docline/runtime/resource_probe.py
