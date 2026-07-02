@@ -32,10 +32,72 @@ from docline.process.page_range import (
     OCR_MAX_BATCHED_PAGES,
     group_by_page_count,
 )
+from docline.runtime import ocr_budget
 
 _log = logging.getLogger(__name__)
 
 ChunkRunner = Callable[[list[str]], "subprocess.CompletedProcess[str]"]
+
+# Descending render scales for single-page OCR downscale-recovery (041-F). 2.0
+# is docling's default images_scale; lower scales shrink the page bitmap (and
+# thus OCR peak memory) before an oversized single page concedes to heuristic.
+_DEFAULT_OCR_SCALE = 2.0
+_OCR_SCALE_SCHEDULE: tuple[float, ...] = (2.0, 1.0, 0.5, 0.25)
+
+
+def _chunk_entry(
+    inputs: Sequence[str],
+    outputs: Sequence[str],
+    do_ocr: Sequence[bool],
+    index: int,
+    ocr_scale: float | None,
+) -> dict[str, object]:
+    """Build one ``--batch`` manifest chunk, emitting ``ocr_scale`` when set."""
+    entry: dict[str, object] = {
+        "input": inputs[index],
+        "output": outputs[index],
+        "do_ocr": bool(do_ocr[index]),
+    }
+    # Only OCR chunks get the render-scale override: the worker applies ocr_scale
+    # regardless of do_ocr, so emitting it for a non-OCR chunk would needlessly
+    # change its rendering.
+    if ocr_scale is not None and do_ocr[index]:
+        entry["ocr_scale"] = ocr_scale
+    return entry
+
+
+def _downsize_cap(
+    cap: int,
+    *,
+    available_ram_gb: float,
+    page_megapixels: float | None,
+    budget_scale: float,
+) -> int:
+    """Next OCR group cap after an OOM crash.
+
+    Memory-derived when the host budget and a representative page size are
+    known: recompute the calibrated cost-model cap at a shrunk effective budget
+    (``budget_scale`` of available memory), so the retry jumps toward a size the
+    model expects to fit rather than blindly halving. Falls back to geometric
+    halving otherwise. Always strictly less than ``cap`` and ``>= 1`` so the
+    retry loop is guaranteed to terminate.
+
+    Args:
+        cap: The page cap that just crashed.
+        available_ram_gb: Host available RAM in decimal GB (``0`` if unknown).
+        page_megapixels: Representative page bitmap size, or ``None`` if unknown.
+        budget_scale: Fraction of available memory to assume this retry level.
+
+    Returns:
+        The next cap, an integer in ``[1, cap - 1]``.
+    """
+    if available_ram_gb > 0 and page_megapixels is not None and page_megapixels > 0:
+        derived = ocr_budget.max_ocr_pages_per_group(
+            available_ram_gb * ocr_budget.MB_PER_GB * budget_scale, page_megapixels=page_megapixels
+        )
+    else:
+        derived = cap // 2
+    return max(1, min(cap - 1, derived))
 
 
 def dispatch_batched_groups_with_retry(
@@ -48,6 +110,8 @@ def dispatch_batched_groups_with_retry(
     runner: ChunkRunner,
     manifest_dir: Path,
     ocr_max_pages: int = OCR_MAX_BATCHED_PAGES,
+    available_ram_gb: float = 0.0,
+    page_megapixels: float | None = None,
 ) -> list[int]:
     """Dispatch batched docling groups, adaptively shrinking crashed OCR groups.
 
@@ -70,7 +134,14 @@ def dispatch_batched_groups_with_retry(
         runner: Callable that runs a worker command and returns the completed
             process (the same injection seam used by the single-chunk path).
         manifest_dir: Directory in which ``--batch`` manifest files are written.
-        ocr_max_pages: Starting per-group cap for OCR groups; retries halve it.
+        ocr_max_pages: Starting per-group cap for OCR groups. When
+            ``available_ram_gb`` and ``page_megapixels`` are provided, an OOM
+            retry recomputes the cap from the calibrated cost model at a shrunk
+            budget (041-F); otherwise it halves (038.003-T).
+        available_ram_gb: Host available RAM (decimal GB) for memory-derived
+            downsizing. ``0`` disables it (falls back to halving).
+        page_megapixels: Representative OCR page size for memory-derived
+            downsizing. ``None`` disables it (falls back to halving).
 
     Returns:
         A per-item return code list parallel to ``inputs``: ``0`` when the
@@ -78,29 +149,22 @@ def dispatch_batched_groups_with_retry(
         (signalling the caller to fall back to heuristic for that item).
     """
     returncodes = [0] * len(inputs)
-    # Worklist of (item indices, cap that produced this grouping).
-    work: deque[tuple[list[int], int]] = deque()
+    # Worklist of (item indices, cap, budget_scale, ocr_scale). budget_scale
+    # shrinks each page-downsize retry level; ocr_scale is the render scale for
+    # the single-page downscale-recovery (None == docling default).
+    work: deque[tuple[list[int], int, float, float | None]] = deque()
     for group in groups:
         is_ocr = any(do_ocr[i] for i in group)
-        work.append((list(group), ocr_max_pages if is_ocr else MAX_BATCHED_PAGES))
+        work.append((list(group), ocr_max_pages if is_ocr else MAX_BATCHED_PAGES, 1.0, None))
 
     attempt = 0
     while work:
-        indices, cap = work.popleft()
+        indices, cap, budget_scale, ocr_scale = work.popleft()
         manifest_path = manifest_dir / f"_batch_manifest_{attempt:03d}.json"
         attempt += 1
         manifest_path.write_text(
             json.dumps(
-                {
-                    "chunks": [
-                        {
-                            "input": inputs[i],
-                            "output": outputs[i],
-                            "do_ocr": bool(do_ocr[i]),
-                        }
-                        for i in indices
-                    ]
-                }
+                {"chunks": [_chunk_entry(inputs, outputs, do_ocr, i, ocr_scale) for i in indices]}
             ),
             encoding="utf-8",
         )
@@ -120,10 +184,16 @@ def dispatch_batched_groups_with_retry(
         stderr = (getattr(completed, "stderr", "") or "").strip() or "<none captured>"
         is_ocr = any(do_ocr[i] for i in indices)
         if is_ocr and len(indices) > 1 and cap > 1:
-            new_cap = max(1, cap // 2)
+            new_scale = budget_scale * 0.5
+            new_cap = _downsize_cap(
+                cap,
+                available_ram_gb=available_ram_gb,
+                page_megapixels=page_megapixels,
+                budget_scale=new_scale,
+            )
             sub_counts = [page_counts[i] for i in indices]
             for sub in group_by_page_count(sub_counts, max_pages=new_cap):
-                work.append(([indices[j] for j in sub], new_cap))
+                work.append(([indices[j] for j in sub], new_cap, new_scale, ocr_scale))
             _log.warning(
                 "OCR batched group OOM (exit=%s) on %d item(s); retrying at cap %d. "
                 "Worker stderr: %s",
@@ -133,6 +203,32 @@ def dispatch_batched_groups_with_retry(
                 stderr,
             )
             continue
+
+        # Single OCR item (or a group that can no longer page-downsize): step the
+        # render scale down (041-F) before conceding to heuristic. Bounded by the
+        # finite, strictly-descending scale schedule.
+        if is_ocr and available_ram_gb > 0 and page_megapixels:
+            current_scale = ocr_scale if ocr_scale is not None else _DEFAULT_OCR_SCALE
+            lower_scales = [s for s in _OCR_SCALE_SCHEDULE if s < current_scale]
+            pages_in_group = sum(page_counts[i] for i in indices)
+            next_scale = ocr_budget.recover_render_scale(
+                available_ram_gb * ocr_budget.MB_PER_GB,
+                page_megapixels=page_megapixels,
+                pages_per_group=pages_in_group,
+                candidate_scales=lower_scales,
+            )
+            if next_scale is not None:
+                work.append((indices, cap, budget_scale, next_scale))
+                _log.warning(
+                    "OCR group OOM (exit=%s) on %d item(s) at scale %s; retrying at ocr_scale %s. "
+                    "Worker stderr: %s",
+                    completed.returncode,
+                    len(indices),
+                    current_scale,
+                    next_scale,
+                    stderr,
+                )
+                continue
 
         # Give up: single item or cap exhausted -> heuristic fallback in caller.
         for i in indices:
