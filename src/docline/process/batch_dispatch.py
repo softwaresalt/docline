@@ -38,8 +38,6 @@ _log = logging.getLogger(__name__)
 
 ChunkRunner = Callable[[list[str]], "subprocess.CompletedProcess[str]"]
 
-_MB_PER_GB = 1000.0  # decimal MB per GB, matching ResourceBudget units
-
 # Descending render scales for single-page OCR downscale-recovery (041-F). 2.0
 # is docling's default images_scale; lower scales shrink the page bitmap (and
 # thus OCR peak memory) before an oversized single page concedes to heuristic.
@@ -95,7 +93,7 @@ def _downsize_cap(
     """
     if available_ram_gb > 0 and page_megapixels is not None and page_megapixels > 0:
         derived = ocr_budget.max_ocr_pages_per_group(
-            available_ram_gb * _MB_PER_GB * budget_scale, page_megapixels=page_megapixels
+            available_ram_gb * ocr_budget.MB_PER_GB * budget_scale, page_megapixels=page_megapixels
         )
     else:
         derived = cap // 2
@@ -214,7 +212,7 @@ def dispatch_batched_groups_with_retry(
             lower_scales = [s for s in _OCR_SCALE_SCHEDULE if s < current_scale]
             pages_in_group = sum(page_counts[i] for i in indices)
             next_scale = ocr_budget.recover_render_scale(
-                available_ram_gb * _MB_PER_GB,
+                available_ram_gb * ocr_budget.MB_PER_GB,
                 page_megapixels=page_megapixels,
                 pages_per_group=pages_in_group,
                 candidate_scales=lower_scales,

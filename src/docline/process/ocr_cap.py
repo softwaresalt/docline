@@ -25,8 +25,6 @@ from docline.runtime import ocr_budget
 
 _log = logging.getLogger(__name__)
 
-_MB_PER_GB = 1000.0  # decimal MB per GB, matching psutil / ResourceBudget units
-
 
 def representative_ocr_megapixels(pdf_paths: Sequence[Path]) -> float | None:
     """Largest page bitmap size (megapixels) across all pages of the given OCR PDFs.
@@ -78,7 +76,9 @@ def resolve_ocr_cap(
     mpx = representative_ocr_megapixels(ocr_pdf_paths)
     if mpx is None or mpx <= 0:
         return OCR_MAX_BATCHED_PAGES, None
-    cap = ocr_budget.max_ocr_pages_per_group(available_ram_gb * _MB_PER_GB, page_megapixels=mpx)
+    cap = ocr_budget.max_ocr_pages_per_group(
+        available_ram_gb * ocr_budget.MB_PER_GB, page_megapixels=mpx
+    )
     return cap, mpx
 
 

@@ -30,6 +30,8 @@ OCR_K_MB_PER_MPX: float = 15.4942
 OCR_PER_PAGE_FLOOR_MB: float = 207.0
 OCR_SAFE_FRACTION: float = 0.6
 
+MB_PER_GB: float = 1000.0  # decimal MB per GB, matching psutil / ResourceBudget units
+
 
 def page_megapixels_from_points(width_points: float, height_points: float) -> float:
     """Page bitmap size in megapixels at the 72-DPI base from a PDF mediabox.
