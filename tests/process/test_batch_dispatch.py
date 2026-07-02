@@ -237,6 +237,21 @@ def test_memory_derived_downsizing_terminates_on_tiny_budget(tmp_path: Path) -> 
     assert len(manifests) < 40  # bounded, no infinite loop
 
 
+def test_chunk_entry_emits_ocr_scale_only_for_ocr_chunks() -> None:
+    """ocr_scale is emitted for OCR chunks only (the worker ignores do_ocr for it)."""
+    from docline.process.batch_dispatch import _chunk_entry
+
+    inputs = ["a.pdf", "b.pdf"]
+    outputs = ["a.json", "b.json"]
+    do_ocr = [True, False]
+    ocr = _chunk_entry(inputs, outputs, do_ocr, 0, 0.5)
+    non_ocr = _chunk_entry(inputs, outputs, do_ocr, 1, 0.5)
+    assert ocr["ocr_scale"] == 0.5
+    assert "ocr_scale" not in non_ocr
+    # No override when scale is None regardless of do_ocr.
+    assert "ocr_scale" not in _chunk_entry(inputs, outputs, do_ocr, 0, None)
+
+
 def _crash_unless_ocr_scale_leq(manifests: list[list[dict[str, Any]]], *, max_scale: float) -> Any:
     """Runner that crashes an OCR chunk unless it carries ``ocr_scale <= max_scale``."""
 

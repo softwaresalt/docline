@@ -60,7 +60,10 @@ def _chunk_entry(
         "output": outputs[index],
         "do_ocr": bool(do_ocr[index]),
     }
-    if ocr_scale is not None:
+    # Only OCR chunks get the render-scale override: the worker applies ocr_scale
+    # regardless of do_ocr, so emitting it for a non-OCR chunk would needlessly
+    # change its rendering.
+    if ocr_scale is not None and do_ocr[index]:
         entry["ocr_scale"] = ocr_scale
     return entry
 
