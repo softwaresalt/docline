@@ -40,6 +40,30 @@ ChunkRunner = Callable[[list[str]], "subprocess.CompletedProcess[str]"]
 
 _MB_PER_GB = 1000.0  # decimal MB per GB, matching ResourceBudget units
 
+# Descending render scales for single-page OCR downscale-recovery (041-F). 2.0
+# is docling's default images_scale; lower scales shrink the page bitmap (and
+# thus OCR peak memory) before an oversized single page concedes to heuristic.
+_DEFAULT_OCR_SCALE = 2.0
+_OCR_SCALE_SCHEDULE: tuple[float, ...] = (2.0, 1.0, 0.5, 0.25)
+
+
+def _chunk_entry(
+    inputs: Sequence[str],
+    outputs: Sequence[str],
+    do_ocr: Sequence[bool],
+    index: int,
+    ocr_scale: float | None,
+) -> dict[str, object]:
+    """Build one ``--batch`` manifest chunk, emitting ``ocr_scale`` when set."""
+    entry: dict[str, object] = {
+        "input": inputs[index],
+        "output": outputs[index],
+        "do_ocr": bool(do_ocr[index]),
+    }
+    if ocr_scale is not None:
+        entry["ocr_scale"] = ocr_scale
+    return entry
+
 
 def _downsize_cap(
     cap: int,
@@ -124,30 +148,22 @@ def dispatch_batched_groups_with_retry(
         (signalling the caller to fall back to heuristic for that item).
     """
     returncodes = [0] * len(inputs)
-    # Worklist of (item indices, cap, budget_scale). budget_scale shrinks each
-    # OCR retry level so memory-derived downsizing re-derives against less RAM.
-    work: deque[tuple[list[int], int, float]] = deque()
+    # Worklist of (item indices, cap, budget_scale, ocr_scale). budget_scale
+    # shrinks each page-downsize retry level; ocr_scale is the render scale for
+    # the single-page downscale-recovery (None == docling default).
+    work: deque[tuple[list[int], int, float, float | None]] = deque()
     for group in groups:
         is_ocr = any(do_ocr[i] for i in group)
-        work.append((list(group), ocr_max_pages if is_ocr else MAX_BATCHED_PAGES, 1.0))
+        work.append((list(group), ocr_max_pages if is_ocr else MAX_BATCHED_PAGES, 1.0, None))
 
     attempt = 0
     while work:
-        indices, cap, budget_scale = work.popleft()
+        indices, cap, budget_scale, ocr_scale = work.popleft()
         manifest_path = manifest_dir / f"_batch_manifest_{attempt:03d}.json"
         attempt += 1
         manifest_path.write_text(
             json.dumps(
-                {
-                    "chunks": [
-                        {
-                            "input": inputs[i],
-                            "output": outputs[i],
-                            "do_ocr": bool(do_ocr[i]),
-                        }
-                        for i in indices
-                    ]
-                }
+                {"chunks": [_chunk_entry(inputs, outputs, do_ocr, i, ocr_scale) for i in indices]}
             ),
             encoding="utf-8",
         )
@@ -176,7 +192,7 @@ def dispatch_batched_groups_with_retry(
             )
             sub_counts = [page_counts[i] for i in indices]
             for sub in group_by_page_count(sub_counts, max_pages=new_cap):
-                work.append(([indices[j] for j in sub], new_cap, new_scale))
+                work.append(([indices[j] for j in sub], new_cap, new_scale, ocr_scale))
             _log.warning(
                 "OCR batched group OOM (exit=%s) on %d item(s); retrying at cap %d. "
                 "Worker stderr: %s",
@@ -186,6 +202,30 @@ def dispatch_batched_groups_with_retry(
                 stderr,
             )
             continue
+
+        # Single OCR item (or a group that can no longer page-downsize): step the
+        # render scale down (041-F) before conceding to heuristic. Bounded by the
+        # finite, strictly-descending scale schedule.
+        if is_ocr and available_ram_gb > 0 and page_megapixels:
+            current_scale = ocr_scale if ocr_scale is not None else _DEFAULT_OCR_SCALE
+            lower_scales = [s for s in _OCR_SCALE_SCHEDULE if s < current_scale]
+            next_scale = ocr_budget.recover_scale_for_single_page(
+                available_ram_gb * _MB_PER_GB,
+                page_megapixels=page_megapixels,
+                candidate_scales=lower_scales,
+            )
+            if next_scale is not None:
+                work.append((indices, cap, budget_scale, next_scale))
+                _log.warning(
+                    "OCR group OOM (exit=%s) on %d item(s) at scale %s; retrying at ocr_scale %s. "
+                    "Worker stderr: %s",
+                    completed.returncode,
+                    len(indices),
+                    current_scale,
+                    next_scale,
+                    stderr,
+                )
+                continue
 
         # Give up: single item or cap exhausted -> heuristic fallback in caller.
         for i in indices:

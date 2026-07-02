@@ -235,3 +235,83 @@ def test_memory_derived_downsizing_terminates_on_tiny_budget(tmp_path: Path) -> 
     assert all(rc != 0 for rc in rcs)
     assert all(not Path(o).exists() for o in outputs)
     assert len(manifests) < 40  # bounded, no infinite loop
+
+
+def _crash_unless_ocr_scale_leq(manifests: list[list[dict[str, Any]]], *, max_scale: float) -> Any:
+    """Runner that crashes an OCR chunk unless it carries ``ocr_scale <= max_scale``."""
+
+    def runner(args: list[str]) -> subprocess.CompletedProcess[str]:
+        manifest_path = Path(args[args.index("--batch") + 1])
+        chunks = json.loads(manifest_path.read_text(encoding="utf-8"))["chunks"]
+        manifests.append(chunks)
+        for chunk in chunks:
+            if chunk["do_ocr"]:
+                scale = chunk.get("ocr_scale")
+                if scale is None or scale > max_scale:
+                    return subprocess.CompletedProcess(
+                        args=args, returncode=3221225477, stdout="", stderr="bad_alloc"
+                    )
+        for chunk in chunks:
+            out = Path(chunk["output"])
+            out.parent.mkdir(parents=True, exist_ok=True)
+            out.write_text(
+                json.dumps({"schema_version": 1, "pages": ["# x"], "page_count": 1, "text": "# x"}),
+                encoding="utf-8",
+            )
+        return subprocess.CompletedProcess(args=args, returncode=0, stdout="", stderr="")
+
+    return runner
+
+
+def test_single_page_scale_step_retry_recovers(tmp_path: Path) -> None:
+    """A lone OCR page that OOMs at full scale recovers once downscaled."""
+    from docline.process.batch_dispatch import dispatch_batched_groups_with_retry
+
+    page_counts = [1]
+    inputs, outputs, _page_of = _items(tmp_path, page_counts)
+    manifests: list[list[dict[str, Any]]] = []
+
+    rcs = dispatch_batched_groups_with_retry(
+        [[0]],
+        inputs=inputs,
+        outputs=outputs,
+        do_ocr=[True],
+        page_counts=page_counts,
+        runner=_crash_unless_ocr_scale_leq(manifests, max_scale=0.5),
+        manifest_dir=tmp_path,
+        ocr_max_pages=1,
+        available_ram_gb=16.0,
+        page_megapixels=0.5,
+    )
+
+    assert rcs == [0]  # recovered, not heuristic
+    assert Path(outputs[0]).exists()
+    # The winning manifest carried an ocr_scale <= 0.5 (the 040.001-T knob).
+    winning_scales = [c.get("ocr_scale") for m in manifests for c in m if c.get("ocr_scale")]
+    assert any(s <= 0.5 for s in winning_scales)
+
+
+def test_scale_step_retry_exhausted_falls_back_to_heuristic(tmp_path: Path) -> None:
+    """When no scale fits, the single OCR page concedes to heuristic (bounded)."""
+    from docline.process.batch_dispatch import dispatch_batched_groups_with_retry
+
+    page_counts = [1]
+    inputs, outputs, _page_of = _items(tmp_path, page_counts)
+    manifests: list[list[dict[str, Any]]] = []
+
+    rcs = dispatch_batched_groups_with_retry(
+        [[0]],
+        inputs=inputs,
+        outputs=outputs,
+        do_ocr=[True],
+        page_counts=page_counts,
+        runner=_crash_unless_ocr_scale_leq(manifests, max_scale=0.1),
+        manifest_dir=tmp_path,
+        ocr_max_pages=1,
+        available_ram_gb=16.0,
+        page_megapixels=0.5,
+    )
+
+    assert rcs[0] != 0
+    assert not Path(outputs[0]).exists()
+    assert len(manifests) < 10  # bounded scale schedule, no infinite loop
