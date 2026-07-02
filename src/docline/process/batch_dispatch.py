@@ -209,9 +209,11 @@ def dispatch_batched_groups_with_retry(
         if is_ocr and available_ram_gb > 0 and page_megapixels:
             current_scale = ocr_scale if ocr_scale is not None else _DEFAULT_OCR_SCALE
             lower_scales = [s for s in _OCR_SCALE_SCHEDULE if s < current_scale]
-            next_scale = ocr_budget.recover_scale_for_single_page(
+            pages_in_group = sum(page_counts[i] for i in indices)
+            next_scale = ocr_budget.recover_render_scale(
                 available_ram_gb * _MB_PER_GB,
                 page_megapixels=page_megapixels,
+                pages_per_group=pages_in_group,
                 candidate_scales=lower_scales,
             )
             if next_scale is not None:

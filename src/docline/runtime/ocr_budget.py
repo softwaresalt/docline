@@ -99,6 +99,43 @@ def max_ocr_pages_per_group(
     return max(1, min(area_cap, floor_cap))
 
 
+def recover_render_scale(
+    available_mb: float,
+    *,
+    page_megapixels: float,
+    pages_per_group: int,
+    candidate_scales: Sequence[float],
+    safe_fraction: float = OCR_SAFE_FRACTION,
+) -> float | None:
+    """Highest candidate render scale at which ``pages_per_group`` pages fit budget.
+
+    The downscale-retry path walks candidate scales from high to low; this
+    returns the first (highest-resolution) scale whose predicted peak for the
+    group fits ``safe_fraction`` of available memory. Accounting for the actual
+    page count matters because a scale that fits one page can still OOM a
+    multi-page chunk/range.
+
+    Args:
+        available_mb: Host available memory in megabytes (decimal).
+        page_megapixels: The (largest) page bitmap size at 72-DPI base.
+        pages_per_group: Number of pages the retried group will render.
+        candidate_scales: Render scales to consider (any order).
+        safe_fraction: Fraction of ``available_mb`` to stay within.
+
+    Returns:
+        The highest fitting scale, or ``None`` when no candidate scale brings the
+        group under budget (the caller then concedes to heuristic).
+    """
+    budget = available_mb * safe_fraction
+    for candidate in sorted(candidate_scales, reverse=True):
+        peak = predict_peak_mb(
+            page_megapixels=page_megapixels, scale=candidate, pages_per_group=pages_per_group
+        )
+        if peak <= budget:
+            return candidate
+    return None
+
+
 def recover_scale_for_single_page(
     available_mb: float,
     *,
@@ -108,9 +145,7 @@ def recover_scale_for_single_page(
 ) -> float | None:
     """Highest candidate render scale at which a SINGLE page fits the budget.
 
-    The downscale-retry path walks candidate scales from high to low; this
-    returns the first (highest-resolution) scale whose predicted single-page
-    peak fits ``safe_fraction`` of available memory.
+    Thin wrapper over :func:`recover_render_scale` with ``pages_per_group=1``.
 
     Args:
         available_mb: Host available memory in megabytes (decimal).
@@ -122,10 +157,10 @@ def recover_scale_for_single_page(
         The highest fitting scale, or ``None`` when no candidate scale brings a
         single page under budget (the caller then concedes to heuristic).
     """
-    budget = available_mb * safe_fraction
-    for candidate in sorted(candidate_scales, reverse=True):
-        if predict_peak_mb(page_megapixels=page_megapixels, scale=candidate, pages_per_group=1) <= (
-            budget
-        ):
-            return candidate
-    return None
+    return recover_render_scale(
+        available_mb,
+        page_megapixels=page_megapixels,
+        pages_per_group=1,
+        candidate_scales=candidate_scales,
+        safe_fraction=safe_fraction,
+    )

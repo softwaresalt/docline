@@ -68,3 +68,16 @@ def test_recover_scale_returns_none_when_nothing_fits() -> None:
         2000.0, page_megapixels=8.0, candidate_scales=(2.0, 1.0, 0.5, 0.25)
     )
     assert scale is None
+
+
+def test_recover_render_scale_accounts_for_page_count() -> None:
+    # A scale that fits one page can OOM a multi-page group, so more pages must
+    # select a lower (or no) fitting scale.
+    one = ob.recover_render_scale(
+        6000.0, page_megapixels=8.0, pages_per_group=1, candidate_scales=(2.0, 1.0, 0.5, 0.25)
+    )
+    many = ob.recover_render_scale(
+        6000.0, page_megapixels=8.0, pages_per_group=8, candidate_scales=(2.0, 1.0, 0.5, 0.25)
+    )
+    assert one is not None
+    assert many is None or many <= one

@@ -39,6 +39,19 @@ def test_representative_takes_largest_page(tmp_path: Path) -> None:
     assert mpx == pytest.approx(1920.0 * 1080.0 / 1_000_000.0)
 
 
+def test_representative_scans_all_pages_not_just_first(tmp_path: Path) -> None:
+    # A mixed-size PDF whose FIRST page is small but a later page is large:
+    # scanning only page 0 would underestimate and inflate the cap.
+    path = tmp_path / "mixed.pdf"
+    writer = pypdf.PdfWriter()
+    writer.add_blank_page(width=300.0, height=400.0)  # small first page
+    writer.add_blank_page(width=1920.0, height=1080.0)  # large later page
+    with path.open("wb") as fh:
+        writer.write(fh)
+    mpx = representative_ocr_megapixels([path])
+    assert mpx == pytest.approx(1920.0 * 1080.0 / 1_000_000.0)
+
+
 def test_representative_none_when_unreadable(tmp_path: Path) -> None:
     assert representative_ocr_megapixels([tmp_path / "missing.pdf"]) is None
 

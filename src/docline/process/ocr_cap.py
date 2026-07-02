@@ -29,28 +29,31 @@ _MB_PER_GB = 1000.0  # decimal MB per GB, matching psutil / ResourceBudget units
 
 
 def representative_ocr_megapixels(pdf_paths: Sequence[Path]) -> float | None:
-    """Largest first-page bitmap size (megapixels) among the given OCR PDFs.
+    """Largest page bitmap size (megapixels) across all pages of the given OCR PDFs.
 
-    The largest page drives peak OCR memory, so the cap is derived from it.
+    The largest page drives peak OCR memory, so the cap is derived from it. Every
+    page's mediabox is inspected (chunks/ranges are bounded) because page 0 is
+    not necessarily the largest in a mixed-size document.
 
     Args:
         pdf_paths: OCR-flagged input PDF paths to sample.
 
     Returns:
-        The maximum first-page megapixels, or ``None`` when no path yields a
+        The maximum page megapixels seen, or ``None`` when no path yields a
         readable mediabox.
     """
     best: float | None = None
     for pdf_path in pdf_paths:
         try:
             reader = pypdf.PdfReader(str(pdf_path), strict=False)
-            box = reader.pages[0].mediabox
-            mpx = ocr_budget.page_megapixels_from_points(float(box.width), float(box.height))
+            for page in reader.pages:
+                box = page.mediabox
+                mpx = ocr_budget.page_megapixels_from_points(float(box.width), float(box.height))
+                if best is None or mpx > best:
+                    best = mpx
         except Exception as err:  # noqa: BLE001 — a bad/missing PDF just falls back
             _log.debug("could not read mediabox from %s (%s); skipping", pdf_path, err)
             continue
-        if best is None or mpx > best:
-            best = mpx
     return best
 
 
