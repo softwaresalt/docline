@@ -31,6 +31,23 @@ OCR_PER_PAGE_FLOOR_MB: float = 207.0
 OCR_SAFE_FRACTION: float = 0.6
 
 
+def page_megapixels_from_points(width_points: float, height_points: float) -> float:
+    """Page bitmap size in megapixels at the 72-DPI base from a PDF mediabox.
+
+    A PostScript point is 1/72 inch, so at the 72-DPI base one point maps to one
+    pixel and the 72 factor cancels: ``megapixels = width * height / 1e6``. This
+    matches the calibration harness's ``page_megapixels`` definition.
+
+    Args:
+        width_points: Mediabox width in points.
+        height_points: Mediabox height in points.
+
+    Returns:
+        The page bitmap size in megapixels.
+    """
+    return width_points * height_points / 1_000_000.0
+
+
 def predict_peak_mb(*, page_megapixels: float, scale: float, pages_per_group: int) -> float:
     """Predicted docling OCR peak RSS (MB) for a group of like pages.
 

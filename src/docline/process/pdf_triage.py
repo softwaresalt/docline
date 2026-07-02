@@ -54,6 +54,7 @@ from docline.process.fidelity_scorer import (
     pre_triage_score,
     score_page,
 )
+from docline.process.ocr_cap import resolve_ocr_max_pages
 from docline.process.page_range import coalesce_ranges, group_by_page_count_ocr_aware
 from docline.process.quality_metrics import compute_quality_metrics
 from docline.runtime.resource_probe import ResourceBudget
@@ -568,8 +569,17 @@ def process_pdf_triaged(
         # drag OCR-free docling ranges down with it. Adaptive downsizing
         # (038.003-T) re-splits a crashed OCR group at half the cap and retries
         # (8->4->2->1) before any range concedes to heuristic.
+        # Runtime host-relative OCR cap (041-F): memory-derived ocr_max_pages
+        # replaces the provisional fixed cap; falls back to it when the triage
+        # budget is informational/degraded or no OCR range page size is readable.
         page_counts = [end - start + 1 for (start, end, _sp, _sm) in splice_jobs]
-        groups = group_by_page_count_ocr_aware(page_counts, range_do_ocr)
+        ocr_max_pages = resolve_ocr_max_pages(
+            budget.available_ram_gb if budget is not None else 0.0,
+            [sj[2] for i, sj in enumerate(splice_jobs) if range_do_ocr[i]],
+        )
+        groups = group_by_page_count_ocr_aware(
+            page_counts, range_do_ocr, ocr_max_pages=ocr_max_pages
+        )
         dispatch_batched_groups_with_retry(
             groups,
             inputs=[str(sj[2]) for sj in splice_jobs],
@@ -578,6 +588,7 @@ def process_pdf_triaged(
             page_counts=page_counts,
             runner=runner,
             manifest_dir=splice_cache,
+            ocr_max_pages=ocr_max_pages,
         )
     else:
         for (_start, _end, splice_pdf, splice_md), do_ocr in zip(splice_jobs, range_do_ocr):

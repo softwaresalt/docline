@@ -47,6 +47,7 @@ import pypdf
 
 from docline.process.batch_dispatch import dispatch_batched_groups_with_retry
 from docline.process.fidelity_scorer import any_page_needs_ocr
+from docline.process.ocr_cap import resolve_ocr_max_pages
 from docline.process.page_range import group_by_page_count_ocr_aware
 from docline.readers.pdf import read_pdf_pages
 from docline.readers.pdf_splitter import split_pdf
@@ -196,7 +197,7 @@ def process_pdf_in_chunks(
     use_batched = use_batched_worker and len(chunks) >= 2 and not budget.serialize_docling
 
     if use_batched:
-        chunk_results = _run_chunks_batched(chunks, chunk_outputs, runner, output_dir)
+        chunk_results = _run_chunks_batched(chunks, chunk_outputs, runner, output_dir, budget)
     else:
         chunk_results = []
         for index, (chunk_path, chunk_out) in enumerate(zip(chunks, chunk_outputs)):
@@ -254,6 +255,7 @@ def _run_chunks_batched(
     chunk_outputs: list[Path],
     runner: ChunkRunner,
     output_dir: Path,
+    budget: ResourceBudget,
 ) -> list[ChunkResult]:
     """Run all chunks in a single batched-mode worker subprocess.
 
@@ -281,9 +283,17 @@ def _run_chunks_batched(
     # in the manifest below (one pypdf text probe per chunk, not two).
     # Adaptive downsizing (038.003-T): a crashed OCR group is re-split at half
     # the cap and retried (8->4->2->1) before any chunk concedes to heuristic.
+    # Runtime host-relative OCR cap (041-F): replace the provisional fixed
+    # OCR_MAX_BATCHED_PAGES with a memory-derived cap so a large-RAM host caps
+    # higher than a small one. Falls back to the fixed cap when the probe is
+    # degraded or no OCR chunk page size can be read.
     page_counts = [_chunk_page_count(inp) for inp in chunks]
     chunk_do_ocr = [_chunk_needs_ocr(inp) for inp in chunks]
-    groups = group_by_page_count_ocr_aware(page_counts, chunk_do_ocr)
+    ocr_max_pages = resolve_ocr_max_pages(
+        budget.available_ram_gb,
+        [chunks[i] for i, is_ocr in enumerate(chunk_do_ocr) if is_ocr],
+    )
+    groups = group_by_page_count_ocr_aware(page_counts, chunk_do_ocr, ocr_max_pages=ocr_max_pages)
     returncode_per_chunk = dispatch_batched_groups_with_retry(
         groups,
         inputs=[str(c) for c in chunks],
@@ -292,6 +302,7 @@ def _run_chunks_batched(
         page_counts=page_counts,
         runner=runner,
         manifest_dir=output_dir,
+        ocr_max_pages=ocr_max_pages,
     )
 
     chunk_results: list[ChunkResult] = []
