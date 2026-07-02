@@ -47,7 +47,7 @@ import pypdf
 
 from docline.process.batch_dispatch import dispatch_batched_groups_with_retry
 from docline.process.fidelity_scorer import any_page_needs_ocr
-from docline.process.ocr_cap import resolve_ocr_max_pages
+from docline.process.ocr_cap import resolve_ocr_cap
 from docline.process.page_range import group_by_page_count_ocr_aware
 from docline.readers.pdf import read_pdf_pages
 from docline.readers.pdf_splitter import split_pdf
@@ -289,7 +289,7 @@ def _run_chunks_batched(
     # degraded or no OCR chunk page size can be read.
     page_counts = [_chunk_page_count(inp) for inp in chunks]
     chunk_do_ocr = [_chunk_needs_ocr(inp) for inp in chunks]
-    ocr_max_pages = resolve_ocr_max_pages(
+    ocr_max_pages, ocr_mpx = resolve_ocr_cap(
         budget.available_ram_gb,
         [chunks[i] for i, is_ocr in enumerate(chunk_do_ocr) if is_ocr],
     )
@@ -303,6 +303,8 @@ def _run_chunks_batched(
         runner=runner,
         manifest_dir=output_dir,
         ocr_max_pages=ocr_max_pages,
+        available_ram_gb=budget.available_ram_gb,
+        page_megapixels=ocr_mpx,
     )
 
     chunk_results: list[ChunkResult] = []

@@ -54,7 +54,7 @@ from docline.process.fidelity_scorer import (
     pre_triage_score,
     score_page,
 )
-from docline.process.ocr_cap import resolve_ocr_max_pages
+from docline.process.ocr_cap import resolve_ocr_cap
 from docline.process.page_range import coalesce_ranges, group_by_page_count_ocr_aware
 from docline.process.quality_metrics import compute_quality_metrics
 from docline.runtime.resource_probe import ResourceBudget
@@ -573,7 +573,7 @@ def process_pdf_triaged(
         # replaces the provisional fixed cap; falls back to it when the triage
         # budget is informational/degraded or no OCR range page size is readable.
         page_counts = [end - start + 1 for (start, end, _sp, _sm) in splice_jobs]
-        ocr_max_pages = resolve_ocr_max_pages(
+        ocr_max_pages, ocr_mpx = resolve_ocr_cap(
             budget.available_ram_gb if budget is not None else 0.0,
             [sj[2] for i, sj in enumerate(splice_jobs) if range_do_ocr[i]],
         )
@@ -589,6 +589,8 @@ def process_pdf_triaged(
             runner=runner,
             manifest_dir=splice_cache,
             ocr_max_pages=ocr_max_pages,
+            available_ram_gb=budget.available_ram_gb if budget is not None else 0.0,
+            page_megapixels=ocr_mpx,
         )
     else:
         for (_start, _end, splice_pdf, splice_md), do_ocr in zip(splice_jobs, range_do_ocr):

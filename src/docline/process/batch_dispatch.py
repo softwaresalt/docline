@@ -32,10 +32,47 @@ from docline.process.page_range import (
     OCR_MAX_BATCHED_PAGES,
     group_by_page_count,
 )
+from docline.runtime import ocr_budget
 
 _log = logging.getLogger(__name__)
 
 ChunkRunner = Callable[[list[str]], "subprocess.CompletedProcess[str]"]
+
+_MB_PER_GB = 1000.0  # decimal MB per GB, matching ResourceBudget units
+
+
+def _downsize_cap(
+    cap: int,
+    *,
+    available_ram_gb: float,
+    page_megapixels: float | None,
+    budget_scale: float,
+) -> int:
+    """Next OCR group cap after an OOM crash.
+
+    Memory-derived when the host budget and a representative page size are
+    known: recompute the calibrated cost-model cap at a shrunk effective budget
+    (``budget_scale`` of available memory), so the retry jumps toward a size the
+    model expects to fit rather than blindly halving. Falls back to geometric
+    halving otherwise. Always strictly less than ``cap`` and ``>= 1`` so the
+    retry loop is guaranteed to terminate.
+
+    Args:
+        cap: The page cap that just crashed.
+        available_ram_gb: Host available RAM in decimal GB (``0`` if unknown).
+        page_megapixels: Representative page bitmap size, or ``None`` if unknown.
+        budget_scale: Fraction of available memory to assume this retry level.
+
+    Returns:
+        The next cap, an integer in ``[1, cap - 1]``.
+    """
+    if available_ram_gb > 0 and page_megapixels is not None and page_megapixels > 0:
+        derived = ocr_budget.max_ocr_pages_per_group(
+            available_ram_gb * _MB_PER_GB * budget_scale, page_megapixels=page_megapixels
+        )
+    else:
+        derived = cap // 2
+    return max(1, min(cap - 1, derived))
 
 
 def dispatch_batched_groups_with_retry(
@@ -48,6 +85,8 @@ def dispatch_batched_groups_with_retry(
     runner: ChunkRunner,
     manifest_dir: Path,
     ocr_max_pages: int = OCR_MAX_BATCHED_PAGES,
+    available_ram_gb: float = 0.0,
+    page_megapixels: float | None = None,
 ) -> list[int]:
     """Dispatch batched docling groups, adaptively shrinking crashed OCR groups.
 
@@ -70,7 +109,14 @@ def dispatch_batched_groups_with_retry(
         runner: Callable that runs a worker command and returns the completed
             process (the same injection seam used by the single-chunk path).
         manifest_dir: Directory in which ``--batch`` manifest files are written.
-        ocr_max_pages: Starting per-group cap for OCR groups; retries halve it.
+        ocr_max_pages: Starting per-group cap for OCR groups. When
+            ``available_ram_gb`` and ``page_megapixels`` are provided, an OOM
+            retry recomputes the cap from the calibrated cost model at a shrunk
+            budget (041-F); otherwise it halves (038.003-T).
+        available_ram_gb: Host available RAM (decimal GB) for memory-derived
+            downsizing. ``0`` disables it (falls back to halving).
+        page_megapixels: Representative OCR page size for memory-derived
+            downsizing. ``None`` disables it (falls back to halving).
 
     Returns:
         A per-item return code list parallel to ``inputs``: ``0`` when the
@@ -78,15 +124,16 @@ def dispatch_batched_groups_with_retry(
         (signalling the caller to fall back to heuristic for that item).
     """
     returncodes = [0] * len(inputs)
-    # Worklist of (item indices, cap that produced this grouping).
-    work: deque[tuple[list[int], int]] = deque()
+    # Worklist of (item indices, cap, budget_scale). budget_scale shrinks each
+    # OCR retry level so memory-derived downsizing re-derives against less RAM.
+    work: deque[tuple[list[int], int, float]] = deque()
     for group in groups:
         is_ocr = any(do_ocr[i] for i in group)
-        work.append((list(group), ocr_max_pages if is_ocr else MAX_BATCHED_PAGES))
+        work.append((list(group), ocr_max_pages if is_ocr else MAX_BATCHED_PAGES, 1.0))
 
     attempt = 0
     while work:
-        indices, cap = work.popleft()
+        indices, cap, budget_scale = work.popleft()
         manifest_path = manifest_dir / f"_batch_manifest_{attempt:03d}.json"
         attempt += 1
         manifest_path.write_text(
@@ -120,10 +167,16 @@ def dispatch_batched_groups_with_retry(
         stderr = (getattr(completed, "stderr", "") or "").strip() or "<none captured>"
         is_ocr = any(do_ocr[i] for i in indices)
         if is_ocr and len(indices) > 1 and cap > 1:
-            new_cap = max(1, cap // 2)
+            new_scale = budget_scale * 0.5
+            new_cap = _downsize_cap(
+                cap,
+                available_ram_gb=available_ram_gb,
+                page_megapixels=page_megapixels,
+                budget_scale=new_scale,
+            )
             sub_counts = [page_counts[i] for i in indices]
             for sub in group_by_page_count(sub_counts, max_pages=new_cap):
-                work.append(([indices[j] for j in sub], new_cap))
+                work.append(([indices[j] for j in sub], new_cap, new_scale))
             _log.warning(
                 "OCR batched group OOM (exit=%s) on %d item(s); retrying at cap %d. "
                 "Worker stderr: %s",

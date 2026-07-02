@@ -54,8 +54,10 @@ def representative_ocr_megapixels(pdf_paths: Sequence[Path]) -> float | None:
     return best
 
 
-def resolve_ocr_max_pages(available_ram_gb: float, ocr_pdf_paths: Sequence[Path]) -> int:
-    """Host-relative OCR pages-per-group cap, or the fallback when undeterminable.
+def resolve_ocr_cap(
+    available_ram_gb: float, ocr_pdf_paths: Sequence[Path]
+) -> tuple[int, float | None]:
+    """Host-relative OCR cap and the representative page size it was derived from.
 
     Args:
         available_ram_gb: Host available RAM in decimal GB (from
@@ -63,13 +65,32 @@ def resolve_ocr_max_pages(available_ram_gb: float, ocr_pdf_paths: Sequence[Path]
         ocr_pdf_paths: OCR-flagged input PDFs used to size a representative page.
 
     Returns:
-        The memory-aware ``ocr_max_pages`` (``>= 1``), or
-        :data:`~docline.process.page_range.OCR_MAX_BATCHED_PAGES` when the probe
-        is degraded, there are no OCR paths, or no page size can be read.
+        ``(ocr_max_pages, page_megapixels)``. ``page_megapixels`` is ``None`` and
+        the cap is :data:`~docline.process.page_range.OCR_MAX_BATCHED_PAGES` when
+        the probe is degraded, there are no OCR paths, or no page size can be
+        read — signalling callers to disable memory-derived downsizing too.
     """
     if available_ram_gb <= 0 or not ocr_pdf_paths:
-        return OCR_MAX_BATCHED_PAGES
+        return OCR_MAX_BATCHED_PAGES, None
     mpx = representative_ocr_megapixels(ocr_pdf_paths)
     if mpx is None or mpx <= 0:
-        return OCR_MAX_BATCHED_PAGES
-    return ocr_budget.max_ocr_pages_per_group(available_ram_gb * _MB_PER_GB, page_megapixels=mpx)
+        return OCR_MAX_BATCHED_PAGES, None
+    cap = ocr_budget.max_ocr_pages_per_group(available_ram_gb * _MB_PER_GB, page_megapixels=mpx)
+    return cap, mpx
+
+
+def resolve_ocr_max_pages(available_ram_gb: float, ocr_pdf_paths: Sequence[Path]) -> int:
+    """Host-relative OCR pages-per-group cap, or the fallback when undeterminable.
+
+    Thin wrapper over :func:`resolve_ocr_cap` for callers that only need the cap.
+
+    Args:
+        available_ram_gb: Host available RAM in decimal GB.
+        ocr_pdf_paths: OCR-flagged input PDFs used to size a representative page.
+
+    Returns:
+        The memory-aware ``ocr_max_pages`` (``>= 1``), or
+        :data:`~docline.process.page_range.OCR_MAX_BATCHED_PAGES` when
+        undeterminable.
+    """
+    return resolve_ocr_cap(available_ram_gb, ocr_pdf_paths)[0]

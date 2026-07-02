@@ -176,3 +176,62 @@ def test_multi_item_never_fits_terminates(tmp_path: Path) -> None:
     assert all(not Path(o).exists() for o in outputs)
     # Bounded: cap halves 8->4->2->1 then single items give up.
     assert len(manifests) < 40
+
+
+def test_memory_derived_downsizing_uses_model_cap(tmp_path: Path) -> None:
+    """With a host budget + page size, the retry cap is model-derived, not halved."""
+    from docline.process.batch_dispatch import dispatch_batched_groups_with_retry
+
+    # 39 one-page OCR items at an initial cap of 39 (the ~16 GB model cap for a
+    # ~0.5 mpx page). The runner crashes any OCR group over 20 pages. Halving
+    # would regroup at 19; memory-derived downsizing at half budget (16 -> 8 GB
+    # effective) yields a per-page-floor cap of 16, so subgroups are 16/16/7.
+    n = 39
+    page_counts = [1] * n
+    inputs, outputs, page_of = _items(tmp_path, page_counts)
+    manifests: list[list[dict[str, Any]]] = []
+
+    rcs = dispatch_batched_groups_with_retry(
+        [list(range(n))],
+        inputs=inputs,
+        outputs=outputs,
+        do_ocr=[True] * n,
+        page_counts=page_counts,
+        runner=_crash_when_ocr_pages_gt(manifests, page_of, threshold=20),
+        manifest_dir=tmp_path,
+        ocr_max_pages=n,
+        available_ram_gb=16.0,
+        page_megapixels=0.5,
+    )
+
+    assert rcs == [0] * n
+    sizes = [len(m) for m in manifests]
+    assert 16 in sizes  # memory-derived cap
+    assert 19 not in sizes  # NOT the halving cap
+
+
+def test_memory_derived_downsizing_terminates_on_tiny_budget(tmp_path: Path) -> None:
+    """A host too small for even one page collapses the cap to 1 and terminates."""
+    from docline.process.batch_dispatch import dispatch_batched_groups_with_retry
+
+    n = 4
+    page_counts = [1] * n
+    inputs, outputs, page_of = _items(tmp_path, page_counts)
+    manifests: list[list[dict[str, Any]]] = []
+
+    rcs = dispatch_batched_groups_with_retry(
+        [list(range(n))],
+        inputs=inputs,
+        outputs=outputs,
+        do_ocr=[True] * n,
+        page_counts=page_counts,
+        runner=_crash_when_ocr_pages_gt(manifests, page_of, threshold=0),
+        manifest_dir=tmp_path,
+        ocr_max_pages=n,
+        available_ram_gb=2.0,
+        page_megapixels=0.5,
+    )
+
+    assert all(rc != 0 for rc in rcs)
+    assert all(not Path(o).exists() for o in outputs)
+    assert len(manifests) < 40  # bounded, no infinite loop
