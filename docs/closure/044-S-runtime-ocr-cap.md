@@ -6,8 +6,6 @@ merge_sha: ac1c9c8
 merged_pr: 115
 ---
 
-# Closure — 044-S runtime host-relative OCR memory cap + scale recovery
-
 ## Scope delivered
 
 Feature `041-F` applies the calibrated OCR peak-memory cost model (from the
