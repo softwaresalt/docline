@@ -304,6 +304,69 @@ def _analyze(args: argparse.Namespace) -> int:
     return 0
 
 
+def page_megapixels(pdf: Path) -> float:
+    """Effective megapixels of the first page of ``pdf`` at the base DPI.
+
+    Reads the first page's mediabox and converts its point dimensions to a
+    pixel area at :data:`_BASE_DPI`, expressed in megapixels — the per-page
+    bitmap size that drives OCR peak memory.
+
+    Args:
+        pdf: Path to a PDF whose first-page dimensions are measured.
+
+    Returns:
+        The first page's area in megapixels at ``_BASE_DPI``.
+    """
+    import pypdf
+
+    reader = pypdf.PdfReader(str(pdf), strict=False)
+    box = reader.pages[0].mediabox
+    w_in = float(box.width) / 72.0
+    h_in = float(box.height) / 72.0
+    return (w_in * _BASE_DPI) * (h_in * _BASE_DPI) / 1_000_000.0
+
+
+def build_group_pdf(src: Path, pages: int, dest: Path) -> None:
+    """Write ``dest`` with ``pages`` pages cycled in order from ``src``.
+
+    Pages are taken from ``src`` sequentially, wrapping around when ``pages``
+    exceeds the source page count, so a single representative PDF can synthesize
+    an arbitrarily large group for the memory sweep.
+
+    Args:
+        src: Source PDF to cycle pages from.
+        pages: Number of pages the synthesized group PDF should contain.
+        dest: Output path for the synthesized group PDF.
+    """
+    import pypdf
+
+    reader = pypdf.PdfReader(str(src), strict=False)
+    writer = pypdf.PdfWriter()
+    for i in range(pages):
+        writer.add_page(reader.pages[i % len(reader.pages)])
+    with dest.open("wb") as fh:
+        writer.write(fh)
+
+
+def classify_outcome(returncode: int, output_exists: bool) -> str:
+    """Classify a measured docling worker run as ``"ok"`` or ``"oom"``.
+
+    A run is ``"ok"`` only when the worker exited ``0`` AND produced its output
+    envelope. Any non-zero exit or missing output is treated as ``"oom"``,
+    which conflates a true OOM with any other worker failure (e.g. a docling
+    runtime error) — the operator should sanity-check worker stderr before
+    treating a failure as the memory ceiling at that (scale, pages) point.
+
+    Args:
+        returncode: The worker process exit code.
+        output_exists: Whether the worker's output envelope was produced.
+
+    Returns:
+        ``"ok"`` for a successful, output-producing run; ``"oom"`` otherwise.
+    """
+    return "ok" if returncode == 0 and output_exists else "oom"
+
+
 def _run(args: argparse.Namespace) -> int:
     available, reason = _measurement_available()
     if not available:
@@ -314,22 +377,6 @@ def _run(args: argparse.Namespace) -> int:
     import time
 
     import psutil
-    import pypdf
-
-    def page_megapixels(pdf: Path) -> float:
-        reader = pypdf.PdfReader(str(pdf), strict=False)
-        box = reader.pages[0].mediabox
-        w_in = float(box.width) / 72.0
-        h_in = float(box.height) / 72.0
-        return (w_in * _BASE_DPI) * (h_in * _BASE_DPI) / 1_000_000.0
-
-    def build_group_pdf(src: Path, pages: int, dest: Path) -> None:
-        reader = pypdf.PdfReader(str(src), strict=False)
-        writer = pypdf.PdfWriter()
-        for i in range(pages):
-            writer.add_page(reader.pages[i % len(reader.pages)])
-        with dest.open("wb") as fh:
-            writer.write(fh)
 
     def measure(cmd: list[str]) -> tuple[int, float]:
         # NOTE: peak RSS is sampled (every 50 ms) across the whole process
@@ -370,12 +417,10 @@ def _run(args: argparse.Namespace) -> int:
                     f"--ocr-scale={scale}",
                 ]
                 rc, peak = measure(cmd)
-                # "oom" here means "did not produce a valid envelope" — it
-                # conflates a true OOM with any other worker failure (e.g. a
-                # docling runtime error). The operator should sanity-check the
-                # worker stderr for a run before treating a failure as the
-                # memory ceiling at that (scale, pages) point.
-                outcome = "ok" if rc == 0 and out_md.exists() else "oom"
+                # See classify_outcome: "oom" conflates a true OOM with any
+                # worker failure, so sanity-check worker stderr before treating
+                # a failure as the memory ceiling at that (scale, pages) point.
+                outcome = classify_outcome(rc, out_md.exists())
                 rows.append(Measurement(page_class, mpx, scale, pages, peak, outcome))
                 print(
                     f"{page_class}\tmpx={mpx:.2f}\tscale={scale}\tpages={pages}\t"

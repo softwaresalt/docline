@@ -78,3 +78,57 @@ def test_score_page_applies_weight_override_from_json(tmp_path: Path) -> None:
     table_sample = "| a | b |\n|---|---|\n| 1 | 2 |\n" * 30
     result = score_page(0, table_sample, page_metadata=None, weights_path=weights_file)
     assert result.needs_docling is False, "zero weights should disable the aggregate flag path"
+
+
+# --- 042.002-T: weights_path workspace containment ---------------------------
+
+
+def _write_weights(path: Path, weights: dict[str, float]) -> None:
+    path.write_text(json.dumps(weights), encoding="utf-8")
+
+
+def test_load_weights_accepts_in_workspace_relative_path(tmp_path: Path) -> None:
+    from docline.process.fidelity_scorer import load_weights
+
+    _write_weights(tmp_path / "weights.json", {"char_density": 2.0})
+    loaded = load_weights(Path("weights.json"), workspace_root=tmp_path)
+    assert loaded["char_density"] == 2.0
+
+
+def test_load_weights_rejects_traversal_when_workspace_root_given(tmp_path: Path) -> None:
+    from docline.process.fidelity_scorer import FidelityScorerError, load_weights
+
+    with pytest.raises(FidelityScorerError):
+        load_weights(Path("../escape.json"), workspace_root=tmp_path)
+
+
+def test_load_weights_rejects_absolute_when_workspace_root_given(tmp_path: Path) -> None:
+    from docline.process.fidelity_scorer import FidelityScorerError, load_weights
+
+    outside = tmp_path / "outside.json"
+    _write_weights(outside, {"char_density": 1.0})
+    with pytest.raises(FidelityScorerError):
+        load_weights(outside, workspace_root=tmp_path / "ws")
+
+
+def test_load_weights_none_root_preserves_trusted_absolute_path(tmp_path: Path) -> None:
+    from docline.process.fidelity_scorer import load_weights
+
+    weights_file = tmp_path / "trusted.json"
+    _write_weights(weights_file, {"char_density": 3.5})
+    # No workspace_root => trusted CLI behavior: an absolute path still loads.
+    loaded = load_weights(weights_file)
+    assert loaded["char_density"] == 3.5
+
+
+def test_load_pre_triage_weights_accepts_and_rejects(tmp_path: Path) -> None:
+    from docline.process.fidelity_scorer import (
+        FidelityScorerError,
+        load_pre_triage_weights,
+    )
+
+    _write_weights(tmp_path / "pre.json", {"non_ascii_ratio": 1.5})
+    loaded = load_pre_triage_weights(Path("pre.json"), workspace_root=tmp_path)
+    assert loaded["non_ascii_ratio"] == 1.5
+    with pytest.raises(FidelityScorerError):
+        load_pre_triage_weights(Path("../pre.json"), workspace_root=tmp_path)

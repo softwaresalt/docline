@@ -29,6 +29,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Literal
 
+from docline.paths import PathContainmentError, safe_workspace_path
 from docline.schema.models import DoclineError
 
 _log = logging.getLogger(__name__)
@@ -536,21 +537,64 @@ def _count_x_clusters(page_metadata: object, tolerance: float = 10.0) -> int:
 _weights_cache: dict[str, dict[str, float]] = {}
 
 
-def load_weights(weights_path: Path | None = None) -> dict[str, float]:
+def _contain_weights_path(weights_path: Path, workspace_root: str | Path | None) -> Path:
+    """Constrain an untrusted weights path to ``workspace_root`` when given.
+
+    When ``workspace_root`` is ``None`` (trusted CLI caller), the path is
+    returned unchanged so existing operator-supplied absolute paths still load.
+    When a root is supplied (e.g. an MCP ``ProcessRequest`` with a
+    caller-controlled path), the path MUST be workspace-relative and resolve
+    inside that root; otherwise a :class:`FidelityScorerError` is raised.
+
+    Args:
+        weights_path: The weights file path to constrain.
+        workspace_root: Root the path must resolve within, or ``None`` to skip
+            containment for trusted callers.
+
+    Returns:
+        The (possibly resolved) weights path to read.
+
+    Raises:
+        FidelityScorerError: If ``workspace_root`` is given and ``weights_path``
+            is absolute, traverses ``..``, or resolves outside the root.
+    """
+    if workspace_root is None:
+        return weights_path
+    try:
+        return safe_workspace_path(weights_path, workspace_root)
+    except PathContainmentError as err:
+        raise FidelityScorerError(
+            f"weights path {str(weights_path)!r} is not contained within "
+            f"workspace root {str(workspace_root)!r}: {err}"
+        ) from err
+
+
+def load_weights(
+    weights_path: Path | None = None,
+    *,
+    workspace_root: str | Path | None = None,
+) -> dict[str, float]:
     """Load signal weights from JSON file or return module defaults.
 
     Args:
         weights_path: Optional path to a JSON weights file. When ``None``,
             module defaults are returned.
+        workspace_root: Optional workspace root. When provided (e.g. for an
+            untrusted MCP caller), ``weights_path`` MUST be workspace-relative
+            and resolve inside this root or a :class:`FidelityScorerError` is
+            raised. When ``None`` (trusted CLI caller), no containment check is
+            applied and operator-supplied absolute paths still load.
 
     Returns:
         Mapping of signal name to weight in ``[0.0, infinity)``.
 
     Raises:
-        FidelityScorerError: If the weights file is malformed.
+        FidelityScorerError: If the weights file is malformed, or if
+            ``workspace_root`` is given and ``weights_path`` escapes it.
     """
     if weights_path is None:
         return dict(_DEFAULT_SIGNAL_WEIGHTS)
+    weights_path = _contain_weights_path(weights_path, workspace_root)
     cache_key = str(weights_path.resolve())
     if cache_key in _weights_cache:
         return dict(_weights_cache[cache_key])
@@ -609,7 +653,11 @@ class PreTriageDecision:
     reason: str = ""
 
 
-def load_pre_triage_weights(weights_path: Path | None = None) -> dict[str, float]:
+def load_pre_triage_weights(
+    weights_path: Path | None = None,
+    *,
+    workspace_root: str | Path | None = None,
+) -> dict[str, float]:
     """Load pre-triage signal weights from JSON or return module defaults.
 
     Mirrors :func:`load_weights` but uses ``_DEFAULT_PRE_TRIAGE_WEIGHTS``
@@ -619,15 +667,22 @@ def load_pre_triage_weights(weights_path: Path | None = None) -> dict[str, float
     Args:
         weights_path: Optional path to a JSON weights file. When ``None``,
             module defaults are returned.
+        workspace_root: Optional workspace root. When provided (e.g. for an
+            untrusted MCP caller), ``weights_path`` MUST be workspace-relative
+            and resolve inside this root or a :class:`FidelityScorerError` is
+            raised. When ``None`` (trusted CLI caller), no containment check is
+            applied and operator-supplied absolute paths still load.
 
     Returns:
         Mapping of pre-triage signal name to weight in ``[0.0, infinity)``.
 
     Raises:
-        FidelityScorerError: If the weights file is malformed.
+        FidelityScorerError: If the weights file is malformed, or if
+            ``workspace_root`` is given and ``weights_path`` escapes it.
     """
     if weights_path is None:
         return dict(_DEFAULT_PRE_TRIAGE_WEIGHTS)
+    weights_path = _contain_weights_path(weights_path, workspace_root)
     try:
         raw = json.loads(weights_path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as err:
