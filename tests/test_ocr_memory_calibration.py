@@ -228,3 +228,53 @@ def test_tree_rss_mb_propagates_when_skip_errors_empty() -> None:
     root = _FakeProc(4_000_000, descendants=[_RaisingProc()])
     with pytest.raises(_BoomError):
         mod._tree_rss_mb(root)
+
+
+# --- 042.001-T: pure helpers extracted from the guarded --run path -----------
+
+
+def _write_pdf(path: Path, page_sizes: list[tuple[float, float]]) -> None:
+    """Write a PDF at ``path`` with one blank page per (width_pt, height_pt)."""
+    import pypdf
+
+    writer = pypdf.PdfWriter()
+    for width, height in page_sizes:
+        writer.add_blank_page(width=width, height=height)
+    with path.open("wb") as fh:
+        writer.write(fh)
+
+
+def test_page_megapixels_from_mediabox(tmp_path: Path) -> None:
+    mod = _load()
+    pdf = tmp_path / "letter.pdf"
+    _write_pdf(pdf, [(612.0, 792.0)])  # US Letter at 72 pt/in
+    # Base DPI is 72, so effective megapixels == width_pt * height_pt / 1e6.
+    assert mod.page_megapixels(pdf) == pytest.approx(612.0 * 792.0 / 1_000_000.0, rel=1e-6)
+
+
+def test_build_group_pdf_cycles_source_pages(tmp_path: Path) -> None:
+    mod = _load()
+    import pypdf
+
+    src = tmp_path / "src.pdf"
+    _write_pdf(src, [(100.0, 100.0), (200.0, 200.0)])  # two distinguishable pages
+    dest = tmp_path / "group.pdf"
+    mod.build_group_pdf(src, 5, dest)
+    reader = pypdf.PdfReader(str(dest))
+    widths = [round(float(p.mediabox.width)) for p in reader.pages]
+    # 5 pages, cycling through the 2-page source in order.
+    assert widths == [100, 200, 100, 200, 100]
+
+
+@pytest.mark.parametrize(
+    "returncode,output_exists,expected",
+    [
+        (0, True, "ok"),
+        (0, False, "oom"),
+        (1, True, "oom"),
+        (137, False, "oom"),
+    ],
+)
+def test_classify_outcome(returncode: int, output_exists: bool, expected: str) -> None:
+    mod = _load()
+    assert mod.classify_outcome(returncode, output_exists) == expected
