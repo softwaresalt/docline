@@ -50,20 +50,74 @@ def _build_url(prefix: str, rel: str) -> str:
     return url.lower()
 
 
+def _prefix_from_breadcrumb(breadcrumb_path: object) -> str | None:
+    """Derive a URL prefix from an absolute ``breadcrumb_path``; ``None`` otherwise.
+
+    Takes the path segments before the ``breadcrumb``/``bread`` segment
+    (e.g. ``/dax/breadcrumb/toc.json`` -> ``/dax``, ``/azure/bread/toc.json`` ->
+    ``/azure``). ``~/``-relative or non-absolute forms yield ``None``.
+    """
+    if not isinstance(breadcrumb_path, str) or not breadcrumb_path.startswith("/"):
+        return None
+    out: list[str] = []
+    for part in breadcrumb_path.strip("/").split("/"):
+        if part in ("breadcrumb", "bread"):
+            break
+        out.append(part)
+    return "/" + "/".join(out) if out else None
+
+
+def derive_url_prefix(docfx_config: Mapping[str, Any]) -> str | None:
+    """Derive a docset's Learn URL prefix from its ``docfx.json`` config.
+
+    Reads ``build.globalMetadata.breadcrumb_path`` — the reliable prefix signal on
+    real MS Learn repos, which do not set ``url_path_prefix`` (spike 045-F).
+
+    Args:
+        docfx_config: Parsed ``docfx.json`` mapping.
+
+    Returns:
+        The URL prefix (leading ``/``) or ``None`` when the breadcrumb is
+        ``~/``-relative, absent, or unparseable.
+    """
+    build = docfx_config.get("build")
+    gm = build.get("globalMetadata") if isinstance(build, Mapping) else None
+    breadcrumb = gm.get("breadcrumb_path") if isinstance(gm, Mapping) else None
+    return _prefix_from_breadcrumb(breadcrumb)
+
+
+def _select_prefix(docset: Mapping[str, Any], prefixes: Mapping[str, str] | None) -> str | None:
+    """Prefix for a docset: ``url_path_prefix`` wins, else the supplied map by bsf."""
+    raw = docset.get("url_path_prefix")
+    if isinstance(raw, str) and raw:
+        return raw
+    if prefixes is not None:
+        p = prefixes.get(str(docset.get("build_source_folder", "")))
+        if isinstance(p, str) and p:
+            return p
+    return None
+
+
 def derive_canonical_url(
     publish_config: Mapping[str, Any],
     source_rel_path: str | Path,
+    *,
+    prefixes: Mapping[str, str] | None = None,
 ) -> str | None:
     """Return the canonical Learn URL path for ``source_rel_path``, or ``None``.
 
     Args:
         publish_config: Parsed ``.openpublishing.publish.config.json`` mapping.
         source_rel_path: Repo-relative path of the source Markdown file.
+        prefixes: Optional map of ``build_source_folder`` -> URL prefix (e.g. from
+            :func:`derive_url_prefix` over each docset's ``docfx.json``). Used only
+            when a docset omits ``url_path_prefix``. Default ``None`` preserves exact
+            v1 behavior.
 
     Returns:
         The canonical Learn URL path (leading ``/``, lowercase, no ``.md``), or
-        ``None`` when no docset matches or the matching docset has no
-        ``url_path_prefix``.
+        ``None`` when no docset matches or the matching docset has no resolvable
+        prefix.
     """
     source = posixify_path(source_rel_path).lstrip("/")
     docsets = publish_config.get("docsets_to_publish")
@@ -86,8 +140,7 @@ def derive_canonical_url(
         # whether the winner has a usable prefix. Skipping prefix-less docsets
         # earlier would let a shorter, less-specific docset win and emit a URL
         # with the wrong prefix — worse than omission for a cross-source key.
-        raw_prefix = docset.get("url_path_prefix")
-        prefix = raw_prefix if isinstance(raw_prefix, str) and raw_prefix else None
+        prefix = _select_prefix(docset, prefixes)
         if best is None or len(folder) > best[0]:
             best = (len(folder), rel, prefix)
 

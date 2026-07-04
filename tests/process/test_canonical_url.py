@@ -90,3 +90,45 @@ def test_derive_canonical_url_longest_match_without_prefix_returns_none() -> Non
     assert derive_canonical_url(cfg, "docs/sub/page.md") is None
     # A path outside the prefix-less docset still resolves via the outer docset.
     assert derive_canonical_url(cfg, "docs/top.md") == "/outer/top"
+
+
+# --- 046.001-T: breadcrumb-path prefix derivation + optional prefix map ------
+
+
+def _docfx(breadcrumb: str | None) -> dict:
+    gm = {"breadcrumb_path": breadcrumb} if breadcrumb is not None else {}
+    return {"build": {"globalMetadata": gm}}
+
+
+def test_derive_url_prefix_from_absolute_breadcrumb() -> None:
+    from docline.process.canonical_url import derive_url_prefix
+
+    assert derive_url_prefix(_docfx("/dax/breadcrumb/toc.json")) == "/dax"
+    assert derive_url_prefix(_docfx("/azure/bread/toc.json")) == "/azure"
+    assert derive_url_prefix(_docfx("/powerquery-m/breadcrumb/toc.json")) == "/powerquery-m"
+
+
+def test_derive_url_prefix_relative_or_missing_is_none() -> None:
+    from docline.process.canonical_url import derive_url_prefix
+
+    assert derive_url_prefix(_docfx("~/breadcrumb/cosmos-db/toc.yml")) is None
+    assert derive_url_prefix(_docfx(None)) is None
+    assert derive_url_prefix({}) is None
+
+
+def test_derive_canonical_url_uses_prefix_map_when_no_url_path_prefix() -> None:
+    from docline.process.canonical_url import derive_canonical_url
+
+    cfg = {"docsets_to_publish": [{"docset_name": "fabric", "build_source_folder": "docs"}]}
+    assert derive_canonical_url(cfg, "docs/admin/foo.md", prefixes={"docs": "/fabric"}) == (
+        "/fabric/admin/foo"
+    )
+    # No prefix map and no url_path_prefix -> None (exact v1 behavior).
+    assert derive_canonical_url(cfg, "docs/admin/foo.md") is None
+
+
+def test_url_path_prefix_wins_over_prefix_map() -> None:
+    from docline.process.canonical_url import derive_canonical_url
+
+    cfg = {"docsets_to_publish": [{"build_source_folder": "docs", "url_path_prefix": "/cfg"}]}
+    assert derive_canonical_url(cfg, "docs/a.md", prefixes={"docs": "/breadcrumb"}) == "/cfg/a"
