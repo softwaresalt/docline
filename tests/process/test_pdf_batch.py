@@ -847,3 +847,28 @@ def test_process_pdf_page_markers_flag_default_off(tmp_path: Path) -> None:
     )
     assert "<!-- page 1 -->" not in off.stitched_markdown  # default output unchanged
     assert "<!-- page 1 -->" in on.stitched_markdown
+
+
+def test_page_markers_on_zero_max_pages_heuristic_path(tmp_path: Path) -> None:
+    from docline.process.pdf_batch import process_pdf_in_chunks
+
+    pdf = _make_pdf(tmp_path / "doc.pdf", page_count=3)
+    runner = _runner_factory("# H\nbody")
+    # recommended_docling_max_pages <= 0 takes the early heuristic-only branch.
+    on = process_pdf_in_chunks(
+        pdf,
+        output_dir=tmp_path / "a",
+        budget=_budget(recommended_docling_max_pages=0),
+        runner=runner,
+        reclaim_pause_seconds=0,
+        page_markers=True,
+    )
+    off = process_pdf_in_chunks(
+        pdf,
+        output_dir=tmp_path / "b",
+        budget=_budget(recommended_docling_max_pages=0),
+        runner=runner,
+        reclaim_pause_seconds=0,
+    )
+    assert "<!-- page 1 -->" in on.stitched_markdown  # flag honored on heuristic path
+    assert "<!-- page " not in off.stitched_markdown  # default unchanged

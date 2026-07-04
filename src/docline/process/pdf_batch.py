@@ -166,18 +166,25 @@ def process_pdf_in_chunks(
     # If the budget says docling is not safe on this host at all, the
     # entire PDF goes through the heuristic engine in-process.
     if budget.recommended_docling_max_pages <= 0:
-        markdown = "\n\n".join(read_pdf_pages(path, layout_engine="heuristic"))
+        pages = read_pdf_pages(path, layout_engine="heuristic")
         chunk_result = ChunkResult(
             chunk_path=path,
             engine="heuristic",
             exit_code=0,
-            markdown=markdown,
+            markdown="\n\n".join(pages),
             reason="heuristic_fallback",
+            chunk_pages=tuple(pages),
         )
+        if page_markers:
+            stitched_early = _stitch_chunk_markdown_with_markers(
+                [chunk_result], page_overlap=_DEFAULT_PAGE_OVERLAP
+            )
+        else:
+            stitched_early = chunk_result.markdown
         return BatchResult(
             source=path,
             chunks=(chunk_result,),
-            stitched_markdown=markdown,
+            stitched_markdown=stitched_early,
             fallback_chunk_count=1,
             metadata={"split_chunks": 0},
         )
