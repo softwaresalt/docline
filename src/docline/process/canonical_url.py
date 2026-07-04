@@ -70,12 +70,9 @@ def derive_canonical_url(
     if not isinstance(docsets, list):
         return None
 
-    best: tuple[int, str, str] | None = None  # (folder_len, rel_under_folder, prefix)
+    best: tuple[int, str, str | None] | None = None  # (folder_len, rel_under_folder, prefix|None)
     for docset in docsets:
         if not isinstance(docset, Mapping):
-            continue
-        prefix = docset.get("url_path_prefix")
-        if not isinstance(prefix, str) or not prefix:
             continue
         folder = _normalize_folder(str(docset.get("build_source_folder", "")))
         if folder:
@@ -85,9 +82,15 @@ def derive_canonical_url(
                 continue
         else:
             rel = source  # root docset matches every path
+        # Select by longest matching build_source_folder FIRST; only then decide
+        # whether the winner has a usable prefix. Skipping prefix-less docsets
+        # earlier would let a shorter, less-specific docset win and emit a URL
+        # with the wrong prefix — worse than omission for a cross-source key.
+        raw_prefix = docset.get("url_path_prefix")
+        prefix = raw_prefix if isinstance(raw_prefix, str) and raw_prefix else None
         if best is None or len(folder) > best[0]:
             best = (len(folder), rel, prefix)
 
-    if best is None:
+    if best is None or best[2] is None:
         return None
     return _build_url(best[2], best[1])

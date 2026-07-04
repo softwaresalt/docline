@@ -74,3 +74,19 @@ def test_derive_canonical_url_empty_config_is_none() -> None:
     from docline.process.canonical_url import derive_canonical_url
 
     assert derive_canonical_url({}, "docs/a.md") is None
+
+
+def test_derive_canonical_url_longest_match_without_prefix_returns_none() -> None:
+    """A more-specific docset without a prefix must yield None, not a wrong prefix."""
+    from docline.process.canonical_url import derive_canonical_url
+
+    cfg = {
+        "docsets_to_publish": [
+            {"docset_name": "inner", "build_source_folder": "docs/sub"},  # no url_path_prefix
+            {"docset_name": "outer", "build_source_folder": "docs", "url_path_prefix": "/outer"},
+        ]
+    }
+    # docs/sub/page.md's most-specific docset lacks a prefix -> None (not /outer/sub/page).
+    assert derive_canonical_url(cfg, "docs/sub/page.md") is None
+    # A path outside the prefix-less docset still resolves via the outer docset.
+    assert derive_canonical_url(cfg, "docs/top.md") == "/outer/top"
