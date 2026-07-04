@@ -293,29 +293,29 @@ This agent operates at **Tier 2 (Standard)** by default, but supports an indepen
 
 | Agent | Tier | Default Model Family |
 |---|---|---|
-| Orchestrator | 2 (overridable) | `gpt-5.4` |
-| Stage | 3 (Frontier) | `claude-opus-4.6` |
-| Ship | 2 (Standard) | `claude-sonnet-4.6` |
+| Orchestrator | 2 (overridable) | `gpt-5.5` |
+| Stage | 3 (Frontier) | `claude-opus-4.8` |
+| Ship | 2 (Standard) | `claude-sonnet-5` |
 | Auto-MergeInstall | 2 (Standard) | Inherits tier2 default |
 | Auto-Tune | 2 (Standard) | Inherits tier2 default |
 
-**Cross-provider routing**: The orchestrator can run on a different provider (e.g., OpenAI GPT-5.4) while routing Stage and Ship to Anthropic models. This works when the environment supports the `model_family` and `model_provider` frontmatter fields and the operator's subscription includes both providers.
+**Cross-provider routing**: The orchestrator can run on a different provider (e.g., OpenAI GPT-5.5) while routing Stage and Ship to Anthropic models. This works when the environment supports the `model_family` and `model_provider` frontmatter fields and the operator's subscription includes both providers.
 
 **Configuration example** (in `.autoharness/config.yaml`):
 
 ```yaml
 model_routing:
   orchestrator:
-    model: gpt-5.4
-    model_family: gpt-5.4
+    model: gpt-5.5
+    model_family: gpt-5.5
     model_provider: openai
-    reasoning_effort: high
+    reasoning_effort: xhigh
   tier2:
-    model: claude-sonnet-4.6
-    model_family: claude-sonnet-4.6
+    model: claude-sonnet-5
+    model_family: claude-sonnet-5
   tier3:
-    model: claude-opus-4.6
-    model_family: claude-opus-4.6
+    model: claude-opus-4.8
+    model_family: claude-opus-4.8
 ```
 
 **Environment support**: The `model_family` and `model_provider` frontmatter fields are supported by VS Code with GitHub Copilot (reads agent definition YAML metadata) and Copilot CLI. Other environments (Cursor, Claude Code) may ignore frontmatter model declarations and use their own model selection. In those environments, the operator may need to manually select the model when switching between orchestrator and subagent sessions.
