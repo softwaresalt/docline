@@ -407,6 +407,11 @@ def _run_ingest_local_dir(parsed: argparse.Namespace) -> int:
     # derive authorial ingest order. .yml files are filtered out by the
     # process pipeline's _SUPPORTED_EXTENSIONS check.
     include = parsed.include or ["**/*.md", "**/TOC.yml", "**/toc.yml"]
+    # Always stage the publish config (when present) so canonical_url derivation
+    # can run during processing; like TOC.yml it is filtered out of the process
+    # pass by _SUPPORTED_EXTENSIONS (044.002-T).
+    if ".openpublishing.publish.config.json" not in include:
+        include = [*include, ".openpublishing.publish.config.json"]
     exclude = parsed.exclude or []
 
     # Derive a logical workspace root that contains both staging and

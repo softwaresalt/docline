@@ -21,6 +21,7 @@ from docline.fetch.html_normalize import extract_headings, normalize_heading_hie
 from docline.fetch.models import StagingJob
 from docline.paths import PathContainmentError, posixify_path, safe_workspace_path
 from docline.process.assemble import assemble_markdown
+from docline.process.canonical_url import derive_canonical_url
 from docline.process.hashing import compute_content_sha256
 from docline.process.manifest import update_manifest_index, write_manifest_index
 from docline.process.metadata import assemble_frontmatter_payload, resolve_document_type
@@ -35,6 +36,7 @@ _log = logging.getLogger(__name__)
 
 _FETCH_NOT_IMPLEMENTED_ERROR = "Fetch execution is not implemented."
 _CRAWL_MANIFEST_NAME = "crawl-manifest.json"
+_PUBLISH_CONFIG_NAME = ".openpublishing.publish.config.json"
 _HEADING_RE = re.compile(r"^(#{1,6})(\s+.+)$")
 
 # Supported file extension → reader function name
@@ -142,6 +144,23 @@ def _ordered_staged_files(files_dir: Path, crawl_entries: list[Mapping[str, obje
 
     ordered.extend(path for path in supported_files if path not in seen)
     return ordered
+
+
+def _load_publish_config(files_dir: Path) -> Mapping[str, object] | None:
+    """Load a staged ``.openpublishing.publish.config.json`` for canonical-URL derivation.
+
+    Returns the parsed mapping when a well-formed config sits at the root of
+    ``files_dir``; ``None`` when absent or unreadable (canonical URLs are then
+    simply not emitted).
+    """
+    config_path = files_dir / _PUBLISH_CONFIG_NAME
+    if not config_path.is_file():
+        return None
+    try:
+        parsed = json.loads(config_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    return parsed if isinstance(parsed, Mapping) else None
 
 
 def _derive_document_title(file_path: Path, body: str, source: str) -> str:
@@ -545,6 +564,8 @@ def execute_process(request: ProcessRequest) -> ProcessResult:
         if not files_dir.is_dir():
             continue
 
+        publish_config = _load_publish_config(files_dir)
+
         crawl_entries = _load_crawl_manifest(metadata_path.parent)
         job_output_root = output_dir / job.job_id
         job_manifest_entries: list[Mapping[str, object]] = []
@@ -630,6 +651,15 @@ def execute_process(request: ProcessRequest) -> ProcessResult:
                     docline_namespace["cross_doc_links"] = [
                         dict(link) for link in document_part.cross_doc_links
                     ]
+                # Stamp the canonical Learn URL under docline:canonical_url so
+                # graphtor-docs can key cross-source cross-product link
+                # resolution on it (044.002-T). First part only.
+                if part_index == 0 and publish_config is not None:
+                    canonical = derive_canonical_url(publish_config, input_path_posix)
+                    if canonical:
+                        if not isinstance(docline_namespace, dict):
+                            docline_namespace = dict(docline_namespace)
+                        docline_namespace["canonical_url"] = canonical
                 try:
                     markdown_text = _build_markdown_with_frontmatter(
                         job,
