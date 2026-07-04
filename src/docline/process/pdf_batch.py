@@ -50,7 +50,7 @@ from docline.process.fidelity_scorer import any_page_needs_ocr
 from docline.process.ocr_cap import resolve_ocr_cap
 from docline.process.page_range import group_by_page_count_ocr_aware
 from docline.readers.pdf import read_pdf_pages
-from docline.readers.pdf_splitter import split_pdf
+from docline.readers.pdf_splitter import _DEFAULT_PAGE_OVERLAP, split_pdf
 from docline.runtime.resource_probe import ResourceBudget
 from docline.runtime.resource_probe import probe as default_probe
 
@@ -105,6 +105,7 @@ def process_pdf_in_chunks(
     runner: ChunkRunner | None = None,
     reclaim_pause_seconds: float = _RECLAIM_PAUSE_SECONDS,
     use_batched_worker: bool = True,
+    page_markers: bool = False,
 ) -> BatchResult:
     """Process a (possibly oversized) PDF via split + subprocess + stitch.
 
@@ -139,6 +140,12 @@ def process_pdf_in_chunks(
             force the per-chunk subprocess loop (one process per chunk) on
             memory-constrained hosts; the resource probe also forces per-chunk
             when ``budget.serialize_docling`` is True regardless of this flag.
+        page_markers: When True, prepend a ``<!-- page N -->`` HTML comment
+            before each page in the stitched output so downstream graph
+            writers can recover page boundaries. Default False keeps the
+            stitched output byte-identical to prior behavior. Markers are
+            driven by :attr:`ChunkResult.chunk_pages`; heuristic chunks
+            without per-page data emit one marker for the whole chunk body.
 
     Returns:
         :class:`BatchResult` with one :class:`ChunkResult` per chunk
@@ -147,7 +154,6 @@ def process_pdf_in_chunks(
     Raises:
         FileNotFoundError: If ``path`` does not exist.
     """
-
     if not path.exists():
         raise FileNotFoundError(f"PDF not found: {path}")
 
@@ -160,18 +166,25 @@ def process_pdf_in_chunks(
     # If the budget says docling is not safe on this host at all, the
     # entire PDF goes through the heuristic engine in-process.
     if budget.recommended_docling_max_pages <= 0:
-        markdown = "\n\n".join(read_pdf_pages(path, layout_engine="heuristic"))
+        pages = read_pdf_pages(path, layout_engine="heuristic")
         chunk_result = ChunkResult(
             chunk_path=path,
             engine="heuristic",
             exit_code=0,
-            markdown=markdown,
+            markdown="\n\n".join(pages),
             reason="heuristic_fallback",
+            chunk_pages=tuple(pages),
         )
+        if page_markers:
+            stitched_early = _stitch_chunk_markdown_with_markers(
+                [chunk_result], page_overlap=_DEFAULT_PAGE_OVERLAP
+            )
+        else:
+            stitched_early = chunk_result.markdown
         return BatchResult(
             source=path,
             chunks=(chunk_result,),
-            stitched_markdown=markdown,
+            stitched_markdown=stitched_early,
             fallback_chunk_count=1,
             metadata={"split_chunks": 0},
         )
@@ -180,6 +193,7 @@ def process_pdf_in_chunks(
         path,
         max_pages=budget.recommended_docling_max_pages,
         cache_dir=output_dir / "chunks",
+        page_overlap=_DEFAULT_PAGE_OVERLAP,
     )
     if not chunks:
         return BatchResult(
@@ -206,7 +220,12 @@ def process_pdf_in_chunks(
             if budget.serialize_docling and index < len(chunks) - 1 and reclaim_pause_seconds > 0:
                 time.sleep(reclaim_pause_seconds)
 
-    stitched = _stitch_chunk_markdown([cr.markdown for cr in chunk_results])
+    if page_markers:
+        stitched = _stitch_chunk_markdown_with_markers(
+            chunk_results, page_overlap=_DEFAULT_PAGE_OVERLAP
+        )
+    else:
+        stitched = _stitch_chunk_markdown([cr.markdown for cr in chunk_results])
     fallback_count = sum(1 for cr in chunk_results if cr.reason != "ok")
 
     return BatchResult(
@@ -474,6 +493,45 @@ def _stitch_chunk_markdown(chunk_bodies: list[str]) -> str:
             prior_trailing_h1 = _last_h1_title(cleaned) or prior_trailing_h1
 
     return "\n\n".join(kept)
+
+
+def _stitch_chunk_markdown_with_markers(
+    chunk_results: list[ChunkResult],
+    *,
+    page_overlap: int,
+) -> str:
+    """Stitch chunks with a ``<!-- page N -->`` comment before each page.
+
+    Page granularity comes from :attr:`ChunkResult.chunk_pages`. For chunks
+    after the first, the leading ``page_overlap`` pages duplicate the previous
+    chunk's trailing pages (from :func:`split_pdf`), so they are skipped to keep
+    the page counter source-relative and avoid emitting duplicate content — but
+    only when the chunk carries more than ``page_overlap`` pages, so a tiny or
+    defensively-parsed chunk (single-element ``chunk_pages``) is never dropped.
+    Heuristic chunks with no per-page data emit one marker for the whole chunk
+    body (best-effort).
+
+    Args:
+        chunk_results: Ordered chunk outcomes from the split/dispatch step.
+        page_overlap: Number of leading pages each non-first chunk repeats from
+            the prior chunk (``split_pdf``'s ``page_overlap``).
+
+    Returns:
+        The stitched markdown with a monotonic 1-based ``<!-- page N -->``
+        marker before each emitted page.
+    """
+
+    blocks: list[str] = []
+    page_no = 0
+    for index, cr in enumerate(chunk_results):
+        pages = cr.chunk_pages if cr.chunk_pages else (cr.markdown,)
+        skip = page_overlap if index > 0 and len(pages) > page_overlap else 0
+        for page_md in pages[skip:]:
+            page_no += 1
+            marker = f"<!-- page {page_no} -->"
+            body = page_md.rstrip()
+            blocks.append(f"{marker}\n{body}" if body else marker)
+    return "\n\n".join(blocks)
 
 
 def _drop_leading_h1_if_matches(body: str, target_title: str | None) -> str:
