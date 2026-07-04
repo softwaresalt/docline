@@ -762,3 +762,88 @@ def test_batched_mode_partial_crash_recovers_written_envelopes(tmp_path: Path) -
     # Exactly the one chunk with no envelope falls back.
     assert engines.count("heuristic") == 1
     assert result.fallback_chunk_count == 1
+
+
+# --- 043.001-T: opt-in per-page boundary markers ----------------------------
+
+
+def _cr(pages: list[str], *, markdown: str | None = None, engine: str = "docling") -> Any:
+    from docline.process.pdf_batch import ChunkResult
+
+    body = markdown if markdown is not None else "\n\n".join(pages)
+    return ChunkResult(
+        chunk_path=Path("chunk.pdf"),
+        engine=engine,
+        exit_code=0,
+        markdown=body,
+        reason="ok" if engine == "docling" else "heuristic_fallback",
+        chunk_pages=tuple(pages),
+    )
+
+
+def test_page_markers_number_pages_within_single_chunk() -> None:
+    from docline.process.pdf_batch import _stitch_chunk_markdown_with_markers
+
+    out = _stitch_chunk_markdown_with_markers(
+        [_cr(["# A\nalpha", "# B\nbeta", "gamma"])], page_overlap=2
+    )
+    assert "<!-- page 1 -->" in out
+    assert "<!-- page 2 -->" in out
+    assert "<!-- page 3 -->" in out
+    assert "<!-- page 4 -->" not in out
+    assert out.index("<!-- page 1 -->") < out.index("alpha") < out.index("<!-- page 2 -->")
+
+
+def test_page_markers_skip_overlap_pages_across_chunks() -> None:
+    from docline.process.pdf_batch import _stitch_chunk_markdown_with_markers
+
+    c0 = _cr(["one", "two", "three", "four"])
+    c1 = _cr(["three", "four", "five", "six"])  # first 2 repeat c0's last 2
+    out = _stitch_chunk_markdown_with_markers([c0, c1], page_overlap=2)
+
+    for n in range(1, 7):
+        assert f"<!-- page {n} -->" in out
+    assert "<!-- page 7 -->" not in out
+    # Overlapped page content appears exactly once.
+    assert out.count("three") == 1
+    assert out.count("five") == 1
+
+
+def test_page_markers_heuristic_chunk_gets_single_marker() -> None:
+    from docline.process.pdf_batch import _stitch_chunk_markdown_with_markers
+
+    out = _stitch_chunk_markdown_with_markers(
+        [_cr([], markdown="# Heur\nbody", engine="heuristic")], page_overlap=2
+    )
+    assert out.count("<!-- page ") == 1
+    assert "<!-- page 1 -->" in out
+    assert "# Heur" in out
+
+
+def test_page_markers_tiny_chunk_not_dropped() -> None:
+    from docline.process.pdf_batch import _stitch_chunk_markdown_with_markers
+
+    # A non-first chunk with <= page_overlap pages must not be dropped wholesale.
+    out = _stitch_chunk_markdown_with_markers([_cr(["a", "b", "c"]), _cr(["tail"])], page_overlap=2)
+    assert "tail" in out
+
+
+def test_process_pdf_page_markers_flag_default_off(tmp_path: Path) -> None:
+    from docline.process.pdf_batch import process_pdf_in_chunks
+
+    pdf = _make_pdf(tmp_path / "doc.pdf", page_count=15)
+    runner = _runner_factory("# H\nbody")
+
+    off = process_pdf_in_chunks(
+        pdf, output_dir=tmp_path / "a", budget=_budget(), runner=runner, reclaim_pause_seconds=0
+    )
+    on = process_pdf_in_chunks(
+        pdf,
+        output_dir=tmp_path / "b",
+        budget=_budget(),
+        runner=runner,
+        reclaim_pause_seconds=0,
+        page_markers=True,
+    )
+    assert "<!-- page 1 -->" not in off.stitched_markdown  # default output unchanged
+    assert "<!-- page 1 -->" in on.stitched_markdown
