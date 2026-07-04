@@ -184,7 +184,11 @@ def _build_docfx_prefixes(
             continue
         bsf = str(docset.get("build_source_folder", ""))
         parts = [] if bsf in (".", "") else bsf.strip("/").split("/")
-        docfx_path = files_dir.joinpath(*parts, "docfx.json")
+        rel = "/".join([*parts, "docfx.json"])
+        try:
+            docfx_path = safe_workspace_path(rel, files_dir)
+        except PathContainmentError:
+            continue  # a build_source_folder with '..' must not escape the staged workspace
         if not docfx_path.is_file():
             continue
         try:
