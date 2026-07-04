@@ -88,3 +88,21 @@ def test_no_canonical_url_without_publish_config(tmp_path: Path) -> None:
     emitted = sorted(output_dir.rglob("*.md"))
     assert emitted, "expected an emitted markdown file"
     assert "canonical_url" not in _docline_ns(emitted[0])
+
+
+def test_canonical_url_stamped_from_docfx_breadcrumb(tmp_path: Path) -> None:
+    # Config WITHOUT url_path_prefix (the real MS Learn case); prefix comes from docfx.
+    config = {"docsets_to_publish": [{"docset_name": "fabric", "build_source_folder": "docs"}]}
+    docfx = {"build": {"globalMetadata": {"breadcrumb_path": "/fabric/breadcrumb/toc.json"}}}
+    _stage(
+        tmp_path / "staging",
+        {
+            ".openpublishing.publish.config.json": json.dumps(config).encode("utf-8"),
+            "docs/docfx.json": json.dumps(docfx).encode("utf-8"),
+            "docs/admin/foo.md": _MD.encode("utf-8"),
+        },
+    )
+    output_dir = _run(tmp_path)
+    emitted = sorted(output_dir.rglob("*.md"))
+    assert emitted, "expected an emitted markdown file"
+    assert _docline_ns(emitted[0]).get("canonical_url") == "/fabric/admin/foo"

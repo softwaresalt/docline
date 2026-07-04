@@ -409,9 +409,11 @@ def _run_ingest_local_dir(parsed: argparse.Namespace) -> int:
     include = parsed.include or ["**/*.md", "**/TOC.yml", "**/toc.yml"]
     # Always stage the publish config (when present) so canonical_url derivation
     # can run during processing; like TOC.yml it is filtered out of the process
-    # pass by _SUPPORTED_EXTENSIONS (044.002-T).
-    if ".openpublishing.publish.config.json" not in include:
-        include = [*include, ".openpublishing.publish.config.json"]
+    # pass by _SUPPORTED_EXTENSIONS (044.002-T). docfx.json is staged too so the
+    # URL prefix can be derived from breadcrumb_path (046.002-T).
+    for _cfg in (".openpublishing.publish.config.json", "**/docfx.json"):
+        if _cfg not in include:
+            include = [*include, _cfg]
     exclude = parsed.exclude or []
 
     # Derive a logical workspace root that contains both staging and
