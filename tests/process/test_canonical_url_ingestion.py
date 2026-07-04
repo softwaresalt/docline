@@ -88,3 +88,43 @@ def test_no_canonical_url_without_publish_config(tmp_path: Path) -> None:
     emitted = sorted(output_dir.rglob("*.md"))
     assert emitted, "expected an emitted markdown file"
     assert "canonical_url" not in _docline_ns(emitted[0])
+
+
+def test_canonical_url_stamped_from_docfx_breadcrumb(tmp_path: Path) -> None:
+    # Config WITHOUT url_path_prefix (the real MS Learn case); prefix comes from docfx.
+    config = {"docsets_to_publish": [{"docset_name": "fabric", "build_source_folder": "docs"}]}
+    docfx = {"build": {"globalMetadata": {"breadcrumb_path": "/fabric/breadcrumb/toc.json"}}}
+    _stage(
+        tmp_path / "staging",
+        {
+            ".openpublishing.publish.config.json": json.dumps(config).encode("utf-8"),
+            "docs/docfx.json": json.dumps(docfx).encode("utf-8"),
+            "docs/admin/foo.md": _MD.encode("utf-8"),
+        },
+    )
+    output_dir = _run(tmp_path)
+    emitted = sorted(output_dir.rglob("*.md"))
+    assert emitted, "expected an emitted markdown file"
+    assert _docline_ns(emitted[0]).get("canonical_url") == "/fabric/admin/foo"
+
+
+def test_build_docfx_prefixes_rejects_traversal(tmp_path: Path) -> None:
+    """A build_source_folder with '..' must not read a docfx.json outside files_dir."""
+    from docline.app import _build_docfx_prefixes
+
+    files_dir = tmp_path / "files"
+    (files_dir / "docs").mkdir(parents=True)
+    (files_dir / "docs" / "docfx.json").write_text(
+        json.dumps(
+            {"build": {"globalMetadata": {"breadcrumb_path": "/fabric/breadcrumb/toc.json"}}}
+        ),
+        encoding="utf-8",
+    )
+    cfg = {
+        "docsets_to_publish": [
+            {"build_source_folder": "docs"},
+            {"build_source_folder": "../"},  # traversal attempt
+        ]
+    }
+    prefixes = _build_docfx_prefixes(files_dir, cfg)
+    assert prefixes == {"docs": "/fabric"}  # valid docset resolved; traversal skipped

@@ -21,7 +21,7 @@ from docline.fetch.html_normalize import extract_headings, normalize_heading_hie
 from docline.fetch.models import StagingJob
 from docline.paths import PathContainmentError, posixify_path, safe_workspace_path
 from docline.process.assemble import assemble_markdown
-from docline.process.canonical_url import derive_canonical_url
+from docline.process.canonical_url import derive_canonical_url, derive_url_prefix
 from docline.process.hashing import compute_content_sha256
 from docline.process.manifest import update_manifest_index, write_manifest_index
 from docline.process.metadata import assemble_frontmatter_payload, resolve_document_type
@@ -161,6 +161,46 @@ def _load_publish_config(files_dir: Path) -> Mapping[str, object] | None:
     except (OSError, json.JSONDecodeError):
         return None
     return parsed if isinstance(parsed, Mapping) else None
+
+
+def _build_docfx_prefixes(
+    files_dir: Path, publish_config: Mapping[str, object] | None
+) -> dict[str, str]:
+    """Build a ``{build_source_folder: url_prefix}`` map from staged ``docfx.json`` files.
+
+    For each docset, reads the staged ``docfx.json`` at the docset's
+    ``build_source_folder`` root and derives the Learn URL prefix from its
+    ``breadcrumb_path`` (real MS Learn repos do not set ``url_path_prefix``).
+    Docsets without a resolvable prefix are simply omitted.
+    """
+    prefixes: dict[str, str] = {}
+    if not isinstance(publish_config, Mapping):
+        return prefixes
+    docsets = publish_config.get("docsets_to_publish")
+    if not isinstance(docsets, list):
+        return prefixes
+    for docset in docsets:
+        if not isinstance(docset, Mapping):
+            continue
+        bsf = str(docset.get("build_source_folder", ""))
+        parts = [] if bsf in (".", "") else bsf.strip("/").split("/")
+        rel = "/".join([*parts, "docfx.json"])
+        try:
+            docfx_path = safe_workspace_path(rel, files_dir)
+        except PathContainmentError:
+            continue  # a build_source_folder with '..' must not escape the staged workspace
+        if not docfx_path.is_file():
+            continue
+        try:
+            docfx = json.loads(docfx_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            continue
+        if not isinstance(docfx, Mapping):
+            continue
+        prefix = derive_url_prefix(docfx)
+        if prefix:
+            prefixes[bsf] = prefix
+    return prefixes
 
 
 def _derive_document_title(file_path: Path, body: str, source: str) -> str:
@@ -565,6 +605,7 @@ def execute_process(request: ProcessRequest) -> ProcessResult:
             continue
 
         publish_config = _load_publish_config(files_dir)
+        docfx_prefixes = _build_docfx_prefixes(files_dir, publish_config)
 
         crawl_entries = _load_crawl_manifest(metadata_path.parent)
         job_output_root = output_dir / job.job_id
@@ -655,7 +696,9 @@ def execute_process(request: ProcessRequest) -> ProcessResult:
                 # graphtor-docs can key cross-source cross-product link
                 # resolution on it (044.002-T). First part only.
                 if part_index == 0 and publish_config is not None:
-                    canonical = derive_canonical_url(publish_config, input_path_posix)
+                    canonical = derive_canonical_url(
+                        publish_config, input_path_posix, prefixes=docfx_prefixes
+                    )
                     if canonical:
                         if not isinstance(docline_namespace, dict):
                             docline_namespace = dict(docline_namespace)
