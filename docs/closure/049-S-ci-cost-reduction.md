@@ -13,7 +13,7 @@ guarding the heavy jobs against non-code changes.
 
 | Task | Delivered |
 |---|---|
-| `047.001-T` | `.github/workflows/ci.yml` — `paths-ignore` (`​.backlogit/**`, `docs/**`, `**/*.md`, `README.md`) inlined into the restore-ready trigger template; PR-title `if:` guards on `test` (matrix) + `build` skipping `chore:`/`docs:` PRs (inert on non-PR events); an always-reporting `ci-gate` aggregate job so skipped jobs never block those PRs under branch protection; PENDING item 3 resolved. |
+| `047.001-T` | `.github/workflows/ci.yml` — `paths-ignore` (`.backlogit/**`, `docs/**`, `**/*.md`, `README.md`) inlined into the restore-ready trigger template; PR-title `if:` guards on `test` (matrix) + `build` skipping `chore:`/`docs:` PRs (inert on non-PR events); an always-reporting `ci-gate` aggregate job so skipped jobs never block those PRs under branch protection; PENDING item 3 resolved. |
 
 ## Verification
 
