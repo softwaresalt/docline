@@ -188,6 +188,13 @@ _DOCLING_THREAD_ENV_VARS: tuple[str, ...] = (
     "OPENBLAS_NUM_THREADS",
 )
 
+# Operator-facing env var that pins docling's compute device (048-F). Unset or
+# "auto" preserves docling's implicit auto-detection; a concrete device is an
+# explicit override (most usefully "cpu" when the auto-detected accelerator is
+# unreliable). Values mirror docling's ``AcceleratorDevice`` members.
+_DOCLINE_ACCELERATOR_ENV: str = "DOCLINE_ACCELERATOR"
+_VALID_ACCELERATOR_DEVICES: frozenset[str] = frozenset({"auto", "cpu", "cuda", "mps", "xpu"})
+
 
 def _apply_docling_thread_caps() -> None:
     """Apply probe-derived BLAS / OpenMP thread caps before docling loads.
@@ -219,6 +226,57 @@ def _apply_docling_thread_caps() -> None:
     for env_var in _DOCLING_THREAD_ENV_VARS:
         os.environ.setdefault(env_var, threads)
     os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
+
+
+def _resolve_accelerator_device(raw: str | None) -> str | None:
+    """Normalize a ``DOCLINE_ACCELERATOR`` value to a docling device string.
+
+    Pure and dependency-free so it stays unit-testable without docling.
+
+    Args:
+        raw: The raw env-var value (``os.environ.get`` result), or ``None``.
+
+    Returns:
+        ``None`` when unset or blank (meaning "no override" — docling keeps its
+        implicit ``auto`` detection), or the lowercase, whitespace-trimmed
+        device string (one of ``auto``/``cpu``/``cuda``/``mps``/``xpu``).
+
+    Raises:
+        PdfConfigError: If ``raw`` is a non-blank but unrecognized device.
+    """
+    if raw is None:
+        return None
+    normalized = raw.strip().lower()
+    if not normalized:
+        return None
+    if normalized not in _VALID_ACCELERATOR_DEVICES:
+        choices = ", ".join(sorted(_VALID_ACCELERATOR_DEVICES))
+        raise PdfConfigError(
+            f"Invalid {_DOCLINE_ACCELERATOR_ENV} value {normalized!r}; choose from: {choices}"
+        )
+    return normalized
+
+
+def _accelerator_options_for(device: str | None):  # noqa: ANN202 — docling optional
+    """Build docling ``AcceleratorOptions`` for an explicit device override.
+
+    Args:
+        device: A normalized device string from :func:`_resolve_accelerator_device`.
+
+    Returns:
+        ``None`` when ``device`` is ``None`` or ``"auto"`` (no override needed —
+        docling's default device is already ``auto``), otherwise an
+        ``AcceleratorOptions`` pinned to the requested device. ``num_threads``
+        is left at docling's default so thread behavior is unchanged.
+    """
+    if device is None or device == "auto":
+        return None
+    from docling.datamodel.accelerator_options import (  # type: ignore[import-untyped]
+        AcceleratorDevice,
+        AcceleratorOptions,
+    )
+
+    return AcceleratorOptions(device=AcceleratorDevice(device))
 
 
 # ---------------------------------------------------------------------------
@@ -272,6 +330,10 @@ _PDF_ESCAPE_MAP: dict[bytes, bytes] = {
 
 class PdfReadError(DoclineError):
     """Raised when PDF extraction fails."""
+
+
+class PdfConfigError(DoclineError):
+    """Raised when PDF-reader configuration (e.g. an env var) is invalid."""
 
 
 def _is_utf16_bytes(data: bytes) -> tuple[bool, str]:
@@ -770,14 +832,23 @@ def _read_pdf_docling_pages(
             "Install the optional 'docling' package to use "
             "layout_engine='docling' (extras: docline[pdf]; missing import: docling)"
         ) from err
+    # Resolve the accelerator override before the conversion try so an invalid
+    # DOCLINE_ACCELERATOR value surfaces as PdfConfigError rather than being
+    # masked as a PdfReadError by the broad handler below.
+    accelerator_options = _accelerator_options_for(
+        _resolve_accelerator_device(os.environ.get(_DOCLINE_ACCELERATOR_ENV))
+    )
     try:
-        pipeline_options = PdfPipelineOptions(
-            do_ocr=do_ocr,
-            do_table_structure=True,
-            table_structure_options=TableStructureOptions(do_cell_matching=True),
-            generate_picture_images=picture_sink is not None,
-            images_scale=ocr_scale if ocr_scale is not None else 2.0,
-        )
+        pipeline_kwargs: dict[str, object] = {
+            "do_ocr": do_ocr,
+            "do_table_structure": True,
+            "table_structure_options": TableStructureOptions(do_cell_matching=True),
+            "generate_picture_images": picture_sink is not None,
+            "images_scale": ocr_scale if ocr_scale is not None else 2.0,
+        }
+        if accelerator_options is not None:
+            pipeline_kwargs["accelerator_options"] = accelerator_options
+        pipeline_options = PdfPipelineOptions(**pipeline_kwargs)
         converter = DocumentConverter(
             format_options={
                 InputFormat.PDF: PdfFormatOption(pipeline_options=pipeline_options),

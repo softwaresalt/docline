@@ -140,6 +140,21 @@ the [2026-06-08 extraction strategy study](docs/decisions/2026-06-08-extraction-
 Intelligence was evaluated and removed in 031-S; see
 [029-S](docs/closure/029-S-adi-spike.md) for the historical record.
 
+### Compute device (`DOCLINE_ACCELERATOR`)
+
+The `docling` engine auto-detects an available accelerator (CUDA, MPS, or
+XPU) and falls back to CPU otherwise, so GPU hosts are used without
+configuration. Set `DOCLINE_ACCELERATOR` to pin the device explicitly:
+
+| Value | Effect |
+|---|---|
+| unset or `auto` | docling's default auto-detection (unchanged behavior) |
+| `cpu` | Force CPU — the escape hatch when an auto-detected GPU is unreliable |
+| `cuda` / `mps` / `xpu` | Pin the named accelerator |
+
+The variable applies to both the single-file CLI path and the batched
+docling worker. An unrecognized value fails fast with a configuration error.
+
 ### Calibration & QA
 
 `docline process --pdf-mode triage --triage-report-only` emits a
