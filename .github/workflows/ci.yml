@@ -22,6 +22,9 @@ name: CI
 #    backlog-only pushes skip the matrix once PR/push triggers are restored.
 # 4. ✅ APPLIED — the build + test jobs carry a PR-title guard that skips PRs
 #    whose title starts with 'chore:' or 'docs:' (inert on non-PR events).
+# 5. ✅ APPLIED — a `ci-gate` job aggregates the results and always reports;
+#    require IT (not the guarded test/build) in branch protection so skipped
+#    jobs on chore:/docs: PRs do not block the merge.
 #
 # Current triggers below intentionally fire only on release tags or
 # explicit manual runs from the Actions tab.
@@ -170,3 +173,26 @@ jobs:
         run: uv sync --locked --all-extras --dev
       - name: Build sdist and wheel
         run: uv run python -m build
+
+  # Always-reporting aggregate gate. Require THIS job in branch protection
+  # instead of the title-guarded test/build: when test/build are skipped for a
+  # chore:/docs: PR, GitHub reports them "skipped" — which a required check
+  # treats as not-successful and would block the merge. ci-gate always runs and
+  # passes unless a needed job actually failed or was cancelled (skipped is OK).
+  ci-gate:
+    name: ci gate
+    if: always()
+    needs: [lint, format, typecheck, test, build]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify no required job failed
+        run: |
+          results="${{ needs.lint.result }} ${{ needs.format.result }} ${{ needs.typecheck.result }} ${{ needs.test.result }} ${{ needs.build.result }}"
+          echo "job results: $results"
+          for r in $results; do
+            if [ "$r" = "failure" ] || [ "$r" = "cancelled" ]; then
+              echo "::error::A required job did not succeed: $r"
+              exit 1
+            fi
+          done
+          echo "All required jobs passed or were intentionally skipped."
