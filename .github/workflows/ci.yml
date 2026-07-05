@@ -7,25 +7,21 @@ name: CI
 # exhausted on 2026-06-10).
 #
 # To re-enable for everyday PR / push validation, restore these triggers
-# (originals preserved for reference):
+# (paths-ignore per item 3 is already inlined so restoring is copy-paste-ready):
 #   on:
 #     pull_request:
+#       paths-ignore: ['.backlogit/**', 'docs/**', '**/*.md', 'README.md']
 #     push:
-#       branches:
-#         - main
+#       branches: [main]
+#       paths-ignore: ['.backlogit/**', 'docs/**', '**/*.md', 'README.md']
 #
-# Recommended cost-reduction changes before re-enabling (each independent):
-# 1. ✅ APPLIED — windows-latest dropped from matrix (~4 billable min/run; operator
-#    validates locally on Windows). Done in this commit.
-# 2. ✅ APPLIED — macos-latest dropped from matrix (~10 billable min/run; the
-#    largest single line item). Done in this commit.
-# 3. PENDING — add paths-ignore at the top-level `on:` block so doc-only / backlog-
-#    only pushes don't trigger the heavy matrix:
-#       paths-ignore:
-#         - '.backlogit/**'
-#         - 'docs/**'
-#         - '**/*.md'
-#         - 'README.md'
+# Cost-reduction changes (each independent):
+# 1. ✅ APPLIED — windows-latest dropped from matrix (~4 billable min/run).
+# 2. ✅ APPLIED — macos-latest dropped from matrix (~10 billable min/run).
+# 3. ✅ READY — paths-ignore inlined into the restore template above so doc-/
+#    backlog-only pushes skip the matrix once PR/push triggers are restored.
+# 4. ✅ APPLIED — the build + test jobs carry a PR-title guard that skips PRs
+#    whose title starts with 'chore:' or 'docs:' (inert on non-PR events).
 #
 # Current triggers below intentionally fire only on release tags or
 # explicit manual runs from the Actions tab.
@@ -113,6 +109,12 @@ jobs:
 
   test:
     name: pytest (${{ matrix.os }})
+    # Skip the heavy matrix for chore:/docs: PRs (title-based guard). Inert on
+    # non-PR events (tags/releases/dispatch), where the PR title is empty.
+    if: >-
+      github.event_name != 'pull_request' ||
+      (!startsWith(github.event.pull_request.title, 'chore:') &&
+      !startsWith(github.event.pull_request.title, 'docs:'))
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -143,6 +145,12 @@ jobs:
 
   build:
     name: sdist + wheel
+    # Skip the build for chore:/docs: PRs (title-based guard). Inert on non-PR
+    # events (tags/releases/dispatch), where the PR title is empty.
+    if: >-
+      github.event_name != 'pull_request' ||
+      (!startsWith(github.event.pull_request.title, 'chore:') &&
+      !startsWith(github.event.pull_request.title, 'docs:'))
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
