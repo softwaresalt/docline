@@ -12,6 +12,7 @@ back on itself raises :class:`OpenApiRefError` instead of recursing forever.
 
 from __future__ import annotations
 
+import re
 from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
@@ -21,6 +22,13 @@ import yaml
 from docline.readers.openapi.errors import OpenApiParseError, OpenApiRefError
 
 _LOCAL_REF_PREFIX = "#/"
+_SLUG_RE = re.compile(r"[^A-Za-z0-9._-]+")
+
+
+def slug(text: str) -> str:
+    """Return a filesystem/link-safe slug for *text* (shared doc-naming helper)."""
+    result = _SLUG_RE.sub("-", text).strip("-")
+    return result or "item"
 
 
 def load_spec(source: str | Path) -> dict[str, Any]:
@@ -164,4 +172,5 @@ __all__ = [
     "is_local_ref",
     "load_spec",
     "resolve_pointer",
+    "slug",
 ]

@@ -19,8 +19,26 @@ from docline.readers.openapi.loader import component_name_from_ref, deref
 
 # Callable mapping a component-schema name to the relative href of its document.
 SchemaHref = Callable[[str], str]
+# Callable mapping a ``$ref`` string to a relative href, or ``None`` when the ref
+# should not be linked (external-denied, non-schema, or unresolvable).
+RefLink = Callable[[str], "str | None"]
 
 _SCHEMAS_REF_PREFIX = "#/components/schemas/"
+
+
+def _href_to_ref_link(schema_href: SchemaHref) -> RefLink:
+    """Adapt a legacy per-name ``schema_href`` into a ``$ref``-string ``RefLink``.
+
+    Only local component-schema refs are linked (the pre-053-F behavior); all
+    other refs (external, non-schema) map to ``None``.
+    """
+
+    def ref_link(ref: str) -> str | None:
+        if ref.startswith(_SCHEMAS_REF_PREFIX):
+            return schema_href(component_name_from_ref(ref))
+        return None
+
+    return ref_link
 
 
 def default_schema_href(name: str) -> str:
@@ -68,10 +86,10 @@ def _table(headers: list[str], rows: list[list[str]]) -> str:
     return "\n".join(lines)
 
 
-def _schema_type_summary(schema: Any, root: Mapping[str, Any], schema_href: SchemaHref) -> str:
+def _schema_type_summary(schema: Any, root: Mapping[str, Any], ref_link: RefLink) -> str:
     """Summarize a schema node as a short type string or component link.
 
-    A ``$ref`` to a named component schema becomes a Markdown link to that
+    A ``$ref`` that ``ref_link`` maps to an href becomes a Markdown link to that
     schema's document; everything else collapses to a compact type description
     (``string``, ``array of integer``, ``A | B`` for unions, etc.).
     """
@@ -79,21 +97,22 @@ def _schema_type_summary(schema: Any, root: Mapping[str, Any], schema_href: Sche
         return ""
 
     ref = schema.get("$ref")
-    if isinstance(ref, str) and ref.startswith(_SCHEMAS_REF_PREFIX):
-        name = component_name_from_ref(ref)
-        return f"[{name}]({schema_href(name)})"
+    if isinstance(ref, str):
+        href = ref_link(ref)
+        if href:
+            return f"[{component_name_from_ref(ref)}]({href})"
 
     for key, separator in (("allOf", " & "), ("oneOf", " | "), ("anyOf", " | ")):
         members = schema.get(key)
         if isinstance(members, list) and members:
             return separator.join(
-                _schema_type_summary(member, root, schema_href) for member in members
+                _schema_type_summary(member, root, ref_link) for member in members
             )
 
     type_value = schema.get("type")
     if type_value == "array":
         items = schema.get("items")
-        inner = _schema_type_summary(items, root, schema_href) if items else "any"
+        inner = _schema_type_summary(items, root, ref_link) if items else "any"
         return f"array of {inner}"
     if isinstance(type_value, list):
         return " | ".join(str(member) for member in type_value)
@@ -130,7 +149,7 @@ def _status_sort_key(status: str) -> tuple[int, object]:
         return (1, status)
 
 
-def _render_parameters(parameters: Any, root: Mapping[str, Any], schema_href: SchemaHref) -> str:
+def _render_parameters(parameters: Any, root: Mapping[str, Any], ref_link: RefLink) -> str:
     """Render the Parameters section, or ``""`` when there are none."""
     if not isinstance(parameters, list) or not parameters:
         return ""
@@ -144,7 +163,7 @@ def _render_parameters(parameters: Any, root: Mapping[str, Any], schema_href: Sc
             [
                 _cell(f"`{param.get('name', '')}`"),
                 _cell(param.get("in", "")),
-                _cell(_schema_type_summary(param.get("schema"), root, schema_href)),
+                _cell(_schema_type_summary(param.get("schema"), root, ref_link)),
                 _cell("yes" if param.get("required", False) else "no"),
                 _cell(param.get("description", "")),
             ]
@@ -155,9 +174,7 @@ def _render_parameters(parameters: Any, root: Mapping[str, Any], schema_href: Sc
     return f"## Parameters\n\n{table}"
 
 
-def _render_request_body(
-    request_body: Any, root: Mapping[str, Any], schema_href: SchemaHref
-) -> str:
+def _render_request_body(request_body: Any, root: Mapping[str, Any], ref_link: RefLink) -> str:
     """Render the Request body section, or ``""`` when there is none."""
     body = deref(request_body, root)
     if not isinstance(body, Mapping):
@@ -170,15 +187,13 @@ def _render_request_body(
     for media_type in sorted(content):
         media = content[media_type]
         schema = media.get("schema") if isinstance(media, Mapping) else None
-        rows.append(
-            [_cell(f"`{media_type}`"), _cell(_schema_type_summary(schema, root, schema_href))]
-        )
+        rows.append([_cell(f"`{media_type}`"), _cell(_schema_type_summary(schema, root, ref_link))])
     required = "yes" if body.get("required", False) else "no"
     table = _table(["Content type", "Schema"], rows)
     return f"## Request body\n\nRequired: {required}\n\n{table}"
 
 
-def _render_responses(responses: Any, root: Mapping[str, Any], schema_href: SchemaHref) -> str:
+def _render_responses(responses: Any, root: Mapping[str, Any], ref_link: RefLink) -> str:
     """Render the Responses section, or ``""`` when there are none."""
     if not isinstance(responses, Mapping) or not responses:
         return ""
@@ -200,7 +215,7 @@ def _render_responses(responses: Any, root: Mapping[str, Any], schema_href: Sche
             [
                 _cell(f"`{status}`"),
                 _cell(description),
-                _cell(_schema_type_summary(schema, root, schema_href)),
+                _cell(_schema_type_summary(schema, root, ref_link)),
             ]
         )
     table = _table(["Status", "Description", "Schema"], rows)
@@ -234,6 +249,7 @@ def render_operation(
     *,
     root: Mapping[str, Any],
     schema_href: SchemaHref = default_schema_href,
+    ref_link: RefLink | None = None,
 ) -> str:
     """Render a single OpenAPI operation as a Markdown document body.
 
@@ -242,14 +258,19 @@ def render_operation(
         path: Templated request path (e.g. ``/widgets/{id}``).
         operation: The operation object from the spec ``paths`` map.
         root: The full parsed specification, used to resolve local refs.
-        schema_href: Maps a component schema name to the relative href used for
-            operation → schema links. Defaults to :func:`default_schema_href`.
+        schema_href: Legacy per-name mapper for local component-schema links.
+            Used only when ``ref_link`` is not supplied.
+        ref_link: Maps a ``$ref`` string to a relative href (or ``None`` to skip
+            linking). Supplied by the reader to enable cross-file links (053-F);
+            when ``None``, a local-only link function is derived from
+            ``schema_href`` (pre-053-F behavior).
 
     Returns:
         A Markdown body: an H1 ``METHOD path`` heading followed by
         Summary/Description, Parameters, Request body, Responses, and Security
         sections. Sections with no content are omitted.
     """
+    link = ref_link if ref_link is not None else _href_to_ref_link(schema_href)
     op = deref(operation, root)
     if not isinstance(op, Mapping):
         op = operation
@@ -264,9 +285,9 @@ def render_operation(
         sections.append(description.strip())
 
     for block in (
-        _render_parameters(op.get("parameters"), root, schema_href),
-        _render_request_body(op.get("requestBody"), root, schema_href),
-        _render_responses(op.get("responses"), root, schema_href),
+        _render_parameters(op.get("parameters"), root, link),
+        _render_request_body(op.get("requestBody"), root, link),
+        _render_responses(op.get("responses"), root, link),
         _render_security(op.get("security")),
     ):
         if block:
@@ -281,6 +302,7 @@ def render_schema(
     *,
     root: Mapping[str, Any],
     schema_href: SchemaHref = sibling_schema_href,
+    ref_link: RefLink | None = None,
 ) -> str:
     """Render a named component schema as a Markdown document body.
 
@@ -288,9 +310,11 @@ def render_schema(
         name: Component schema name (used as the H1 and node identity).
         schema: The schema object from ``components.schemas``.
         root: The full parsed specification, used to resolve local refs.
-        schema_href: Maps a component schema name to the relative href used for
-            schema → schema links. Defaults to :func:`sibling_schema_href` since
-            schema documents share the ``schemas/`` directory.
+        schema_href: Legacy per-name mapper for local schema→schema links. Used
+            only when ``ref_link`` is not supplied.
+        ref_link: Maps a ``$ref`` string to a relative href (or ``None``).
+            Supplied by the reader to enable cross-file links (053-F); when
+            ``None``, a local-only link function is derived from ``schema_href``.
 
     Returns:
         A Markdown body: an H1 schema-name heading followed by an optional
@@ -298,6 +322,7 @@ def render_schema(
         (``allOf`` / ``oneOf`` / ``anyOf``), and an enum Values list. Absent
         sections are omitted.
     """
+    link = ref_link if ref_link is not None else _href_to_ref_link(schema_href)
     resolved = deref(schema, root)
     if not isinstance(resolved, Mapping):
         resolved = {}
@@ -326,7 +351,7 @@ def render_schema(
             rows.append(
                 [
                     _cell(f"`{prop_name}`"),
-                    _cell(_schema_type_summary(prop_schema, root, schema_href)),
+                    _cell(_schema_type_summary(prop_schema, root, link)),
                     _cell("yes" if prop_name in required else "no"),
                     _cell(prop_description),
                 ]
@@ -338,7 +363,7 @@ def render_schema(
         members = resolved.get(key)
         if isinstance(members, list) and members:
             bullets = "\n".join(
-                f"- {_schema_type_summary(member, root, schema_href)}" for member in members
+                f"- {_schema_type_summary(member, root, link)}" for member in members
             )
             sections.append(f"## Composition ({key})\n\n{bullets}")
 
@@ -351,6 +376,7 @@ def render_schema(
 
 
 __all__ = [
+    "RefLink",
     "SchemaHref",
     "default_schema_href",
     "render_operation",

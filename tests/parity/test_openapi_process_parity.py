@@ -167,3 +167,48 @@ def test_swagger_2_spec_is_ingested(tmp_path: Path) -> None:
     job_root = workspace / "output" / job.job_id
     produced = {p.relative_to(job_root).as_posix() for p in job_root.rglob("*.md")}
     assert produced == {"api/operations/ping.md", "api/schemas/Widget.md"}
+
+
+def test_cross_file_swagger_corpus_links_operations_to_schemas(tmp_path: Path) -> None:
+    """A split-file Swagger corpus cross-links operations to external schema docs (053-F)."""
+    workspace = tmp_path / "corpus"
+    types = json.dumps(
+        {
+            "swagger": "2.0",
+            "info": {"title": "T", "version": "1"},
+            "definitions": {"Widget": {"type": "object", "properties": {"id": {"type": "string"}}}},
+        }
+    ).encode("utf-8")
+    swagger = json.dumps(
+        {
+            "swagger": "2.0",
+            "info": {"title": "S", "version": "1"},
+            "paths": {
+                "/w": {
+                    "get": {
+                        "operationId": "getW",
+                        "responses": {
+                            "200": {
+                                "description": "OK",
+                                "schema": {"$ref": "./types.json#/definitions/Widget"},
+                            }
+                        },
+                    }
+                }
+            },
+        }
+    ).encode("utf-8")
+    job = _write_staging_job(
+        workspace, "svc", {"svc/swagger.json": swagger, "svc/types.json": types}
+    )
+
+    result = execute_process(
+        ProcessRequest(workspace_root=str(workspace), staging_dir="staging", output_dir="output")
+    )
+    assert result.success is True, result.error
+    job_root = workspace / "output" / job.job_id
+
+    operation = (job_root / "svc/swagger/operations/getW.md").read_text(encoding="utf-8")
+    assert "[Widget](../../types/schemas/Widget.md)" in operation
+    # The linked schema doc is produced by the sibling file's ingestion.
+    assert (job_root / "svc/types/schemas/Widget.md").exists()

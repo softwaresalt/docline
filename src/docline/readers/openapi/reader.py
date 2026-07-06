@@ -14,7 +14,6 @@ and each named component schema becomes a fully-populated
 
 from __future__ import annotations
 
-import re
 from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -25,18 +24,17 @@ from docline.process.cross_doc_links import resolve_cross_doc_links
 from docline.process.hashing import compute_content_sha256
 from docline.readers.openapi.convert import swagger2_to_openapi3
 from docline.readers.openapi.errors import OpenApiError
-from docline.readers.openapi.loader import load_spec
+from docline.readers.openapi.loader import component_name_from_ref, load_spec, slug
 from docline.readers.openapi.render import (
-    default_schema_href,
+    RefLink,
     render_operation,
     render_schema,
-    sibling_schema_href,
 )
+from docline.readers.openapi.resolve import CorpusRefLinker
 from docline.schema.models import BaseDocument, BaseFrontmatter
 
 # HTTP methods recognized under a path item, in stable render order.
 _HTTP_METHODS = ("get", "put", "post", "delete", "options", "head", "patch", "trace")
-_SLUG_RE = re.compile(r"[^A-Za-z0-9._-]+")
 
 OPERATION_DOC_TYPE = "openapi_operation"
 SCHEMA_DOC_TYPE = "openapi_schema"
@@ -57,15 +55,39 @@ class OpenApiDocument:
     document: BaseDocument
 
 
-def _slug(text: str) -> str:
-    """Return a filesystem/link-safe slug for *text*."""
-    slug = _SLUG_RE.sub("-", text).strip("-")
-    return slug or "operation"
-
-
 def _derive_operation_id(method: str, path: str) -> str:
     """Derive a deterministic operation id when ``operationId`` is absent."""
-    return _slug(f"{method.lower()} {path}")
+    return slug(f"{method.lower()} {path}")
+
+
+_SCHEMAS_REF_PREFIX = "#/components/schemas/"
+
+
+def _default_operation_ref_link(ref: str) -> str | None:
+    """Local-only ref link for operation docs (pre-053-F single-file behavior)."""
+    if ref.startswith(_SCHEMAS_REF_PREFIX):
+        return f"../schemas/{slug(component_name_from_ref(ref))}.md"
+    return None
+
+
+def _default_schema_ref_link(ref: str) -> str | None:
+    """Local-only ref link for schema docs (sibling within ``schemas/``)."""
+    if ref.startswith(_SCHEMAS_REF_PREFIX):
+        return f"{slug(component_name_from_ref(ref))}.md"
+    return None
+
+
+def _make_ref_link(linker: CorpusRefLinker | None, subdir: str) -> RefLink:
+    """Build the ``$ref`` → href function for a doc kind (``operations``/``schemas``).
+
+    When *linker* is ``None`` (single-file ingest), only local refs link. When a
+    linker is present (corpus ingest), cross-file refs resolve to sibling files'
+    schema docs.
+    """
+    if linker is None:
+        return _default_operation_ref_link if subdir == "operations" else _default_schema_ref_link
+    from_dir = f"{linker.referring_basename}/{subdir}"
+    return lambda ref: linker.link_for(ref, from_dir=from_dir)
 
 
 def _unique(candidate: str, seen: set[str]) -> str:
@@ -93,9 +115,17 @@ def _assemble_document(
     source_path: str,
     ingested_at: datetime,
     openapi_meta: dict[str, Any],
+    cross_link_path: str | None = None,
 ) -> BaseDocument:
-    """Build a validated BaseDocument from a rendered body and its metadata."""
-    _, links = resolve_cross_doc_links(body, current_rel_path=Path(relative_path), deduplicate=True)
+    """Build a validated BaseDocument from a rendered body and its metadata.
+
+    ``cross_link_path`` is the document's path used to resolve cross-doc link
+    hrefs into graph-edge targets. For single-file ingests it is the file-local
+    ``relative_path``; for corpus ingests it is the corpus-relative path so
+    cross-file (``../../other/...``) links resolve to the correct target.
+    """
+    link_path = cross_link_path if cross_link_path is not None else relative_path
+    _, links = resolve_cross_doc_links(body, current_rel_path=Path(link_path), deduplicate=True)
     docline_namespace: dict[str, Any] = {"openapi": openapi_meta}
     if links:
         docline_namespace["cross_doc_links"] = [dict(link) for link in links]
@@ -117,6 +147,7 @@ def read_openapi_spec(
     *,
     source_uri: str | None = None,
     source_path: str = "",
+    corpus_root: str | Path | None = None,
 ) -> list[OpenApiDocument]:
     """Render an OpenAPI 3.x specification into assembled BaseDocuments.
 
@@ -127,6 +158,11 @@ def read_openapi_spec(
             omitted, the spec path's POSIX form is used.
         source_path: Project-relative POSIX path of the spec artifact, recorded
             as ``source_path`` on every emitted document.
+        corpus_root: When provided, enables external/split-file ``$ref``
+            cross-linking (053-F): refs to other spec files under this root are
+            resolved (path-contained; URL refs denied) and emitted as relative
+            Markdown links to the schema docs those files produce. When ``None``,
+            only local (in-file) refs are linked.
 
     Returns:
         One :class:`OpenApiDocument` per operation (``operations/{id}.md``) and
@@ -143,7 +179,7 @@ def read_openapi_spec(
     swagger = spec.get("swagger")
     if isinstance(swagger, str) and swagger.startswith("2."):
         # Pre-convert Swagger 2.0 to OpenAPI 3.x, then render via the same path
-        # (051-F). External/split-file $ref resolution remains deferred.
+        # (051-F). External/split-file $ref resolution is layered on top (053-F).
         spec = swagger2_to_openapi3(spec)
 
     version = spec.get("openapi")
@@ -152,6 +188,14 @@ def read_openapi_spec(
             "read_openapi_spec requires an OpenAPI 3.x or Swagger 2.0 root; "
             f"got openapi={version!r} swagger={swagger!r}"
         )
+
+    linker = (
+        CorpusRefLinker(referring_path=path.resolve(), corpus_root=Path(corpus_root))
+        if corpus_root is not None
+        else None
+    )
+    operation_ref_link = _make_ref_link(linker, "operations")
+    schema_ref_link = _make_ref_link(linker, "schemas")
 
     base_uri = source_uri if source_uri is not None else path.as_posix()
     ingested_at = datetime.now(UTC)
@@ -174,9 +218,9 @@ def read_openapi_spec(
                     if isinstance(raw_id, str) and raw_id.strip()
                     else _derive_operation_id(method, path_str)
                 )
-                relative_path = _unique(f"operations/{_slug(operation_id)}.md", seen_paths)
+                relative_path = _unique(f"operations/{slug(operation_id)}.md", seen_paths)
                 body = render_operation(
-                    method, path_str, operation, root=spec, schema_href=default_schema_href
+                    method, path_str, operation, root=spec, ref_link=operation_ref_link
                 )
                 summary = operation.get("summary")
                 title = (
@@ -200,6 +244,11 @@ def read_openapi_spec(
                                 "path": path_str,
                                 "operation_id": operation_id,
                             },
+                            cross_link_path=(
+                                f"{linker.referring_basename}/{relative_path}"
+                                if linker is not None
+                                else None
+                            ),
                         ),
                     )
                 )
@@ -210,8 +259,8 @@ def read_openapi_spec(
         for name, schema in schemas.items():
             if not isinstance(schema, Mapping):
                 continue
-            relative_path = _unique(f"schemas/{_slug(str(name))}.md", seen_paths)
-            body = render_schema(str(name), schema, root=spec, schema_href=sibling_schema_href)
+            relative_path = _unique(f"schemas/{slug(str(name))}.md", seen_paths)
+            body = render_schema(str(name), schema, root=spec, ref_link=schema_ref_link)
             documents.append(
                 OpenApiDocument(
                     relative_path,
@@ -224,6 +273,11 @@ def read_openapi_spec(
                         source_path=source_path,
                         ingested_at=ingested_at,
                         openapi_meta={"schema_name": str(name)},
+                        cross_link_path=(
+                            f"{linker.referring_basename}/{relative_path}"
+                            if linker is not None
+                            else None
+                        ),
                     ),
                 )
             )
