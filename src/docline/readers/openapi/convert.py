@@ -280,7 +280,15 @@ def _split_convert_params(
 
 
 def _convert_response(resp: Mapping[str, Any], produces: list[str]) -> dict[str, Any]:
-    """Convert a 2.0 response object to 3.x (schema -> content)."""
+    """Convert a 2.0 response object to 3.x (schema -> content).
+
+    Total by construction: a non-mapping response value (malformed spec) yields a
+    minimal valid 3.x response rather than raising, so one bad spec cannot abort
+    the whole ``execute_process`` job.
+    """
+    if not isinstance(resp, Mapping):
+        return {"description": ""}
+
     ref = resp.get("$ref")
     if isinstance(ref, str):
         return {"$ref": _rewrite_ref_value(ref)}

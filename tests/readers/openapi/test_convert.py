@@ -173,3 +173,56 @@ def test_definitions_only_spec_converts_schemas() -> None:
     assert set(out["components"]["schemas"]) == {"A", "B"}
     assert out["components"]["schemas"]["B"] == {"$ref": "#/components/schemas/A"}
     assert out["paths"] == {}
+
+
+def test_malformed_non_mapping_response_does_not_crash() -> None:
+    """A non-mapping response value (malformed 2.0) is coerced, never raised (Copilot #139)."""
+    spec = {
+        "swagger": "2.0",
+        "info": {"title": "X", "version": "1"},
+        "paths": {"/x": {"get": {"operationId": "x", "responses": {"200": "OK"}}}},
+    }
+    out = swagger2_to_openapi3(spec)
+    resp = out["paths"]["/x"]["get"]["responses"]["200"]
+    assert resp == {"description": ""}
+
+
+def test_form_data_params_become_form_request_body() -> None:
+    """formData parameters aggregate into a form-encoded request body."""
+    spec = {
+        "swagger": "2.0",
+        "info": {"title": "X", "version": "1"},
+        "paths": {
+            "/upload": {
+                "post": {
+                    "operationId": "upload",
+                    "parameters": [
+                        {"name": "name", "in": "formData", "required": True, "type": "string"},
+                        {"name": "size", "in": "formData", "type": "integer"},
+                    ],
+                    "responses": {"200": {"description": "OK"}},
+                }
+            }
+        },
+    }
+    out = swagger2_to_openapi3(spec)
+    post = out["paths"]["/upload"]["post"]
+    schema = post["requestBody"]["content"]["application/x-www-form-urlencoded"]["schema"]
+    assert schema["type"] == "object"
+    assert schema["properties"]["name"] == {"type": "string"}
+    assert schema["properties"]["size"] == {"type": "integer"}
+    assert schema["required"] == ["name"]
+    # formData params are not left in the operation parameters list
+    assert all(p.get("in") != "formData" for p in post.get("parameters", []))
+
+
+def test_basic_auth_security_scheme() -> None:
+    """A 2.0 ``basic`` securityDefinition converts to a 3.x http/basic scheme."""
+    spec = {
+        "swagger": "2.0",
+        "info": {"title": "X", "version": "1"},
+        "securityDefinitions": {"b": {"type": "basic"}},
+        "paths": {},
+    }
+    out = swagger2_to_openapi3(spec)
+    assert out["components"]["securitySchemes"]["b"] == {"type": "http", "scheme": "basic"}
