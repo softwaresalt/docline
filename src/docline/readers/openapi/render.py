@@ -183,9 +183,13 @@ def _render_responses(responses: Any, root: Mapping[str, Any], schema_href: Sche
     if not isinstance(responses, Mapping) or not responses:
         return ""
 
+    # Response status codes parse as integers under YAML (``200:``) but as
+    # strings under JSON; normalize to string keys before sorting/indexing so
+    # both spec formats render identically.
+    entries = {str(key): value for key, value in responses.items()}
     rows: list[list[str]] = []
-    for status in sorted((str(key) for key in responses), key=_status_sort_key):
-        response = deref(responses[status], root)
+    for status in sorted(entries, key=_status_sort_key):
+        response = deref(entries[status], root)
         if isinstance(response, Mapping):
             description = response.get("description", "")
             schema = _pick_content_schema(response.get("content"))

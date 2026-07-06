@@ -119,3 +119,24 @@ def test_source_uri_defaults_to_path(tmp_path: Path) -> None:
     docs = read_openapi_spec(spec_path)
     op = next(d for d in docs if d.relative_path == "operations/getWidget.md")
     assert op.document.frontmatter.source == f"{spec_path.as_posix()}#getWidget"
+
+
+def test_read_yaml_spec_with_integer_status_codes(tmp_path: Path) -> None:
+    """A YAML spec (integer status codes) renders end-to-end without error."""
+    spec_path = tmp_path / "demo.yaml"
+    spec_path.write_text(
+        "openapi: 3.1.0\n"
+        "info:\n  title: Demo\n  version: 1.0.0\n"
+        "paths:\n"
+        "  /ping:\n"
+        "    get:\n"
+        "      operationId: ping\n"
+        "      responses:\n"
+        "        200:\n"
+        "          description: OK\n",
+        encoding="utf-8",
+    )
+    docs = read_openapi_spec(spec_path, source_uri="specs/demo.yaml")
+    op = next(d for d in docs if d.relative_path == "operations/ping.md")
+    assert op.document.frontmatter.doc_type == "openapi_operation"
+    assert "| `200` | OK |  |" in op.document.body

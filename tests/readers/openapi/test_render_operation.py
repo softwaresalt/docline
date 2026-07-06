@@ -150,3 +150,16 @@ def test_render_operation_custom_schema_href() -> None:
         schema_href=lambda name: f"schemas/{name}.md",
     )
     assert "[Widget](schemas/Widget.md)" in result
+
+
+def test_render_operation_integer_status_keys() -> None:
+    """YAML-parsed integer status codes (e.g. ``200:``) render without KeyError."""
+    op = {
+        "responses": {
+            200: {"description": "OK"},
+            404: {"description": "Missing"},
+        }
+    }
+    result = render_operation("get", "/x", op, root=_ROOT)
+    assert "| `200` | OK |  |" in result
+    assert "| `404` | Missing |  |" in result
