@@ -103,7 +103,7 @@ def test_process_result_model_fields_complete() -> None:
 
 def test_cli_json_deserializes_to_fetch_result_model(capsys) -> None:
     """MCP fetch JSON model remains stable for fetch results."""
-    result = FetchResult(**SERVER.fetch(FetchRequest(source="http://example.com")).model_dump())
+    result = FetchResult(**SERVER.fetch(FetchRequest(source="ftp://example.com")).model_dump())
 
     assert result.success is False
     assert result.staged_path == ""

@@ -7,6 +7,7 @@ from collections.abc import Mapping
 from datetime import UTC, datetime
 from hashlib import sha256
 from pathlib import Path
+from urllib.parse import urlparse
 
 from docline.app_models import (
     FetchRequest,
@@ -32,12 +33,11 @@ from docline.readers.openapi.errors import OpenApiError
 from docline.readers.openapi.reader import read_openapi_spec
 from docline.readers.picture_sink import CountingPictureSink
 from docline.schema.library import WebFrontmatter, WikiFrontmatter
-from docline.schema.models import SchemaValidationError
+from docline.schema.models import DoclineError, SchemaValidationError
 from docline.types import SourceInput, SourceKind
 
 _log = logging.getLogger(__name__)
 
-_FETCH_NOT_IMPLEMENTED_ERROR = "Fetch execution is not implemented."
 _CRAWL_MANIFEST_NAME = "crawl-manifest.json"
 _PUBLISH_CONFIG_NAME = ".openpublishing.publish.config.json"
 _HEADING_RE = re.compile(r"^(#{1,6})(\s+.+)$")
@@ -554,23 +554,65 @@ def get_mcp_manifest() -> McpManifestResponse:
 
 
 def execute_fetch(request: FetchRequest) -> FetchResult:
-    """Execute a fetch operation.
+    """Fetch a web source and stage every crawled page for processing.
 
-    Until the real fetch pipeline exists, this returns an explicit failure
-    result rather than claiming that a staged artifact was produced.
+    Wraps the request URL as a :class:`~docline.elt.models.WebCrawlSource` and
+    delegates to the ELT single-source staging machinery
+    (:func:`~docline.elt.execute.execute_source_configs`). The URL is crawled
+    within a bounded page/depth budget and each fetched HTML page is written to
+    ``{output_dir}/{shard}/{job_id}/files/`` alongside a ``metadata.json`` (a
+    completed :class:`~docline.fetch.models.StagingJob`) and a
+    ``crawl-manifest.json``. This is the same staging layout the CLI ``fetch``
+    command and :func:`execute_process` consume, so the MCP fetch tool and the
+    CLI produce identical staged output.
+
+    Only ``http``/``https`` sources are supported; ``FetchRequest.depth`` maps
+    to the crawl's maximum discovery depth and the page budget defaults to a
+    bounded :class:`~docline.fetch.crawl.CrawlConfig` limit. Robots, URL-policy,
+    and SSRF guards are enforced by the underlying crawler.
 
     Args:
         request: Validated fetch parameters.
 
     Returns:
-        A fetch result describing the honest placeholder outcome.
+        A :class:`~docline.app_models.FetchResult`: ``success=True`` with the
+        staged job path on success, or ``success=False`` with a diagnostic
+        ``error`` when the source scheme is unsupported, workspace containment
+        fails, or no pages could be staged.
     """
-    return FetchResult(
-        source=request.source,
-        staged_path="",
-        success=False,
-        error=_FETCH_NOT_IMPLEMENTED_ERROR,
-    )
+    from docline.elt.execute import execute_source_configs
+    from docline.elt.models import WebCrawlSource
+
+    root = Path.cwd()
+    try:
+        safe_workspace_path(request.output_dir, root)
+    except PathContainmentError as err:
+        return FetchResult(source=request.source, staged_path="", success=False, error=str(err))
+
+    scheme = urlparse(request.source).scheme.lower()
+    if scheme not in {"http", "https"}:
+        return FetchResult(
+            source=request.source,
+            staged_path="",
+            success=False,
+            error=f"execute_fetch supports http(s) URLs only; got scheme {scheme or '(none)'!r}.",
+        )
+
+    source = WebCrawlSource(type="web_crawl", url=request.source, depth=request.depth)
+    try:
+        jobs = execute_source_configs([source], request.output_dir, workspace_root=root)
+    except (DoclineError, OSError) as err:
+        return FetchResult(source=request.source, staged_path="", success=False, error=str(err))
+
+    job = jobs[0]
+    if not job.complete:
+        return FetchResult(
+            source=request.source,
+            staged_path="",
+            success=False,
+            error=f"No crawlable pages were staged for {request.source}.",
+        )
+    return FetchResult(source=request.source, staged_path=job.cache_path, success=True)
 
 
 def _emit_openapi_documents(
