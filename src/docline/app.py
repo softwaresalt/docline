@@ -577,6 +577,7 @@ def _emit_openapi_documents(
     file_path: Path,
     rel_in_files: Path,
     *,
+    files_dir: Path,
     job: StagingJob,
     root: Path,
     output_dir: Path,
@@ -597,6 +598,8 @@ def _emit_openapi_documents(
     Args:
         file_path: Absolute path to the staged spec file.
         rel_in_files: Spec path relative to the staged ``files/`` directory.
+        files_dir: Staged ``files/`` directory — the corpus root and containment
+            boundary for external/split-file ``$ref`` resolution (053-F).
         job: The completed staging job describing the document origin.
         root: Resolved workspace root (for manifest ``output_path`` relativity).
         output_dir: Contained process output root.
@@ -613,7 +616,12 @@ def _emit_openapi_documents(
     base_uri = job.metadata.source or input_path_posix
 
     try:
-        documents = read_openapi_spec(file_path, source_uri=base_uri, source_path=input_path_posix)
+        documents = read_openapi_spec(
+            file_path,
+            source_uri=base_uri,
+            source_path=input_path_posix,
+            corpus_root=files_dir,
+        )
     except OpenApiError as err:
         _log.warning("Failed to ingest OpenAPI spec %s: %s", file_path, err)
         return start_ingest_order, 0, [str(err)]
@@ -735,6 +743,7 @@ def execute_process(request: ProcessRequest) -> ProcessResult:
                 next_ingest_order, written, openapi_errors = _emit_openapi_documents(
                     file_path,
                     rel_in_files,
+                    files_dir=files_dir,
                     job=job,
                     root=root,
                     output_dir=output_dir,

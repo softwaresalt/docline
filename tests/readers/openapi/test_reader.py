@@ -144,7 +144,79 @@ def test_read_yaml_spec_with_integer_status_codes(tmp_path: Path) -> None:
     assert "| `200` | OK |  |" in op.document.body
 
 
-def test_read_openapi_spec_rejects_swagger_2(tmp_path: Path) -> None:
+def test_read_swagger_2_cross_file_link(tmp_path: Path) -> None:
+    """A corpus ingest cross-links an operation to an external file's schema doc (053-F)."""
+    (tmp_path / "svc").mkdir()
+    (tmp_path / "svc" / "types.json").write_text(
+        json.dumps(
+            {
+                "swagger": "2.0",
+                "info": {"title": "T", "version": "1"},
+                "definitions": {
+                    "Widget": {"type": "object", "properties": {"id": {"type": "string"}}}
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    swagger = {
+        "swagger": "2.0",
+        "info": {"title": "S", "version": "1"},
+        "paths": {
+            "/w": {
+                "get": {
+                    "operationId": "getW",
+                    "responses": {
+                        "200": {
+                            "description": "OK",
+                            "schema": {"$ref": "./types.json#/definitions/Widget"},
+                        }
+                    },
+                }
+            }
+        },
+    }
+    (tmp_path / "svc" / "swagger.json").write_text(json.dumps(swagger), encoding="utf-8")
+
+    docs = read_openapi_spec(
+        tmp_path / "svc" / "swagger.json",
+        source_uri="svc/swagger.json",
+        source_path="svc/swagger.json",
+        corpus_root=tmp_path,
+    )
+    op = next(d for d in docs if d.relative_path == "operations/getW.md")
+    # The external ref becomes a cross-file Markdown link...
+    assert "[Widget](../../types/schemas/Widget.md)" in op.document.body
+    # ...harvested as a corpus-relative graph edge to the target file's schema doc.
+    links = (op.document.frontmatter.docline or {}).get("cross_doc_links", [])
+    targets = {link["target_path"] for link in links}
+    assert "svc/types/schemas/Widget.md" in targets
+
+
+def test_read_openapi_spec_without_corpus_no_external_links(tmp_path: Path) -> None:
+    """Without corpus_root, external refs are not linked (single-file behavior)."""
+    swagger = {
+        "swagger": "2.0",
+        "info": {"title": "S", "version": "1"},
+        "paths": {
+            "/w": {
+                "get": {
+                    "operationId": "getW",
+                    "responses": {
+                        "200": {
+                            "description": "OK",
+                            "schema": {"$ref": "./types.json#/definitions/Widget"},
+                        }
+                    },
+                }
+            }
+        },
+    }
+    spec_path = tmp_path / "swagger.json"
+    spec_path.write_text(json.dumps(swagger), encoding="utf-8")
+    docs = read_openapi_spec(spec_path, source_uri="s.json")
+    op = next(d for d in docs if d.relative_path == "operations/getW.md")
+    assert "](" not in op.document.body  # no link emitted for the external ref
     """A malformed spec that is neither OpenAPI 3.x nor Swagger 2.0 is rejected."""
     from docline.readers.openapi.errors import OpenApiError
 
