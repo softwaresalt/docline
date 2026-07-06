@@ -1,4 +1,5 @@
 ---
+title: "OpenAPI external/split-file $ref resolution — cross-link value analysis and decomposition"
 type: spike
 date: 2026-07-05
 time_box: "1h"
