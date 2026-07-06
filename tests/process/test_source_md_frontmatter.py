@@ -128,6 +128,46 @@ def test_parse_md_frontmatter_handles_multiline_yaml_values() -> None:
     assert body.startswith("# Body")
 
 
+def test_parse_md_frontmatter_strips_leading_bom() -> None:
+    """A UTF-8 BOM before the frontmatter fence must not defeat parsing (052-F)."""
+    from docline.process.output_contract import _parse_md_frontmatter
+
+    fm, body = _parse_md_frontmatter("\ufeff" + MS_LEARN_SAMPLE)
+    assert fm is not None
+    assert fm["title"] == "Sample doc title"
+    assert body.startswith("# Sample H1 heading")
+    assert "\ufeff" not in body
+
+
+def test_parse_md_frontmatter_strips_bom_without_frontmatter() -> None:
+    """A BOM on a file with no frontmatter is stripped from the returned body."""
+    from docline.process.output_contract import _parse_md_frontmatter
+
+    fm, body = _parse_md_frontmatter("\ufeff" + NO_FRONTMATTER_SAMPLE)
+    assert fm is None
+    assert body.startswith("# Plain H1")
+    assert "\ufeff" not in body
+
+
+def test_build_output_document_parts_handles_bom_prefixed_md(tmp_path: Path) -> None:
+    """A staged BOM-prefixed .md file assembles frontmatter like a non-BOM file (052-F)."""
+    from docline.process.output_contract import build_output_document_parts
+
+    f = tmp_path / "bom.md"
+    # Real UTF-8 BOM bytes (EF BB BF) ahead of the YAML frontmatter.
+    f.write_bytes(b"\xef\xbb\xbf" + MS_LEARN_SAMPLE.encode("utf-8"))
+
+    parts = build_output_document_parts(f, Path("bom.md"))
+
+    assert len(parts) == 1
+    assert parts[0].source_frontmatter is not None
+    assert parts[0].source_frontmatter["title"] == "Sample doc title"
+    body = parts[0].body
+    assert body.lstrip().startswith("# Sample H1 heading")
+    assert "title: Sample doc title" not in body
+    assert "\ufeff" not in body
+
+
 def test_parse_md_frontmatter_handles_triple_dash_inside_value() -> None:
     """A quoted YAML value containing ``---`` MUST NOT be mistaken for the
     closing fence. The fence-finder requires ``---`` to be on its own line
