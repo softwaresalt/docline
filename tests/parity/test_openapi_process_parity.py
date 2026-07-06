@@ -135,22 +135,35 @@ def test_config_json_is_not_ingested_as_openapi(tmp_path: Path) -> None:
     assert produced == []
 
 
-def test_swagger_2_spec_is_not_ingested(tmp_path: Path) -> None:
-    """A staged Swagger 2.0 spec is detected but NOT rendered (v1 is 3.x only)."""
+def test_swagger_2_spec_is_ingested(tmp_path: Path) -> None:
+    """A staged Swagger 2.0 spec is converted to 3.x and rendered (051-F)."""
     workspace = tmp_path / "v2"
     swagger = json.dumps(
         {
             "swagger": "2.0",
             "info": {"title": "Legacy", "version": "1.0"},
-            "paths": {"/ping": {"get": {"responses": {"200": {"description": "OK"}}}}},
+            "paths": {
+                "/ping": {
+                    "get": {
+                        "operationId": "ping",
+                        "responses": {
+                            "200": {
+                                "description": "OK",
+                                "schema": {"$ref": "#/definitions/Widget"},
+                            }
+                        },
+                    }
+                }
+            },
             "definitions": {"Widget": {"type": "object"}},
         }
     ).encode("utf-8")
     job = _write_staging_job(workspace, "legacy-svc", {"api.json": swagger})
 
-    execute_process(
+    result = execute_process(
         ProcessRequest(workspace_root=str(workspace), staging_dir="staging", output_dir="output")
     )
+    assert result.success is True, result.error
     job_root = workspace / "output" / job.job_id
-    produced = list(job_root.rglob("*.md")) if job_root.exists() else []
-    assert produced == []
+    produced = {p.relative_to(job_root).as_posix() for p in job_root.rglob("*.md")}
+    assert produced == {"api/operations/ping.md", "api/schemas/Widget.md"}
