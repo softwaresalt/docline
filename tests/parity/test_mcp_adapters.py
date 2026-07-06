@@ -9,26 +9,26 @@ from docline.mcp.server import SERVER
 
 def test_mcp_server_fetch_returns_fetch_result() -> None:
     """MCP fetch returns the shared fetch result model."""
-    result = SERVER.fetch(FetchRequest(source="http://example.com"))
+    result = SERVER.fetch(FetchRequest(source="ftp://example.com"))
     assert isinstance(result, FetchResult)
 
 
-def test_mcp_server_fetch_result_reports_not_implemented() -> None:
-    """MCP fetch reports failure until real staging is implemented."""
-    result = SERVER.fetch(FetchRequest(source="http://example.com"))
+def test_mcp_server_fetch_rejects_unsupported_scheme() -> None:
+    """MCP fetch reports failure for a non-http(s) source scheme."""
+    result = SERVER.fetch(FetchRequest(source="ftp://example.com"))
     assert result.success is False
-    assert result.error == "Fetch execution is not implemented."
+    assert "http" in (result.error or "").lower()
 
 
 def test_mcp_server_fetch_result_has_source() -> None:
     """MCP fetch preserves the source field."""
-    result = SERVER.fetch(FetchRequest(source="http://example.com"))
-    assert result.source == "http://example.com"
+    result = SERVER.fetch(FetchRequest(source="ftp://example.com"))
+    assert result.source == "ftp://example.com"
 
 
-def test_mcp_server_fetch_result_has_no_staged_path_when_not_implemented() -> None:
-    """MCP fetch keeps staged_path empty until a file is staged."""
-    result = SERVER.fetch(FetchRequest(source="http://example.com"))
+def test_mcp_server_fetch_no_staged_path_on_failure() -> None:
+    """MCP fetch keeps staged_path empty when nothing is staged."""
+    result = SERVER.fetch(FetchRequest(source="ftp://example.com"))
     assert result.staged_path == ""
 
 
@@ -57,22 +57,22 @@ def test_mcp_server_process_with_existing_dir_succeeds_when_empty(monkeypatch, t
 
 def test_mcp_server_fetch_process_same_contracts_as_app() -> None:
     """MCP fetch returns the same contract as the shared app layer."""
-    request = FetchRequest(source="http://example.com")
+    request = FetchRequest(source="ftp://example.com")
     assert SERVER.fetch(request) == execute_fetch(request)
 
 
 def test_mcp_server_fetch_accepts_raw_dict() -> None:
     """MCP fetch validates and accepts a raw dict payload at the transport boundary."""
-    result = SERVER.fetch({"source": "http://example.com"})
+    result = SERVER.fetch({"source": "ftp://example.com"})
     assert isinstance(result, FetchResult)
     assert result.success is False
-    assert result.error == "Fetch execution is not implemented."
+    assert "http" in (result.error or "").lower()
 
 
 def test_mcp_server_fetch_dict_source_preserved() -> None:
     """MCP fetch from raw dict preserves the source field."""
-    result = SERVER.fetch({"source": "http://example.com"})
-    assert result.source == "http://example.com"
+    result = SERVER.fetch({"source": "ftp://example.com"})
+    assert result.source == "ftp://example.com"
 
 
 def test_mcp_server_fetch_invalid_dict_raises_validation_error() -> None:

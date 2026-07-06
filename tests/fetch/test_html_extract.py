@@ -125,3 +125,94 @@ def test_strip_dom_noise_removes_script_elements() -> None:
     result = strip_dom_noise(_SCRIPT_HEAVY_HTML)
     assert "<script>" not in result
     assert "trackAds" not in result
+
+
+# --- 054-F / T3: PostgreSQL / DocBook structural fidelity ---
+
+
+def test_pre_block_renders_as_fenced_code() -> None:
+    """A <pre> block renders as a fenced code block preserving newlines."""
+    html = (
+        "<article><div class='refsynopsisdiv'>"
+        "<pre class='synopsis'>SELECT *\n  FROM t\n  WHERE x = 1;</pre>"
+        "</div></article>"
+    )
+    result = extract_main_content(html)
+    assert "```" in result
+    assert "SELECT *\n  FROM t\n  WHERE x = 1;" in result
+
+
+def test_table_renders_as_markdown_table() -> None:
+    """A content <table> renders as a GitHub-flavored Markdown table."""
+    html = (
+        "<article><table class='table'>"
+        "<thead><tr><th>Name</th><th>Type</th></tr></thead>"
+        "<tbody><tr><td>id</td><td>integer</td></tr>"
+        "<tr><td>label</td><td>text</td></tr></tbody>"
+        "</table></article>"
+    )
+    result = extract_main_content(html)
+    assert "| Name | Type |" in result
+    assert "| --- | --- |" in result
+    assert "| id | integer |" in result
+    assert "| label | text |" in result
+
+
+def test_table_cell_pipe_is_escaped() -> None:
+    """A pipe character inside a table cell is escaped to keep the table valid."""
+    html = "<article><table><tr><th>a | b</th></tr><tr><td>c</td></tr></table></article>"
+    result = extract_main_content(html)
+    assert r"a \| b" in result
+
+
+def test_note_div_renders_as_blockquote() -> None:
+    """A DocBook note admonition renders as a labeled blockquote."""
+    html = (
+        "<article><div class='note'><h3 class='title'>Note</h3><p>Mind the gap.</p></div></article>"
+    )
+    result = extract_main_content(html)
+    assert "> **Note**" in result
+    assert "Mind the gap." in result
+    # The redundant DocBook title node must not duplicate the label.
+    assert result.count("Note") == 1
+
+
+def test_caution_div_renders_as_blockquote() -> None:
+    """A DocBook caution admonition renders with its own label."""
+    html = "<article><div class='caution'><p>Be careful.</p></div></article>"
+    result = extract_main_content(html)
+    assert "> **Caution**" in result
+    assert "Be careful." in result
+
+
+def test_strip_dom_noise_removes_navheader_and_navfooter() -> None:
+    """DocBook navigation chrome (navheader/navfooter) is stripped as noise."""
+    html = (
+        "<div class='navheader'><table summary='Navigation header'>"
+        "<tr><td>18</td><td>17</td></tr></table></div>"
+        "<article><p>Real content.</p></article>"
+        "<div class='navfooter'><table summary='Navigation footer'>"
+        "<tr><td>Prev</td><td>Next</td></tr></table></div>"
+    )
+    cleaned = strip_dom_noise(html)
+    assert "navheader" not in cleaned
+    assert "navfooter" not in cleaned
+    assert "Navigation header" not in cleaned
+
+
+def test_extract_main_content_strips_nav_leaves_content() -> None:
+    """End-to-end: nav chrome is removed while synopsis/content survive."""
+    html = (
+        "<html><body>"
+        "<div class='navheader'><table summary='Navigation header'>"
+        "<tr><td>18</td><td>17</td><td>16</td></tr></table></div>"
+        "<div class='refsect1'><h2>Synopsis</h2>"
+        "<pre class='synopsis'>SELECT 1;</pre></div>"
+        "<div class='navfooter'><table summary='Navigation footer'>"
+        "<tr><td>Prev</td></tr></table></div>"
+        "</body></html>"
+    )
+    result = extract_main_content(html)
+    assert "```\nSELECT 1;\n```" in result
+    assert "Prev" not in result
+    assert "16" not in result

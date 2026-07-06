@@ -107,14 +107,14 @@ def test_cli_fetch_output_matches_orchestrator(capsys, monkeypatch, tmp_path) ->
 
 def test_mcp_output_matches_app_layer_fetch_result() -> None:
     """MCP fetch output matches the shared app-layer fetch result model."""
-    request = FetchRequest(source="http://example.com")
+    request = FetchRequest(source="ftp://example.com")
 
     assert SERVER.fetch(request) == execute_fetch(request)
 
 
 def test_mcp_fetch_output_matches_app_layer_fetch_result() -> None:
     """MCP fetch output still matches the shared app-layer fetch result model."""
-    request = FetchRequest(source="http://example.com")
+    request = FetchRequest(source="ftp://example.com")
 
     assert SERVER.fetch(request) == execute_fetch(request)
 
