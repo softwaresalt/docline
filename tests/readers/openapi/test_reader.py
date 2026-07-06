@@ -217,7 +217,10 @@ def test_read_openapi_spec_without_corpus_no_external_links(tmp_path: Path) -> N
     docs = read_openapi_spec(spec_path, source_uri="s.json")
     op = next(d for d in docs if d.relative_path == "operations/getW.md")
     assert "](" not in op.document.body  # no link emitted for the external ref
-    """A malformed spec that is neither OpenAPI 3.x nor Swagger 2.0 is rejected."""
+
+
+def test_read_openapi_spec_rejects_unknown_root(tmp_path: Path) -> None:
+    """A spec that is neither OpenAPI 3.x nor Swagger 2.0 is rejected."""
     from docline.readers.openapi.errors import OpenApiError
 
     spec_path = tmp_path / "bad.json"
