@@ -14,7 +14,7 @@ and each named component schema becomes a fully-populated
 
 from __future__ import annotations
 
-from collections.abc import Callable, Mapping
+from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -26,6 +26,7 @@ from docline.readers.openapi.convert import swagger2_to_openapi3
 from docline.readers.openapi.errors import OpenApiError
 from docline.readers.openapi.loader import component_name_from_ref, load_spec, slug
 from docline.readers.openapi.render import (
+    RefLink,
     render_operation,
     render_schema,
 )
@@ -59,7 +60,6 @@ def _derive_operation_id(method: str, path: str) -> str:
     return slug(f"{method.lower()} {path}")
 
 
-RefLink = Callable[[str], "str | None"]
 _SCHEMAS_REF_PREFIX = "#/components/schemas/"
 
 
