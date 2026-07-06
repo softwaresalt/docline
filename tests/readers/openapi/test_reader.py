@@ -145,13 +145,50 @@ def test_read_yaml_spec_with_integer_status_codes(tmp_path: Path) -> None:
 
 
 def test_read_openapi_spec_rejects_swagger_2(tmp_path: Path) -> None:
-    """A Swagger 2.0 spec is rejected — v1 renders OpenAPI 3.x only."""
+    """A malformed spec that is neither OpenAPI 3.x nor Swagger 2.0 is rejected."""
     from docline.readers.openapi.errors import OpenApiError
 
-    spec_path = tmp_path / "legacy.json"
+    spec_path = tmp_path / "bad.json"
     spec_path.write_text(
-        json.dumps({"swagger": "2.0", "info": {"title": "L", "version": "1"}, "paths": {}}),
+        json.dumps({"info": {"title": "L", "version": "1"}, "paths": {}}),
         encoding="utf-8",
     )
     with pytest.raises(OpenApiError):
         read_openapi_spec(spec_path)
+
+
+def test_read_swagger_2_spec_converts_and_renders(tmp_path: Path) -> None:
+    """A self-contained Swagger 2.0 spec is converted and rendered end-to-end (051-F)."""
+    spec = {
+        "swagger": "2.0",
+        "info": {"title": "W", "version": "1"},
+        "paths": {
+            "/w/{id}": {
+                "get": {
+                    "operationId": "getW",
+                    "parameters": [
+                        {"name": "id", "in": "path", "required": True, "type": "string"}
+                    ],
+                    "responses": {
+                        "200": {
+                            "description": "OK",
+                            "schema": {"$ref": "#/definitions/W"},
+                        }
+                    },
+                }
+            }
+        },
+        "definitions": {"W": {"type": "object", "properties": {"id": {"type": "string"}}}},
+    }
+    spec_path = tmp_path / "s2.json"
+    spec_path.write_text(json.dumps(spec), encoding="utf-8")
+
+    docs = read_openapi_spec(spec_path, source_uri="specs/s2.json")
+    paths = {d.relative_path for d in docs}
+    assert "operations/getW.md" in paths
+    assert "schemas/W.md" in paths
+
+    op = next(d for d in docs if d.relative_path == "operations/getW.md")
+    assert op.document.frontmatter.doc_type == "openapi_operation"
+    # the 2.0 #/definitions/W ref was rewritten and links to the schema doc
+    assert "[W](../schemas/W.md)" in op.document.body
