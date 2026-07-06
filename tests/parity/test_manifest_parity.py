@@ -57,6 +57,13 @@ def test_manifest_process_has_description() -> None:
     assert len(process.description) > 0
 
 
+def test_manifest_process_advertises_openapi() -> None:
+    """The process tool description advertises OpenAPI/Swagger ingestion (050-F)."""
+    manifest = get_manifest()
+    process = next(t for t in manifest.tools if t.name == "process")
+    assert "OpenAPI" in process.description
+
+
 def test_manifest_fetch_parameters_has_source() -> None:
     """The fetch tool parameters include the 'source' field."""
     manifest = get_manifest()
