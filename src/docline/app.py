@@ -27,7 +27,7 @@ from docline.process.manifest import update_manifest_index, write_manifest_index
 from docline.process.metadata import assemble_frontmatter_payload, resolve_document_type
 from docline.process.output import write_markdown_output
 from docline.process.output_contract import build_output_document_parts
-from docline.readers.openapi.detect import detect_openapi_file
+from docline.readers.openapi.detect import OPENAPI_3X, openapi_file_kind
 from docline.readers.openapi.errors import OpenApiError
 from docline.readers.openapi.reader import read_openapi_spec
 from docline.readers.picture_sink import CountingPictureSink
@@ -46,15 +46,23 @@ _HEADING_RE = re.compile(r"^(#{1,6})(\s+.+)$")
 _SUPPORTED_EXTENSIONS = {".docx", ".pdf", ".html", ".htm", ".md", ".txt"}
 
 # Extensions that MAY carry an OpenAPI/Swagger spec. A file is only treated as a
-# spec after a positive content-sniff (``detect_openapi_file``); this keeps
-# config sidecars such as ``docfx.json`` and ``.openpublishing.publish.config.json``
-# on the ordinary skip path instead of misclassifying them by extension.
+# spec after a positive content-sniff (``openapi_file_kind``); this keeps config
+# sidecars such as ``docfx.json`` and ``.openpublishing.publish.config.json`` on
+# the ordinary skip path instead of misclassifying them by extension.
 _OPENAPI_CANDIDATE_EXTENSIONS = {".json", ".yaml", ".yml"}
 
 
 def _is_openapi_staged(path: Path) -> bool:
-    """Return ``True`` when a staged file content-sniffs as an OpenAPI spec."""
-    return path.suffix.lower() in _OPENAPI_CANDIDATE_EXTENSIONS and detect_openapi_file(path)
+    """Return ``True`` when a staged file content-sniffs as an OpenAPI 3.x spec.
+
+    v1 renders OpenAPI 3.x only. Swagger 2.0 is recognized by the detector but
+    deliberately NOT routed here — its ``definitions`` / body-parameter model
+    differs enough that the 3.x renderer would emit degraded output — so 2.0
+    specs fall through to the ordinary skip path.
+    """
+    return path.suffix.lower() in _OPENAPI_CANDIDATE_EXTENSIONS and (
+        openapi_file_kind(path) == OPENAPI_3X
+    )
 
 
 def _is_web_source(source: str) -> bool:
@@ -136,10 +144,7 @@ def _ordered_staged_files(files_dir: Path, crawl_entries: list[Mapping[str, obje
         path
         for path in sorted(files_dir.rglob("*"))
         if path.is_file()
-        and (
-            path.suffix.lower() in _SUPPORTED_EXTENSIONS
-            or (path.suffix.lower() in _OPENAPI_CANDIDATE_EXTENSIONS and detect_openapi_file(path))
-        )
+        and (path.suffix.lower() in _SUPPORTED_EXTENSIONS or _is_openapi_staged(path))
     ]
     if not crawl_entries:
         return supported_files

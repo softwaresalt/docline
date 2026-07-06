@@ -3,6 +3,8 @@
 import json
 from pathlib import Path
 
+import pytest
+
 from docline.readers.openapi.reader import read_openapi_spec
 from docline.schema.models import BaseDocument
 
@@ -140,3 +142,16 @@ def test_read_yaml_spec_with_integer_status_codes(tmp_path: Path) -> None:
     op = next(d for d in docs if d.relative_path == "operations/ping.md")
     assert op.document.frontmatter.doc_type == "openapi_operation"
     assert "| `200` | OK |  |" in op.document.body
+
+
+def test_read_openapi_spec_rejects_swagger_2(tmp_path: Path) -> None:
+    """A Swagger 2.0 spec is rejected — v1 renders OpenAPI 3.x only."""
+    from docline.readers.openapi.errors import OpenApiError
+
+    spec_path = tmp_path / "legacy.json"
+    spec_path.write_text(
+        json.dumps({"swagger": "2.0", "info": {"title": "L", "version": "1"}, "paths": {}}),
+        encoding="utf-8",
+    )
+    with pytest.raises(OpenApiError):
+        read_openapi_spec(spec_path)

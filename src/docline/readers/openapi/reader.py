@@ -23,6 +23,7 @@ from typing import Any
 
 from docline.process.cross_doc_links import resolve_cross_doc_links
 from docline.process.hashing import compute_content_sha256
+from docline.readers.openapi.errors import OpenApiError
 from docline.readers.openapi.loader import load_spec
 from docline.readers.openapi.render import (
     default_schema_href,
@@ -131,11 +132,21 @@ def read_openapi_spec(
         per named component schema (``schemas/{name}.md``), in stable order.
 
     Raises:
+        OpenApiError: If the spec root is not OpenAPI 3.x (Swagger 2.0 rendering
+            is deferred beyond v1).
         OpenApiParseError: If the spec cannot be read or parsed.
         OpenApiRefError: If a local ``$ref`` is unresolvable or cyclic.
     """
     path = source if isinstance(source, Path) else Path(source)
     spec = load_spec(path)
+
+    version = spec.get("openapi")
+    if not (isinstance(version, str) and version.startswith("3.")):
+        raise OpenApiError(
+            "read_openapi_spec renders OpenAPI 3.x only; "
+            f"got openapi={version!r} (Swagger 2.0 rendering is deferred beyond v1)"
+        )
+
     base_uri = source_uri if source_uri is not None else path.as_posix()
     ingested_at = datetime.now(UTC)
 

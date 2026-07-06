@@ -4,8 +4,11 @@ import json
 from pathlib import Path
 
 from docline.readers.openapi.detect import (
+    OPENAPI_3X,
+    SWAGGER_20,
     detect_openapi_file,
     is_openapi_spec,
+    openapi_file_kind,
     openapi_kind,
 )
 from docline.router import classify_source
@@ -97,6 +100,22 @@ def test_detect_openapi_file_negative(tmp_path: Path) -> None:
     cfg.write_text(_PLAIN_CONFIG_JSON, encoding="utf-8")
     assert detect_openapi_file(cfg) is False
     assert detect_openapi_file(tmp_path / "missing.json") is False
+
+
+def test_openapi_file_kind_distinguishes_versions(tmp_path: Path) -> None:
+    """openapi_file_kind preserves the 3.x vs 2.0 distinction for a file."""
+    v3 = tmp_path / "v3.json"
+    v3.write_text(_OPENAPI_31_JSON, encoding="utf-8")
+    assert openapi_file_kind(v3) == OPENAPI_3X
+
+    v2 = tmp_path / "v2.json"
+    v2.write_text(_SWAGGER_20_JSON, encoding="utf-8")
+    assert openapi_file_kind(v2) == SWAGGER_20
+
+    cfg = tmp_path / "cfg.json"
+    cfg.write_text(_PLAIN_CONFIG_JSON, encoding="utf-8")
+    assert openapi_file_kind(cfg) is None
+    assert openapi_file_kind(tmp_path / "missing.json") is None
 
 
 def test_classify_source_content_openapi() -> None:

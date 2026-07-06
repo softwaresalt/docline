@@ -98,12 +98,12 @@ The first release is intentionally narrow:
 Stage a spec and run the compute-bound pass:
 
 ```bash
-docline ingest local-dir --source-path ./azure-rest-api-specs/specification/... \
+docline ingest local-dir ./azure-rest-api-specs/specification/... \
   --output ./out --include "**/*.json"
 ```
 
-The MCP `process` tool produces identical output; both surfaces share
-`execute_process`.
+The source directory is a positional argument. The MCP `process` tool produces
+identical output; both surfaces share `execute_process`.
 
 ## PDF processing modes
 

@@ -133,3 +133,24 @@ def test_config_json_is_not_ingested_as_openapi(tmp_path: Path) -> None:
     job_root = workspace / "output" / job.job_id
     produced = list(job_root.rglob("*.md")) if job_root.exists() else []
     assert produced == []
+
+
+def test_swagger_2_spec_is_not_ingested(tmp_path: Path) -> None:
+    """A staged Swagger 2.0 spec is detected but NOT rendered (v1 is 3.x only)."""
+    workspace = tmp_path / "v2"
+    swagger = json.dumps(
+        {
+            "swagger": "2.0",
+            "info": {"title": "Legacy", "version": "1.0"},
+            "paths": {"/ping": {"get": {"responses": {"200": {"description": "OK"}}}}},
+            "definitions": {"Widget": {"type": "object"}},
+        }
+    ).encode("utf-8")
+    job = _write_staging_job(workspace, "legacy-svc", {"api.json": swagger})
+
+    execute_process(
+        ProcessRequest(workspace_root=str(workspace), staging_dir="staging", output_dir="output")
+    )
+    job_root = workspace / "output" / job.job_id
+    produced = list(job_root.rglob("*.md")) if job_root.exists() else []
+    assert produced == []

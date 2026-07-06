@@ -91,11 +91,27 @@ def detect_openapi_file(path: Path) -> bool:
     Returns:
         ``True`` when the file parses as an OpenAPI/Swagger specification.
     """
+    return openapi_file_kind(path) is not None
+
+
+def openapi_file_kind(path: Path) -> str | None:
+    """Return the API-spec marker for the file at *path*, or ``None``.
+
+    Like :func:`detect_openapi_file` but preserves the distinction between
+    OpenAPI 3.x (:data:`OPENAPI_3X`) and Swagger 2.0 (:data:`SWAGGER_20`) so
+    callers can gate on the version. Missing/unreadable files return ``None``.
+
+    Args:
+        path: Filesystem path to a candidate specification file.
+
+    Returns:
+        The spec marker, or ``None`` when the file is not a recognized spec.
+    """
     try:
         text = path.read_text(encoding="utf-8")
     except (OSError, UnicodeDecodeError):
-        return False
-    return is_openapi_spec(text)
+        return None
+    return openapi_kind(text)
 
 
 __all__ = [
@@ -103,5 +119,6 @@ __all__ = [
     "SWAGGER_20",
     "detect_openapi_file",
     "is_openapi_spec",
+    "openapi_file_kind",
     "openapi_kind",
 ]
