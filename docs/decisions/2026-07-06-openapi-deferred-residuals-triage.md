@@ -22,9 +22,8 @@ Stash `D9AC2CD6` is the low-priority OpenAPI epic holding the four
 "deferred-beyond-v1" items that survived after the external/split-file `$ref`
 line was promoted to `053-F`. The operator asked to move these residuals
 forward. Rather than stage all four speculatively, this spike grounds each item
-against the **real corpus already on disk** (`C:\Source\Docs\fabric-rest-api-specs`,
-1,079 JSON files including ~131 Swagger 2.0 specs) and dispositions each with
-evidence. Building renderer support for extensions that **do not occur** in any
+against the **already-ingested `fabric-rest-api-specs` corpus** (1,079 JSON
+files including ~131 Swagger 2.0 specs) and dispositions each with evidence. Building renderer support for extensions that **do not occur** in any
 available corpus would violate Constitution VI (no speculative additions).
 
 ## Residual inventory and corpus grounding (measured 2026-07-06)
