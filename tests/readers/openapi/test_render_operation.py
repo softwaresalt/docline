@@ -163,3 +163,88 @@ def test_render_operation_integer_status_keys() -> None:
     result = render_operation("get", "/x", op, root=_ROOT)
     assert "| `200` | OK |  |" in result
     assert "| `404` | Missing |  |" in result
+
+
+# --- Pagination (x-ms-pageable) — 055-F ---
+
+# Mirrors the real fabric-rest-api-specs shape: nextLinkName=continuationUri.
+_PAGEABLE_OP = {
+    "operationId": "listWidgets",
+    "summary": "List widgets",
+    "responses": {"200": {"description": "OK"}},
+    "x-ms-pageable": {"nextLinkName": "continuationUri", "itemName": "value"},
+}
+
+_PAGEABLE_EXPECTED = """# GET /widgets
+
+List widgets
+
+## Responses
+
+| Status | Description | Schema |
+| --- | --- | --- |
+| `200` | OK |  |
+
+## Pagination
+
+Pageable: yes
+
+- Next-page field: `continuationUri`
+- Items field: `value`"""
+
+
+def test_render_operation_pagination_full_golden() -> None:
+    """A pageable operation renders a Pagination section with both fields."""
+    result = render_operation("get", "/widgets", _PAGEABLE_OP, root=_ROOT)
+    assert result == _PAGEABLE_EXPECTED
+
+
+def test_render_operation_pagination_omits_items_field_when_absent() -> None:
+    """When ``itemName`` is absent, only the next-page field is rendered."""
+    op = {
+        "responses": {"200": {"description": "OK"}},
+        "x-ms-pageable": {"nextLinkName": "continuationUri"},
+    }
+    result = render_operation("get", "/x", op, root=_ROOT)
+    assert "## Pagination" in result
+    assert "- Next-page field: `continuationUri`" in result
+    assert "Items field" not in result
+
+
+def test_render_operation_no_pagination_section_when_absent() -> None:
+    """An operation without ``x-ms-pageable`` omits the Pagination section."""
+    result = render_operation("get", "/ping", _EMPTY_OP, root=_ROOT)
+    assert "## Pagination" not in result
+
+
+def test_render_operation_pagination_malformed_omitted() -> None:
+    """A non-mapping ``x-ms-pageable`` omits the section without crashing."""
+    op = {
+        "responses": {"200": {"description": "OK"}},
+        "x-ms-pageable": True,
+    }
+    result = render_operation("get", "/x", op, root=_ROOT)
+    assert "## Pagination" not in result
+
+
+def test_render_operation_pagination_after_security() -> None:
+    """The Pagination section is ordered after the Security section."""
+    op = {
+        "responses": {"200": {"description": "OK"}},
+        "security": [{"apiKey": []}],
+        "x-ms-pageable": {"nextLinkName": "continuationUri"},
+    }
+    result = render_operation("get", "/x", op, root=_ROOT)
+    assert result.index("## Security") < result.index("## Pagination")
+
+
+def test_render_operation_pagination_empty_mapping_marks_pageable() -> None:
+    """An empty ``x-ms-pageable`` mapping still marks the operation pageable."""
+    op = {
+        "responses": {"200": {"description": "OK"}},
+        "x-ms-pageable": {},
+    }
+    result = render_operation("get", "/x", op, root=_ROOT)
+    assert "## Pagination\n\nPageable: yes" in result
+    assert "Next-page field" not in result
+    assert "Items field" not in result

@@ -242,6 +242,38 @@ def _render_security(security: Any) -> str:
     return "## Security\n\n" + "\n".join(bullets)
 
 
+def _render_pagination(pageable: Any) -> str:
+    """Render the Pagination section from an ``x-ms-pageable`` extension.
+
+    The AutoRest ``x-ms-pageable`` operation extension marks a collection/list
+    operation. ``nextLinkName`` names the response field holding the next-page
+    link (e.g. ``continuationUri``) and ``itemName`` names the field holding the
+    page's items; both are optional, so each bullet is emitted only when its
+    value is a non-empty string.
+
+    Args:
+        pageable: The value of the operation's ``x-ms-pageable`` key.
+
+    Returns:
+        A ``## Pagination`` section, or ``""`` when *pageable* is not a mapping.
+    """
+    if not isinstance(pageable, Mapping):
+        return ""
+
+    bullets: list[str] = []
+    next_link = pageable.get("nextLinkName")
+    if isinstance(next_link, str) and next_link.strip():
+        bullets.append(f"- Next-page field: `{next_link}`")
+    item_name = pageable.get("itemName")
+    if isinstance(item_name, str) and item_name.strip():
+        bullets.append(f"- Items field: `{item_name}`")
+
+    section = "## Pagination\n\nPageable: yes"
+    if bullets:
+        section += "\n\n" + "\n".join(bullets)
+    return section
+
+
 def render_operation(
     method: str,
     path: str,
@@ -267,8 +299,8 @@ def render_operation(
 
     Returns:
         A Markdown body: an H1 ``METHOD path`` heading followed by
-        Summary/Description, Parameters, Request body, Responses, and Security
-        sections. Sections with no content are omitted.
+        Summary/Description, Parameters, Request body, Responses, Security, and
+        Pagination sections. Sections with no content are omitted.
     """
     link = ref_link if ref_link is not None else _href_to_ref_link(schema_href)
     op = deref(operation, root)
@@ -289,6 +321,7 @@ def render_operation(
         _render_request_body(op.get("requestBody"), root, link),
         _render_responses(op.get("responses"), root, link),
         _render_security(op.get("security")),
+        _render_pagination(op.get("x-ms-pageable")),
     ):
         if block:
             sections.append(block)
