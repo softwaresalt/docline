@@ -127,6 +127,11 @@ def _parse_md_frontmatter(text: str) -> tuple[Mapping[str, Any] | None, str]:
     """
     if not text:
         return None, text
+    # A UTF-8 BOM (U+FEFF) before the fence would otherwise defeat the ``---``
+    # startswith check below, leaving the whole frontmatter block to bleed into
+    # the body. Drop a single leading BOM up front (052-F).
+    if text.startswith("\ufeff"):
+        text = text[1:]
     # Match leading --- fence with either LF or CRLF line endings
     if not (text.startswith("---\n") or text.startswith("---\r\n")):
         return None, text
@@ -288,7 +293,9 @@ def build_output_document_parts(
             # YAML keys as misordered headings. Parsed frontmatter flows
             # through OutputDocumentPart.source_frontmatter so the application
             # layer can preserve it under docline:source_frontmatter.
-            raw_text = file_path.read_text(encoding="utf-8", errors="replace")
+            # 052-F: decode with utf-8-sig so a leading BOM is dropped before the
+            # DocFx-include, normalize, and frontmatter passes ever see it.
+            raw_text = file_path.read_text(encoding="utf-8-sig", errors="replace")
 
             # 024.002-T / 026-S T2: expand DocFx [!INCLUDE [name](path.md)]
             # directives BEFORE frontmatter strip + segmenter pass. Include
