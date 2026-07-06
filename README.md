@@ -62,6 +62,49 @@ Useful flags:
   how to regenerate the exported JSON Schema and how `graphtor-docs` consumes it.
 * [Document ingestion and validation pipeline design](docs/design-docs/DocumentIngestion&ValidationPipelineDesign.md)
 
+## OpenAPI / Swagger source type
+
+`docline process` ingests OpenAPI 3.x specifications as a first-class source
+type. A staged `.json`, `.yaml`, or `.yml` file is recognized by content-sniff
+(its root declares `openapi: 3.x` or `swagger: 2.0`), so plain config files such
+as `docfx.json` are never misclassified.
+
+Rather than flattening the spec through the PDF pipeline, docline traverses the
+typed object model and renders deterministic Markdown:
+
+* one document per **operation** at `operations/{operationId}.md`
+  (`doc_type: openapi_operation`), with `Parameters`, `Request body`,
+  `Responses`, and `Security` sections;
+* one document per named **component schema** at `schemas/{name}.md`
+  (`doc_type: openapi_schema`), with a properties table.
+
+Each `$ref` to a component schema is emitted as a relative Markdown link, so the
+existing cross-doc link harvester records every `operation → schema` reference as
+a typed graph edge under the `docline.cross_doc_links` frontmatter namespace.
+
+### v1 scope
+
+The first release is intentionally narrow:
+
+* OpenAPI **3.x** (Swagger 2.0 is detected but not yet rendered);
+* a **single spec** (one file, or a directory for one service);
+* **per-operation** granularity;
+* **local** `#/components/*` `$ref` resolution only — external and split-file
+  refs are left unresolved (never fetched), because resolving them is a security
+  boundary deferred to a follow-up.
+
+### Usage
+
+Stage a spec and run the compute-bound pass:
+
+```bash
+docline ingest local-dir ./azure-rest-api-specs/specification/... \
+  --output ./out --include "**/*.json"
+```
+
+The source directory is a positional argument. The MCP `process` tool produces
+identical output; both surfaces share `execute_process`.
+
 ## PDF processing modes
 
 `docline process` supports two PDF processing modes via the `--pdf-mode`

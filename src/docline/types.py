@@ -9,12 +9,15 @@ class SourceKind(Enum):
 
     Attributes:
         FILE: A local file path (PDF, DOCX, HTML, etc.).
+        OPENAPI: An OpenAPI 3.x / Swagger 2.0 specification (JSON or YAML)
+            identified by content-sniff rather than file extension.
         TRANSCRIPT: A transcript file (.vtt or .srt).
         UNKNOWN: An unclassified or unsupported source kind.
         URL: A remote URL (http:// or https://).
     """
 
     FILE = "file"
+    OPENAPI = "openapi"
     TRANSCRIPT = "transcript"
     UNKNOWN = "unknown"
     URL = "url"

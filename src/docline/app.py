@@ -27,6 +27,9 @@ from docline.process.manifest import update_manifest_index, write_manifest_index
 from docline.process.metadata import assemble_frontmatter_payload, resolve_document_type
 from docline.process.output import write_markdown_output
 from docline.process.output_contract import build_output_document_parts
+from docline.readers.openapi.detect import OPENAPI_3X, openapi_file_kind
+from docline.readers.openapi.errors import OpenApiError
+from docline.readers.openapi.reader import read_openapi_spec
 from docline.readers.picture_sink import CountingPictureSink
 from docline.schema.library import WebFrontmatter, WikiFrontmatter
 from docline.schema.models import SchemaValidationError
@@ -41,6 +44,25 @@ _HEADING_RE = re.compile(r"^(#{1,6})(\s+.+)$")
 
 # Supported file extension → reader function name
 _SUPPORTED_EXTENSIONS = {".docx", ".pdf", ".html", ".htm", ".md", ".txt"}
+
+# Extensions that MAY carry an OpenAPI/Swagger spec. A file is only treated as a
+# spec after a positive content-sniff (``openapi_file_kind``); this keeps config
+# sidecars such as ``docfx.json`` and ``.openpublishing.publish.config.json`` on
+# the ordinary skip path instead of misclassifying them by extension.
+_OPENAPI_CANDIDATE_EXTENSIONS = {".json", ".yaml", ".yml"}
+
+
+def _is_openapi_staged(path: Path) -> bool:
+    """Return ``True`` when a staged file content-sniffs as an OpenAPI 3.x spec.
+
+    v1 renders OpenAPI 3.x only. Swagger 2.0 is recognized by the detector but
+    deliberately NOT routed here — its ``definitions`` / body-parameter model
+    differs enough that the 3.x renderer would emit degraded output — so 2.0
+    specs fall through to the ordinary skip path.
+    """
+    return path.suffix.lower() in _OPENAPI_CANDIDATE_EXTENSIONS and (
+        openapi_file_kind(path) == OPENAPI_3X
+    )
 
 
 def _is_web_source(source: str) -> bool:
@@ -121,7 +143,8 @@ def _ordered_staged_files(files_dir: Path, crawl_entries: list[Mapping[str, obje
     supported_files = [
         path
         for path in sorted(files_dir.rglob("*"))
-        if path.is_file() and path.suffix.lower() in _SUPPORTED_EXTENSIONS
+        if path.is_file()
+        and (path.suffix.lower() in _SUPPORTED_EXTENSIONS or _is_openapi_staged(path))
     ]
     if not crawl_entries:
         return supported_files
@@ -450,7 +473,12 @@ def get_manifest() -> Manifest:
             ),
             ManifestTool(
                 name="process",
-                description=("Process staged documents into schema-validated Markdown output."),
+                description=(
+                    "Process staged documents into schema-validated Markdown output. "
+                    "Staged OpenAPI 3.x / Swagger specifications (detected by content-sniff) "
+                    "are rendered to one Markdown document per operation and per component "
+                    "schema, with operation-to-schema references emitted as graph edges."
+                ),
                 parameters=process_schema,
             ),
             ManifestTool(
@@ -546,6 +574,96 @@ def execute_fetch(request: FetchRequest) -> FetchResult:
     )
 
 
+def _emit_openapi_documents(
+    file_path: Path,
+    rel_in_files: Path,
+    *,
+    job: StagingJob,
+    root: Path,
+    output_dir: Path,
+    job_output_root: Path,
+    job_manifest_entries: list[Mapping[str, object]],
+    allow_heading_disorder: bool,
+    start_ingest_order: int,
+) -> tuple[int, int, list[str]]:
+    """Render a staged OpenAPI spec into per-operation/per-schema Markdown outputs.
+
+    Runs only for staged files that content-sniff as OpenAPI specs; the ordinary
+    PDF/DOCX/MD processing path is untouched. Each emitted document uses the
+    frontmatter already assembled by :func:`read_openapi_spec` (correct
+    ``doc_type``, ``source``, and ``content_sha256``) so the output contract is
+    identical whether the spec is processed via the CLI or the MCP surface —
+    both call :func:`execute_process`.
+
+    Args:
+        file_path: Absolute path to the staged spec file.
+        rel_in_files: Spec path relative to the staged ``files/`` directory.
+        job: The completed staging job describing the document origin.
+        root: Resolved workspace root (for manifest ``output_path`` relativity).
+        output_dir: Contained process output root.
+        job_output_root: Per-job output root (``output_dir / job_id``).
+        job_manifest_entries: Per-job manifest accumulator, appended in place.
+        allow_heading_disorder: Passed through to :func:`assemble_markdown`.
+        start_ingest_order: Ingest-order counter to begin numbering from.
+
+    Returns:
+        A ``(next_ingest_order, written_count, errors)`` tuple.
+    """
+    input_path_posix = rel_in_files.as_posix()
+    source_basename = rel_in_files.with_suffix("")
+    base_uri = job.metadata.source or input_path_posix
+
+    try:
+        documents = read_openapi_spec(file_path, source_uri=base_uri, source_path=input_path_posix)
+    except OpenApiError as err:
+        _log.warning("Failed to ingest OpenAPI spec %s: %s", file_path, err)
+        return start_ingest_order, 0, [str(err)]
+
+    ingest_order = start_ingest_order
+    written = 0
+    errors: list[str] = []
+    for document in documents:
+        payload = document.document.frontmatter.model_dump(mode="json")
+        try:
+            markdown_text = assemble_markdown(
+                payload,
+                document.document.body,
+                allow_heading_disorder=allow_heading_disorder,
+                emit_chunk_anchors=True,
+            )
+        except Exception as err:  # noqa: BLE001
+            _log.warning("Failed to assemble OpenAPI document %s: %s", document.relative_path, err)
+            markdown_text = document.document.body
+
+        rel_output_in_job = (Path(source_basename) / document.relative_path).as_posix()
+        rel_output = str(Path(job.job_id) / rel_output_in_job)
+        try:
+            out_path = write_markdown_output(output_dir, rel_output, markdown_text)
+        except Exception as err:  # noqa: BLE001
+            _log.warning("Failed to write OpenAPI output %s: %s", rel_output, err)
+            errors.append(str(err))
+            continue
+
+        manifest_entry: dict[str, object] = {
+            "document_id": _build_document_id(job.job_id, input_path_posix, ingest_order),
+            "source": job.metadata.source,
+            "job_id": job.job_id,
+            "ingest_order": ingest_order,
+            "input_path": input_path_posix,
+            "input_file": file_path.name,
+            "output_path": str(out_path.relative_to(root)),
+            "media_files": [],
+        }
+        update_manifest_index(output_dir, "manifest.json", manifest_entry)
+        job_manifest_entries.append(
+            {**manifest_entry, "output_path": str(out_path.relative_to(job_output_root))}
+        )
+        ingest_order += 1
+        written += 1
+
+    return ingest_order, written, errors
+
+
 def execute_process(request: ProcessRequest) -> ProcessResult:
     """Process staged documents into Markdown output files.
 
@@ -614,6 +732,21 @@ def execute_process(request: ProcessRequest) -> ProcessResult:
 
         for file_path in _ordered_staged_files(files_dir, crawl_entries):
             rel_in_files = file_path.relative_to(files_dir)
+            if _is_openapi_staged(file_path):
+                next_ingest_order, written, openapi_errors = _emit_openapi_documents(
+                    file_path,
+                    rel_in_files,
+                    job=job,
+                    root=root,
+                    output_dir=output_dir,
+                    job_output_root=job_output_root,
+                    job_manifest_entries=job_manifest_entries,
+                    allow_heading_disorder=request.allow_heading_disorder,
+                    start_ingest_order=next_ingest_order,
+                )
+                processed_count += written
+                errors.extend(openapi_errors)
+                continue
             source_basename = rel_in_files.with_suffix("")
             picture_sink = CountingPictureSink(job_output_root / source_basename / "media")
             triage_cache = job_output_root / source_basename / "triage-cache"
