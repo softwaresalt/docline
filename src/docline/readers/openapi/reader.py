@@ -7,7 +7,9 @@ and each named component schema becomes a fully-populated
 * ``doc_type`` is ``openapi_operation`` or ``openapi_schema``;
 * ``source`` is the spec URI plus a fragment identifying the operation
   (``#{operationId}``) or schema (``#/components/schemas/{name}``);
-* ``content_sha256`` is computed the same way as every other reader;
+* ``content_sha256`` is left empty here and finalized by the assemble
+  pipeline (:func:`~docline.process.assemble.assemble_markdown`) over the
+  emitted body, so the stored digest matches a re-hash of what is written;
 * cross-doc links harvested from the rendered body are surfaced under the
   ``docline`` namespace so downstream graph extraction sees typed edges.
 """
@@ -153,7 +155,10 @@ def _doc_source_path(spec_source_path: str, relative_path: str) -> str:
     """
     if not spec_source_path:
         return relative_path
-    stem = PurePosixPath(spec_source_path).with_suffix("")
+    # Normalize any backslashes so a Windows-style spec path splits correctly;
+    # ``with_suffix("")`` safely returns the path unchanged for extensionless
+    # names, so this does not raise on specs without a file extension.
+    stem = PurePosixPath(spec_source_path.replace("\\", "/")).with_suffix("")
     return f"{stem.as_posix()}/{relative_path}"
 
 

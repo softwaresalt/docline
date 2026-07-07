@@ -310,3 +310,16 @@ def test_multi_doc_spec_emits_unique_source_paths(tmp_path: Path) -> None:
         sp = doc.document.frontmatter.source_path
         assert sp.endswith(doc.relative_path), sp
         assert "demo" in sp
+
+
+def test_doc_source_path_handles_extensionless_and_backslash_specs() -> None:
+    """Unique source_path derivation tolerates extensionless names and backslashes."""
+    from docline.readers.openapi.reader import _doc_source_path
+
+    assert (
+        _doc_source_path("spark/definitions.json", "operations/getFoo.md")
+        == "spark/definitions/operations/getFoo.md"
+    )
+    assert _doc_source_path("definitions", "schemas/S.md") == "definitions/schemas/S.md"
+    assert _doc_source_path("spark\\defs.json", "schemas/S.md") == "spark/defs/schemas/S.md"
+    assert _doc_source_path("", "operations/getFoo.md") == "operations/getFoo.md"
