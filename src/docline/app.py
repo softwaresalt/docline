@@ -23,7 +23,6 @@ from docline.fetch.models import StagingJob
 from docline.paths import PathContainmentError, posixify_path, safe_workspace_path
 from docline.process.assemble import assemble_markdown
 from docline.process.canonical_url import derive_canonical_url, derive_url_prefix
-from docline.process.hashing import compute_content_sha256
 from docline.process.manifest import update_manifest_index, write_manifest_index
 from docline.process.metadata import assemble_frontmatter_payload, resolve_document_type
 from docline.process.output import write_markdown_output
@@ -335,7 +334,6 @@ def _build_markdown_with_frontmatter(
         "title": title,
         "source": source_str,
         "ingested_at": datetime.now(UTC),
-        "content_sha256": compute_content_sha256(body),
     }
     if relative_input_path is not None:
         base_data["source_path"] = posixify_path(relative_input_path)

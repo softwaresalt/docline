@@ -17,11 +17,10 @@ from __future__ import annotations
 from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any
 
 from docline.process.cross_doc_links import resolve_cross_doc_links
-from docline.process.hashing import compute_content_sha256
 from docline.readers.openapi.convert import swagger2_to_openapi3
 from docline.readers.openapi.errors import OpenApiError
 from docline.readers.openapi.loader import component_name_from_ref, load_spec, slug
@@ -135,11 +134,27 @@ def _assemble_document(
         source=source,
         ingested_at=ingested_at,
         doc_type=doc_type,
-        content_sha256=compute_content_sha256(body),
         source_path=source_path,
         docline=docline_namespace,
     )
     return BaseDocument(frontmatter=frontmatter, body=body)
+
+
+def _doc_source_path(spec_source_path: str, relative_path: str) -> str:
+    """Return a unique ``source_path`` for one doc emitted from a multi-doc spec.
+
+    graphtor treats ``source_path`` as canonical identity and rejects
+    duplicates, so every document produced from a single spec must carry a
+    distinct value. Combines the spec path's stem with the document's
+    spec-relative path (e.g. ``spark/definitions.json`` +
+    ``operations/getFoo.md`` -> ``spark/definitions/operations/getFoo.md``).
+    When no spec source_path is known (single-file ingest), the already-unique
+    per-doc ``relative_path`` is used directly.
+    """
+    if not spec_source_path:
+        return relative_path
+    stem = PurePosixPath(spec_source_path).with_suffix("")
+    return f"{stem.as_posix()}/{relative_path}"
 
 
 def read_openapi_spec(
@@ -237,7 +252,7 @@ def read_openapi_spec(
                             source=f"{base_uri}#{operation_id}",
                             doc_type=OPERATION_DOC_TYPE,
                             body=body,
-                            source_path=source_path,
+                            source_path=_doc_source_path(source_path, relative_path),
                             ingested_at=ingested_at,
                             openapi_meta={
                                 "method": method.upper(),
@@ -270,7 +285,7 @@ def read_openapi_spec(
                         source=f"{base_uri}#/components/schemas/{name}",
                         doc_type=SCHEMA_DOC_TYPE,
                         body=body,
-                        source_path=source_path,
+                        source_path=_doc_source_path(source_path, relative_path),
                         ingested_at=ingested_at,
                         openapi_meta={"schema_name": str(name)},
                         cross_link_path=(
