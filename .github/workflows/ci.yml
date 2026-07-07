@@ -26,15 +26,11 @@ name: CI
 #    require IT (not the guarded test/build) in branch protection so skipped
 #    jobs on chore:/docs: PRs do not block the merge.
 #
-# Current triggers below intentionally fire only on release tags or
-# explicit manual runs from the Actions tab.
+# Current trigger fires only on explicit manual runs from the Actions tab.
+# Release tags (v*) are handled by release.yml, which runs these same quality
+# gates before building and publishing — so CI is not duplicated on release.
 on:
   workflow_dispatch: {}
-  release:
-    types: [published]
-  push:
-    tags:
-      - 'v*'
 
 permissions:
   contents: read
