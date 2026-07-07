@@ -461,13 +461,24 @@ async def _discover_toc_links(
 
 
 def _derive_section_scope(url: str) -> str | None:
-    """Infer a top-level site section prefix from a start URL when possible."""
+    """Infer a section prefix that bounds a crawl to the start URL's subtree.
+
+    Uses the **full directory prefix** of the start URL so a crawl of a
+    sub-path (e.g. ``/docs/current/``) stays within that subsection and does
+    not wander into sibling subsections (e.g. other ``/docs/<version>/`` trees).
+    A directory URL scopes to itself; a file URL scopes to its parent
+    directory. A bare-root or ambiguous extensionless path imposes no scope
+    (the crawl is then bounded only by ``domain_lock``).
+    """
     path = urlparse(url).path or "/"
     segments = [segment for segment in path.split("/") if segment]
     if not segments:
         return None
-    if path.endswith("/") or "." in segments[-1]:
-        return f"/{segments[0]}/"
+    if path.endswith("/"):
+        return path
+    if "." in segments[-1]:
+        parent = path.rsplit("/", 1)[0]
+        return f"{parent}/" if parent else None
     return None
 
 
