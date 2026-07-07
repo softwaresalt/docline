@@ -4,6 +4,7 @@ import json
 import re
 from collections.abc import Mapping
 
+from docline.process.hashing import compute_content_sha256
 from docline.process.heading_validation import (
     body_should_skip_heading_validation,
     validate_heading_hierarchy,
@@ -124,7 +125,11 @@ def assemble_markdown(
             Default ``False`` preserves baseline output.
 
     Returns:
-        Assembled Markdown document with YAML frontmatter.
+        Assembled Markdown document with YAML frontmatter. The frontmatter's
+        ``content_sha256`` is computed here over the final emitted body (after
+        any anchor injection and trailing-newline normalization), overwriting
+        any value supplied by an upstream stage, so a downstream re-hash of the
+        emitted body matches the stored digest.
 
     Raises:
         HeadingHierarchyError: If ``allow_heading_disorder`` is ``False`` and
@@ -142,11 +147,16 @@ def assemble_markdown(
             validate_heading_hierarchy(body)
     if emit_chunk_anchors:
         body = _inject_chunk_anchors(body)
+    # Normalize the body's trailing newline to exactly what is written to disk,
+    # then hash those emitted bytes. content_sha256 must cover the FINAL body
+    # (post anchor injection) so a downstream re-hash of the emitted body matches
+    # the stored digest (docline<->graphtor ingestion contract). This is the sole
+    # authoritative content_sha256 computation; upstream stages leave it empty.
+    if body and not body.endswith("\n"):
+        body = f"{body}\n"
+    frontmatter = {**frontmatter, "content_sha256": compute_content_sha256(body)}
     yaml_text = "\n".join(_serialize_yaml(frontmatter))
-    markdown = f"---\n{yaml_text}\n---\n{body}"
-    if not markdown.endswith("\n"):
-        return f"{markdown}\n"
-    return markdown
+    return f"---\n{yaml_text}\n---\n{body}"
 
 
 __all__ = ["assemble_markdown"]

@@ -85,15 +85,35 @@ def test_schema_doc_type_and_source(tmp_path: Path) -> None:
     assert schema.document.frontmatter.source == "specs/demo.json#/components/schemas/Widget"
 
 
-def test_content_sha256_and_contract_defaults(tmp_path: Path) -> None:
-    """content_sha256 is a 64-char digest and contract defaults are preserved."""
+def test_content_sha256_populated_by_assemble_pipeline(tmp_path: Path) -> None:
+    """The reader leaves content_sha256 empty; the assemble pipeline finalizes it.
+
+    content_sha256 must hash the body exactly as written to disk (post
+    anchor-injection), which only happens in ``assemble_markdown``. The reader
+    therefore emits an empty digest and the downstream assemble stage populates
+    it, matching a re-hash of the emitted body.
+    """
+    from docline.process.assemble import assemble_markdown
+    from docline.process.hashing import compute_content_sha256
+
     docs = read_openapi_spec(_write_spec(tmp_path), source_uri="specs/demo.json")
     for doc in docs:
         fm = doc.document.frontmatter
-        assert len(fm.content_sha256) == 64
-        assert all(c in "0123456789abcdef" for c in fm.content_sha256)
+        # Reader stage: digest not yet computed; other contract defaults intact.
+        assert fm.content_sha256 == ""
         assert fm.chunk_strategy == "h1-h2-h3"
         assert fm.schema_version == "1.0"
+
+        # Assemble stage: digest is finalized over the emitted body.
+        markdown = assemble_markdown(
+            fm.model_dump(mode="json"), doc.document.body, emit_chunk_anchors=True
+        )
+        emitted_body = markdown.split("---\n", 2)[2]
+        import yaml
+
+        emitted_fm = yaml.safe_load(markdown.split("---\n", 2)[1])
+        assert len(emitted_fm["content_sha256"]) == 64
+        assert emitted_fm["content_sha256"] == compute_content_sha256(emitted_body)
 
 
 def test_operation_without_operation_id_derives_slug(tmp_path: Path) -> None:
@@ -267,3 +287,39 @@ def test_read_swagger_2_spec_converts_and_renders(tmp_path: Path) -> None:
     assert op.document.frontmatter.doc_type == "openapi_operation"
     # the 2.0 #/definitions/W ref was rewritten and links to the schema doc
     assert "[W](../schemas/W.md)" in op.document.body
+
+
+def test_multi_doc_spec_emits_unique_source_paths(tmp_path: Path) -> None:
+    """One spec producing many docs stamps a unique source_path on each (graphtor identity).
+
+    graphtor treats source_path as canonical identity and rejects duplicates
+    fail-closed, so a single spec split into many docs must not reuse the spec
+    file path across every emitted document.
+    """
+    docs = read_openapi_spec(
+        _write_spec(tmp_path),
+        source_uri="specs/demo.json",
+        source_path="specs/demo.json",
+    )
+    source_paths = [doc.document.frontmatter.source_path for doc in docs]
+
+    assert len(docs) >= 3
+    assert len(source_paths) == len(set(source_paths)), f"duplicate source_path: {source_paths}"
+    # Each source_path traces to both the spec and the document's own identity.
+    for doc in docs:
+        sp = doc.document.frontmatter.source_path
+        assert sp.endswith(doc.relative_path), sp
+        assert "demo" in sp
+
+
+def test_doc_source_path_handles_extensionless_and_backslash_specs() -> None:
+    """Unique source_path derivation tolerates extensionless names and backslashes."""
+    from docline.readers.openapi.reader import _doc_source_path
+
+    assert (
+        _doc_source_path("spark/definitions.json", "operations/getFoo.md")
+        == "spark/definitions/operations/getFoo.md"
+    )
+    assert _doc_source_path("definitions", "schemas/S.md") == "definitions/schemas/S.md"
+    assert _doc_source_path("spark\\defs.json", "schemas/S.md") == "spark/defs/schemas/S.md"
+    assert _doc_source_path("", "operations/getFoo.md") == "operations/getFoo.md"
