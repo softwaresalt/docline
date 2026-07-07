@@ -216,3 +216,62 @@ def test_extract_main_content_strips_nav_leaves_content() -> None:
     assert "```\nSELECT 1;\n```" in result
     assert "Prev" not in result
     assert "16" not in result
+
+
+# --- B0A77532: HTML fidelity follow-ups ---
+
+
+def test_definition_list_renders_terms_and_descriptions() -> None:
+    """A <dl> renders each <dt> as a bold term with its <dd> description."""
+    html = (
+        "<article><dl>"
+        "<dt>alpha</dt><dd><p>First param.</p></dd>"
+        "<dt>beta</dt><dd><p>Second param.</p></dd>"
+        "</dl></article>"
+    )
+    result = extract_main_content(html)
+    assert "**alpha**" in result
+    assert "First param." in result
+    assert "**beta**" in result
+    assert "Second param." in result
+
+
+def test_table_colspan_repeats_cell_across_columns() -> None:
+    """A colspan cell is expanded into each covered column."""
+    html = (
+        "<article><table>"
+        "<tr><th colspan='2'>Header</th></tr>"
+        "<tr><td>a</td><td>b</td></tr>"
+        "</table></article>"
+    )
+    result = extract_main_content(html)
+    assert "| Header | Header |" in result
+    assert "| a | b |" in result
+
+
+def test_table_rowspan_repeats_cell_down_rows() -> None:
+    """A rowspan cell is expanded into each covered row."""
+    html = (
+        "<article><table>"
+        "<tr><td rowspan='2'>X</td><td>a</td></tr>"
+        "<tr><td>b</td></tr>"
+        "</table></article>"
+    )
+    result = extract_main_content(html)
+    assert "| X | a |" in result
+    assert "| X | b |" in result
+
+
+def test_pre_language_hint_from_code_class() -> None:
+    """A <code class='language-sql'> inside <pre> yields a language-tagged fence."""
+    html = "<article><pre><code class='language-sql'>SELECT 1;</code></pre></article>"
+    result = extract_main_content(html)
+    assert "```sql" in result
+    assert "SELECT 1;" in result
+
+
+def test_pre_without_language_hint_uses_plain_fence() -> None:
+    """A <pre> without a recognized language class uses a plain fence."""
+    html = "<article><pre class='synopsis'>SELECT 1;</pre></article>"
+    result = extract_main_content(html)
+    assert "```\nSELECT 1;\n```" in result

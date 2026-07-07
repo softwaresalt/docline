@@ -13,6 +13,8 @@ class FetchRequest(BaseModel):
     Attributes:
         source: URL or file path to fetch.
         depth: Crawl depth for web sources. 0 means single page only.
+        max_pages: Optional page budget for web crawls. ``None`` uses the
+            bounded crawler default; a value raises or lowers that cap.
         output_dir: Directory where staged files are written.
     """
 
@@ -20,6 +22,7 @@ class FetchRequest(BaseModel):
 
     source: str = Field(min_length=1)
     depth: int = Field(default=0, ge=0)
+    max_pages: int | None = Field(default=None, ge=1)
     output_dir: str = ".cache/staging"
 
     @field_validator("output_dir")

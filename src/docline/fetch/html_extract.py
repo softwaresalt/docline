@@ -1,5 +1,7 @@
 """HTML main-content extraction — strip DOM noise, return raw Markdown."""
 
+import re
+
 from bs4 import BeautifulSoup, Tag
 from bs4.element import NavigableString
 
@@ -26,37 +28,71 @@ def _element_classes(el: Tag) -> list[str]:
     return []
 
 
+def _int_attr(el: Tag, name: str, default: int) -> int:
+    """Return a positive integer HTML attribute value, or ``default``."""
+    raw = el.get(name)
+    if isinstance(raw, str) and raw.strip().isdigit():
+        value = int(raw.strip())
+        if value >= 1:
+            return value
+    return default
+
+
 def _render_table(el: Tag) -> str:
     """Render an HTML ``<table>`` as a GitHub-flavored Markdown table.
 
-    The first row supplies the header. Cells are flattened to single-line text
-    with pipe characters escaped so the table stays valid. Rows are padded or
-    truncated to the header width. Returns ``""`` for a table with no rows.
+    ``colspan`` and ``rowspan`` are expanded by repeating the spanning cell's
+    text into each covered column/row (Markdown tables have no native spans),
+    so no data is lost. The first row supplies the header; pipe characters are
+    escaped and rows are normalized to a common width. Returns ``""`` for a
+    table with no rows.
     """
-    rows = el.find_all("tr")
-    if not rows:
+    trs = el.find_all("tr")
+    if not trs:
         return ""
 
-    def _cells(row: Tag) -> list[str]:
-        return [
-            cell.get_text(" ", strip=True).replace("|", r"\|")
-            for cell in row.find_all(["th", "td"], recursive=False)
-        ]
+    grid: list[list[str]] = []
+    carry: dict[int, tuple[int, str]] = {}  # column -> (rows_remaining, value)
+    for tr in trs:
+        cells = tr.find_all(["th", "td"], recursive=False)
+        row: list[str] = []
+        col = 0
+        ci = 0
+        while ci < len(cells) or any(c >= col for c in carry):
+            if col in carry:
+                remaining, value = carry[col]
+                row.append(value)
+                if remaining - 1 > 0:
+                    carry[col] = (remaining - 1, value)
+                else:
+                    del carry[col]
+                col += 1
+            elif ci < len(cells):
+                cell = cells[ci]
+                ci += 1
+                value = cell.get_text(" ", strip=True).replace("|", r"\|")
+                colspan = _int_attr(cell, "colspan", 1)
+                rowspan = _int_attr(cell, "rowspan", 1)
+                for _ in range(colspan):
+                    row.append(value)
+                    if rowspan > 1:
+                        carry[col] = (rowspan - 1, value)
+                    col += 1
+            else:
+                # A carried span sits in a later column than this short row fills.
+                row.append("")
+                col += 1
+        grid.append(row)
 
-    header = _cells(rows[0])
-    if not header:
+    width = max((len(r) for r in grid), default=0)
+    if width == 0:
         return ""
-    width = len(header)
-    lines = [
-        "| " + " | ".join(header) + " |",
-        "| " + " | ".join(["---"] * width) + " |",
-    ]
-    for row in rows[1:]:
-        cells = _cells(row)
-        if not cells:
-            continue
-        cells = (cells + [""] * width)[:width]
-        lines.append("| " + " | ".join(cells) + " |")
+
+    def _fmt(cells: list[str]) -> str:
+        return "| " + " | ".join((cells + [""] * width)[:width]) + " |"
+
+    lines = [_fmt(grid[0]), "| " + " | ".join(["---"] * width) + " |"]
+    lines.extend(_fmt(r) for r in grid[1:])
     return "\n".join(lines)
 
 
@@ -77,6 +113,58 @@ def _render_admonition(el: Tag, label: str) -> str:
     return "\n".join(f"> {line}" if line else ">" for line in inner)
 
 
+def _render_children(el: Tag) -> str:
+    """Render an element's children to Markdown, joined by blank lines."""
+    parts = [
+        _element_to_markdown(child)
+        for child in el.children
+        if isinstance(child, (Tag, NavigableString))
+    ]
+    return "\n\n".join(part for part in parts if part)
+
+
+_LANG_CLASS_RE = re.compile(r"^(?:language|lang|highlight-source|sourceCode)-([\w+#.-]+)$")
+
+
+def _pre_language(el: Tag) -> str:
+    """Extract a fenced-code language hint from a ``<pre>`` or its ``<code>``.
+
+    Recognizes the common ``language-<lang>`` / ``lang-<lang>`` /
+    ``highlight-source-<lang>`` / ``sourceCode-<lang>`` class conventions on the
+    ``<pre>`` element or a nested ``<code>``. Returns ``""`` when no hint is found.
+    """
+    candidates = list(_element_classes(el))
+    code = el.find("code")
+    if isinstance(code, Tag):
+        candidates.extend(_element_classes(code))
+    for cls in candidates:
+        match = _LANG_CLASS_RE.match(cls)
+        if match:
+            return match.group(1).lower()
+    return ""
+
+
+def _render_definition_list(el: Tag) -> str:
+    """Render a ``<dl>`` as bold terms followed by their descriptions.
+
+    Each ``<dt>`` becomes a bold term line and each ``<dd>`` renders its child
+    content beneath it. Used for DocBook ``variablelist`` output (e.g.
+    PostgreSQL parameter lists) so terms and descriptions are not flattened
+    into a single run of text.
+    """
+    parts: list[str] = []
+    for child in el.find_all(["dt", "dd"], recursive=False):
+        if (child.name or "").lower() == "dt":
+            term = child.get_text(" ", strip=True)
+            if term:
+                parts.append(f"**{term}**")
+        else:
+            desc = _render_children(child).strip()
+            if desc:
+                parts.append(desc)
+    return "\n\n".join(parts)
+
+
 def _element_to_markdown(el: Tag | NavigableString) -> str:
     """Convert a BeautifulSoup element tree into simple Markdown."""
     if isinstance(el, NavigableString):
@@ -95,9 +183,11 @@ def _element_to_markdown(el: Tag | NavigableString) -> str:
         code = el.get_text().strip("\n")
         if not code.strip():
             return ""
-        return f"```\n{code}\n```"
+        return f"```{_pre_language(el)}\n{code}\n```"
     if name == "table":
         return _render_table(el)
+    if name == "dl":
+        return _render_definition_list(el)
     if name == "img":
         # F6.T2 image preservation: render every <img> as Markdown image so
         # downstream readers and accessibility linters can see it. Missing
@@ -124,12 +214,7 @@ def _element_to_markdown(el: Tag | NavigableString) -> str:
         if admonition is not None:
             return _render_admonition(el, admonition)
     if name in {"figure", "div", "section", "article", "main", "body", "[document]"}:
-        parts = [
-            _element_to_markdown(child)
-            for child in el.children
-            if isinstance(child, (Tag, NavigableString))
-        ]
-        return "\n\n".join(part for part in parts if part)
+        return _render_children(el)
     return text
 
 
