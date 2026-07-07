@@ -130,3 +130,36 @@ def test_execute_fetch_staged_output_is_processable(monkeypatch, tmp_path, fake_
     assert process_result.success is True
     markdown_files = list((tmp_path / "output").rglob("*.md"))
     assert markdown_files
+
+
+# --- B0A77532: max_pages passthrough + canonical_url web fallback ---
+
+
+def test_execute_fetch_max_pages_overrides_default(monkeypatch, tmp_path, fake_crawl) -> None:
+    """FetchRequest.max_pages overrides the bounded crawl default."""
+    monkeypatch.chdir(tmp_path)
+    execute_fetch(
+        FetchRequest(source="https://example.org/docs/", max_pages=7, output_dir="staging")
+    )
+    config = fake_crawl["config"]
+    assert isinstance(config, CrawlConfig)
+    assert config.max_pages == 7
+
+
+def test_execute_fetch_process_stamps_canonical_url_for_web_source(
+    monkeypatch, tmp_path, fake_crawl
+) -> None:
+    """A processed web source with no Learn config gets canonical_url = fetched URL."""
+    from docline.app import execute_process
+    from docline.app_models import ProcessRequest
+
+    monkeypatch.chdir(tmp_path)
+    execute_fetch(FetchRequest(source="https://example.org/docs/", output_dir="staging"))
+    result = execute_process(ProcessRequest(staging_dir="staging", output_dir="output"))
+    assert result.success is True
+
+    md_files = sorted((tmp_path / "output").rglob("*.md"))
+    assert md_files
+    text = md_files[0].read_text(encoding="utf-8")
+    assert "canonical_url:" in text
+    assert "example.org" in text

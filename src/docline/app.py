@@ -596,7 +596,9 @@ def execute_fetch(request: FetchRequest) -> FetchResult:
             error=f"execute_fetch supports http(s) URLs only; got scheme {scheme or '(none)'!r}.",
         )
 
-    source = WebCrawlSource(type="web_crawl", url=request.source, depth=request.depth)
+    source = WebCrawlSource(
+        type="web_crawl", url=request.source, depth=request.depth, max_pages=request.max_pages
+    )
     try:
         jobs = execute_source_configs([source], request.output_dir, workspace_root=root)
     except (DoclineError, OSError) as err:
@@ -884,6 +886,19 @@ def execute_process(request: ProcessRequest) -> ProcessResult:
                         if not isinstance(docline_namespace, dict):
                             docline_namespace = dict(docline_namespace)
                         docline_namespace["canonical_url"] = canonical
+                # Web sources without a Learn publish-config: fall back to the
+                # fetched URL as the canonical location (B0A77532). source_url /
+                # final_url are already captured; this promotes one to
+                # canonical_url so graphtor can key on it uniformly. Local
+                # ingests have no staged page metadata and are skipped.
+                if part_index == 0 and page_metadata is not None:
+                    current_ns = docline_namespace if isinstance(docline_namespace, dict) else {}
+                    if "canonical_url" not in current_ns:
+                        web_url = page_metadata.get("final_url") or page_metadata.get("page_url")
+                        if isinstance(web_url, str) and web_url:
+                            if not isinstance(docline_namespace, dict):
+                                docline_namespace = dict(docline_namespace)
+                            docline_namespace["canonical_url"] = web_url
                 try:
                     markdown_text = _build_markdown_with_frontmatter(
                         job,
