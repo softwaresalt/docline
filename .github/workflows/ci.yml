@@ -8,13 +8,14 @@ name: CI
 # Cost controls (GitHub Actions minutes; private repo) — each independent:
 # 1. ✅ APPLIED — windows-latest dropped from matrix (~4 billable min/run).
 # 2. ✅ APPLIED — macos-latest dropped from matrix (~10 billable min/run).
-# 3. ✅ APPLIED — paths-ignore skips doc-/backlog-only pushes (see below).
-# 4. ✅ APPLIED — path-based gating only: workflow-level paths-ignore skips
-#    doc-/backlog-only PRs, so test + build always run when a source path
-#    changes (a chore:/docs: PR that touches code is still fully tested).
-# 5. ✅ APPLIED — a `ci-gate` job aggregates the results and always reports;
-#    require IT in branch protection so a doc-only PR (whole workflow skipped
-#    by paths-ignore) does not block the merge.
+# 3. ✅ APPLIED — a `changes` job diffs the PR/push and gates the heavy jobs;
+#    doc-/backlog-only changes skip lint/format/typecheck/test/build entirely.
+# 4. ✅ APPLIED — path-based, in-job gating (NOT a PR-title guard): test + build
+#    (and lint/format/type) run only when a non-doc (code/config) path changes,
+#    so a chore:/docs: PR that touches code is still fully tested.
+# 5. ✅ APPLIED — the workflow always triggers (no paths-ignore) and `ci-gate`
+#    always reports, so the required check is satisfied even on doc-only PRs
+#    (heavy jobs skipped); require `ci gate` in branch protection.
 #
 # Release tags (v*) are handled by release.yml, which runs these same quality
 # gates before building and publishing — so CI is not duplicated on release.
@@ -22,21 +23,7 @@ on:
   push:
     branches:
       - main
-    paths-ignore:
-      - '.backlogit/**'
-      - 'docs/**'
-      - '.autoharness/**'
-      - '*.md'                # root README/CHANGELOG/AGENTS.md
-      - '.github/**/*.md'     # instructions/prompts/agents
-      - 'scripts/**/*.md'     # scripts/metrics/README.md
   pull_request:
-    paths-ignore:
-      - '.backlogit/**'
-      - 'docs/**'
-      - '.autoharness/**'
-      - '*.md'                # root README/CHANGELOG/AGENTS.md
-      - '.github/**/*.md'     # instructions/prompts/agents
-      - 'scripts/**/*.md'     # scripts/metrics/README.md
   workflow_dispatch:
 
 permissions:
@@ -47,8 +34,56 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  changes:
+    name: detect code changes
+    runs-on: ubuntu-latest
+    outputs:
+      code: ${{ steps.filter.outputs.code }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10  # v6.0.3
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - name: Detect non-doc (code/config) changes
+        id: filter
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PUSH_BEFORE: ${{ github.event.before }}
+          HEAD_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          # Manual runs always build/test.
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            echo "code=true" >> "$GITHUB_OUTPUT"; exit 0
+          fi
+          if [ "$EVENT_NAME" = "pull_request" ]; then
+            range="${PR_BASE_SHA}...${HEAD_SHA}"
+          elif [ -z "${PUSH_BEFORE:-}" ] || [ "$PUSH_BEFORE" = "0000000000000000000000000000000000000000" ]; then
+            # New branch / unknown base — build to be safe.
+            echo "code=true" >> "$GITHUB_OUTPUT"; exit 0
+          else
+            range="${PUSH_BEFORE}...${HEAD_SHA}"
+          fi
+          files="$(git diff --name-only "$range")"
+          echo "Changed files:"; printf '%s\n' "$files"
+          code=false
+          while IFS= read -r f; do
+            [ -z "$f" ] && continue
+            case "$f" in
+              .backlogit/*|docs/*|.autoharness/*|*.md) : ;;  # doc/backlog only
+              *) code=true ;;                                # any other path is code
+            esac
+          done < <(printf '%s\n' "$files")
+          echo "Result: code=$code"
+          echo "code=$code" >> "$GITHUB_OUTPUT"
+
   lint:
     name: ruff lint
+    needs: [changes]
+    if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -71,6 +106,8 @@ jobs:
 
   format:
     name: ruff format check
+    needs: [changes]
+    if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -93,6 +130,8 @@ jobs:
 
   typecheck:
     name: pyright
+    needs: [changes]
+    if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -115,6 +154,8 @@ jobs:
 
   test:
     name: pytest (${{ matrix.os }})
+    needs: [changes]
+    if: needs.changes.outputs.code == 'true'
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -145,6 +186,8 @@ jobs:
 
   build:
     name: sdist + wheel
+    needs: [changes]
+    if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -173,12 +216,12 @@ jobs:
   ci-gate:
     name: ci gate
     if: always()
-    needs: [lint, format, typecheck, test, build]
+    needs: [changes, lint, format, typecheck, test, build]
     runs-on: ubuntu-latest
     steps:
       - name: Verify no required job failed
         run: |
-          results="${{ needs.lint.result }} ${{ needs.format.result }} ${{ needs.typecheck.result }} ${{ needs.test.result }} ${{ needs.build.result }}"
+          results="${{ needs.changes.result }} ${{ needs.lint.result }} ${{ needs.format.result }} ${{ needs.typecheck.result }} ${{ needs.test.result }} ${{ needs.build.result }}"
           echo "job results: $results"
           for r in $results; do
             if [ "$r" = "failure" ] || [ "$r" = "cancelled" ]; then
