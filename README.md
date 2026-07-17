@@ -73,6 +73,12 @@ commands (default is normal):
   line with the authoritative number of pages actually staged. These trailing
   lines are expected — they mark completion, not duplicated work.
 
+On an interactive terminal, in-place progress updates are coordinated with log
+output: any warning logged mid-run clears the active progress line first and is
+printed on its own line, and the progress line redraws on the next update (so
+warnings never corrupt the live percentage). Piped/redirected output uses plain
+newline-terminated lines and is unaffected.
+
 Progress metrics:
 
 * **`docline process`** reports `files_done / total`, where `total` is the
