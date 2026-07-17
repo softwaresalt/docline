@@ -353,14 +353,16 @@ def main(argv: list[str] | None = None) -> int:
                 from docline.elt.execute import execute_elt_fetch as _exec
 
                 reporter = _make_progress(parsed, "fetch")
-                jobs = _exec(
-                    config_dir,
-                    parsed.staging_dir,
-                    workspace_root=Path.cwd(),
-                    progress=reporter,
-                )
-                if reporter is not None:
-                    reporter.finish()
+                try:
+                    jobs = _exec(
+                        config_dir,
+                        parsed.staging_dir,
+                        workspace_root=Path.cwd(),
+                        progress=reporter,
+                    )
+                finally:
+                    if reporter is not None:
+                        reporter.finish()
             else:
                 jobs = orchestrate_fetch(config_dir, parsed.staging_dir, workspace_root=Path.cwd())
         except DoclineError as err:
@@ -391,9 +393,11 @@ def main(argv: list[str] | None = None) -> int:
             return 2
 
         reporter = _make_progress(parsed, "process")
-        result = execute_process(request, progress=reporter)
-        if reporter is not None:
-            reporter.finish()
+        try:
+            result = execute_process(request, progress=reporter)
+        finally:
+            if reporter is not None:
+                reporter.finish()
         print(json.dumps(result.model_dump()))
         return 0 if result.success else 1
 
