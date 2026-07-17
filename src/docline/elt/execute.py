@@ -550,9 +550,19 @@ def _fetch_url(
                     }
                 )
                 staged_count += 1
-    finally:
-        # Always emit the authoritative staged-count completion event — even when
-        # the crawl is rejected or staging I/O fails — without masking the error.
+    except BaseException:
+        # An operation error (rejected crawl, staging I/O, KeyboardInterrupt) is
+        # propagating. Still emit the authoritative completion event, but never
+        # let a failing progress callback replace the original exception.
+        if progress is not None:
+            try:
+                progress(staged_count, None, url)
+            except Exception:  # noqa: BLE001
+                _log.warning("Progress completion callback failed during error handling")
+        raise
+    else:
+        # Success path: emit the completion event; a broken callback here is a
+        # real error and is allowed to propagate.
         if progress is not None:
             progress(staged_count, None, url)
     if staged_count == 0:
