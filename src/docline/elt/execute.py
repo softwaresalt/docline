@@ -42,6 +42,7 @@ import hashlib
 import json
 import logging
 import shutil
+from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
 from urllib.parse import unquote, urlparse
@@ -100,6 +101,7 @@ def execute_elt_fetch(
     config_dir: Path | str,
     staging_dir: str,
     workspace_root: Path | str | None = None,
+    progress: Callable[[int, int | None, str], None] | None = None,
 ) -> list[StagingJob]:
     """Fetch all configured ELT sources into the staging area.
 
@@ -113,6 +115,8 @@ def execute_elt_fetch(
         staging_dir: Workspace-relative staging root (e.g. ``".elt/staging"``).
         workspace_root: Workspace root for resolving relative paths.  Defaults
             to the current working directory when ``None``.
+        progress: Optional progress callback forwarded to the crawl for
+            ``web_crawl``/``manifest_url`` sources (see :func:`_fetch_url`).
 
     Returns:
         A list of :class:`~docline.fetch.models.StagingJob` records, one per
@@ -134,13 +138,14 @@ def execute_elt_fetch(
     safe_workspace_path(staging_dir, root_resolved)
 
     configs = discover_configs(config_dir_resolved)
-    return execute_source_configs(configs, staging_dir, root)
+    return execute_source_configs(configs, staging_dir, root, progress=progress)
 
 
 def execute_source_configs(
     configs: list[SourceConfig],
     staging_dir: str,
     workspace_root: Path | str | None = None,
+    progress: Callable[[int, int | None, str], None] | None = None,
 ) -> list[StagingJob]:
     """Fetch each in-memory source config into the staging area.
 
@@ -155,22 +160,33 @@ def execute_source_configs(
         staging_dir: Workspace-relative staging root.
         workspace_root: Workspace root for resolving relative paths.
             Defaults to the current working directory when ``None``.
+        progress: Optional progress callback forwarded to the crawl for
+            ``web_crawl``/``manifest_url`` sources (see :func:`_fetch_url`).
 
     Returns:
         A list of :class:`~docline.fetch.models.StagingJob` records, one
         per config.
     """
     root = Path.cwd() if workspace_root is None else Path(workspace_root)
-    return [_execute_single_source(config, staging_dir, root) for config in configs]
+    return [
+        _execute_single_source(config, staging_dir, root, progress=progress) for config in configs
+    ]
 
 
-def _execute_single_source(config: SourceConfig, staging_dir: str, root: Path) -> StagingJob:
+def _execute_single_source(
+    config: SourceConfig,
+    staging_dir: str,
+    root: Path,
+    progress: Callable[[int, int | None, str], None] | None = None,
+) -> StagingJob:
     """Fetch a single source config and write its content to staging.
 
     Args:
         config: Typed source configuration.
         staging_dir: Workspace-relative staging root.
         root: Resolved workspace root.
+        progress: Optional progress callback forwarded to the crawl for URL
+            sources.
 
     Returns:
         A :class:`~docline.fetch.models.StagingJob` with ``complete=True`` on
@@ -197,7 +213,7 @@ def _execute_single_source(config: SourceConfig, staging_dir: str, root: Path) -
             _fetch_manifest_local(config, root, files_dir)
             complete = True
         elif isinstance(config, (WebCrawlSource, ManifestUrlSource)):
-            complete = _fetch_url(config, files_dir) > 0
+            complete = _fetch_url(config, files_dir, progress=progress) > 0
         elif isinstance(config, (GitHubRepoSource, ManifestGitSource)):
             _fetch_github(config, files_dir)
             complete = True
@@ -476,12 +492,21 @@ def _write_local_crawl_manifest(files_dir: Path) -> None:
     )
 
 
-def _fetch_url(config: WebCrawlSource | ManifestUrlSource, files_dir: Path) -> int:
+def _fetch_url(
+    config: WebCrawlSource | ManifestUrlSource,
+    files_dir: Path,
+    progress: Callable[[int, int | None, str], None] | None = None,
+) -> int:
     """Fetch a URL source and stage every crawled HTML page.
 
     Args:
         config: WebCrawlSource or ManifestUrlSource configuration.
         files_dir: Destination staging files directory.
+        progress: Optional progress callback. It is forwarded to the crawl
+            (which reports budget-consumed pages) and then invoked once more
+            after staging with ``progress(staged_count, None, url)`` — the
+            authoritative count of pages actually written — as a final
+            count-only completion event.
 
     Returns:
         Number of staged HTML pages.
@@ -492,7 +517,7 @@ def _fetch_url(config: WebCrawlSource | ManifestUrlSource, files_dir: Path) -> i
     from docline.fetch.crawl import crawl
 
     url = config.url
-    results = asyncio.run(crawl(url, _crawl_config_from_source(config)))
+    results = asyncio.run(crawl(url, _crawl_config_from_source(config), progress=progress))
     staged_count = 0
     used_paths: dict[str, str] = {}
     manifest_pages: list[dict[str, object]] = []
@@ -535,6 +560,8 @@ def _fetch_url(config: WebCrawlSource | ManifestUrlSource, files_dir: Path) -> i
         ),
         encoding="utf-8",
     )
+    if progress is not None:
+        progress(staged_count, None, url)
     return staged_count
 
 

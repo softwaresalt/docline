@@ -34,9 +34,12 @@ def fake_crawl(monkeypatch):
     """
     captured: dict[str, object] = {}
 
-    async def _fake(start_url: str, config: CrawlConfig | None = None) -> list[CrawlResult]:
+    async def _fake(
+        start_url: str, config: CrawlConfig | None = None, progress=None
+    ) -> list[CrawlResult]:
         captured["start_url"] = start_url
         captured["config"] = config
+        captured["progress"] = progress
         return [_page(start_url), _page(start_url.rstrip("/") + "/child.html")]
 
     monkeypatch.setattr("docline.fetch.crawl.crawl", _fake)

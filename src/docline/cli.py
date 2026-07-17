@@ -9,9 +9,49 @@ from docline.app import execute_process, get_manifest
 from docline.app_models import ProcessRequest
 from docline.elt.orchestrate import orchestrate_fetch
 from docline.paths import PathContainmentError, safe_workspace_path
+from docline.progress import ProgressReporter, Verbosity
 from docline.quarantine_viewer import QuarantineViewerError, render_local_quarantine_viewer
 from docline.schema.export import export_base_frontmatter_schema_json
 from docline.schema.models import DoclineError
+
+
+def _add_verbosity_flags(parser: argparse.ArgumentParser) -> None:
+    """Add a mutually-exclusive ``-q/--quiet`` + ``-v/--verbose`` group.
+
+    Args:
+        parser: Subparser to receive the verbosity flags.
+    """
+    group = parser.add_mutually_exclusive_group()
+    group.add_argument(
+        "-q",
+        "--quiet",
+        action="store_true",
+        default=False,
+        help="Suppress progress output on stderr (the JSON result still prints).",
+    )
+    group.add_argument(
+        "-v",
+        "--verbose",
+        action="store_true",
+        default=False,
+        help="Emit a per-item progress line on stderr for each page/file.",
+    )
+
+
+def _resolve_verbosity(parsed: argparse.Namespace) -> Verbosity:
+    """Map parsed ``-q``/``-v`` flags to a :class:`~docline.progress.Verbosity`.
+
+    Args:
+        parsed: Parsed CLI arguments.
+
+    Returns:
+        ``SILENT`` for ``-q``, ``VERBOSE`` for ``-v``, else ``NORMAL``.
+    """
+    if getattr(parsed, "quiet", False):
+        return Verbosity.SILENT
+    if getattr(parsed, "verbose", False):
+        return Verbosity.VERBOSE
+    return Verbosity.NORMAL
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -47,6 +87,7 @@ def _build_parser() -> argparse.ArgumentParser:
         default=False,
         help="Actually fetch content (default: plan-only staging job creation).",
     )
+    _add_verbosity_flags(fetch_parser)
 
     process_parser = subcommands.add_parser(
         "process",
@@ -123,6 +164,7 @@ def _build_parser() -> argparse.ArgumentParser:
             "enabling --triage-pre-score in production runs."
         ),
     )
+    _add_verbosity_flags(process_parser)
 
     quarantine_viewer_parser = subcommands.add_parser(
         "quarantine-viewer",
@@ -289,7 +331,16 @@ def main(argv: list[str] | None = None) -> int:
             if getattr(parsed, "execute", False):
                 from docline.elt.execute import execute_elt_fetch as _exec
 
-                jobs = _exec(config_dir, parsed.staging_dir, workspace_root=Path.cwd())
+                reporter = ProgressReporter(
+                    _resolve_verbosity(parsed), stream=sys.stderr, label="fetch"
+                )
+                jobs = _exec(
+                    config_dir,
+                    parsed.staging_dir,
+                    workspace_root=Path.cwd(),
+                    progress=reporter,
+                )
+                reporter.finish()
             else:
                 jobs = orchestrate_fetch(config_dir, parsed.staging_dir, workspace_root=Path.cwd())
         except DoclineError as err:
@@ -319,7 +370,9 @@ def main(argv: list[str] | None = None) -> int:
             print(f"error: {err}", file=sys.stderr)
             return 2
 
-        result = execute_process(request)
+        reporter = ProgressReporter(_resolve_verbosity(parsed), stream=sys.stderr, label="process")
+        result = execute_process(request, progress=reporter)
+        reporter.finish()
         print(json.dumps(result.model_dump()))
         return 0 if result.success else 1
 

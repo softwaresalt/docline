@@ -260,8 +260,8 @@ class TestEltFetchUrlSource:
             encoding="utf-8",
         )
 
-        async def fake_crawl(start_url: str, config=None):
-            del start_url, config
+        async def fake_crawl(start_url: str, config=None, progress=None):
+            del start_url, config, progress
             return [mock_result]
 
         with patch("docline.fetch.crawl.crawl", side_effect=fake_crawl):
@@ -284,8 +284,8 @@ class TestEltFetchUrlSource:
             "type: web_crawl\nurl: https://example.com\n", encoding="utf-8"
         )
 
-        async def fake_crawl(start_url: str, config=None):
-            del start_url, config
+        async def fake_crawl(start_url: str, config=None, progress=None):
+            del start_url, config, progress
             raise OSError("Network down")
 
         with patch("docline.fetch.crawl.crawl", side_effect=fake_crawl):
@@ -304,8 +304,8 @@ class TestEltFetchUrlSource:
             "type: web_crawl\nurl: https://example.com\n", encoding="utf-8"
         )
 
-        async def fake_crawl(start_url: str, config=None):
-            del start_url, config
+        async def fake_crawl(start_url: str, config=None, progress=None):
+            del start_url, config, progress
             raise OSError("Network down")
 
         caplog.set_level(logging.ERROR, logger="docline.elt.execute")
@@ -355,8 +355,8 @@ class TestEltFetchUrlSource:
             )
         ]
 
-        async def fake_crawl(start_url: str, config=None):
-            del start_url, config
+        async def fake_crawl(start_url: str, config=None, progress=None):
+            del start_url, config, progress
             return crawl_results
 
         with patch("docline.fetch.crawl.crawl", side_effect=fake_crawl):
@@ -415,8 +415,8 @@ class TestEltFetchUrlSource:
             ),
         ]
 
-        async def fake_crawl(start_url: str, config=None):
-            del start_url, config
+        async def fake_crawl(start_url: str, config=None, progress=None):
+            del start_url, config, progress
             return crawl_results
 
         with patch("docline.fetch.crawl.crawl", side_effect=fake_crawl):

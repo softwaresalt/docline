@@ -3,7 +3,7 @@
 import json
 import logging
 import re
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from datetime import UTC, datetime
 from hashlib import sha256
 from pathlib import Path
@@ -551,7 +551,10 @@ def get_mcp_manifest() -> McpManifestResponse:
     return McpManifestResponse(tools=get_manifest().tools)
 
 
-def execute_fetch(request: FetchRequest) -> FetchResult:
+def execute_fetch(
+    request: FetchRequest,
+    progress: Callable[[int, int | None, str], None] | None = None,
+) -> FetchResult:
     """Fetch a web source and stage every crawled page for processing.
 
     Wraps the request URL as a :class:`~docline.elt.models.WebCrawlSource` and
@@ -571,6 +574,9 @@ def execute_fetch(request: FetchRequest) -> FetchResult:
 
     Args:
         request: Validated fetch parameters.
+        progress: Optional progress callback forwarded to the underlying crawl
+            and staging (see :func:`docline.elt.execute._fetch_url`). Kept
+            outside :class:`FetchRequest` so the MCP tool schema is unchanged.
 
     Returns:
         A :class:`~docline.app_models.FetchResult`: ``success=True`` with the
@@ -600,7 +606,9 @@ def execute_fetch(request: FetchRequest) -> FetchResult:
         type="web_crawl", url=request.source, depth=request.depth, max_pages=request.max_pages
     )
     try:
-        jobs = execute_source_configs([source], request.output_dir, workspace_root=root)
+        jobs = execute_source_configs(
+            [source], request.output_dir, workspace_root=root, progress=progress
+        )
     except (DoclineError, OSError) as err:
         return FetchResult(source=request.source, staged_path="", success=False, error=str(err))
 
@@ -713,7 +721,10 @@ def _emit_openapi_documents(
     return ingest_order, written, errors
 
 
-def execute_process(request: ProcessRequest) -> ProcessResult:
+def execute_process(
+    request: ProcessRequest,
+    progress: Callable[[int, int | None, str], None] | None = None,
+) -> ProcessResult:
     """Process staged documents into Markdown output files.
 
     Walks the staging directory for completed staging jobs, reads each staged
@@ -722,6 +733,12 @@ def execute_process(request: ProcessRequest) -> ProcessResult:
 
     Args:
         request: Validated process parameters.
+        progress: Optional callback invoked once per staged file as
+            ``progress(files_done, total, detail)``. ``total`` is a global count
+            summed across all completed jobs up front, so ``files_done`` is
+            cumulative and monotonic across job boundaries; ``detail`` carries
+            the job identity/phase. Kept outside :class:`ProcessRequest` so the
+            MCP tool schema is unchanged.
 
     Returns:
         A process result describing the outcome.
@@ -752,6 +769,28 @@ def execute_process(request: ProcessRequest) -> ProcessResult:
             error=str(err),
         )
 
+    global_progress_total = 0
+    total_jobs = 0
+    if progress is not None:
+        for pre_metadata_path in sorted(staging_dir.rglob("metadata.json")):
+            try:
+                pre_job = StagingJob.model_validate_json(
+                    pre_metadata_path.read_text(encoding="utf-8")
+                )
+            except Exception:  # noqa: BLE001
+                continue
+            if not pre_job.complete:
+                continue
+            pre_files_dir = pre_metadata_path.parent / "files"
+            if not pre_files_dir.is_dir():
+                continue
+            total_jobs += 1
+            global_progress_total += len(
+                _ordered_staged_files(pre_files_dir, _load_crawl_manifest(pre_metadata_path.parent))
+            )
+    files_done = 0
+    job_index = 0
+
     processed_count = 0
     completed_job_found = False
     errors: list[str] = []
@@ -771,6 +810,7 @@ def execute_process(request: ProcessRequest) -> ProcessResult:
         if not files_dir.is_dir():
             continue
 
+        job_index += 1
         publish_config = _load_publish_config(files_dir)
         docfx_prefixes = _build_docfx_prefixes(files_dir, publish_config)
 
@@ -781,6 +821,13 @@ def execute_process(request: ProcessRequest) -> ProcessResult:
 
         for file_path in _ordered_staged_files(files_dir, crawl_entries):
             rel_in_files = file_path.relative_to(files_dir)
+            if progress is not None:
+                files_done += 1
+                progress(
+                    files_done,
+                    global_progress_total,
+                    f"job {job_index}/{total_jobs}: {rel_in_files.as_posix()}",
+                )
             if _is_openapi_staged(file_path):
                 next_ingest_order, written, openapi_errors = _emit_openapi_documents(
                     file_path,

@@ -3,6 +3,7 @@
 import asyncio
 import re
 from collections import deque
+from collections.abc import Callable
 from dataclasses import dataclass
 from html.parser import HTMLParser
 from urllib.parse import parse_qsl, urldefrag, urljoin, urlparse
@@ -100,6 +101,7 @@ class _LinkExtractor(HTMLParser):
 async def crawl(
     start_url: str,
     config: CrawlConfig | None = None,
+    progress: Callable[[int, int | None, str], None] | None = None,
 ) -> list[CrawlResult]:
     """Crawl *start_url* within the configured page and depth budgets.
 
@@ -112,6 +114,12 @@ async def crawl(
         start_url: The URL to fetch.
         config: Crawl configuration.  Uses default :class:`CrawlConfig` when
             ``None``.
+        progress: Optional callback invoked once per *budget-consuming* page as
+            ``progress(page_count, config.max_pages, url)``. It fires on each
+            ``page_count`` increment (fetched pages plus robots-denied, failed,
+            and domain-rejected URLs) and is a budget-consumed signal, not a
+            staged-page count. URLs that skip without consuming the budget (out
+            of section scope, print pages, duplicate finals) do not fire it.
 
     Returns:
         A list of :class:`CrawlResult` values, in breadth-first discovery order,
@@ -156,6 +164,8 @@ async def crawl(
                 )
             )
             page_count += 1
+            if progress is not None:
+                progress(page_count, crawl_config.max_pages, current_url)
             continue
 
         if crawl_config.rate_limit_ms > 0 and page_count > 0:
@@ -175,6 +185,8 @@ async def crawl(
                 )
             )
             page_count += 1
+            if progress is not None:
+                progress(page_count, crawl_config.max_pages, current_url)
             continue
 
         final_url = _normalize_url(response.url)
@@ -188,6 +200,8 @@ async def crawl(
                 )
             )
             page_count += 1
+            if progress is not None:
+                progress(page_count, crawl_config.max_pages, current_url)
             continue
         if crawl_config.domain_lock and not _url_within_section_scope(final_url, section_scope):
             continue
@@ -219,6 +233,8 @@ async def crawl(
 
         results.append(CrawlResult(url=final_url, depth=depth, response=response))
         page_count += 1
+        if progress is not None:
+            progress(page_count, crawl_config.max_pages, current_url)
 
         if depth >= crawl_config.max_depth:
             continue
