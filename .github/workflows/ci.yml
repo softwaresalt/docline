@@ -1,32 +1,20 @@
 ---
 name: CI
 
-# CI is PAUSED while we pace GitHub Actions minute consumption (private
-# repo + macOS matrix = ~19.5 billable min/run; PR #62 alone burned ~273
-# min across its fix cycles, and the 3,000 monthly allotment was
-# exhausted on 2026-06-10).
+# CI runs the quality gates (ruff lint, ruff format, pyright, pytest,
+# sdist+wheel) on push to main and on pull requests, plus manual
+# workflow_dispatch runs from the Actions tab.
 #
-# To re-enable for everyday PR / push validation, restore these triggers
-# (paths-ignore per item 3 is already inlined so restoring is copy-paste-ready):
-#   on:
-#     pull_request:
-#       paths-ignore: ['.backlogit/**', 'docs/**', '**/*.md', 'README.md']
-#     push:
-#       branches: [main]
-#       paths-ignore: ['.backlogit/**', 'docs/**', '**/*.md', 'README.md']
-#
-# Cost-reduction changes (each independent):
+# Cost controls (GitHub Actions minutes; private repo) — each independent:
 # 1. ✅ APPLIED — windows-latest dropped from matrix (~4 billable min/run).
 # 2. ✅ APPLIED — macos-latest dropped from matrix (~10 billable min/run).
-# 3. ✅ READY — paths-ignore inlined into the restore template above so doc-/
-#    backlog-only pushes skip the matrix once PR/push triggers are restored.
+# 3. ✅ APPLIED — paths-ignore skips doc-/backlog-only pushes (see below).
 # 4. ✅ APPLIED — the build + test jobs carry a PR-title guard that skips PRs
 #    whose title starts with 'chore:' or 'docs:' (inert on non-PR events).
 # 5. ✅ APPLIED — a `ci-gate` job aggregates the results and always reports;
 #    require IT (not the guarded test/build) in branch protection so skipped
 #    jobs on chore:/docs: PRs do not block the merge.
 #
-# Current trigger fires only on explicit manual runs from the Actions tab.
 # Release tags (v*) are handled by release.yml, which runs these same quality
 # gates before building and publishing — so CI is not duplicated on release.
 on:
@@ -48,6 +36,7 @@ on:
       - '*.md'                # root README/CHANGELOG/AGENTS.md
       - '.github/**/*.md'     # instructions/prompts/agents
       - 'scripts/**/*.md'     # scripts/metrics/README.md
+  workflow_dispatch:
 
 permissions:
   contents: read

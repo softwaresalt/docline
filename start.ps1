@@ -62,16 +62,16 @@ if (Test-Path -LiteralPath $envLocalPath -PathType Leaf) {
     }
 }
 
-$env:GITHUB_PERSONAL_ACCESS_TOKEN = (gh auth token)
 $env:COPILOT_HOME = if ($env:COPILOT_HOME) { $env:COPILOT_HOME } else { Join-Path $PSScriptRoot ".copilot" }
 $env:ENGRAM_DATA_DIR = if ($env:ENGRAM_DATA_DIR) { $env:ENGRAM_DATA_DIR } else { Join-Path $PSScriptRoot ".engram" }
-if (-not $env:GITHUB_TOKEN) {
+if ((-not $env:GITHUB_TOKEN) -or (-not $env:GITHUB_PERSONAL_ACCESS_TOKEN)) {
     $ghCmd = Get-Command gh -ErrorAction SilentlyContinue
     if ($ghCmd) {
         try {
             $ghToken = (& $ghCmd.Source auth token 2>$null).Trim()
             if ($ghToken) {
-                $env:GITHUB_TOKEN = $ghToken
+                if (-not $env:GITHUB_TOKEN) { $env:GITHUB_TOKEN = $ghToken }
+                if (-not $env:GITHUB_PERSONAL_ACCESS_TOKEN) { $env:GITHUB_PERSONAL_ACCESS_TOKEN = $ghToken }
             }
         } catch {
             Write-Warning "gh auth token failed (non-fatal): $_"
@@ -130,8 +130,8 @@ $copilotArguments = @()
 # Remote mode is opt-in. Append --remote only when COPILOT_USE_REMOTE is truthy
 # (true/1, case-insensitive) and the user did not already pass --remote.
 if (($env:COPILOT_USE_REMOTE -eq 'true' -or $env:COPILOT_USE_REMOTE -eq '1') -and
-    (-not ($args -contains "--yolo"))) {
-    $copilotArguments += "--yolo"
+    (-not ($args -contains "--remote"))) {
+    $copilotArguments += "--remote"
 }
 
 $copilotArguments += $args

@@ -25,6 +25,7 @@ import os
 import re
 import zlib
 from pathlib import Path
+from typing import Any
 
 from docline import dependencies
 from docline.dependencies import DependencyUnavailableError
@@ -839,7 +840,7 @@ def _read_pdf_docling_pages(
         _resolve_accelerator_device(os.environ.get(_DOCLINE_ACCELERATOR_ENV))
     )
     try:
-        pipeline_kwargs: dict[str, object] = {
+        pipeline_kwargs: dict[str, Any] = {
             "do_ocr": do_ocr,
             "do_table_structure": True,
             "table_structure_options": TableStructureOptions(do_cell_matching=True),
