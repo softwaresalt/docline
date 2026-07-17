@@ -137,3 +137,61 @@ def test_verbose_passes_reporter_to_execute_process(
     code = main(["process", "--staging-dir", "staging", "--output-dir", "output", "-v"])
     assert code == 0
     assert captured["progress"] is not None
+
+
+def _run_fetch(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, *flags: str) -> tuple[int, dict]:
+    captured: dict[str, object] = {}
+
+    def fake_exec(config_dir, staging_dir, workspace_root=None, progress=None):
+        captured["progress"] = progress
+        return [
+            StagingJob(
+                job_id="j",
+                cache_path="c",
+                complete=True,
+                metadata=SourceMetadata(source="s", fetch_timestamp=datetime.now(UTC)),
+            )
+        ]
+
+    monkeypatch.setattr("docline.elt.execute.execute_elt_fetch", fake_exec)
+    (tmp_path / ".elt" / "config").mkdir(parents=True, exist_ok=True)
+    monkeypatch.chdir(tmp_path)
+    code = main(
+        [
+            "fetch",
+            "--execute",
+            "--config-dir",
+            ".elt/config",
+            "--staging-dir",
+            ".elt/staging",
+            *flags,
+        ]
+    )
+    return code, captured
+
+
+def test_fetch_quiet_passes_none_progress_and_silences_stderr(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    code, captured = _run_fetch(tmp_path, monkeypatch, "-q")
+    out = capsys.readouterr()
+    assert code == 0
+    assert captured["progress"] is None  # quiet skips progress work
+    json.loads(out.out.strip())  # jobs JSON still on stdout
+    assert out.err == ""  # no progress on stderr
+
+
+def test_fetch_verbose_passes_reporter(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    code, captured = _run_fetch(tmp_path, monkeypatch, "-v")
+    assert code == 0
+    assert captured["progress"] is not None
+
+
+def test_fetch_json_on_stdout_default(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    code, _ = _run_fetch(tmp_path, monkeypatch)
+    out = capsys.readouterr()
+    assert code == 0
+    payload = json.loads(out.out.strip())
+    assert isinstance(payload, list)
