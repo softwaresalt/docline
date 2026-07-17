@@ -444,6 +444,9 @@ dependencies = [
 ]
 
 [package.optional-dependencies]
+mistral = [
+    { name = "httpx" },
+]
 pdf = [
     { name = "docling" },
 ]
@@ -461,6 +464,7 @@ requires-dist = [
     { name = "beautifulsoup4", specifier = ">=4.12,<5" },
     { name = "defusedxml", specifier = ">=0.7,<1" },
     { name = "docling", marker = "extra == 'pdf'", specifier = ">=2,<3" },
+    { name = "httpx", marker = "extra == 'mistral'", specifier = ">=0.27,<1" },
     { name = "markdown-it-py", specifier = ">=4,<5" },
     { name = "markitdown", extras = ["pdf"], specifier = ">=0.1.6,<0.2" },
     { name = "psutil", specifier = ">=5.9,<8" },
@@ -468,7 +472,7 @@ requires-dist = [
     { name = "pypdf", specifier = ">=4,<6" },
     { name = "pyyaml", specifier = ">=6,<7" },
 ]
-provides-extras = ["pdf"]
+provides-extras = ["pdf", "mistral"]
 
 [package.metadata.requires-dev]
 dev = [

@@ -36,18 +36,14 @@ def test_section_scope_excludes_sibling_subsections() -> None:
     """Scope derived from /docs/current/ admits current pages and rejects siblings."""
     scope = _derive_section_scope("https://www.postgresql.org/docs/current/")
     assert (
-        _url_within_section_scope(
-            "https://www.postgresql.org/docs/current/sql-select.html", scope
-        )
+        _url_within_section_scope("https://www.postgresql.org/docs/current/sql-select.html", scope)
         is True
     )
     assert (
         _url_within_section_scope("https://www.postgresql.org/docs/10/sql-select.html", scope)
         is False
     )
-    assert (
-        _url_within_section_scope("https://www.postgresql.org/docs/release/", scope) is False
-    )
+    assert _url_within_section_scope("https://www.postgresql.org/docs/release/", scope) is False
 
 
 def test_section_scope_none_for_site_root() -> None:

@@ -839,16 +839,15 @@ def _read_pdf_docling_pages(
         _resolve_accelerator_device(os.environ.get(_DOCLINE_ACCELERATOR_ENV))
     )
     try:
-        pipeline_kwargs: dict[str, object] = {
-            "do_ocr": do_ocr,
-            "do_table_structure": True,
-            "table_structure_options": TableStructureOptions(do_cell_matching=True),
-            "generate_picture_images": picture_sink is not None,
-            "images_scale": ocr_scale if ocr_scale is not None else 2.0,
-        }
+        pipeline_options = PdfPipelineOptions(
+            do_ocr=do_ocr,
+            do_table_structure=True,
+            table_structure_options=TableStructureOptions(do_cell_matching=True),
+            generate_picture_images=picture_sink is not None,
+            images_scale=ocr_scale if ocr_scale is not None else 2.0,
+        )
         if accelerator_options is not None:
-            pipeline_kwargs["accelerator_options"] = accelerator_options
-        pipeline_options = PdfPipelineOptions(**pipeline_kwargs)
+            pipeline_options.accelerator_options = accelerator_options
         converter = DocumentConverter(
             format_options={
                 InputFormat.PDF: PdfFormatOption(pipeline_options=pipeline_options),

@@ -1,36 +1,30 @@
 ---
 name: CI
 
-# CI is PAUSED while we pace GitHub Actions minute consumption (private
-# repo + macOS matrix = ~19.5 billable min/run; PR #62 alone burned ~273
-# min across its fix cycles, and the 3,000 monthly allotment was
-# exhausted on 2026-06-10).
+# CI runs the quality gates (ruff lint, ruff format, pyright, pytest,
+# sdist+wheel) on push to main and on pull requests, plus manual
+# workflow_dispatch runs from the Actions tab.
 #
-# To re-enable for everyday PR / push validation, restore these triggers
-# (paths-ignore per item 3 is already inlined so restoring is copy-paste-ready):
-#   on:
-#     pull_request:
-#       paths-ignore: ['.backlogit/**', 'docs/**', '**/*.md', 'README.md']
-#     push:
-#       branches: [main]
-#       paths-ignore: ['.backlogit/**', 'docs/**', '**/*.md', 'README.md']
-#
-# Cost-reduction changes (each independent):
+# Cost controls (GitHub Actions minutes; private repo) — each independent:
 # 1. ✅ APPLIED — windows-latest dropped from matrix (~4 billable min/run).
 # 2. ✅ APPLIED — macos-latest dropped from matrix (~10 billable min/run).
-# 3. ✅ READY — paths-ignore inlined into the restore template above so doc-/
-#    backlog-only pushes skip the matrix once PR/push triggers are restored.
-# 4. ✅ APPLIED — the build + test jobs carry a PR-title guard that skips PRs
-#    whose title starts with 'chore:' or 'docs:' (inert on non-PR events).
-# 5. ✅ APPLIED — a `ci-gate` job aggregates the results and always reports;
-#    require IT (not the guarded test/build) in branch protection so skipped
-#    jobs on chore:/docs: PRs do not block the merge.
+# 3. ✅ APPLIED — a `changes` job diffs the PR/push and gates the heavy jobs;
+#    doc-/backlog-only changes skip lint/format/typecheck/test/build entirely.
+# 4. ✅ APPLIED — path-based, in-job gating (NOT a PR-title guard): test + build
+#    (and lint/format/type) run only when a non-doc (code/config) path changes,
+#    so a chore:/docs: PR that touches code is still fully tested.
+# 5. ✅ APPLIED — the workflow always triggers (no paths-ignore) and `ci-gate`
+#    always reports, so the required check is satisfied even on doc-only PRs
+#    (heavy jobs skipped); require `ci gate` in branch protection.
 #
-# Current trigger fires only on explicit manual runs from the Actions tab.
 # Release tags (v*) are handled by release.yml, which runs these same quality
 # gates before building and publishing — so CI is not duplicated on release.
 on:
-  workflow_dispatch: {}
+  push:
+    branches:
+      - main
+  pull_request:
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -40,8 +34,56 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  changes:
+    name: detect code changes
+    runs-on: ubuntu-latest
+    outputs:
+      code: ${{ steps.filter.outputs.code }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10  # v6.0.3
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - name: Detect non-doc (code/config) changes
+        id: filter
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PUSH_BEFORE: ${{ github.event.before }}
+          HEAD_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          # Manual runs always build/test.
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            echo "code=true" >> "$GITHUB_OUTPUT"; exit 0
+          fi
+          if [ "$EVENT_NAME" = "pull_request" ]; then
+            range="${PR_BASE_SHA}...${HEAD_SHA}"
+          elif [ -z "${PUSH_BEFORE:-}" ] || [ "$PUSH_BEFORE" = "0000000000000000000000000000000000000000" ]; then
+            # New branch / unknown base — build to be safe.
+            echo "code=true" >> "$GITHUB_OUTPUT"; exit 0
+          else
+            range="${PUSH_BEFORE}...${HEAD_SHA}"
+          fi
+          files="$(git diff --name-only "$range")"
+          echo "Changed files:"; printf '%s\n' "$files"
+          code=false
+          while IFS= read -r f; do
+            [ -z "$f" ] && continue
+            case "$f" in
+              .backlogit/*|docs/*|.autoharness/*|*.md) : ;;  # doc/backlog only
+              *) code=true ;;                                # any other path is code
+            esac
+          done < <(printf '%s\n' "$files")
+          echo "Result: code=$code"
+          echo "code=$code" >> "$GITHUB_OUTPUT"
+
   lint:
     name: ruff lint
+    needs: [changes]
+    if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -64,6 +106,8 @@ jobs:
 
   format:
     name: ruff format check
+    needs: [changes]
+    if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -86,6 +130,8 @@ jobs:
 
   typecheck:
     name: pyright
+    needs: [changes]
+    if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -108,12 +154,8 @@ jobs:
 
   test:
     name: pytest (${{ matrix.os }})
-    # Skip the heavy matrix for chore:/docs: PRs (title-based guard). Inert on
-    # non-PR events (tags/releases/dispatch), where the PR title is empty.
-    if: >-
-      github.event_name != 'pull_request' ||
-      (!startsWith(github.event.pull_request.title, 'chore:') &&
-      !startsWith(github.event.pull_request.title, 'docs:'))
+    needs: [changes]
+    if: needs.changes.outputs.code == 'true'
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -144,12 +186,8 @@ jobs:
 
   build:
     name: sdist + wheel
-    # Skip the build for chore:/docs: PRs (title-based guard). Inert on non-PR
-    # events (tags/releases/dispatch), where the PR title is empty.
-    if: >-
-      github.event_name != 'pull_request' ||
-      (!startsWith(github.event.pull_request.title, 'chore:') &&
-      !startsWith(github.event.pull_request.title, 'docs:'))
+    needs: [changes]
+    if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -178,12 +216,12 @@ jobs:
   ci-gate:
     name: ci gate
     if: always()
-    needs: [lint, format, typecheck, test, build]
+    needs: [changes, lint, format, typecheck, test, build]
     runs-on: ubuntu-latest
     steps:
       - name: Verify no required job failed
         run: |
-          results="${{ needs.lint.result }} ${{ needs.format.result }} ${{ needs.typecheck.result }} ${{ needs.test.result }} ${{ needs.build.result }}"
+          results="${{ needs.changes.result }} ${{ needs.lint.result }} ${{ needs.format.result }} ${{ needs.typecheck.result }} ${{ needs.test.result }} ${{ needs.build.result }}"
           echo "job results: $results"
           for r in $results; do
             if [ "$r" = "failure" ] || [ "$r" = "cancelled" ]; then
