@@ -181,6 +181,9 @@ class ProgressReporter:
             self._stream.write("\r" + " " * self._last_len + "\r")
             self._stream.flush()
             self._active_line = False
+            # Re-arm the NORMAL throttle so the next event redraws immediately
+            # instead of being suppressed within min_interval after a cleared line.
+            self._emitted = False
 
     def _format(self, event: ProgressEvent, verbose: bool) -> str:
         """Format *event* into a single-line string (no trailing newline)."""
@@ -263,11 +266,14 @@ def coordinate_logging(
     logger = logging.getLogger(logger_name)
     handler = _ProgressLogHandler(reporter, reporter.stream)
     handler.setFormatter(logging.Formatter("%(levelname)s: %(message)s"))
+    previous_handlers = logger.handlers[:]
     previous_propagate = logger.propagate
-    logger.addHandler(handler)
+    # Replace (not append) the logger's handlers so pre-existing handlers cannot
+    # also emit the record and append to the active progress line; restored on exit.
+    logger.handlers = [handler]
     logger.propagate = False
     try:
         yield
     finally:
-        logger.removeHandler(handler)
+        logger.handlers = previous_handlers
         logger.propagate = previous_propagate
