@@ -52,32 +52,37 @@ Grounded code seams (2026-07-16):
   in-place via carriage-return on a TTY, at most every ~1.0s or every N items);
   **VERBOSE** emits one line per item with its detail (URL/path) + running
   percentage (not throttled); **SILENT** emits nothing. When the stream is not a
-  TTY, all output is newline-terminated with no control characters. A
-  `finish(detail=None)` method emits the final line **unconditionally**
-  (bypassing the throttle): 100% when the total is known, or the final count when
-  the total is unknown or the run ended before reaching it (e.g. crawl frontier
-  exhausted before `max_pages`). Percentage helper clamps `done/total` to
-  `[0,100]` and treats `total is None`/`0` as count-only ("no ETA") output.
+  TTY, all output is newline-terminated with no control characters. `__call__`
+  and the callback type take `total: int | None` (an unknown total → count-only,
+  "no ETA" output). A `finish(detail=None)` method emits the final line
+  **unconditionally** (bypassing the throttle) but **never fabricates 100%**: it
+  renders the actual `done` — as `done/total` (→ 100% only when `done == total`,
+  e.g. process where the file total is known) or as a bare count when `total` is
+  `None`/unknown (e.g. fetch, where `max_pages` is a budget and the crawl may end
+  early at 20 of 50). Completion is a separate marker, not a synthetic 100%.
+  Percentage helper clamps `done/total` to `[0,100]`.
 - **Files**: `src/docline/observability/progress.py`, `tests/observability/test_progress.py`.
 - **Tests**: (1) percentage math incl. clamp + `total=None` count-only;
   (2) throttling — rapid NORMAL calls coalesce, final call always emits;
   (3) TTY vs non-TTY formatting (CR vs `\n`, no control chars when not a TTY);
   (4) SILENT emits nothing; (5) NORMAL renders a single throttled concise line
   while VERBOSE renders one detailed line per item (per-item lines not dropped);
-  (6) `finish()` emits the final line even when the last update had `done < total`
-  (early completion) — 100% when total known, else the final count.
+  (6) `finish()` renders the actual count — 100% only when `done == total`
+  (known total), and a bare count (never 100%) when `total is None` or
+  `done < total` (early fetch completion, e.g. 20 of a 50-page budget).
 - **Posture**: test-first.
 
 ### Unit 2a — `crawl()` progress callback (test-first)
 
-- **Change**: Add optional keyword `progress: Callable[[int, int, str], None] | None = None`
+- **Change**: Add optional keyword `progress: Callable[[int, int | None, str], None] | None = None`
   to `crawl()` (`fetch/crawl.py:100`). Invoke it once per processed page inside
-  the BFS loop with `(page_count, crawl_config.max_pages, current_url)`. The
-  per-page callback is a **progress** signal only — when the frontier exhausts
-  before `max_pages` its last event has `done < total`; final completion is
+  the BFS loop with `(page_count, crawl_config.max_pages, current_url)` — `total`
+  is the `max_pages` **budget/ceiling**, not a known workload, so the crawl
+  routinely ends early with `done < total`. The per-page callback is a
+  **progress** signal only; `crawl` forges no synthetic 100%. Final completion is
   emitted separately by the CLI via `ProgressReporter.finish()` after `crawl()`
-  returns (see Units 1 and 4), preserving the actual fetched count. Default
-  `None` = exact current behavior.
+  returns (see Units 1 and 4), showing the actual fetched count. Default `None` =
+  exact current behavior.
 - **Files**: `src/docline/fetch/crawl.py`, `tests/fetch/test_crawl_progress.py`.
 - **Tests**: callback invoked once per page with monotonic non-decreasing counts
   ≤ max_pages; **early frontier exhaustion** (frontier empties before `max_pages`)
@@ -87,10 +92,10 @@ Grounded code seams (2026-07-16):
 
 ### Unit 2b — Thread fetch callback through the library seam
 
-- **Change**: Add optional `progress` param (default `None`) to `_fetch_url`,
-  `_execute_single_source`, `execute_source_configs`, `execute_elt_fetch`
-  (`elt/execute.py`) and `execute_fetch` (`app.py`), forwarding into
-  `crawl(..., progress=progress)`. No function prints.
+- **Change**: Add optional `progress: Callable[[int, int | None, str], None] | None = None`
+  param to `_fetch_url`, `_execute_single_source`, `execute_source_configs`,
+  `execute_elt_fetch` (`elt/execute.py`) and `execute_fetch` (`app.py`),
+  forwarding into `crawl(..., progress=progress)`. No function prints.
 - **Files**: `src/docline/elt/execute.py`, `src/docline/app.py`.
 - **Tests**: `tests/elt/test_execute_fetch_progress.py` — a stub `crawl` (or a
   fake source) confirms the callback reaches `crawl`; `None` default unchanged.
@@ -98,13 +103,18 @@ Grounded code seams (2026-07-16):
 
 ### Unit 3 — `execute_process` per-file progress callback (test-first)
 
-- **Change**: Add optional `progress: Callable[[int, int, str], None] | None = None`
-  to `execute_process` (`app.py:716`). For each completed job, compute
-  `total = len(ordered_files)` and invoke `progress(files_done, total, rel_path)`
-  after each file. No printing.
+- **Change**: Add optional `progress: Callable[[int, int | None, str], None] | None = None`
+  to `execute_process` (`app.py:716`). Compute a **global** total = sum of
+  `len(_ordered_staged_files(...))` across **all** completed jobs up front, then
+  invoke `progress(cumulative_files_done, global_total, detail)` after each file,
+  where `detail` carries the job identity/phase (e.g. `"job 2/3: <rel_path>"`).
+  Cumulative counting keeps progress monotonic across job boundaries (no per-job
+  reset/regression). No printing.
 - **Files**: `src/docline/app.py`, `tests/test_execute_process_progress.py`.
-- **Tests**: callback invoked once per staged file with correct running
-  `files_done`/`total`; `None` default preserves current behavior.
+- **Tests**: callback invoked once per staged file with a **monotonic** cumulative
+  `files_done` against a stable `global_total` across a **multi-job** run (no
+  regression at job boundaries); `detail` carries job identity; `None` default
+  preserves current behavior.
 - **Posture**: test-first.
 
 ### Unit 4 — CLI flags + reporter wiring
@@ -115,9 +125,9 @@ Grounded code seams (2026-07-16):
   `ProgressReporter(verbosity, stream=sys.stderr)`, pass its `__call__` as the
   `progress` callback to `execute_elt_fetch` (fetch `--execute`) and
   `execute_process`, and call `reporter.finish()` after the call returns so the
-  final 100%/final-count line is always emitted (even if the last per-item event
-  had `done < total`). Keep the terminal `print(json...)` on stdout unchanged in
-  all modes.
+  final line is always emitted — the actual count/percentage, never a forced
+  100% (fetch may end early with `done < total`). Keep the terminal
+  `print(json...)` on stdout unchanged in all modes.
 - **Files**: `src/docline/cli.py`, `tests/test_cli_verbosity.py`.
 - **Tests**: (1) flag parsing — quiet/verbose/default resolve to the right enum;
   (2) `-q -v` raises argparse error (exit 2); (3) dispatch passes a reporter and
@@ -154,16 +164,19 @@ Unit 3 (process callback) ──────────┼→ Unit 4 (CLI wirin
 - **`-q/-v` pair → internal `Verbosity` enum** (not a bare `--verbosity` enum):
   idiomatic Unix ergonomics with argparse mutual-exclusion, while the enum keeps
   a single clean value flowing through the code. (Deliberation O1.)
-- **fetch % = `pages_fetched/max_pages`, clamp to 100% on completion** (not the
-  moving-frontier estimate): stable, monotonic, no regressing bar. (O2.)
+- **fetch progress is count-authoritative** (not the moving-frontier estimate):
+  `max_pages` is a budget/ceiling, so `pages_fetched/max_pages` is only a
+  lower-bound hint and completion **never forces 100%** (20/50 stays 20/50 or a
+  bare count); the actual `pages_fetched` count is authoritative. (O2.)
 - **Optional `progress` callback, default `None`** (not stdlib logging): keeps
   the library print-free and the MCP surface identical; deterministic to test. (O3.)
 - **Progress → stderr, result JSON → stdout (unchanged)**: separates human vs
   machine output; scripts and pipes are unaffected in every verbosity mode; no
   `--json` flag needed. (O4.)
-- **process reports per-job progress** (not a pre-scan global total): avoids a
-  second directory walk; counts stay accurate, only the denominator scope is
-  per-job.
+- **process uses a global total across jobs** (not per-job resets): sum all
+  completed-job file counts up front and report cumulative
+  `files_done/global_total` so multi-job progress is monotonic; job identity
+  rides in the VERBOSE detail.
 
 ## Risks and Caveats
 

@@ -58,12 +58,16 @@ without its verbosity at the call site.
 - **O2b `pages_fetched / (visited + remaining_frontier)`** — moving estimate that
   tracks the growing BFS frontier.
 
-**Chosen: O2a.** The frontier estimate (O2b) oscillates as discovery expands and
-can regress, which reads as a broken progress bar. `max_pages` is a hard budget
-already enforced by the crawl loop, so `pages_fetched / max_pages` is a stable
-lower-bound percentage. When the frontier exhausts before the budget (crawl ends
-early), the reporter **clamps to 100% on completion**. Percent is advisory; the
-absolute `pages_fetched` count is always shown alongside.
+**Chosen: O2a, count-authoritative.** The frontier estimate (O2b) oscillates as
+discovery expands and can regress, which reads as a broken progress bar.
+`max_pages` is a **budget/ceiling**, not a known workload — the crawl routinely
+finishes early when the frontier exhausts (e.g. 20 of a 50-page budget). So
+`pages_fetched` (the absolute count) is authoritative and always shown; the
+`pages_fetched / max_pages` percentage is an optional **lower-bound hint** only.
+The reporter MUST NOT force 100% on early completion (20/50 must not display
+100%): fetch is modelled with an **unknown total** (count-only display), and
+final completion is rendered as a separate marker showing the real count — never
+a synthetic 100%. (Contrast: `process` has a genuinely known total; see below.)
 
 ### O3 — Progress transport (dual-interface parity)
 
@@ -107,18 +111,23 @@ suppress JSON" question entirely and needs no separate `--json` flag.
 4. Wire the reporter only at the CLI layer; keep the terminal JSON on stdout
    unchanged in every mode.
 
-- **fetch %**: `pages_fetched / max_pages`, clamped to 100% at completion.
-- **process %**: `files_done / total_files` (per-job total from
-  `len(_ordered_staged_files(...))`).
+- **fetch progress**: count-authoritative — show `pages_fetched` (total unknown /
+  budget-capped); the `/ max_pages` percentage is an optional lower-bound hint,
+  never forced to 100% on early completion. Completion is a separate marker
+  showing the real fetched count.
+- **process %**: `files_done / total_files` with a **global** total summed across
+  all completed staging jobs (cumulative, monotonic), so multi-job runs never
+  regress; VERBOSE detail carries the job identity.
 
 ## Open questions / risks
 
-- **process multi-job total**: `execute_process` loops over multiple completed
-  staging jobs; a true global percentage needs a pre-scan sum of per-job file
-  counts. Deferred decision surfaced to the plan: report **per-job** progress
-  (files_done/total within each job, with a job index prefix) rather than
-  pre-scanning, to avoid a second directory walk. Low risk — counts are still
-  accurate, only the denominator scope differs.
+- **process multi-job total** (resolved): `execute_process` loops over multiple
+  completed staging jobs. Reporting per-job (resetting `files_done`/`total` each
+  job) makes the percentage regress ambiguously across job boundaries. **Decision:
+  use a global total** — sum the per-job file counts up front and report
+  cumulative `files_done / global_total` so progress is monotonic; carry the job
+  identity/phase in the VERBOSE detail. The extra enumeration is negligible (the
+  same file lists `execute_process` already walks).
 - **Backward compatibility**: all library signature changes are additive optional
   keyword params defaulting to `None`; MCP schema and terminal JSON are unchanged.
 - **No security/migration/destructive surface** — purely additive CLI UX.
