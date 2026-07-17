@@ -55,21 +55,22 @@ Grounded code seams (2026-07-16):
   TTY, all output is newline-terminated with no control characters. `__call__`
   and the callback type take `total: int | None` (an unknown total → count-only,
   "no ETA" output). A `finish(detail=None)` method emits the final line
-  **unconditionally** (bypassing the throttle) but **never fabricates 100%**: it
-  renders the actual `done` — as `done/total` (→ 100% only when `done == total`,
-  e.g. process where the file total is known) or as a bare count when `total` is
-  `None`/unknown (e.g. fetch, where `max_pages` is a budget and the crawl may end
-  early at 20 of 50). Completion is a separate marker, not a synthetic 100%.
-  Percentage helper clamps `done/total` to `[0,100]`.
+  **unconditionally** (bypassing the throttle) but **never fabricates 100%**: for
+  a **known** `total` it renders `done/total` — 100% only when `done == total`,
+  otherwise the true ratio (e.g. 40% for 20/50); a **bare count** is rendered
+  **only** when `total is None`. Completion is a separate marker, not a synthetic
+  100%. (Fetch delivers its completion via a `total=None` staged-count event —
+  Unit 2b — so it renders count-only; process has a known total and reaches 100%
+  at `done == total`.) Percentage helper clamps `done/total` to `[0,100]`.
 - **Files**: `src/docline/observability/progress.py`, `tests/observability/test_progress.py`.
 - **Tests**: (1) percentage math incl. clamp + `total=None` count-only;
   (2) throttling — rapid NORMAL calls coalesce, final call always emits;
   (3) TTY vs non-TTY formatting (CR vs `\n`, no control chars when not a TTY);
   (4) SILENT emits nothing; (5) NORMAL renders a single throttled concise line
   while VERBOSE renders one detailed line per item (per-item lines not dropped);
-  (6) `finish()` renders the actual count — 100% only when `done == total`
-  (known total), and a bare count (never 100%) when `total is None` or
-  `done < total` (early fetch completion, e.g. 20 of a 50-page budget).
+  (6) `finish()` renders `done/total` for a known total — 100% only when
+  `done == total`, else the true ratio (e.g. 40% for 20/50, never forced to 100%);
+  a bare count **only** when `total is None`.
 - **Posture**: test-first.
 
 ### Unit 2a — `crawl()` progress callback (test-first)
