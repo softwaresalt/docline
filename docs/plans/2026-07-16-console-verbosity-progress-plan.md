@@ -75,19 +75,24 @@ Grounded code seams (2026-07-16):
 ### Unit 2a — `crawl()` progress callback (test-first)
 
 - **Change**: Add optional keyword `progress: Callable[[int, int | None, str], None] | None = None`
-  to `crawl()` (`fetch/crawl.py:100`). Invoke it once per processed page inside
-  the BFS loop with `(page_count, crawl_config.max_pages, current_url)` — `total`
-  is the `max_pages` **budget/ceiling**, not a known workload, so the crawl
-  routinely ends early with `done < total`. The per-page callback is a
-  **progress** signal only; `crawl` forges no synthetic 100%. Final completion is
-  emitted separately by the CLI via `ProgressReporter.finish()` after `crawl()`
-  returns (see Units 1 and 4), showing the actual fetched count. Default `None` =
-  exact current behavior.
+  to `crawl()` (`fetch/crawl.py:100`). Invoke it once per processed URL inside the
+  BFS loop with `(page_count, crawl_config.max_pages, current_url)`. **Metric
+  semantics**: `page_count` is **budget-consumed / attempted** pages — the crawl
+  increments it for every processed URL, *including* robots-denied, fetch
+  failures, and rejected redirects (`crawl.py:145-191`) — NOT the number of
+  successfully staged pages. `total` is the `max_pages` **budget/ceiling**, so the
+  crawl routinely ends early with `done < total`; `crawl` forges no synthetic
+  100%. The **authoritative staged-page count** (results with response bodies) is
+  `staged_count` in `_fetch_url` (`elt/execute.py:499-526`), known only after
+  `crawl()` returns; the CLI surfaces it via `ProgressReporter.finish()` (see
+  Units 2b and 4) as the completion figure. Default `None` = exact current
+  behavior.
 - **Files**: `src/docline/fetch/crawl.py`, `tests/fetch/test_crawl_progress.py`.
-- **Tests**: callback invoked once per page with monotonic non-decreasing counts
-  ≤ max_pages; **early frontier exhaustion** (frontier empties before `max_pages`)
-  ends with a last event where `done < total` and `crawl` forges no synthetic
-  100%; `None` default leaves results unchanged (characterization).
+- **Tests**: callback invoked once per processed URL with monotonic non-decreasing
+  counts ≤ max_pages, **including** a robots-denied/failed/rejected page (asserts
+  the metric is attempted/budget-consumed, not staged); **early frontier
+  exhaustion** ends with a last event where `done < total` and `crawl` forges no
+  synthetic 100%; `None` default leaves results unchanged (characterization).
 - **Posture**: test-first.
 
 ### Unit 2b — Thread fetch callback through the library seam
@@ -95,7 +100,10 @@ Grounded code seams (2026-07-16):
 - **Change**: Add optional `progress: Callable[[int, int | None, str], None] | None = None`
   param to `_fetch_url`, `_execute_single_source`, `execute_source_configs`,
   `execute_elt_fetch` (`elt/execute.py`) and `execute_fetch` (`app.py`),
-  forwarding into `crawl(..., progress=progress)`. No function prints.
+  forwarding into `crawl(..., progress=progress)`. `_fetch_url` already computes
+  the authoritative `staged_count` (pages with bodies); surface it so the CLI can
+  report it via `ProgressReporter.finish()` as the completion figure (distinct
+  from the per-URL budget-consumed progress). No function prints.
 - **Files**: `src/docline/elt/execute.py`, `src/docline/app.py`.
 - **Tests**: `tests/elt/test_execute_fetch_progress.py` — a stub `crawl` (or a
   fake source) confirms the callback reaches `crawl`; `None` default unchanged.
@@ -253,7 +261,7 @@ on stderr only, existing SSRF/URL-policy guards unchanged.
 1. **Callback signature coherence (Python Reviewer).** Unit 1 defines a
    `ProgressEvent` dataclass, but Units 2a/2b/3 pass `(done, total, detail)`
    positionally. Reconcile: the **library seam emits positional primitives**
-   `(done: int, total: int, detail: str)` (keeps the library decoupled from the
+   `(done: int, total: int | None, detail: str)` (keeps the library decoupled from the
    reporter's type), and `ProgressReporter.__call__(done, total, detail)`
    constructs the `ProgressEvent` internally. Acceptance criterion added to Units
    1, 2a, 3, 4.

@@ -61,13 +61,16 @@ without its verbosity at the call site.
 **Chosen: O2a, count-authoritative.** The frontier estimate (O2b) oscillates as
 discovery expands and can regress, which reads as a broken progress bar.
 `max_pages` is a **budget/ceiling**, not a known workload — the crawl routinely
-finishes early when the frontier exhausts (e.g. 20 of a 50-page budget). So
-`pages_fetched` (the absolute count) is authoritative and always shown; the
-`pages_fetched / max_pages` percentage is an optional **lower-bound hint** only.
-The reporter MUST NOT force 100% on early completion (20/50 must not display
-100%): fetch is modelled with an **unknown total** (count-only display), and
-final completion is rendered as a separate marker showing the real count — never
-a synthetic 100%. (Contrast: `process` has a genuinely known total; see below.)
+finishes early when the frontier exhausts (e.g. 20 of a 50-page budget). The live
+per-URL signal is **budget-consumed / attempted** pages (`crawl`'s `page_count`,
+which counts every processed URL including robots-denied, failed, and rejected
+redirects — not staged pages); its `/ max_pages` percentage is an optional
+lower-bound hint only. The reporter MUST NOT force 100% on early completion
+(20/50 must not display 100%): fetch is modelled with an **unknown total**
+(count-only display). Final completion is rendered as a separate marker showing
+the **authoritative staged-page count** (`staged_count` from `_fetch_url`, i.e.
+pages with response bodies) — never a synthetic 100%. (Contrast: `process` has a
+genuinely known total; see below.)
 
 ### O3 — Progress transport (dual-interface parity)
 
@@ -111,10 +114,11 @@ suppress JSON" question entirely and needs no separate `--json` flag.
 4. Wire the reporter only at the CLI layer; keep the terminal JSON on stdout
    unchanged in every mode.
 
-- **fetch progress**: count-authoritative — show `pages_fetched` (total unknown /
-  budget-capped); the `/ max_pages` percentage is an optional lower-bound hint,
-  never forced to 100% on early completion. Completion is a separate marker
-  showing the real fetched count.
+- **fetch progress**: the live per-URL signal is budget-consumed/attempted pages
+  (`page_count` of `max_pages`, incl. robots/failed/rejected — not staged); the
+  `/ max_pages` percentage is a lower-bound hint, never forced to 100%. Completion
+  is a separate marker showing the authoritative staged count (`staged_count`,
+  pages with bodies).
 - **process %**: `files_done / total_files` with a **global** total summed across
   all completed staging jobs (cumulative, monotonic), so multi-job runs never
   regress; VERBOSE detail carries the job identity.
