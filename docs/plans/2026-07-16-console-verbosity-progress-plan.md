@@ -100,13 +100,18 @@ Grounded code seams (2026-07-16):
 - **Change**: Add optional `progress: Callable[[int, int | None, str], None] | None = None`
   param to `_fetch_url`, `_execute_single_source`, `execute_source_configs`,
   `execute_elt_fetch` (`elt/execute.py`) and `execute_fetch` (`app.py`),
-  forwarding into `crawl(..., progress=progress)`. `_fetch_url` already computes
-  the authoritative `staged_count` (pages with bodies); surface it so the CLI can
-  report it via `ProgressReporter.finish()` as the completion figure (distinct
-  from the per-URL budget-consumed progress). No function prints.
+  forwarding into `crawl(..., progress=progress)`. After the crawl and staging
+  complete, `_fetch_url` emits **one final count-only progress event**
+  `progress(staged_count, None, detail)` (its authoritative pages-with-bodies
+  count, `total=None`). This transports the staged total to the reporter without
+  changing any return schema — `_execute_single_source` still collapses
+  `staged_count` to `complete: bool` and `StagingJob`/`FetchResult` are untouched.
+  No function prints.
 - **Files**: `src/docline/elt/execute.py`, `src/docline/app.py`.
-- **Tests**: `tests/elt/test_execute_fetch_progress.py` — a stub `crawl` (or a
-  fake source) confirms the callback reaches `crawl`; `None` default unchanged.
+- **Tests**: `tests/elt/test_execute_fetch_progress.py` — a stub `crawl` confirms
+  the callback reaches `crawl`; a fake source with N staged bodies asserts a final
+  count-only event `(staged_count, None, ...)` is emitted after crawl and that the
+  `StagingJob`/`FetchResult` schemas are unchanged; `None` default unchanged.
 - **Posture**: test-first. **Depends on Unit 2a.**
 
 ### Unit 3 — `execute_process` per-file progress callback (test-first)

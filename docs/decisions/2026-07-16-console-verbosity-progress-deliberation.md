@@ -118,7 +118,9 @@ suppress JSON" question entirely and needs no separate `--json` flag.
   (`page_count` of `max_pages`, incl. robots/failed/rejected — not staged); the
   `/ max_pages` percentage is a lower-bound hint, never forced to 100%. Completion
   is a separate marker showing the authoritative staged count (`staged_count`,
-  pages with bodies).
+  pages with bodies), emitted as a **final count-only progress event** from
+  `_fetch_url` (`total=None`) so no result schema (`StagingJob`/`FetchResult`)
+  changes.
 - **process %**: `files_done / total_files` with a **global** total summed across
   all completed staging jobs (cumulative, monotonic), so multi-job runs never
   regress; VERBOSE detail carries the job identity.
