@@ -34,9 +34,12 @@ def fake_crawl(monkeypatch):
     """
     captured: dict[str, object] = {}
 
-    async def _fake(start_url: str, config: CrawlConfig | None = None) -> list[CrawlResult]:
+    async def _fake(
+        start_url: str, config: CrawlConfig | None = None, progress=None
+    ) -> list[CrawlResult]:
         captured["start_url"] = start_url
         captured["config"] = config
+        captured["progress"] = progress
         return [_page(start_url), _page(start_url.rstrip("/") + "/child.html")]
 
     monkeypatch.setattr("docline.fetch.crawl.crawl", _fake)
@@ -106,7 +109,9 @@ def test_execute_fetch_reports_failure_when_no_pages_staged(monkeypatch, tmp_pat
     """When the crawl yields no pages, the fetch fails with an empty staged path."""
     monkeypatch.chdir(tmp_path)
 
-    async def _empty(start_url: str, config: CrawlConfig | None = None) -> list[CrawlResult]:
+    async def _empty(
+        start_url: str, config: CrawlConfig | None = None, progress=None
+    ) -> list[CrawlResult]:
         return []
 
     monkeypatch.setattr("docline.fetch.crawl.crawl", _empty)

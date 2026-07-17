@@ -54,6 +54,35 @@ Useful flags:
 * `--keep-staging` — retain staging directory for debugging
 * `--allow-heading-disorder` — bypass strict H1→H2→H3 validation (for legacy authoring)
 
+## Console output and progress
+
+`docline fetch` and `docline process` print a single JSON result line to
+**stdout** at the end of a run. Live progress is written separately to
+**stderr**, so the JSON result contract is unchanged in every mode and scripts
+that parse (or pipe) stdout are never affected.
+
+Control the stderr progress with a mutually-exclusive verbosity pair on both
+commands (default is normal):
+
+* `-q` / `--quiet` — no progress output (the JSON result still prints).
+* *(default)* — a concise, throttled percentage/count line, updated in place on
+  a TTY and written as plain newline-terminated lines when redirected.
+* `-v` / `--verbose` — one line per page (fetch) or file (process), including
+  the URL or path, followed by a **final completion line** (the last event
+  repeated as a permanent line). `docline fetch` additionally emits a count-only
+  line with the authoritative number of pages actually staged. These trailing
+  lines are expected — they mark completion, not duplicated work.
+
+Progress metrics:
+
+* **`docline process`** reports `files_done / total`, where `total` is the
+  global file count summed across every completed staging job, so the bar stays
+  monotonic across multi-job runs.
+* **`docline fetch --execute`** reports *budget-consumed* pages against the
+  crawl's `max_pages` budget (web-crawl sources only). Because the budget is a
+  ceiling, the crawl may finish early — so completion reports the authoritative
+  count of pages actually staged rather than a forced 100%.
+
 ## Documentation
 
 * [docline → graphtor-docs ingestion contract](docs/design-docs/graphtor-docs-ingestion-contract.md) —
