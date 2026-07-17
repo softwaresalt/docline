@@ -96,3 +96,23 @@ def test_zero_page_crawl_still_emits_final_count_only_event(
     assert result.success is False  # nothing staged
     # the authoritative count-only 0 event still fires (before the zero-page guard)
     assert calls[-1] == (0, None, "https://ex.org/docs/")
+
+
+def test_final_event_emitted_even_when_crawl_raises(
+    monkeypatch: pytest.MonkeyPatch, tmp_path
+) -> None:
+    async def _boom(start_url, config=None, progress=None):
+        raise OSError("crawl rejected")
+
+    monkeypatch.setattr("docline.fetch.crawl.crawl", _boom)
+    monkeypatch.chdir(tmp_path)
+
+    calls: list[tuple[int, int | None, str]] = []
+    result = execute_fetch(
+        FetchRequest(source="https://ex.org/docs/", output_dir="staging"),
+        progress=lambda d, t, det: calls.append((d, t, det)),
+    )
+
+    assert result.success is False
+    # the try/finally still emits the authoritative (0) completion event
+    assert calls[-1] == (0, None, "https://ex.org/docs/")

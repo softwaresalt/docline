@@ -517,40 +517,44 @@ def _fetch_url(
     from docline.fetch.crawl import crawl
 
     url = config.url
-    results = asyncio.run(crawl(url, _crawl_config_from_source(config), progress=progress))
     staged_count = 0
     used_paths: dict[str, str] = {}
     manifest_pages: list[dict[str, object]] = []
-    for result in results:
-        if result.response is not None and result.response.body:
-            rel_path = _staged_web_relative_path(result.url, url, used_paths)
-            dest = files_dir / rel_path
-            dest.parent.mkdir(parents=True, exist_ok=True)
-            dest.write_text(result.response.body, encoding="utf-8")
-            page_metadata: dict[str, object] = {
-                "page_url": result.url,
-                "crawl_depth": result.depth,
-                "crawl_order": staged_count,
-                "http_status": result.response.status,
-                "final_url": result.response.url,
-                "fetched_at": datetime.now(UTC).isoformat(),
-            }
-            if result.response.content_type is not None:
-                page_metadata["content_type"] = result.response.content_type
-            _staged_web_metadata_path(dest).write_text(
-                json.dumps(page_metadata, indent=2),
-                encoding="utf-8",
-            )
-            manifest_pages.append(
-                {
+    try:
+        results = asyncio.run(crawl(url, _crawl_config_from_source(config), progress=progress))
+        for result in results:
+            if result.response is not None and result.response.body:
+                rel_path = _staged_web_relative_path(result.url, url, used_paths)
+                dest = files_dir / rel_path
+                dest.parent.mkdir(parents=True, exist_ok=True)
+                dest.write_text(result.response.body, encoding="utf-8")
+                page_metadata: dict[str, object] = {
+                    "page_url": result.url,
+                    "crawl_depth": result.depth,
                     "crawl_order": staged_count,
-                    "relative_path": rel_path.as_posix(),
-                    **page_metadata,
+                    "http_status": result.response.status,
+                    "final_url": result.response.url,
+                    "fetched_at": datetime.now(UTC).isoformat(),
                 }
-            )
-            staged_count += 1
-    if progress is not None:
-        progress(staged_count, None, url)
+                if result.response.content_type is not None:
+                    page_metadata["content_type"] = result.response.content_type
+                _staged_web_metadata_path(dest).write_text(
+                    json.dumps(page_metadata, indent=2),
+                    encoding="utf-8",
+                )
+                manifest_pages.append(
+                    {
+                        "crawl_order": staged_count,
+                        "relative_path": rel_path.as_posix(),
+                        **page_metadata,
+                    }
+                )
+                staged_count += 1
+    finally:
+        # Always emit the authoritative staged-count completion event — even when
+        # the crawl is rejected or staging I/O fails — without masking the error.
+        if progress is not None:
+            progress(staged_count, None, url)
     if staged_count == 0:
         raise OSError(f"No crawlable HTML pages were staged for {url}")
     _crawl_manifest_path(files_dir).write_text(
