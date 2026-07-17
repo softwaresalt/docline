@@ -1,5 +1,5 @@
 ---
-name: .Ship
+name: _Ship
 description: "Manages the backlog-to-shipped pipeline: harness generation, build execution, review, CI remediation, and PR lifecycle"
 maturity: stable
 tools: vscode, execute, read, agent, edit, search, todo, memory, backlogit

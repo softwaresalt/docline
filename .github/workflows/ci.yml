@@ -30,7 +30,24 @@ name: CI
 # Release tags (v*) are handled by release.yml, which runs these same quality
 # gates before building and publishing — so CI is not duplicated on release.
 on:
-  workflow_dispatch: {}
+  push:
+    branches:
+      - main
+    paths-ignore:
+      - '.backlogit/**'
+      - 'docs/**'
+      - '.autoharness/**'
+      - '*.md'                # root README/CHANGELOG/AGENTS.md
+      - '.github/**/*.md'     # instructions/prompts/agents
+      - 'scripts/**/*.md'     # scripts/metrics/README.md
+  pull_request:
+    paths-ignore:
+      - '.backlogit/**'
+      - 'docs/**'
+      - '.autoharness/**'
+      - '*.md'                # root README/CHANGELOG/AGENTS.md
+      - '.github/**/*.md'     # instructions/prompts/agents
+      - 'scripts/**/*.md'     # scripts/metrics/README.md
 
 permissions:
   contents: read

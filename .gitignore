@@ -234,11 +234,7 @@ __marimo__/
 .backlogit/logs/
 
 # local agent/editor state
-.claude/
 .copilot/
-.cursor/
-.engram/
-!.engram/registry.yaml
 .mcp.json
 .vscode/
 .worktrees/
@@ -268,3 +264,13 @@ isolate-*.log
 .env
 .env.local
 .env.*.local
+
+# Engram runtime data (keep templates/, registry.yaml, .version)
+.engram/
+!.engram/.version
+!.engram/.workspace-id
+!.engram/config.toml
+!.engram/registry.yaml
+
+# graphtor-docs — managed by graphtor-docs install
+.graphtor/
