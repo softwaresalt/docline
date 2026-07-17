@@ -9,11 +9,12 @@ name: CI
 # 1. ✅ APPLIED — windows-latest dropped from matrix (~4 billable min/run).
 # 2. ✅ APPLIED — macos-latest dropped from matrix (~10 billable min/run).
 # 3. ✅ APPLIED — paths-ignore skips doc-/backlog-only pushes (see below).
-# 4. ✅ APPLIED — the build + test jobs carry a PR-title guard that skips PRs
-#    whose title starts with 'chore:' or 'docs:' (inert on non-PR events).
+# 4. ✅ APPLIED — path-based gating only: workflow-level paths-ignore skips
+#    doc-/backlog-only PRs, so test + build always run when a source path
+#    changes (a chore:/docs: PR that touches code is still fully tested).
 # 5. ✅ APPLIED — a `ci-gate` job aggregates the results and always reports;
-#    require IT (not the guarded test/build) in branch protection so skipped
-#    jobs on chore:/docs: PRs do not block the merge.
+#    require IT in branch protection so a doc-only PR (whole workflow skipped
+#    by paths-ignore) does not block the merge.
 #
 # Release tags (v*) are handled by release.yml, which runs these same quality
 # gates before building and publishing — so CI is not duplicated on release.
@@ -114,12 +115,6 @@ jobs:
 
   test:
     name: pytest (${{ matrix.os }})
-    # Skip the heavy matrix for chore:/docs: PRs (title-based guard). Inert on
-    # non-PR events (tags/releases/dispatch), where the PR title is empty.
-    if: >-
-      github.event_name != 'pull_request' ||
-      (!startsWith(github.event.pull_request.title, 'chore:') &&
-      !startsWith(github.event.pull_request.title, 'docs:'))
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -150,12 +145,6 @@ jobs:
 
   build:
     name: sdist + wheel
-    # Skip the build for chore:/docs: PRs (title-based guard). Inert on non-PR
-    # events (tags/releases/dispatch), where the PR title is empty.
-    if: >-
-      github.event_name != 'pull_request' ||
-      (!startsWith(github.event.pull_request.title, 'chore:') &&
-      !startsWith(github.event.pull_request.title, 'docs:'))
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
