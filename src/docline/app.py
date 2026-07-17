@@ -791,6 +791,17 @@ def execute_process(
     files_done = 0
     job_index = 0
 
+    def _advance(rel: Path) -> None:
+        """Report one processed file to the progress callback (after processing)."""
+        nonlocal files_done
+        if progress is not None:
+            files_done += 1
+            progress(
+                files_done,
+                global_progress_total,
+                f"job {job_index}/{total_jobs}: {rel.as_posix()}",
+            )
+
     processed_count = 0
     completed_job_found = False
     errors: list[str] = []
@@ -821,13 +832,6 @@ def execute_process(
 
         for file_path in _ordered_staged_files(files_dir, crawl_entries):
             rel_in_files = file_path.relative_to(files_dir)
-            if progress is not None:
-                files_done += 1
-                progress(
-                    files_done,
-                    global_progress_total,
-                    f"job {job_index}/{total_jobs}: {rel_in_files.as_posix()}",
-                )
             if _is_openapi_staged(file_path):
                 next_ingest_order, written, openapi_errors = _emit_openapi_documents(
                     file_path,
@@ -843,6 +847,7 @@ def execute_process(
                 )
                 processed_count += written
                 errors.extend(openapi_errors)
+                _advance(rel_in_files)
                 continue
             source_basename = rel_in_files.with_suffix("")
             picture_sink = CountingPictureSink(job_output_root / source_basename / "media")
@@ -859,6 +864,7 @@ def execute_process(
             except Exception as err:  # noqa: BLE001
                 _log.warning("Failed to convert %s: %s", file_path, err)
                 errors.append(str(err))
+                _advance(rel_in_files)
                 continue
 
             page_metadata = _load_staged_page_metadata(file_path)
@@ -1006,6 +1012,7 @@ def execute_process(
                     errors.append(str(err))
 
             next_ingest_order = max(next_ingest_order, current_ingest_order + len(document_parts))
+            _advance(rel_in_files)
 
         if job_manifest_entries:
             write_manifest_index(job_output_root, "manifest.json", job_manifest_entries)
