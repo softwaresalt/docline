@@ -778,7 +778,9 @@ def execute_process(
                 pre_job = StagingJob.model_validate_json(
                     pre_metadata_path.read_text(encoding="utf-8")
                 )
-            except Exception:  # noqa: BLE001
+            except (OSError, ValueError):
+                # Unreadable file, bad encoding/JSON, or Pydantic validation
+                # failure (ValidationError is a ValueError) — skip this job.
                 continue
             if not pre_job.complete:
                 continue
