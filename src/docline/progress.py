@@ -14,7 +14,7 @@ Rendering rules:
   detail (URL/path/job phase), and is not throttled.
 
 A known ``total`` renders ``done/total`` (reaching 100% only when
-``done == total``); ``total is None`` is the only count-only case. ``finish()``
+``done >= total``); ``total is None`` is the only count-only case. ``finish()``
 emits a final line but never fabricates 100%.
 """
 
