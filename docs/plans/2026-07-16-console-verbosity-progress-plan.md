@@ -47,27 +47,42 @@ Grounded code seams (2026-07-16):
   `observability/` package if absent) defining: `Verbosity` enum
   (`SILENT`/`NORMAL`/`VERBOSE`); a small `ProgressEvent` (phase label, done,
   total-or-None, optional detail string); and `ProgressReporter` that renders an
-  event to a stream (default `sys.stderr`), TTY-aware (carriage-return in-place
-  when `stream.isatty()`, else newline-terminated), throttled (emit at most every
-  ~1.0s or every N items; always emit the final 100% line), and a no-op under
-  `SILENT`. Percentage helper clamps `done/total` to `[0,100]` and treats
-  `total is None`/`0` as count-only ("no ETA") output.
+  event to a stream (default `sys.stderr`). Rendering is verbosity-aware:
+  **NORMAL** emits throttled concise updates (a single percentage/count line,
+  in-place via carriage-return on a TTY, at most every ~1.0s or every N items);
+  **VERBOSE** emits one line per item with its detail (URL/path) + running
+  percentage (not throttled); **SILENT** emits nothing. When the stream is not a
+  TTY, all output is newline-terminated with no control characters. A
+  `finish(detail=None)` method emits the final line **unconditionally**
+  (bypassing the throttle): 100% when the total is known, or the final count when
+  the total is unknown or the run ended before reaching it (e.g. crawl frontier
+  exhausted before `max_pages`). Percentage helper clamps `done/total` to
+  `[0,100]` and treats `total is None`/`0` as count-only ("no ETA") output.
 - **Files**: `src/docline/observability/progress.py`, `tests/observability/test_progress.py`.
 - **Tests**: (1) percentage math incl. clamp + `total=None` count-only;
-  (2) throttling — rapid calls coalesce, final call always emits;
+  (2) throttling — rapid NORMAL calls coalesce, final call always emits;
   (3) TTY vs non-TTY formatting (CR vs `\n`, no control chars when not a TTY);
-  (4) SILENT emits nothing.
+  (4) SILENT emits nothing; (5) NORMAL renders a single throttled concise line
+  while VERBOSE renders one detailed line per item (per-item lines not dropped);
+  (6) `finish()` emits the final line even when the last update had `done < total`
+  (early completion) — 100% when total known, else the final count.
 - **Posture**: test-first.
 
 ### Unit 2a — `crawl()` progress callback (test-first)
 
 - **Change**: Add optional keyword `progress: Callable[[int, int, str], None] | None = None`
   to `crawl()` (`fetch/crawl.py:100`). Invoke it once per processed page inside
-  the BFS loop with `(page_count, crawl_config.max_pages, current_url)`. Default
+  the BFS loop with `(page_count, crawl_config.max_pages, current_url)`. The
+  per-page callback is a **progress** signal only — when the frontier exhausts
+  before `max_pages` its last event has `done < total`; final completion is
+  emitted separately by the CLI via `ProgressReporter.finish()` after `crawl()`
+  returns (see Units 1 and 4), preserving the actual fetched count. Default
   `None` = exact current behavior.
 - **Files**: `src/docline/fetch/crawl.py`, `tests/fetch/test_crawl_progress.py`.
 - **Tests**: callback invoked once per page with monotonic non-decreasing counts
-  ≤ max_pages; `None` default leaves results unchanged (characterization).
+  ≤ max_pages; **early frontier exhaustion** (frontier empties before `max_pages`)
+  ends with a last event where `done < total` and `crawl` forges no synthetic
+  100%; `None` default leaves results unchanged (characterization).
 - **Posture**: test-first.
 
 ### Unit 2b — Thread fetch callback through the library seam
@@ -95,16 +110,20 @@ Grounded code seams (2026-07-16):
 ### Unit 4 — CLI flags + reporter wiring
 
 - **Change**: Add a mutually-exclusive `-q/--quiet` + `-v/--verbose` group to the
-  `fetch` and `process` subparsers (`cli.py`); resolve to a `Verbosity` enum. In
-  `main()` dispatch, build a `ProgressReporter(verbosity, stream=sys.stderr)` and
-  pass its `__call__` as the `progress` callback to `execute_elt_fetch`
-  (fetch `--execute`) and `execute_process`. Keep the terminal `print(json...)`
-  on stdout unchanged in all modes.
+  `fetch` and `process` subparsers (`cli.py`); resolve to a `Verbosity` enum
+  (`-q`→SILENT, default→NORMAL, `-v`→VERBOSE). In `main()` dispatch, build a
+  `ProgressReporter(verbosity, stream=sys.stderr)`, pass its `__call__` as the
+  `progress` callback to `execute_elt_fetch` (fetch `--execute`) and
+  `execute_process`, and call `reporter.finish()` after the call returns so the
+  final 100%/final-count line is always emitted (even if the last per-item event
+  had `done < total`). Keep the terminal `print(json...)` on stdout unchanged in
+  all modes.
 - **Files**: `src/docline/cli.py`, `tests/test_cli_verbosity.py`.
 - **Tests**: (1) flag parsing — quiet/verbose/default resolve to the right enum;
   (2) `-q -v` raises argparse error (exit 2); (3) dispatch passes a reporter and
   the stdout JSON line is still emitted unchanged (capsys: JSON on stdout, no
-  JSON on stderr).
+  JSON on stderr); (4) `reporter.finish()` is invoked after the run so a final
+  line is emitted on stderr in NORMAL/VERBOSE (and nothing in SILENT).
 - **Posture**: test-first. **Depends on Units 1, 2b, 3.**
 
 ### Unit 5 — Docs (help text + README/ARCHITECTURE)
