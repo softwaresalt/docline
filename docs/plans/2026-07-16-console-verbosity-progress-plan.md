@@ -75,24 +75,28 @@ Grounded code seams (2026-07-16):
 ### Unit 2a — `crawl()` progress callback (test-first)
 
 - **Change**: Add optional keyword `progress: Callable[[int, int | None, str], None] | None = None`
-  to `crawl()` (`fetch/crawl.py:100`). Invoke it once per processed URL inside the
-  BFS loop with `(page_count, crawl_config.max_pages, current_url)`. **Metric
-  semantics**: `page_count` is **budget-consumed / attempted** pages — the crawl
-  increments it for every processed URL, *including* robots-denied, fetch
-  failures, and rejected redirects (`crawl.py:145-191`) — NOT the number of
-  successfully staged pages. `total` is the `max_pages` **budget/ceiling**, so the
-  crawl routinely ends early with `done < total`; `crawl` forges no synthetic
-  100%. The **authoritative staged-page count** (results with response bodies) is
-  `staged_count` in `_fetch_url` (`elt/execute.py:499-526`), known only after
-  `crawl()` returns; the CLI surfaces it via `ProgressReporter.finish()` (see
-  Units 2b and 4) as the completion figure. Default `None` = exact current
-  behavior.
+  to `crawl()` (`fetch/crawl.py:100`). Invoke `progress(page_count, max_pages, url)`
+  **immediately after each `page_count += 1`** — i.e. on the four budget-consuming
+  branches: robots-denied (`crawl.py:158`), fetch failure (`177`), domain-rejected
+  redirect (`190`), and each successfully-emitted page (`221`). URLs that `continue`
+  **without** incrementing — out-of-section-scope redirects (`192-193`), print
+  pages (`195-210`), and duplicate final URLs (`212-215`) — neither fire the
+  callback nor consume the budget; the crawl's existing `max_pages` semantics are
+  preserved (no new increments). **Metric semantics**: `page_count` is therefore
+  **budget-consumed** pages (NOT staged pages, and NOT every dequeued URL).
+  `total` is the `max_pages` **budget/ceiling**, so the crawl routinely ends early
+  with `done < total`; `crawl` forges no synthetic 100%. The **authoritative
+  staged-page count** (results with response bodies) is `staged_count` in
+  `_fetch_url` (`elt/execute.py:499-526`), surfaced as a final count-only event
+  (Unit 2b) for the completion figure. Default `None` = exact current behavior.
 - **Files**: `src/docline/fetch/crawl.py`, `tests/fetch/test_crawl_progress.py`.
-- **Tests**: callback invoked once per processed URL with monotonic non-decreasing
-  counts ≤ max_pages, **including** a robots-denied/failed/rejected page (asserts
-  the metric is attempted/budget-consumed, not staged); **early frontier
-  exhaustion** ends with a last event where `done < total` and `crawl` forges no
-  synthetic 100%; `None` default leaves results unchanged (characterization).
+- **Tests**: callback fires once per `page_count` increment with monotonic
+  non-decreasing counts ≤ max_pages, **including** a robots-denied/failed/rejected
+  page (metric is budget-consumed, not staged); a **non-consuming** URL (duplicate
+  final URL / print page / out-of-scope redirect) fires **no** callback and leaves
+  `page_count`/budget unchanged; **early frontier exhaustion** ends with a last
+  event where `done < total` and `crawl` forges no synthetic 100%; `None` default
+  leaves results unchanged (characterization).
 - **Posture**: test-first.
 
 ### Unit 2b — Thread fetch callback through the library seam
