@@ -8,10 +8,16 @@ rendering (SILENT/NORMAL/VERBOSE), and ``finish()`` completion semantics.
 from __future__ import annotations
 
 import io
+import logging
 
 import pytest
 
-from docline.progress import ProgressEvent, ProgressReporter, Verbosity
+from docline.progress import (
+    ProgressEvent,
+    ProgressReporter,
+    Verbosity,
+    coordinate_logging,
+)
 
 
 class FakeStream(io.StringIO):
@@ -200,3 +206,88 @@ def test_verbose_detail_sanitizes_control_characters() -> None:
     out = stream.getvalue()
     assert out.count("\n") == 1  # the injected newline is neutralized (single line)
     assert "\x1b" not in out  # ANSI escape stripped
+
+
+def test_is_interactive_reflects_tty_and_verbosity() -> None:
+    assert ProgressReporter(Verbosity.NORMAL, stream=FakeStream(tty=True)).is_interactive() is True
+    assert (
+        ProgressReporter(Verbosity.NORMAL, stream=FakeStream(tty=False)).is_interactive() is False
+    )
+    # SILENT is never interactive even on a TTY
+    assert ProgressReporter(Verbosity.SILENT, stream=FakeStream(tty=True)).is_interactive() is False
+
+
+def test_clear_erases_active_tty_line() -> None:
+    stream = FakeStream(tty=True)
+    reporter = ProgressReporter(Verbosity.NORMAL, stream=stream, clock=FakeClock())
+    reporter(1, 10, "a")  # active carriage-return line
+    reporter.clear()
+    out = stream.getvalue()
+    # the erase writes CR + blanks + CR, leaving the cursor on a clean line
+    assert out.endswith("\r")
+    assert out[-2] == " "
+    # cleared -> a subsequent clear is a no-op
+    before = stream.getvalue()
+    reporter.clear()
+    assert stream.getvalue() == before
+
+
+def test_clear_is_noop_without_active_line() -> None:
+    stream = FakeStream(tty=True)
+    reporter = ProgressReporter(Verbosity.NORMAL, stream=stream, clock=FakeClock())
+    reporter.clear()
+    assert stream.getvalue() == ""
+
+
+def test_clear_is_noop_for_non_tty() -> None:
+    stream = FakeStream(tty=False)
+    reporter = ProgressReporter(Verbosity.NORMAL, stream=stream, clock=FakeClock())
+    reporter(1, 10, "a")  # non-TTY newline line, no active CR line
+    before = stream.getvalue()
+    reporter.clear()
+    assert stream.getvalue() == before
+
+
+def test_coordinate_logging_clears_line_before_log_record() -> None:
+    stream = FakeStream(tty=True)
+    reporter = ProgressReporter(Verbosity.NORMAL, stream=stream, clock=FakeClock())
+    reporter(1, 10, "a")  # active CR line
+    logger = logging.getLogger("docline.test_coord")
+    logger.setLevel(logging.WARNING)
+    with coordinate_logging(reporter, logger_name="docline.test_coord"):
+        logger.warning("heads up")
+    out = stream.getvalue()
+    # the record is written on a clean line: the reporter cleared (trailing CR)
+    # immediately before the formatted message.
+    assert "\rWARNING: heads up\n" in out
+
+
+def test_coordinate_logging_restores_logger_state() -> None:
+    stream = FakeStream(tty=True)
+    reporter = ProgressReporter(Verbosity.NORMAL, stream=stream, clock=FakeClock())
+    logger = logging.getLogger("docline.test_restore")
+    before_handlers = list(logger.handlers)
+    before_propagate = logger.propagate
+    with coordinate_logging(reporter, logger_name="docline.test_restore"):
+        assert logger.propagate is False
+        assert len(logger.handlers) == len(before_handlers) + 1
+    assert logger.handlers == before_handlers
+    assert logger.propagate == before_propagate
+
+
+def test_coordinate_logging_noop_for_non_tty_reporter() -> None:
+    stream = FakeStream(tty=False)
+    reporter = ProgressReporter(Verbosity.NORMAL, stream=stream, clock=FakeClock())
+    logger = logging.getLogger("docline.test_noop")
+    before = list(logger.handlers)
+    with coordinate_logging(reporter, logger_name="docline.test_noop"):
+        assert logger.handlers == before  # no handler installed
+    assert logger.handlers == before
+
+
+def test_coordinate_logging_noop_for_none_reporter() -> None:
+    logger = logging.getLogger("docline.test_none")
+    before = list(logger.handlers)
+    with coordinate_logging(None, logger_name="docline.test_none"):
+        assert logger.handlers == before
+    assert logger.handlers == before

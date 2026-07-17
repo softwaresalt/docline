@@ -9,6 +9,7 @@ unchanged across verbosity modes.
 from __future__ import annotations
 
 import argparse
+import contextlib
 import json
 import os
 from datetime import UTC, datetime
@@ -208,3 +209,37 @@ def test_fetch_json_on_stdout_default(
     assert code == 0
     payload = json.loads(out.out.strip())
     assert isinstance(payload, list)
+
+
+def test_process_dispatch_enters_coordinate_logging(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    tracker: dict = {}
+    monkeypatch.setattr(
+        "docline.cli.coordinate_logging",
+        lambda reporter, logger_name="docline": (
+            tracker.__setitem__("count", tracker.get("count", 0) + 1),
+            contextlib.nullcontext(),
+        )[1],
+    )
+    staging_rel, output_rel = _stage_one_file(tmp_path)
+    monkeypatch.chdir(tmp_path)
+    code = main(["process", "--staging-dir", staging_rel, "--output-dir", output_rel])
+    assert code == 0
+    assert tracker["count"] == 1  # process execution is wrapped in coordinate_logging
+
+
+def test_fetch_dispatch_enters_coordinate_logging(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    tracker: dict = {}
+    monkeypatch.setattr(
+        "docline.cli.coordinate_logging",
+        lambda reporter, logger_name="docline": (
+            tracker.__setitem__("count", tracker.get("count", 0) + 1),
+            contextlib.nullcontext(),
+        )[1],
+    )
+    code, _ = _run_fetch(tmp_path, monkeypatch, "-v")
+    assert code == 0
+    assert tracker["count"] == 1  # fetch --execute is wrapped in coordinate_logging

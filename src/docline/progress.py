@@ -20,10 +20,12 @@ emits a final line but never fabricates 100%.
 
 from __future__ import annotations
 
+import contextlib
 import enum
+import logging
 import sys
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from dataclasses import dataclass
 from typing import TextIO
 
@@ -159,6 +161,27 @@ class ProgressReporter:
         self._stream.flush()
         self._active_line = False
 
+    @property
+    def stream(self) -> TextIO:
+        """The stream progress is written to (usually ``sys.stderr``)."""
+        return self._stream
+
+    def is_interactive(self) -> bool:
+        """Return ``True`` when progress renders in place on a TTY (non-SILENT)."""
+        return self._isatty and self._verbosity is not Verbosity.SILENT
+
+    def clear(self) -> None:
+        """Erase any active in-place (TTY) progress line.
+
+        Leaves the cursor at column 0 on a blank line so other output — e.g. a
+        log record — starts cleanly; the next progress event redraws the line.
+        A no-op when there is no active in-place line.
+        """
+        if self._active_line and self._isatty:
+            self._stream.write("\r" + " " * self._last_len + "\r")
+            self._stream.flush()
+            self._active_line = False
+
     def _format(self, event: ProgressEvent, verbose: bool) -> str:
         """Format *event* into a single-line string (no trailing newline)."""
         prefix = f"{self._label}: " if self._label else ""
@@ -186,3 +209,65 @@ class ProgressReporter:
             self._last_len = len(line)
         else:
             self._write_line(line)
+
+
+class _ProgressLogHandler(logging.Handler):
+    """Logging handler that clears an active progress line before emitting.
+
+    Ensures a log record written to the progress stream starts on a clean line
+    instead of appending to the reporter's in-place carriage-return line; the
+    reporter redraws its line on the next progress event.
+    """
+
+    def __init__(self, reporter: ProgressReporter, stream: TextIO) -> None:
+        super().__init__()
+        self._reporter = reporter
+        self._stream = stream
+
+    def emit(self, record: logging.LogRecord) -> None:
+        """Clear the active progress line, then write the formatted record."""
+        try:
+            message = self.format(record)
+            self._reporter.clear()
+            self._stream.write(message + "\n")
+            self._stream.flush()
+        except Exception:  # noqa: BLE001 -- logging handlers must never raise
+            self.handleError(record)
+
+
+@contextlib.contextmanager
+def coordinate_logging(
+    reporter: ProgressReporter | None, logger_name: str = "docline"
+) -> Iterator[None]:
+    """Keep interleaved log records from corrupting the in-place progress line.
+
+    While active, records from ``logger_name`` are routed through the reporter's
+    stream, clearing the reporter's carriage-return progress line before each
+    record so it starts on a clean line; the reporter redraws on its next event.
+
+    Only active for an interactive (TTY) reporter — a no-op for ``None``,
+    ``SILENT``, or non-TTY output (which already uses newline-terminated lines).
+    The handler is installed with propagation disabled to avoid duplicate output,
+    and the previous logging configuration is restored on exit.
+
+    Args:
+        reporter: The active progress reporter, or ``None``.
+        logger_name: Logger whose records to coordinate (the package logger).
+
+    Yields:
+        ``None``.
+    """
+    if reporter is None or not reporter.is_interactive():
+        yield
+        return
+    logger = logging.getLogger(logger_name)
+    handler = _ProgressLogHandler(reporter, reporter.stream)
+    handler.setFormatter(logging.Formatter("%(levelname)s: %(message)s"))
+    previous_propagate = logger.propagate
+    logger.addHandler(handler)
+    logger.propagate = False
+    try:
+        yield
+    finally:
+        logger.removeHandler(handler)
+        logger.propagate = previous_propagate

@@ -9,7 +9,7 @@ from docline.app import execute_process, get_manifest
 from docline.app_models import ProcessRequest
 from docline.elt.orchestrate import orchestrate_fetch
 from docline.paths import PathContainmentError, safe_workspace_path
-from docline.progress import ProgressReporter, Verbosity
+from docline.progress import ProgressReporter, Verbosity, coordinate_logging
 from docline.quarantine_viewer import QuarantineViewerError, render_local_quarantine_viewer
 from docline.schema.export import export_base_frontmatter_schema_json
 from docline.schema.models import DoclineError
@@ -354,12 +354,13 @@ def main(argv: list[str] | None = None) -> int:
 
                 reporter = _make_progress(parsed, "fetch")
                 try:
-                    jobs = _exec(
-                        config_dir,
-                        parsed.staging_dir,
-                        workspace_root=Path.cwd(),
-                        progress=reporter,
-                    )
+                    with coordinate_logging(reporter):
+                        jobs = _exec(
+                            config_dir,
+                            parsed.staging_dir,
+                            workspace_root=Path.cwd(),
+                            progress=reporter,
+                        )
                 finally:
                     if reporter is not None:
                         reporter.finish()
@@ -394,7 +395,8 @@ def main(argv: list[str] | None = None) -> int:
 
         reporter = _make_progress(parsed, "process")
         try:
-            result = execute_process(request, progress=reporter)
+            with coordinate_logging(reporter):
+                result = execute_process(request, progress=reporter)
         finally:
             if reporter is not None:
                 reporter.finish()
