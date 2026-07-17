@@ -92,8 +92,11 @@ def test_process_verbose_emits_stderr_progress_with_same_json(
     assert code == 0
     payload = json.loads(captured.out.strip())
     assert payload["success"] is True
-    # verbose: per-file progress line on stderr, carrying the job identity
-    assert "job 1/1" in captured.err
+    # verbose emits the per-file line AND the final repeated completion line, so
+    # dropping reporter.finish() would remove the second line and fail here.
+    err_lines = [ln for ln in captured.err.splitlines() if ln.strip()]
+    assert len(err_lines) >= 2
+    assert all("job 1/1" in ln for ln in err_lines[-2:])
     # the JSON result contract is unchanged — no progress leaks onto stdout
     assert "job 1/1" not in captured.out
 
@@ -144,6 +147,8 @@ def _run_fetch(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, *flags: str) -> 
 
     def fake_exec(config_dir, staging_dir, workspace_root=None, progress=None):
         captured["progress"] = progress
+        if progress is not None:
+            progress(1, 5, "https://ex.org/page")  # one budget event for the reporter
         return [
             StagingJob(
                 job_id="j",
@@ -181,10 +186,18 @@ def test_fetch_quiet_passes_none_progress_and_silences_stderr(
     assert out.err == ""  # no progress on stderr
 
 
-def test_fetch_verbose_passes_reporter(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_fetch_verbose_emits_event_and_final_line(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
     code, captured = _run_fetch(tmp_path, monkeypatch, "-v")
+    out = capsys.readouterr()
     assert code == 0
     assert captured["progress"] is not None
+    # the fake emits one event; reporter.finish() then repeats it as the final
+    # line — so removing fetch's reporter.finish() would drop the second line.
+    err_lines = [ln for ln in out.err.splitlines() if ln.strip()]
+    assert len(err_lines) >= 2
+    json.loads(out.out.strip())  # jobs JSON on stdout, not stderr
 
 
 def test_fetch_json_on_stdout_default(
