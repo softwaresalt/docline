@@ -771,6 +771,7 @@ def execute_process(
 
     global_progress_total = 0
     total_jobs = 0
+    prescanned_files: dict[Path, list[Path]] = {}
     if progress is not None:
         for pre_metadata_path in sorted(staging_dir.rglob("metadata.json")):
             try:
@@ -784,10 +785,12 @@ def execute_process(
             pre_files_dir = pre_metadata_path.parent / "files"
             if not pre_files_dir.is_dir():
                 continue
-            total_jobs += 1
-            global_progress_total += len(
-                _ordered_staged_files(pre_files_dir, _load_crawl_manifest(pre_metadata_path.parent))
+            ordered = _ordered_staged_files(
+                pre_files_dir, _load_crawl_manifest(pre_metadata_path.parent)
             )
+            prescanned_files[pre_metadata_path] = ordered
+            total_jobs += 1
+            global_progress_total += len(ordered)
     files_done = 0
     job_index = 0
 
@@ -830,7 +833,12 @@ def execute_process(
         job_manifest_entries: list[Mapping[str, object]] = []
         next_ingest_order = 0
 
-        for file_path in _ordered_staged_files(files_dir, crawl_entries):
+        # Reuse the ordered file list computed during the progress pre-scan to
+        # avoid a second corpus traversal (and re-parsing OpenAPI candidates).
+        ordered_files = prescanned_files.get(metadata_path)
+        if ordered_files is None:
+            ordered_files = _ordered_staged_files(files_dir, crawl_entries)
+        for file_path in ordered_files:
             rel_in_files = file_path.relative_to(files_dir)
             if _is_openapi_staged(file_path):
                 next_ingest_order, written, openapi_errors = _emit_openapi_documents(

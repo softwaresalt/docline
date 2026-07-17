@@ -191,3 +191,12 @@ def test_percent_reaches_100_only_when_complete() -> None:
     reporter = ProgressReporter(Verbosity.NORMAL, stream=stream, clock=FakeClock())
     reporter(1000, 1000, "x")
     assert "100%" in stream.getvalue()
+
+
+def test_verbose_detail_sanitizes_control_characters() -> None:
+    stream = FakeStream(tty=False)
+    reporter = ProgressReporter(Verbosity.VERBOSE, stream=stream, clock=FakeClock())
+    reporter(1, 3, "https://x/a\n\x1b[2KFORGED 99%")
+    out = stream.getvalue()
+    assert out.count("\n") == 1  # the injected newline is neutralized (single line)
+    assert "\x1b" not in out  # ANSI escape stripped

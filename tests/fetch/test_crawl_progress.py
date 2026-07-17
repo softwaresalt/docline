@@ -121,3 +121,67 @@ def test_progress_none_default_leaves_results_unchanged(monkeypatch: pytest.Monk
 
     assert [r.url for r in without] == [r.url for r in with_noop]
     assert [r.response is not None for r in without] == [r.response is not None for r in with_noop]
+
+
+def test_progress_fires_for_robots_denied_page(monkeypatch: pytest.MonkeyPatch) -> None:
+    async def _deny(*_args, **_kwargs) -> bool:
+        return False
+
+    monkeypatch.setattr("docline.fetch.crawl._robots_allow", _deny)
+
+    async def fake_fetch_page(url, *, timeout_seconds=30.0, max_redirects=5):
+        raise AssertionError("fetch_page must not run when robots denies the URL")
+
+    monkeypatch.setattr("docline.fetch.crawl.fetch_page", fake_fetch_page)
+    calls: list[tuple[int, int | None, str]] = []
+    results = asyncio.run(
+        crawl(
+            "https://ex.org/a.html",
+            CrawlConfig(respect_robots=True, domain_lock=False, max_pages=5),
+            progress=lambda d, t, det: calls.append((d, t, det)),
+        )
+    )
+    assert results[0].skipped is True
+    assert calls == [(1, 5, "https://ex.org/a.html")]  # robots denial consumes the budget
+
+
+def test_progress_fires_for_fetch_failure(monkeypatch: pytest.MonkeyPatch) -> None:
+    async def failing_fetch_page(url, *, timeout_seconds=30.0, max_redirects=5):
+        raise OSError("connection reset")
+
+    monkeypatch.setattr("docline.fetch.crawl.fetch_page", failing_fetch_page)
+    calls: list[tuple[int, int | None, str]] = []
+    results = asyncio.run(
+        crawl(
+            "https://ex.org/a.html",
+            CrawlConfig(respect_robots=False, domain_lock=False, max_pages=5, max_retries=0),
+            progress=lambda d, t, det: calls.append((d, t, det)),
+        )
+    )
+    assert results[0].skipped is True
+    assert calls == [(1, 5, "https://ex.org/a.html")]  # fetch failure consumes the budget
+
+
+def test_progress_fires_for_domain_rejected_redirect(monkeypatch: pytest.MonkeyPatch) -> None:
+    async def redirecting_fetch_page(url, *, timeout_seconds=30.0, max_redirects=5):
+        # redirect resolves to a different host than the (locked) start host
+        return FetchResponse(
+            url="https://evil.org/a.html",
+            status=200,
+            content_type="text/html",
+            body="<html><body>x</body></html>",
+        )
+
+    monkeypatch.setattr("docline.fetch.crawl.fetch_page", redirecting_fetch_page)
+    calls: list[tuple[int, int | None, str]] = []
+    results = asyncio.run(
+        crawl(
+            "https://ex.org/a.html",
+            CrawlConfig(respect_robots=False, domain_lock=True, max_pages=5),
+            progress=lambda d, t, det: calls.append((d, t, det)),
+        )
+    )
+    assert results[0].skipped is True
+    assert calls == [
+        (1, 5, "https://ex.org/a.html")
+    ]  # domain-rejected redirect consumes the budget

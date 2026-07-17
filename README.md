@@ -68,7 +68,10 @@ commands (default is normal):
 * *(default)* — a concise, throttled percentage/count line, updated in place on
   a TTY and written as plain newline-terminated lines when redirected.
 * `-v` / `--verbose` — one line per page (fetch) or file (process), including
-  the URL or path.
+  the URL or path, followed by a **final completion line** (the last event
+  repeated as a permanent line). `docline fetch` additionally emits a count-only
+  line with the authoritative number of pages actually staged. These trailing
+  lines are expected — they mark completion, not duplicated work.
 
 Progress metrics:
 

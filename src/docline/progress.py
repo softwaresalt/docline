@@ -67,6 +67,18 @@ def _clamp_percent(done: int, total: int) -> int:
     return pct
 
 
+def _sanitize(text: str) -> str:
+    """Replace non-printable characters in untrusted progress detail.
+
+    Progress ``detail`` is derived from crawled URLs and staged filenames, which
+    can contain newlines, carriage returns, or ANSI escape sequences that would
+    forge extra progress lines or corrupt the terminal in verbose mode. Every
+    non-printable character is replaced with a space so each event renders as a
+    single, safe line.
+    """
+    return "".join(ch if ch.isprintable() else " " for ch in text)
+
+
 class ProgressReporter:
     """Render throttled, TTY-aware progress to a stream.
 
@@ -156,7 +168,7 @@ class ProgressReporter:
             pct = _clamp_percent(event.done, event.total)
             core = f"{pct}% ({event.done}/{event.total})"
         if verbose and event.detail:
-            return f"{prefix}{core} {event.detail}"
+            return f"{prefix}{core} {_sanitize(event.detail)}"
         return f"{prefix}{core}"
 
     def _write_line(self, line: str) -> None:
