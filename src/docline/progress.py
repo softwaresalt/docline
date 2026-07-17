@@ -53,11 +53,18 @@ class ProgressEvent:
 
 
 def _clamp_percent(done: int, total: int) -> int:
-    """Return ``done/total`` as an integer percent clamped to ``[0, 100]``."""
+    """Return ``done/total`` as an integer percent clamped to ``[0, 100]``.
+
+    Rounding never fabricates 100% for an incomplete total: when ``done < total``
+    a rounded value of 100 is capped at 99 so completion is reserved for
+    ``done >= total``.
+    """
     if total <= 0:
         return 100
-    pct = round(done * 100 / total)
-    return max(0, min(100, int(pct)))
+    pct = max(0, min(100, int(round(done * 100 / total))))
+    if done < total and pct >= 100:
+        return 99
+    return pct
 
 
 class ProgressReporter:

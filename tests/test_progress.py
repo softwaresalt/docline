@@ -175,3 +175,19 @@ def test_finish_without_events_is_safe(verbosity: Verbosity) -> None:
     reporter = ProgressReporter(verbosity, stream=stream, clock=FakeClock())
     reporter.finish()  # must not raise
     assert "\r" not in stream.getvalue()
+
+
+def test_percent_caps_at_99_when_incomplete_rounds_up() -> None:
+    stream = FakeStream(tty=False)
+    reporter = ProgressReporter(Verbosity.NORMAL, stream=stream, clock=FakeClock())
+    reporter(999, 1000, "x")  # round(99.9) == 100, but done < total
+    out = stream.getvalue()
+    assert "99%" in out
+    assert "100%" not in out
+
+
+def test_percent_reaches_100_only_when_complete() -> None:
+    stream = FakeStream(tty=False)
+    reporter = ProgressReporter(Verbosity.NORMAL, stream=stream, clock=FakeClock())
+    reporter(1000, 1000, "x")
+    assert "100%" in stream.getvalue()

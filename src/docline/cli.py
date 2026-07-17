@@ -54,6 +54,27 @@ def _resolve_verbosity(parsed: argparse.Namespace) -> Verbosity:
     return Verbosity.NORMAL
 
 
+def _make_progress(parsed: argparse.Namespace, label: str) -> ProgressReporter | None:
+    """Build a stderr progress reporter, or ``None`` when quiet.
+
+    Returning ``None`` for ``SILENT`` lets the library skip all progress work
+    (including the ``execute_process`` pre-scan) instead of doing it and
+    discarding every event.
+
+    Args:
+        parsed: Parsed CLI arguments.
+        label: Phase label prefixed to each progress line.
+
+    Returns:
+        A configured :class:`~docline.progress.ProgressReporter`, or ``None``
+        for quiet mode.
+    """
+    verbosity = _resolve_verbosity(parsed)
+    if verbosity is Verbosity.SILENT:
+        return None
+    return ProgressReporter(verbosity, stream=sys.stderr, label=label)
+
+
 def _build_parser() -> argparse.ArgumentParser:
     """Build the top-level CLI argument parser."""
     parser = argparse.ArgumentParser(
@@ -331,16 +352,15 @@ def main(argv: list[str] | None = None) -> int:
             if getattr(parsed, "execute", False):
                 from docline.elt.execute import execute_elt_fetch as _exec
 
-                reporter = ProgressReporter(
-                    _resolve_verbosity(parsed), stream=sys.stderr, label="fetch"
-                )
+                reporter = _make_progress(parsed, "fetch")
                 jobs = _exec(
                     config_dir,
                     parsed.staging_dir,
                     workspace_root=Path.cwd(),
                     progress=reporter,
                 )
-                reporter.finish()
+                if reporter is not None:
+                    reporter.finish()
             else:
                 jobs = orchestrate_fetch(config_dir, parsed.staging_dir, workspace_root=Path.cwd())
         except DoclineError as err:
@@ -370,9 +390,10 @@ def main(argv: list[str] | None = None) -> int:
             print(f"error: {err}", file=sys.stderr)
             return 2
 
-        reporter = ProgressReporter(_resolve_verbosity(parsed), stream=sys.stderr, label="process")
+        reporter = _make_progress(parsed, "process")
         result = execute_process(request, progress=reporter)
-        reporter.finish()
+        if reporter is not None:
+            reporter.finish()
         print(json.dumps(result.model_dump()))
         return 0 if result.success else 1
 

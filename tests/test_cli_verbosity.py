@@ -96,3 +96,44 @@ def test_process_verbose_emits_stderr_progress_with_same_json(
     assert "job 1/1" in captured.err
     # the JSON result contract is unchanged — no progress leaks onto stdout
     assert "job 1/1" not in captured.out
+
+
+def test_quiet_passes_none_progress_to_execute_process(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    captured: dict[str, object] = {}
+
+    def fake(request, progress=None):
+        from docline.app_models import ProcessResult
+
+        captured["progress"] = progress
+        return ProcessResult(
+            input_path=request.staging_dir, output_path=request.output_dir, success=True
+        )
+
+    monkeypatch.setattr("docline.cli.execute_process", fake)
+    monkeypatch.chdir(tmp_path)
+    code = main(["process", "--staging-dir", "staging", "--output-dir", "output", "-q"])
+    assert code == 0
+    # quiet skips all progress work (no pre-scan, no per-file callbacks)
+    assert captured["progress"] is None
+
+
+def test_verbose_passes_reporter_to_execute_process(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    captured: dict[str, object] = {}
+
+    def fake(request, progress=None):
+        from docline.app_models import ProcessResult
+
+        captured["progress"] = progress
+        return ProcessResult(
+            input_path=request.staging_dir, output_path=request.output_dir, success=True
+        )
+
+    monkeypatch.setattr("docline.cli.execute_process", fake)
+    monkeypatch.chdir(tmp_path)
+    code = main(["process", "--staging-dir", "staging", "--output-dir", "output", "-v"])
+    assert code == 0
+    assert captured["progress"] is not None

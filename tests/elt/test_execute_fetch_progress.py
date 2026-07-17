@@ -73,3 +73,26 @@ def test_progress_none_default_still_stages(monkeypatch: pytest.MonkeyPatch, tmp
     monkeypatch.chdir(tmp_path)
     result = execute_fetch(FetchRequest(source="https://ex.org/docs/", output_dir="staging"))
     assert result.success is True
+
+
+def test_zero_page_crawl_still_emits_final_count_only_event(
+    monkeypatch: pytest.MonkeyPatch, tmp_path
+) -> None:
+    async def _fake(start_url, config=None, progress=None):
+        if progress is not None:
+            progress(1, config.max_pages if config else None, start_url)  # a budget event
+        # a robots-denied/failed crawl stages nothing (no response bodies)
+        return [CrawlResult(url=start_url, depth=0, skipped=True, skip_reason="robots.txt")]
+
+    monkeypatch.setattr("docline.fetch.crawl.crawl", _fake)
+    monkeypatch.chdir(tmp_path)
+
+    calls: list[tuple[int, int | None, str]] = []
+    result = execute_fetch(
+        FetchRequest(source="https://ex.org/docs/", output_dir="staging", max_pages=5),
+        progress=lambda d, t, det: calls.append((d, t, det)),
+    )
+
+    assert result.success is False  # nothing staged
+    # the authoritative count-only 0 event still fires (before the zero-page guard)
+    assert calls[-1] == (0, None, "https://ex.org/docs/")

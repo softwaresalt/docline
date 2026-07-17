@@ -549,6 +549,8 @@ def _fetch_url(
                 }
             )
             staged_count += 1
+    if progress is not None:
+        progress(staged_count, None, url)
     if staged_count == 0:
         raise OSError(f"No crawlable HTML pages were staged for {url}")
     _crawl_manifest_path(files_dir).write_text(
@@ -560,8 +562,6 @@ def _fetch_url(
         ),
         encoding="utf-8",
     )
-    if progress is not None:
-        progress(staged_count, None, url)
     return staged_count
 
 
