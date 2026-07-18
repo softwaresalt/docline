@@ -1,4 +1,5 @@
 ---
+title: "CI artifact actions to Node 24"
 type: plan
 slug: ci-artifact-actions-node24
 created: 2026-07-17
