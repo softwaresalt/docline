@@ -140,7 +140,7 @@ The MCP surface exposes the same contract via the `export_schema` tool.
 | Web-crawl staging | `docline fetch` stages web-crawl and file sources declared in `.elt/config/*.sources.yaml` |
 | Stable frontmatter contract | Versioned `BaseFrontmatter` v1 with a published JSON Schema via `export-schema` |
 | Chunk-boundary control | Deterministic `h1-h2-h3` chunking with optional `<a id="chunk-NNNN">` anchors |
-| Heading-hierarchy validation | Enforces H1→H2→H3 parentage; `--allow-heading-disorder` for legacy content |
+| Heading-hierarchy validation | Validates H1→H2→H3 nesting, auto-tolerating known Microsoft Learn sparse patterns (include fragments, no-H2, H3-before-first-H2); `--allow-heading-disorder` bypasses it entirely |
 | Cross-document link graph | Harvests `operation → schema` and doc-to-doc references into `docline.cross_doc_links` |
 | Content hashing | `content_sha256` over the emitted body for change detection and dedup |
 | PDF engine choice | `auto`, `docling`, `mistral_ocr`, `heuristic` — orthogonal to `auto` / `triage` modes |
