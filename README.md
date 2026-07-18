@@ -1,8 +1,61 @@
 # docline
 
-A document to markdown ingestion and normalization pipeline CLI tool and MCP server.
+> Turn heterogeneous documents into clean, schema-validated Markdown that RAG and graph pipelines can ingest without surprises.
 
-## Quick start: ingest a local docs repo
+**docline** is a document-to-Markdown ingestion and normalization pipeline. It converts PDF, DOCX,
+HTML, whole Microsoft Learn / DocFx repositories, and OpenAPI 3.x specifications into normalized
+Markdown with a stable frontmatter contract and predictable chunk boundaries. The same pipeline runs
+as a **CLI** for operators and as an **MCP server** for agents, so both surfaces drive the same
+normalization path.
+
+## Why docline
+
+Retrieval and knowledge-graph systems inherit every defect in their source text. Off-the-shelf
+extractors emit inconsistent headings, tables flattened into unreadable runs, and metadata that
+changes shape from one document to the next — defects that quietly degrade embeddings and corrupt
+graph edges. docline hardens the ingestion layer:
+
+* **One contract for every source.** Each document carries the same versioned `BaseFrontmatter`
+  surface (`title`, `source`, `doc_type`, `content_sha256`, `source_path`, and more), so downstream
+  tools validate a single schema instead of guessing per format.
+* **Structure-preserving extraction.** Headings, tables, and code blocks survive the conversion. The
+  `docling` engine keeps dense technical layout intact, and chunk boundaries follow an explicit
+  `h1-h2-h3` strategy tuned for embedding windows.
+* **Deterministic, content-addressed body.** The Markdown body reproduces byte-for-byte across
+  operating systems and runs, and each carries a `content_sha256` digest for change detection and
+  deduplication. Frontmatter stamps a per-run `ingested_at`, so hash and compare on the body.
+* **Dual interface, shared processing.** The CLI and MCP server run the same `execute_process` pass,
+  so an agent and a human produce the same normalized Markdown body from the same staged input.
+* **Local-first, cloud-optional.** Extraction runs fully offline by default. Cloud OCR (Mistral) is
+  opt-in for table-heavy or scanned corpora and is never selected automatically.
+
+## Install
+
+docline targets **Python 3.12+** and publishes to PyPI:
+
+```bash
+# Core pipeline (Markdown / HTML / DOCX / OpenAPI + heuristic PDF)
+pip install docline
+
+# Add the docling engine for high-fidelity PDF layout extraction
+pip install "docline[pdf]"
+
+# Add the Mistral OCR client for table-heavy / scanned PDFs
+pip install "docline[mistral]"
+```
+
+Working from a clone instead? The repo uses [`uv`](https://github.com/astral-sh/uv):
+
+```bash
+git clone https://github.com/softwaresalt/docline.git
+cd docline
+uv sync --all-extras --dev
+uv run docline --help
+```
+
+## Quick start
+
+### Ingest a local docs repo
 
 The fastest way to convert a cloned Microsoft Learn (or any DocFx-style)
 docs repository into graphtor-ready Markdown is the `ingest local-dir`
@@ -53,6 +106,92 @@ Useful flags:
 * `--staging-dir PATH` — keep staging artifacts under a known path (default: tempdir, removed after run)
 * `--keep-staging` — retain staging directory for debugging
 * `--allow-heading-disorder` — bypass strict H1→H2→H3 validation (for legacy authoring)
+
+### Convert a PDF
+
+Point `ingest local-dir` at a folder of PDFs (or stage them and run `process`). The `docling` engine
+reconstructs headings and tables; the default `auto` engine uses `docling` when `docline[pdf]` is
+installed and degrades to the heuristic extractor (headings only, no table reconstruction) otherwise:
+
+```bash
+# High-fidelity technical PDFs (requires docline[pdf])
+docline ingest local-dir ./manuals --output ./out --include "**/*.pdf" --pdf-engine docling
+```
+
+`--pdf-engine` and `--pdf-mode` trade fidelity against throughput per corpus — see
+[PDF processing modes](#pdf-processing-modes).
+
+### Export the schema for a downstream tool
+
+Emit the machine-readable frontmatter contract so another tool can validate docline output:
+
+```bash
+docline export-schema > base-frontmatter.v1.json
+```
+
+The MCP surface exposes the same contract via the `export_schema` tool.
+
+## Features and capabilities
+
+| Capability | What you get |
+|---|---|
+| Multi-format ingestion | PDF, DOCX, HTML, Markdown, and OpenAPI 3.x from one command |
+| Repo-scale local ingestion | `ingest local-dir` walks a cloned docs tree, preserves directory structure, and follows `TOC.yml` order |
+| Web-crawl staging | `docline fetch` stages web-crawl and file sources declared in `.elt/config/*.sources.yaml` |
+| Stable frontmatter contract | Versioned `BaseFrontmatter` v1 with a published JSON Schema via `export-schema` |
+| Chunk-boundary control | Deterministic `h1-h2-h3` chunking with optional `<a id="chunk-NNNN">` anchors |
+| Heading-hierarchy validation | Validates H1→H2→H3 nesting, auto-tolerating known Microsoft Learn sparse patterns (include fragments, no-H2, H3-before-first-H2); `--allow-heading-disorder` bypasses it entirely |
+| Cross-document link graph | Harvests `operation → schema` and doc-to-doc references into `docline.cross_doc_links` |
+| Content hashing | `content_sha256` over the emitted body for change detection and dedup |
+| PDF engine choice | `auto`, `docling`, `mistral_ocr`, `heuristic` — orthogonal to `auto` / `triage` modes |
+| Accelerator awareness | Auto-detects CUDA / MPS / XPU; pin with `DOCLINE_ACCELERATOR` |
+| Dual interface | CLI and MCP share the `execute_process` pass; the CLI adds `export-schema` and `--manifest` (the MCP tool is `export_schema`) |
+| Progress + JSON result | Machine-parsable JSON on stdout; throttled human progress on stderr |
+| Quarantine viewer | `docline quarantine-viewer` renders a local HTML report for failed artifacts |
+
+## Core schema for downstream tools
+
+Every document docline emits carries YAML frontmatter conforming to the **`BaseFrontmatter` v1**
+contract. This is the stable surface downstream tools — for example
+[`graphtor-docs`](https://github.com/softwaresalt/graphtor-docs) — validate against.
+
+| Field | Type | Required | Default | Description |
+|---|---|---|---|---|
+| `title` | string | yes | — | Human-readable document title (non-empty) |
+| `source` | string | yes | — | Origin URI or path of the source (non-empty) |
+| `ingested_at` | datetime (ISO 8601) | yes | — | UTC timestamp when docline ingested the source |
+| `doc_type` | string | yes | — | Classifier-emitted identifier: `wiki` (files), `web` (URLs), `transcript`, `adr`, `openapi_operation`, `openapi_schema` |
+| `description` | string | no | `""` | Short human-readable description |
+| `content_sha256` | string (64-char hex) | no | `""` | SHA-256 over the emitted Markdown body bytes |
+| `source_path` | string (POSIX) | no | `""` | Project-relative source path |
+| `chunk_strategy` | string | no | `"h1-h2-h3"` | Chunk-boundary strategy identifier |
+| `schema_version` | string (SemVer) | no | `"1.0"` | Contract revision this document conforms to |
+| `docline` | object \| null | no | `null` | Docline-only namespace; not part of the shared contract |
+
+Example emitted frontmatter:
+
+```yaml
+---
+title: Get widget
+source: https://example.com/api/openapi.json
+ingested_at: 2026-07-18T00:00:00Z
+doc_type: openapi_operation
+content_sha256: cc1df95c413afc8fe40240131e6595b52f128935e5e00c77c5c9292ba3745270
+source_path: api/operations/getWidget.md
+chunk_strategy: h1-h2-h3
+schema_version: "1.0"
+---
+```
+
+Fetch the authoritative JSON Schema (Draft 2020-12, `$id`
+`https://docline.softwaresalt.dev/schema/base-frontmatter/v1.json`):
+
+```bash
+docline export-schema
+```
+
+The full field semantics, hashing algorithm, chunk rules, and SemVer policy live in the
+[docline → graphtor-docs ingestion contract](docs/design-docs/graphtor-docs-ingestion-contract.md).
 
 ## Console output and progress
 
