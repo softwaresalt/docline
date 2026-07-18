@@ -69,7 +69,7 @@ a normal PR. Verify by:
 | Principle | Assessment |
 |---|---|
 | I. Safety-First Python | N/A — no Python changes. The release job's `ruff`/`pyright`/`pytest` gates still run ahead of build/publish and are unaffected. |
-| II. Test-First (NON-NEGOTIABLE) | Not applicable in the unit-test sense: this edits a tag-triggered workflow that cannot execute on a normal PR and exposes no importable code path, so the red→green harness requirement does not attach. Verification is `actionlint` + SHA resolution + a clean next-tag Release run with no Node 20 annotations (see Verification). |
+| II. Test-First (NON-NEGOTIABLE) | Applies, but no `pytest`-style harness can attach to a tag-triggered workflow with no importable code path. The red→green intent is honored by an **executable pre/post check**: assert the old v4 pins (`ea165f8d…` upload, `d3f86a1…` download) are gone and the `v7.0.1`/`v8.0.1` SHAs present — this fails before the edit and passes after. Supplemented by `actionlint` parse and a clean next-tag Release run with no Node 20 annotations as runtime proof (see Verification). No production code is added that would need unit coverage. |
 | III / IV. Workspace isolation & CLI containment | Change confined to `.github/workflows/release.yml`; no writes outside the repo tree. |
 | V. Structured Observability | Net-positive — removes deprecation noise and makes artifact-integrity failures explicit (digest mismatch → hard error). |
 | VI. Single Responsibility | No new dependencies; bumps existing action pins only. |
