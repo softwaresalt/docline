@@ -5,8 +5,8 @@
 **docline** is a document-to-Markdown ingestion and normalization pipeline. It converts PDF, DOCX,
 VTT, HTML, whole Microsoft Learn / DocFx repositories, and OpenAPI 3.x specifications into normalized
 Markdown with a stable frontmatter contract and predictable chunk boundaries. The same pipeline runs
-as a **CLI** for operators and as an **MCP server** for agents, so both surfaces produce identical
-output.
+as a **CLI** for operators and as an **MCP server** for agents, so both surfaces drive the same
+normalization path.
 
 ## Why docline
 
@@ -21,10 +21,11 @@ graph edges. docline hardens the ingestion layer:
 * **Structure-preserving extraction.** Headings, tables, and code blocks survive the conversion. The
   `docling` engine keeps dense technical layout intact, and chunk boundaries follow an explicit
   `h1-h2-h3` strategy tuned for embedding windows.
-* **Deterministic, byte-stable output.** Default runs reproduce across operating systems, and every
-  body carries a `content_sha256` digest for change detection and deduplication.
-* **Dual interface, single code path.** The CLI and MCP server share `execute_fetch` and
-  `execute_process`, so an agent and a human produce the same bytes from the same input.
+* **Deterministic, content-addressed body.** The Markdown body reproduces byte-for-byte across
+  operating systems and runs, and each carries a `content_sha256` digest for change detection and
+  deduplication. Frontmatter stamps a per-run `ingested_at`, so hash and compare on the body.
+* **Dual interface, shared processing.** The CLI and MCP server run the same `execute_process` pass,
+  so an agent and a human produce the same normalized Markdown body from the same staged input.
 * **Local-first, cloud-optional.** Extraction runs fully offline by default. Cloud OCR (Mistral) is
   opt-in for table-heavy or scanned corpora and is never selected automatically.
 
@@ -108,8 +109,9 @@ Useful flags:
 
 ### Convert a PDF
 
-Point `ingest local-dir` at a folder of PDFs (or stage them and run `process`). The default engine
-preserves headings and tables:
+Point `ingest local-dir` at a folder of PDFs (or stage them and run `process`). The `docling` engine
+reconstructs headings and tables; the default `auto` engine uses `docling` when `docline[pdf]` is
+installed and degrades to the heuristic extractor (headings only, no table reconstruction) otherwise:
 
 ```bash
 # High-fidelity technical PDFs (requires docline[pdf])
@@ -143,7 +145,7 @@ The MCP surface exposes the same contract via the `export_schema` tool.
 | Content hashing | `content_sha256` over the emitted body for change detection and dedup |
 | PDF engine choice | `auto`, `docling`, `mistral_ocr`, `heuristic` — orthogonal to `auto` / `triage` modes |
 | Accelerator awareness | Auto-detects CUDA / MPS / XPU; pin with `DOCLINE_ACCELERATOR` |
-| Dual interface | Identical CLI and MCP (`fetch`, `process`, `export_schema`, `--manifest`) code paths |
+| Dual interface | CLI and MCP share the `execute_process` pass; the CLI adds `export-schema` and `--manifest` (the MCP tool is `export_schema`) |
 | Progress + JSON result | Machine-parsable JSON on stdout; throttled human progress on stderr |
 | Quarantine viewer | `docline quarantine-viewer` renders a local HTML report for failed artifacts |
 
@@ -158,7 +160,7 @@ contract. This is the stable surface downstream tools — for example
 | `title` | string | yes | — | Human-readable document title (non-empty) |
 | `source` | string | yes | — | Origin URI or path of the source (non-empty) |
 | `ingested_at` | datetime (ISO 8601) | yes | — | UTC timestamp when docline ingested the source |
-| `doc_type` | string | yes | — | Type identifier (`pdf`, `docx`, `vtt`, `html`, `openapi_operation`, `openapi_schema`) |
+| `doc_type` | string | yes | — | Classifier-emitted identifier: `wiki` (files), `web` (URLs), `transcript`, `adr`, `openapi_operation`, `openapi_schema` |
 | `description` | string | no | `""` | Short human-readable description |
 | `content_sha256` | string (64-char hex) | no | `""` | SHA-256 over the emitted Markdown body bytes |
 | `source_path` | string (POSIX) | no | `""` | Project-relative source path |
