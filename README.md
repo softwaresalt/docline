@@ -176,7 +176,7 @@ title: Get widget
 source: https://example.com/api/openapi.json
 ingested_at: 2026-07-18T00:00:00Z
 doc_type: openapi_operation
-content_sha256: 9f2b1c8e...c41a
+content_sha256: cc1df95c413afc8fe40240131e6595b52f128935e5e00c77c5c9292ba3745270
 source_path: api/operations/getWidget.md
 chunk_strategy: h1-h2-h3
 schema_version: "1.0"
