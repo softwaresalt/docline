@@ -3,7 +3,7 @@ title: "CI artifact actions to Node 24"
 type: plan
 slug: ci-artifact-actions-node24
 created: 2026-07-17
-status: draft
+status: ready
 scope: ops/ci
 ---
 
@@ -82,6 +82,27 @@ a normal PR. Verify by:
 build until the next version tag is cut. No principle conflicts; the one accepted
 behavior change — `download-artifact@v8`'s secure digest-mismatch default — aligns
 with Principle V.
+
+## Plan Review
+
+**Gate decision: PASS** — no P0/P1/P2 findings. Reviewed against the plan-review
+personas before staging (recorded here to satisfy the harvest review gate).
+
+| Persona | Assessment |
+|---|---|
+| Constitution Reviewer | `## Constitution Check` present and accurate. Test-First non-applicability, workflow safety/rollback, observability, and merge-commit policy all addressed. No violations. |
+| Python Reviewer | N/A — no Python; no type signatures or error-handling surface. |
+| Scope Boundary Auditor | Tight scope: three action pins in `release.yml` plus a documented no-op `ci.yml` audit. No scope creep or YAGNI. |
+| Learnings Researcher | No conflicting or superseding learning found in `docs/compound/` (searched action-pinning / workflow terms). SHA-pin convention upheld. |
+| Architecture Strategist | No architectural impact; CI-config only. |
+| Security Lens Reviewer | SHA-pinning preserved; adopts `download-artifact@v8`'s secure `digest-mismatch: error` default — net-positive for supply-chain integrity. No secrets touched. |
+
+**P3 (advisory):** consider a periodic (e.g. quarterly) action-version audit so
+pinned actions do not drift onto deprecated runtimes again. Not blocking; captured
+as awareness only.
+
+Runtime verification and rollback are covered under Verification and Risk above.
+No runtime or closure gaps for a tag-triggered, config-only change.
 
 ## Risk
 
