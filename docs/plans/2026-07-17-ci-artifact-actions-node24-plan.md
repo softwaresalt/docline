@@ -35,10 +35,23 @@ Node-24-targeting releases, keeping the SHA-pin + `# vX.Y.Z` comment convention:
 * `upload-artifact` → `v7.0.1` (resolve to its commit SHA)
 * `download-artifact` → `v8.0.1` (resolve to its commit SHA, both lines)
 
-Verify the v4→v7 (upload) and v4→v8 (download) major bumps don't change the
-single-named-artifact upload/download contract used here (name `dist`, default
-path). No matrix/merge behavior is involved, so the breaking changes around
-artifact immutability/merging do not apply.
+Verify the v4→v7 (upload) and v4→v8 (download) major bumps against the
+single-named-artifact contract used here (name `dist`, downloaded **by name**):
+
+* `download-artifact@v5` — path change affects single downloads **by ID** only;
+  we download by name, so this does not apply.
+* `download-artifact@v8` — **digest-mismatch now fails the run by default**
+  (previously a warning; configurable via the new `digest-mismatch` input). This
+  applies to every download, including our `dist` artifact. Because the upload
+  and both downloads run in the same workflow, the digest always matches, so no
+  spurious failure is expected — and the secure `error` default is desirable (it
+  surfaces a corrupted/tampered artifact instead of publishing it). Accept the
+  default; do **not** set `digest-mismatch: warn`.
+* `download-artifact@v8` also migrated to ESM (transparent to callers) and skips
+  decompression for non-zip downloads; our `dist` artifact is a zip, so the
+  default behavior is unchanged.
+* `upload-artifact@v7` — the immutable-artifact / unique-name model (introduced
+  in v4) is unchanged for our single `dist` upload.
 
 ## Verification
 
@@ -50,7 +63,28 @@ a normal PR. Verify by:
 3. On the **next** release tag, confirm the Node 20 deprecation annotations are
    gone from the Release run.
 
+## Constitution Check
+
+| Principle | Assessment |
+|---|---|
+| I. Safety-First Python | N/A — no Python changes. The release job's `ruff`/`pyright`/`pytest` gates still run ahead of build/publish and are unaffected. |
+| II. Test-First (NON-NEGOTIABLE) | Not applicable in the unit-test sense: this edits a tag-triggered workflow that cannot execute on a normal PR and exposes no importable code path, so the red→green harness requirement does not attach. Verification is `actionlint` + SHA resolution + a clean next-tag Release run with no Node 20 annotations (see Verification). |
+| III / IV. Workspace isolation & CLI containment | Change confined to `.github/workflows/release.yml`; no writes outside the repo tree. |
+| V. Structured Observability | Net-positive — removes deprecation noise and makes artifact-integrity failures explicit (digest mismatch → hard error). |
+| VI. Single Responsibility | No new dependencies; bumps existing action pins only. |
+| VII. Destructive-command approval | None — no destructive commands involved. |
+| VIII. Safety modes | Not required; low blast radius, config-only, cannot affect a build until the next tag. |
+| IX. Git-friendly persistence | YAML workflow edit; SHA-pinned with `# vX.Y.Z` comments. |
+| XI. Merge-commit policy | The PR merges via a merge commit per policy. |
+
+**Rollback:** revert the pin bump (single commit). The change cannot affect a
+build until the next version tag is cut. No principle conflicts; the one accepted
+behavior change — `download-artifact@v8`'s secure digest-mismatch default — aligns
+with Principle V.
+
 ## Risk
 
 Low. CI-config-only, no application code. Rollback = revert the pin bump. The
-change cannot affect a build until the next tag is cut.
+change cannot affect a build until the next tag is cut. The only behavioral shift
+is `download-artifact@v8`'s digest-mismatch → error default, accepted as a secure
+default (in-run upload/download digests always match).
