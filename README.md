@@ -3,7 +3,7 @@
 > Turn heterogeneous documents into clean, schema-validated Markdown that RAG and graph pipelines can ingest without surprises.
 
 **docline** is a document-to-Markdown ingestion and normalization pipeline. It converts PDF, DOCX,
-VTT, HTML, whole Microsoft Learn / DocFx repositories, and OpenAPI 3.x specifications into normalized
+HTML, whole Microsoft Learn / DocFx repositories, and OpenAPI 3.x specifications into normalized
 Markdown with a stable frontmatter contract and predictable chunk boundaries. The same pipeline runs
 as a **CLI** for operators and as an **MCP server** for agents, so both surfaces drive the same
 normalization path.
@@ -34,7 +34,7 @@ graph edges. docline hardens the ingestion layer:
 docline targets **Python 3.12+** and publishes to PyPI:
 
 ```bash
-# Core pipeline (Markdown / HTML / VTT / DOCX / OpenAPI + heuristic PDF)
+# Core pipeline (Markdown / HTML / DOCX / OpenAPI + heuristic PDF)
 pip install docline
 
 # Add the docling engine for high-fidelity PDF layout extraction
@@ -135,7 +135,7 @@ The MCP surface exposes the same contract via the `export_schema` tool.
 
 | Capability | What you get |
 |---|---|
-| Multi-format ingestion | PDF, DOCX, VTT, HTML, Markdown, and OpenAPI 3.x from one command |
+| Multi-format ingestion | PDF, DOCX, HTML, Markdown, and OpenAPI 3.x from one command |
 | Repo-scale local ingestion | `ingest local-dir` walks a cloned docs tree, preserves directory structure, and follows `TOC.yml` order |
 | Web-crawl staging | `docline fetch` stages web-crawl and file sources declared in `.elt/config/*.sources.yaml` |
 | Stable frontmatter contract | Versioned `BaseFrontmatter` v1 with a published JSON Schema via `export-schema` |
