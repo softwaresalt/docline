@@ -10,7 +10,7 @@ blocked: <task> remains active`.
 `backlogit_ship_shipment` refuses a shipment whose member tasks show
 `status: done` in both the markdown frontmatter and the SQL index, with:
 
-```
+```text
 shipment refused: member 057.001-T missing passing gate evidence:
 gate blocked: 057.001-T remains active
 ```
