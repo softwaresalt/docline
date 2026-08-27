@@ -69,7 +69,15 @@ Scope guardrails:
 
 - Only stdio transport (reuse the existing `TransportMode` guard; reject anything else).
 - No new production dependency; standard library `json`/`sys` only.
-- `tools/list` output must remain byte-for-byte equivalent to `docline --manifest` tool set.
+- `tools/list` must remain in **semantic parity** with the docline **callable allow-list** —
+  same tool names and same normalized parameter schema — but NOT byte-for-byte identical to the
+  raw `docline --manifest` four-tool set. Two sanctioned divergences apply: (1) MCP advertises
+  tool schemas under `inputSchema` whereas the shared manifest uses `parameters` (a key alias);
+  and (2) the security-sensitive `process.workspace_root` field is omitted, and
+  `ingest_local_dir` is excluded from the MCP surface, on the untrusted stdio transport (see the
+  plan §H1 parity exception and the Design "Advertised set == callable set" note). Parity is
+  asserted on tool name + normalized schema content of the *advertised == callable* set, not raw
+  byte equality against the full manifest.
 - `tools/call` must route to the same shared app functions the CLI uses, preserving parity.
 - Map Pydantic `ValidationError` to a JSON-RPC invalid-params (`-32602`) error envelope;
   unknown methods to `-32601`; malformed JSON to parse error (`-32700`).
