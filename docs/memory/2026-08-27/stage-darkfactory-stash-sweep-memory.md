@@ -17,7 +17,10 @@
 | 3048007A | task | low | DEFERRED (no GPU host) | 063.001-T under 063-F |
 | 935F2694 | task | low | DEFERRED (YAGNI, no measured I/O hot path) | 063.002-T under 063-F |
 
-All 8 stash entries archived (reason: archived) after successful harvest to durable backlog.
+All 8 stash entries archived (reason: harvested) after successful harvest to durable backlog.
+This matches the actual `reason` value recorded in `.backlogit/archive/stash.jsonl` for every
+consumed entry (they were archived by the harvest path, not a bare archive), so future
+traceability checks resolve against the real `harvested` reason.
 
 ## Executable work — MCP stdio server (064-F, shipment 055-S)
 
@@ -57,16 +60,40 @@ All 8 stash entries archived (reason: archived) after successful harvest to dura
     `list_callable_tools()`-sole-advertise invariant; 064.009 narrowed to H1/H3/H4/H5 (shared-fetch
     guards auto-enforce via `execute_fetch`, no boundary wiring); explicit red-only harness milestone
     model; Rollback names `src/docline/mcp/server.py`.
-- Tasks (test-first, width-isolated, single linear/acyclic chain of 15; execution order):
+  - **Cycle-3 review (PR #166, 4 threads) — closed here.** (1) Aggregate byte accounting made
+    enforceable: `FetchResponse` must retain the raw body byte count (`body_byte_count`) from the
+    bounded reader before decode, and the crawl sums that exact value (non-ASCII/invalid-byte
+    tested); split into a byte-accurate pair 064.016-T/064.017-T (per-dimension caps 064.012/064.013
+    narrowed accordingly). (2) MCP `2026-07-28` protocol claim **verified against the official spec**
+    (`modelcontextprotocol/modelcontextprotocol` `docs/specification/2026-07-28`): `server/discover`
+    MUST, per-request `_meta` protocolVersion (no `initialize` handshake), `-32022`, `ping` removed —
+    all confirmed → planned a **dual-era server** (retain legacy `initialize`; add modern
+    discovery/negotiation/-32022/resultType + era routing) as tasks 064.020-064.023 (2 harness +
+    2 impl, explicit negotiation/version tests). (3) Memory reason corrected `archived`→`harvested`.
+    (4) `fetch` advertising corrected to HTTP(S)-only (shared description matches `execute_fetch`),
+    parity-tested; tasks 064.018-T/064.019-T. Plan + deliberation + 064-F DoD updated to match.
+    Cycle-3 edits were then put through an internal 4-persona adversarial re-review
+    (Architecture/Security/Scope/Consistency): closed Security P1 (dual-era guardrail parity — modern
+    stateless/pre-handshake path must enforce H1/H3/H5 identically; parity scenario in 064.021,
+    criterion in 064.023), Architecture P2 (crisp 064.022=modern-branch / 064.023=legacy-branch
+    ownership) + P2 (describe_server() moved into adapter task 064.015 so identity single-source
+    holds at every commit), Consistency P2 (064.013 title retitled off "aggregate"), and P3s
+    (aux robots/TOC bytes accrue to the aggregate; 064.021 scenario-a reframed as regression anchor).
+- Tasks (test-first, width-isolated, single linear/acyclic chain of **23**; execution order):
   064.001-T (protocol/parity harness) → 064.005-T (dispatch/error incl. -32600 harness) →
   064.006-T (H1-H3 harness) → 064.007-T (H4-H6 literal harness) → 064.010-T (shared-fetch SSRF
-  harness) → 064.011-T (shared-fetch SSRF + address-pinned connect impl) → 064.012-T (shared-fetch
-  cap harness) → 064.013-T (shared-fetch cap impl: max_pages + response byte + aggregate) →
-  064.014-T (MCP untrusted-fetch end-to-end boundary harness) → 064.015-T (adapter call_tool +
-  list_callable_tools) → 064.002-T (core stdio transport loop: dispatch/serve/-32600/H2) →
-  064.009-T (stdio runtime guardrails H1/H3/H4/H5) → 064.008-T (subprocess smoke harness) →
-  064.003-T (docline-mcp entry point) → 064.004-T (README/.mcp.json docs).
-- Shipment 055-S = 064-F + 15 tasks (queued, priority high). Handoff token to Ship.
+  harness) → 064.011-T (shared-fetch SSRF + address-pinned connect impl) → 064.012-T (per-dimension
+  cap harness) → 064.013-T (per-dimension cap impl: max_pages + response byte) → 064.016-T
+  (aggregate byte-accounting harness) → 064.017-T (raw-byte retention + byte-accurate aggregate
+  impl) → 064.014-T (MCP untrusted-fetch end-to-end boundary harness) → 064.015-T (adapter
+  call_tool + list_callable_tools) → 064.018-T (fetch HTTP(S)-only advertising parity harness) →
+  064.019-T (fetch description correction impl) → 064.002-T (core stdio transport loop, legacy-era
+  base: dispatch/serve/-32600/H2) → 064.009-T (stdio runtime guardrails H1/H3/H4/H5) → 064.020-T
+  (dual-era discovery/modern-negotiation harness) → 064.021-T (legacy + era-routing harness) →
+  064.022-T (modern negotiation impl: server/discover + _meta + -32022) → 064.023-T (dual-era
+  routing + legacy retention impl) → 064.008-T (subprocess smoke harness) → 064.003-T (docline-mcp
+  entry point) → 064.004-T (README/.mcp.json docs).
+- Shipment 055-S = 064-F + **23 tasks** (queued, priority high). Handoff token to Ship.
 
 ## Blocked/deferred backlog (durable, NOT shipped)
 
@@ -85,14 +112,17 @@ EVIDENCE / UNBLOCK requirements and `Do NOT fabricate` guardrails. Semantic link
 
 ## Next steps
 
-- Ship claims shipment 055-S → harness-architect authors the linear red harness chain
-  (064.001→005→006→007→010→012→014, plus shared-fetch impl-paired 011/013 and the subprocess
-  smoke harness 064.008) → build-feature turns it green in order: shared-fetch SSRF+pinned-connect
-  064.011 → shared-fetch caps 064.013 → adapter 064.015 (call_tool + list_callable_tools) → core
-  transport 064.002 (dispatch/serve/-32600/H2; greens the fetch boundary 064.014 via routing) →
-  stdio guardrails 064.009 (H1/H3/H4/H5) → entry point 064.003 (greens smoke 064.008) → docs
-  064.004 → review/CI/PR → merge. Note the cross-interface blast radius: 064.011/064.013 change
-  shared fetch behavior (url_policy/http/crawl/app_models) for the CLI too.
+- Ship claims shipment 055-S → harness-architect authors the linear red harness chain, then
+  build-feature turns it green in execution order (23-task chain above). Key make-green order:
+  shared-fetch SSRF+pinned-connect 064.011 → per-dimension caps 064.013 → byte-accurate aggregate
+  064.017 → adapter 064.015 (call_tool + list_callable_tools) → fetch-desc correction 064.019 →
+  core transport 064.002 (legacy-era base; greens the fetch boundary 064.014 via routing) → stdio
+  guardrails 064.009 (H1/H3/H4/H5) → modern negotiation 064.022 (server/discover + _meta + -32022)
+  → dual-era routing 064.023 → entry point 064.003 (greens smoke 064.008) → docs 064.004 →
+  review/CI/PR → merge. Cross-interface blast radius: 064.011/064.013/064.017 change shared fetch
+  behavior (url_policy/http/crawl/app_models) for the CLI too; 064.019 changes the CLI --manifest
+  advertising text; the dual-era surface (064.020-064.023) is additive to the transport with no
+  legacy-client behavior change.
 - Blocked features 060–063 remain blocked until their evidence requirements are met; re-triage
   when Foundry credentials, representative corpora, a GPU host, or production I/O profiling
   become available.

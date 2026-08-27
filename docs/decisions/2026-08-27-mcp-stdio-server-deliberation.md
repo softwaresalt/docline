@@ -88,10 +88,66 @@ Scope guardrails:
 
 ## Open questions (resolved for this unit)
 
-- Protocol version string to advertise in `initialize`: pin a single constant and assert it
-  in tests; bump deliberately. Not a blocker.
+- Protocol version / era model: **RESOLVED to a dual-era server** (see "Protocol era model"
+  below). The earlier "pin a single constant" answer was insufficient once the interoperability
+  goal is taken literally: a modern (2026-07-28) client cannot use a legacy-only server. The
+  server therefore serves BOTH eras.
 - Notification handling (`notifications/initialized`): accept and ignore (no response), per
-  JSON-RPC notification semantics. Covered by a test.
+  JSON-RPC notification semantics, on the **legacy** era path. Covered by a test.
+
+## Protocol era model (authoritative, dual-era)
+
+### Evidence (official MCP specification, not the review assertion)
+
+The PR #166 cycle-3 review asserted that MCP `2026-07-28` mandates `server/discover`, carries
+protocol version/capabilities in per-request `_meta` with no `initialize` handshake, and uses
+`-32022` for version mismatch. Rather than trust the review, this was verified against the
+official specification repository `modelcontextprotocol/modelcontextprotocol`
+(`docs/specification/2026-07-28`, retrieved 2026-08-27). The revision exists and the claims are
+confirmed verbatim:
+
+- **`server/discover` is mandatory.** `server/discover.mdx`: "Servers **MUST** implement it."
+  It advertises supported protocol versions, capabilities, and identity, and doubles as the
+  stdio backward-compatibility probe.
+- **Stateless, per-request `_meta`, no handshake.** `changelog.mdx` major change #2: "Make MCP
+  stateless: remove the `initialize`/`notifications/initialized` handshake. Every request now
+  carries its protocol version and client capabilities in `_meta`
+  (`io.modelcontextprotocol/protocolVersion`, `io.modelcontextprotocol/clientCapabilities`)."
+- **`-32022` for version mismatch.** `changelog.mdx` minor change #12 renumbers
+  `UnsupportedProtocolVersion` to `-32022` (MCP-reserved range `-32020..-32099`);
+  `versioning.mdx` shows the `UnsupportedProtocolVersionError` envelope with
+  `data.supported` + `data.requested`.
+- Also confirmed: `ping` is **removed** in the modern era (legacy-only); results carry a
+  required `resultType` field (`"complete"`); list results carry `ttlMs`/`cacheScope`.
+
+The reviewer's dates and semantics are therefore accurate, and the operator's stated priority
+(external local stdio discovery + interoperability outranks feature simplicity) forces action:
+a legacy-only server fails the "Modern client → Legacy server" cell of the spec compatibility
+matrix (`versioning.mdx`).
+
+### Decision
+
+Implement a **dual-era stdio server** (per `versioning.mdx` "Backward Compatibility with
+Initialization-Based Versions"):
+
+- **Modern era (`2026-07-28`):** implement `server/discover` (MUST); read the protocol version
+  from each request's `_meta.io.modelcontextprotocol/protocolVersion`; serve statelessly with
+  no prior handshake; return `-32022 UnsupportedProtocolVersionError`
+  (`data.supported` + `data.requested`) on an unsupported version; results carry
+  `resultType:"complete"` and `_meta.io.modelcontextprotocol/serverInfo`; `tools/list` results
+  carry `ttlMs`/`cacheScope`.
+- **Legacy era (`2025-11-25` and earlier):** retain the existing `initialize` /
+  `notifications/initialized` handshake and `ping`.
+- **Era routing (server-selected from how the client opens):** a request carrying modern
+  per-request `_meta` is served under modern semantics; an `initialize` request selects legacy
+  semantics. `server/discover` is answerable before any `initialize` so the stdio probe works.
+- **Advertised versions:** `server/discover.supportedVersions` and `-32022 data.supported`
+  enumerate both eras' versions (`["2026-07-28", "2025-11-25"]`); the legacy `initialize`
+  response pins `2025-11-25`.
+
+Scope guardrail: only discovery + version negotiation + the existing tool surface are added.
+`subscriptions/listen`, Multi Round-Trip Requests, the tasks/sampling/roots/logging features,
+and remote transports remain out of scope for this release unit.
 
 ## References
 
@@ -100,3 +156,7 @@ Scope guardrails:
 - `src/docline/app_models.py` (`ManifestTool`, `McpManifestResponse`)
 - `tests/parity/test_mcp_adapters.py`, `tests/parity/test_mcp_transport.py`
 - `docs/compound/2026-07-03-backlogit-mcp-down-fall-back-to-cli.md` (stdio MCP degraded-mode prior art)
+- MCP spec `modelcontextprotocol/modelcontextprotocol` `docs/specification/2026-07-28`:
+  `changelog.mdx`, `server/discover.mdx`, `basic/versioning.mdx`,
+  `basic/transports/stdio.mdx` (retrieved 2026-08-27) — authoritative source for the dual-era
+  decision above.
