@@ -77,9 +77,13 @@ Scope guardrails:
   `ingest_local_dir` is excluded from the MCP surface, on the untrusted stdio transport (see the
   plan §H1 parity exception and the Design "Advertised set == callable set" note). Parity is
   asserted on tool name + normalized schema content of the *advertised == callable* set, not raw
-  byte equality against the full manifest.
+  byte equality against the full manifest. Implementation contract: the existing adapter
+  `list_tools()` stays **unchanged** (full four-tool manifest — existing parity test untouched);
+  a new `list_callable_tools()` backs the MCP `tools/list`.
 - `tools/call` must route to the same shared app functions the CLI uses, preserving parity.
 - Map Pydantic `ValidationError` to a JSON-RPC invalid-params (`-32602`) error envelope;
+  a syntactically valid JSON payload that is not a valid request object (non-object root,
+  missing/invalid `jsonrpc`, or missing/non-string `method`) to invalid request (`-32600`);
   unknown methods to `-32601`; malformed JSON to parse error (`-32700`).
 
 ## Open questions (resolved for this unit)
