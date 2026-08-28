@@ -21,11 +21,17 @@
   + pre-initialize reject (legacy is selected only after `initialize`; the modern branch stays
   request-stateless), the feature-DoD during-read remaining-budget wording, the `get_manifest()`
   description edit-target attribution, and the regenerated continuity memory.
-  See `## Plan Review Remediation` (cycle-3, cycle-4, and cycle-5 subsections).
+  Cycle-6 (PR #166, fresh review on HEAD dbadb4a) reconciles six further threads: explicit
+  strict-safety high-risk action records for the shared-fetch and exposed-MCP surfaces, the
+  064.017-T <5-function split into new successor 064.024-T, pinned numeric H7 limits
+  (`MAX_PAGES_LIMIT`/`MAX_RESPONSE_BYTES`/`MAX_TOTAL_FETCH_BYTES`) with boundary behavior, the
+  `src/`-prefixed transport paths (064.022-T/064.023-T), and a verifiable client MCP config format
+  source for 064.004-T (no reliance on the git-ignored `.mcp.json`).
+  See `## Plan Review Remediation` (cycle-3, cycle-4, cycle-5, and cycle-6 subsections).
 - Cross-interface blast radius: this release unit is NOT purely additive. It hardens the
   **shared** fetch code (`fetch/url_policy.py`, `fetch/http.py`, `app_models.py`) that both
   the CLI and the MCP surface call, and it changes the existing `DoclineMcpServer` adapter's
-  callable surface. See `## Rollback` and `## Risks`.
+  callable surface. See `## Rollback`, `## Risks`, and `## Strict-Safety Action Records`.
 <!-- plan-review-attempt: 3 -->
 
 ## Scope
@@ -49,7 +55,9 @@ In scope:
      — verified against the official spec repository, see `## Protocol Era Model`.
 2. A `docline-mcp` console-script entry point and `python -m docline.mcp` bootstrap.
 3. Protocol + dual-interface parity tests (test-first).
-4. Operator/agent documentation: README run section + `.mcp.json` example. (No separate
+4. Operator/agent documentation: README run section + a self-contained client MCP configuration
+   example in the documented GitHub Copilot / VS Code `.vscode/mcp.json` `servers` stdio format (a
+   verifiable shape; NOT the repo's git-ignored `.mcp.json`). (No separate
    design-doc transport note — the transport surface is already documented in the deliberation;
    see the Scope trims in `## Plan Review Remediation`.)
 5. **Shared-fetch hardening for the untrusted surface (existing-file changes).** Exposing
@@ -503,14 +511,52 @@ Security/reliability guardrails promoted to blocking design constraints after pl
     the SAME request-scoped budget and decrement it while their bytes are read (identically to main
     pages), so a hostile server cannot amplify transfer via oversized-but-under-cap
     `robots.txt`/TOC payloads outside the budget.
-  Cap tasks: the `max_pages` upper bound and the streamed per-response `MAX_RESPONSE_BYTES` cap are
-  delivered by harness `064.012-T` + impl `064.013-T` (`app_models.py` / `fetch/http.py`). The
-  byte-accurate **aggregate** budget — raw-byte retention on `FetchResponse` (observability), the
-  request-scoped during-read remaining-byte budget (decremented per chunk, aborting mid-read), AND
-  auxiliary-fetch (`robots.txt`/TOC) budget decrement — is delivered by its own
-  width-isolated pair harness `064.016-T` + impl `064.017-T` (`fetch/http.py` / `fetch/crawl.py`),
-  isolating the shared-model (`FetchResponse`) blast radius and the non-ASCII/invalid-byte
-  accounting tests from the per-dimension caps.
+  **Selected numeric limits (cycle-6, review-mandated — measurable boundary before red tests).**
+  These constants are pinned now so the H7 harnesses (`064.012-T`, `064.016-T`, `064.014-T`) assert
+  exact boundaries rather than implementation-time judgment. They are named module constants in the
+  shared fetch code, sized against the current workload baseline (`CrawlConfig.max_pages` default =
+  `50`, `src/docline/fetch/crawl.py`):
+  - **`MAX_PAGES_LIMIT = 1000`** (`FetchRequest.max_pages` bound: `Field(ge=1, le=1000)`).
+    Rationale: 20× the current bounded-crawler default of `50` — generous headroom for large
+    documentation-site / mdBook crawls (hundreds of pages) while bounding an untrusted caller from
+    requesting an unbounded page count. Boundary: `max_pages` in `1..1000` inclusive is accepted;
+    `>= 1001` is rejected at Pydantic validation → `-32602` on the MCP boundary. `None` still means
+    "use the crawler default of `50`".
+  - **`MAX_RESPONSE_BYTES = 10 * 1024 * 1024 = 10_485_760`** (10 MiB) streamed per-response cap.
+    Rationale: docline stages text-centric documents (HTML/Markdown, occasionally moderate PDFs);
+    10 MiB is far above a typical documentation page (KB–low-MB) yet bounds a single hostile
+    response from exhausting memory via the current unbounded `response.read()`. Applies to the
+    initial response body AND every redirect hop's final response. Boundary: a response up to and
+    including exactly `10_485_760` raw wire bytes is allowed; the bounded reader aborts mid-stream
+    (typed error) the instant reading the next chunk would push the response past `10_485_760` (the
+    over-cap response is never fully buffered).
+  - **`MAX_TOTAL_FETCH_BYTES = 512 * 1024 * 1024 = 536_870_912`** (512 MiB) aggregate per-request
+    crawl budget. Rationale: bounds the *product* of the page and per-response caps — the naive
+    product `MAX_PAGES_LIMIT × MAX_RESPONSE_BYTES` (1000 × 10 MiB ≈ 10 GiB) is the amplification
+    vector; 512 MiB caps total transfer / disk staging at ~20× below that product while still
+    covering a large legitimate crawl (e.g. ~500 pages averaging ~1 MiB, or 50 pages of ~10 MiB).
+    The aggregate is the effective transfer bound for the "many large pages" attack (it trips after
+    at most ⌊512 MiB / 10 MiB⌋ = 51 full-size responses, well inside the 1000-page count cap).
+    Boundary: the request-scoped remaining-byte budget starts at `536_870_912` and is decremented
+    per chunk as raw wire bytes are read across **every** `fetch_page` call for the request (main
+    pages, retried over-cap attempts, and ancillary `robots.txt`/TOC fetches); a total of exactly
+    `536_870_912` raw bytes is allowed; the read aborts mid-stream (raising
+    `AggregateBudgetExceededError`, re-raised out of `crawl()`) the instant the next chunk would
+    push cumulative request raw bytes past `536_870_912`. Defaults to unbounded (`None`) for a
+    standalone single fetch so existing CLI single-fetch callers are unaffected.
+
+  Cap tasks: the `max_pages` upper bound (`MAX_PAGES_LIMIT = 1000`) and the streamed per-response
+  `MAX_RESPONSE_BYTES` (10 MiB) cap are delivered by harness `064.012-T` + impl `064.013-T`
+  (`app_models.py` / `fetch/http.py`). The byte-accurate **aggregate** `MAX_TOTAL_FETCH_BYTES`
+  (512 MiB) budget — raw-byte retention on `FetchResponse` (observability) and the request-scoped
+  during-read remaining-byte budget (decremented per chunk, aborting mid-read) for **main pages +
+  retries** — is delivered by harness `064.016-T` + impl `064.017-T` (`fetch/http.py` /
+  `fetch/crawl.py`); the **ancillary-fetch** (`robots.txt`/TOC) budget decrement + its two
+  `except AggregateBudgetExceededError: raise` clauses are split into successor impl `064.024-T`
+  (`fetch/crawl.py`, cycle-6 split — see `## Plan Review Remediation` cycle-6), which takes over the
+  `064.016-T` scenario (c)(iii) green-ownership. This isolates the shared-model (`FetchResponse`)
+  blast radius and the non-ASCII/invalid-byte accounting tests from the per-dimension caps and keeps
+  each impl task within the 2-hour/<5-function envelope.
   End-to-end proof: a `tools/call` `fetch` with
   over-limit `max_pages` (rejected `-32602`), an oversized response body (aborted, including on a
   redirect), and a crawl exceeding the aggregate budget (aborted) are asserted in the MCP boundary
@@ -541,7 +587,8 @@ manifest description to HTTP(S)-only with a parity test; and (iii) a **dual-era 
 two harnesses (discovery/modern-negotiation, legacy/era-routing) and two impls (modern negotiation,
 dual-era routing) implementing MCP `2026-07-28` `server/discover` + per-request `_meta` negotiation +
 `-32022` alongside the retained legacy `initialize` handshake (see `## Protocol Era Model`). The
-chain grows from 15 to **23** tasks but stays strictly **linear and acyclic**.
+chain grows from 15 to **23** tasks in cycle-3, then to **24** in cycle-6 (the 064.024-T
+ancillary-budget split), but stays strictly **linear and acyclic**.
 
 **Milestone model (resolves red→green atomicity).** Each *harness* task's atomic milestone is
 "authored and observed **red**" — harness tasks are red-only by design. Each *impl* task's atomic
@@ -625,36 +672,52 @@ Backlog IDs are shown in brackets. All MCP-transport harness tasks author into
    response that aborts **mid-read** before full buffering, a retried over-cap attempt whose bytes
    still decrement the shared request budget, and an ancillary robots/TOC fetch decrementing the
    same budget. Verify red [green@T-agg-i]. Depends on T-cap-i.
-10. T-agg-i [064.017-T] — Raw-byte retention + byte-accurate aggregate accounting impl (code
-   domain, ≤2 files: `fetch/http.py`, `fetch/crawl.py`). Add `FetchResponse.body_byte_count: int`
+10. T-agg-i [064.017-T] — Raw-byte retention + byte-accurate aggregate accounting impl, **core**
+   (code domain, ≤2 files: `fetch/http.py`, `fetch/crawl.py`). Add `FetchResponse.body_byte_count: int`
    set from the length of the bytes read by the bounded reader **before decoding** (the
    `body_bytes` already materialized at the streamed read) for per-response accounting; and enforce
-   `MAX_TOTAL_FETCH_BYTES` via a **request-scoped remaining-byte budget threaded into `fetch_page`
+   `MAX_TOTAL_FETCH_BYTES` (512 MiB / `536_870_912` bytes, see §H7 Selected numeric limits) via a
+   **request-scoped remaining-byte budget threaded into `fetch_page`
    and its bounded reader, decremented per chunk while bytes are read** and aborting the read
    mid-stream once the remaining allowance would be exceeded — NOT a post-return `crawl.py`
    accumulator (which cannot see the crossing response before it is fully read, nor bytes from
    over-cap attempts retried by `_fetch_with_retries`). `crawl.py` seeds one budget per request and
-   threads it through every `fetch_page` call (main, retries, and ancillary robots/TOC). The typed
-   `AggregateBudgetExceededError` (a `DoclineError` subclass) MUST be re-raised at all four `crawl.py`
-   broad-handler sites (`crawl()` main loop, `_fetch_with_retries`, `_robots_allow`,
-   `_discover_toc_links`) via `except AggregateBudgetExceededError: raise` before each
+   threads it through the **main-page and retry** `fetch_page` calls (the ancillary robots/TOC
+   threading is split to successor `064.024-T`). The typed
+   `AggregateBudgetExceededError` (a `DoclineError` subclass) MUST be re-raised at the **two core**
+   `crawl.py` broad-handler sites (`crawl()` main loop, `_fetch_with_retries`) via
+   `except AggregateBudgetExceededError: raise` before each
    `except (DoclineError, OSError)` (mirroring the existing `except CrawlUrlRejectedError: raise`), so
    `crawl()` RAISES rather than recording a per-page skip. `FetchResponse.body_byte_count` carries a
    default (`= 0`, or is placed before the defaulted `redirect_count`) so the frozen dataclass and
    existing constructors stay valid. The budget defaults to unbounded for standalone single fetch.
    Isolated from T-cap-i so the shared-model (`FetchResponse`) blast radius and the byte-accurate
-   during-read accounting land in one bounded task; a split guard peels the ancillary
-   (robots/TOC) accrual + re-raise to a successor if the envelope is exceeded. Turns T-agg-h green.
+   during-read accounting land in one bounded task. **Split executed (cycle-6, PR #166 review):** the
+   ancillary (`_robots_allow`/`_discover_toc_links`) accrual + their two re-raise clauses are peeled
+   to successor `064.024-T` (T-agg-aux) because 064.017-T already touches three functions
+   (`fetch_page`, `crawl`, `_fetch_with_retries`) before any ancillary work — folding the two
+   ancillary functions in would breach the <5-function envelope. This keeps 064.017-T at 3 functions
+   + 2 small classes + 1 additive field. Greens `064.016-T` scenarios (a), (b), (c)(i), (c)(ii).
    Existing fetch suite stays green. Depends on T-agg-h.
+10b. T-agg-aux [064.024-T] — Aggregate budget on the **ancillary** robots/TOC fetch vector (code
+   domain, ≤1 file: `fetch/crawl.py`). Extends the request-scoped budget seeded by T-agg-i into the
+   `_robots_allow` and `_discover_toc_links` `fetch_page` calls so ancillary `robots.txt`/mdBook-TOC
+   transfer decrements the SAME budget while bytes are read, and adds the two remaining
+   `except AggregateBudgetExceededError: raise` clauses (before the `_robots_allow` ~line 406 and
+   `_discover_toc_links` ~line 465 broad handlers; `_robots_allow` has no prior re-raise clause).
+   Takes over green-ownership of `064.016-T` scenario (c)(iii) (ancillary-fetch accrual; `crawl()`
+   RAISES). 2 functions touched, single file — within the 2-hour/<5-function envelope. Turns the
+   ancillary sub-vector of T-agg-h green. Existing fetch suite stays green. Depends on T-agg-i.
 11. T-e2e [064.014-T] — MCP untrusted-fetch end-to-end boundary harness (tests domain,
     3 scenarios). Through `tools/call` fetch (stdin JSON → dispatch → `server.fetch` →
     `execute_fetch`): (a) a public hostname resolving to loopback/private is rejected end-to-end
-    (§H6); (b) an over-limit `max_pages` is rejected `-32602` end-to-end (§H7); (c) an oversized
-    response (per-response cap incl. redirect) OR a crawl exceeding the aggregate budget is aborted
+    (§H6); (b) an over-limit `max_pages` (`>= 1001`) is rejected `-32602` end-to-end (§H7); (c) an
+    oversized response (per-response `MAX_RESPONSE_BYTES` = 10 MiB cap incl. redirect) OR a crawl
+    exceeding the aggregate `MAX_TOTAL_FETCH_BYTES` = 512 MiB budget is aborted
     end-to-end (§H7). Authored red (no dispatch loop yet). The shared-fetch guards (T-ssrf-i,
-    T-cap-i, T-agg-i) already enforce in `execute_fetch`, so once the dispatch loop routes
+    T-cap-i, T-agg-i, T-agg-aux) already enforce in `execute_fetch`, so once the dispatch loop routes
     `server.fetch` these all go green at **T2** — no separate boundary wiring is required. Depends
-    on T-agg-i.
+    on T-agg-aux (the full aggregate budget, ancillary included, is in place).
 12. T-adapter [064.015-T] — Adapter callable surface + identity accessor (code domain, ≤2 files:
     `src/docline/mcp/server.py` + optionally a versions constant).
     Implement `DoclineMcpServer.call_tool(name, arguments)` (static `{name: adapter_callable}`
@@ -694,7 +757,7 @@ Backlog IDs are shown in brackets. All MCP-transport harness tasks author into
     versions/capabilities/identity/cache metadata — so it is not a description surface.) No
     processing behavior change. Turns T-desc-h green. Depends on T-desc-h.
 15. T2 [064.002-T] — Core stdio transport loop, **legacy-era base** (code domain, ≤2 files:
-    `docline/mcp/stdio.py` + entry wiring). Implement `dispatch` + `serve`, request-shape
+    `src/docline/mcp/stdio.py` + entry wiring). Implement `dispatch` + `serve`, request-shape
     validation returning **`-32600`**, the bounded binary frame read/drain helper AND its runtime
     enforcement (§H2), the legacy-era method map (`initialize` → capabilities + `2025-11-25` +
     serverInfo **sourced from the adapter `describe_server()` accessor (T-adapter), not hardcoded in
@@ -746,7 +809,7 @@ Backlog IDs are shown in brackets. All MCP-transport harness tasks author into
     path, proving the guards apply pre-handshake and era routing cannot branch around them. Verify
     red [green@T-era-i2]. Depends on T-era-h1.
 19. T-era-i1 [064.022-T] — Modern-era negotiation + modern-branch routing impl (code domain,
-    ≤2 files: `docline/mcp/stdio.py` + `src/docline/mcp/server.py`).
+    ≤2 files: `src/docline/mcp/stdio.py` + `src/docline/mcp/server.py`).
     Implement `server/discover` dispatch backed by the `describe_server()` accessor **introduced by
     T-adapter (consume, do not re-introduce)** (supportedVersions, capabilities, serverInfo);
     per-request `_meta` extraction + validation of BOTH `protocolVersion` (unsupported → `-32022`)
@@ -765,7 +828,7 @@ Backlog IDs are shown in brackets. All MCP-transport harness tasks author into
     2-hour/<5-function envelope, split the result-shape wrapper to a successor before implementing.
     Turns T-era-h1 green. Depends on T-era-h2 (last dual-era harness authored first).
 20. T-era-i2 [064.023-T] — Dual-era routing completion + legacy retention + guard-parity **verify**
-    (code domain, ≤2 files: `docline/mcp/stdio.py` + `src/docline/mcp/server.py`). Implement the
+    (code domain, ≤2 files: `src/docline/mcp/stdio.py` + `src/docline/mcp/server.py`). Implement the
     **LEGACY branch** of the request-shape era classifier — an `initialize` request **latches a
     per-process legacy-era selection** (`initialize` → legacy); metadata-free operations
     (`tools/call`/`tools/list` with no `_meta`) received **before** that selection are **rejected**,
@@ -787,21 +850,23 @@ Backlog IDs are shown in brackets. All MCP-transport harness tasks author into
     the entry point exists [green@T3]. Depends on T-era-i2 (the fully hardened dual-era server ships
     in the executable).
 22. T3 [064.003-T] — `docline-mcp` entry point + module bootstrap (packaging surface only —
-    width-isolated). Add `docline/mcp/__main__.py` (`main()` reusing `DoclineMcpServer` + `serve`)
+    width-isolated). Add `src/docline/mcp/__main__.py` (`main()` reusing `DoclineMcpServer` + `serve`)
     and the `[project.scripts]` `docline-mcp` entry (materializes `docline-mcp.exe` on Windows),
     turning the T2b subprocess harness green. No test-infra authoring in this task. Depends on T2b.
 23. T4 [064.004-T] — Documentation (docs domain). README "Running the local stdio MCP server"
-    section and a `.mcp.json` client example for `docline-mcp`, noting dual-era support
+    section and a SELF-CONTAINED client MCP configuration example for `docline-mcp` in the
+    documented GitHub Copilot / VS Code `.vscode/mcp.json` `servers` stdio format (`type`/`command`/
+    `args`; a verifiable shape, NOT the repo's git-ignored `.mcp.json`), noting dual-era support
     (modern `server/discover` probe + legacy `initialize` fallback). Do NOT add a separate
     design-doc transport note — the deliberation already documents the transport surface (avoid
     duplication). Depends on T3.
 
 Dependency edges: T1b→T1, T1c→T1b, T1d→T1c, T-ssrf-h→T1d, T-ssrf-i→T-ssrf-h, T-cap-h→T-ssrf-i,
-T-cap-i→T-cap-h, T-agg-h→T-cap-i, T-agg-i→T-agg-h, T-e2e→T-agg-i, T-adapter→T-e2e,
+T-cap-i→T-cap-h, T-agg-h→T-cap-i, T-agg-i→T-agg-h, T-agg-aux→T-agg-i, T-e2e→T-agg-aux, T-adapter→T-e2e,
 T-desc-h→T-adapter, T-desc-i→T-desc-h, T2→T-desc-i, T2s→T2, T-era-h1→T2s, T-era-h2→T-era-h1,
 T-era-i1→T-era-h2, T-era-i2→T-era-i1, T2b→T-era-i2, T3→T2b, T4→T3.
 Execution order: 064.001 → 064.005 → 064.006 → 064.007 → 064.010 → 064.011 → 064.012 → 064.013 →
-064.016 → 064.017 → 064.014 → 064.015 → 064.018 → 064.019 → 064.002 → 064.009 → 064.020 →
+064.016 → 064.017 → 064.024 → 064.014 → 064.015 → 064.018 → 064.019 → 064.002 → 064.009 → 064.020 →
 064.021 → 064.022 → 064.023 → 064.008 → 064.003 → 064.004.
 
 ## Verification
@@ -1250,10 +1315,62 @@ requires (legacy latch after `initialize`) and request-stateless for the modern 
 DoD names the enforceable during-read budget; the edit-target attribution is uniform across plan,
 backlog, and memory; and the adapter dispatch contract is type-safe. All P0/P1 findings closed.
 
+### Cycle-6 review remediation (PR #166 review cycle 6, fresh Copilot review on HEAD dbadb4a)
+
+The cycle-5 commit (dbadb4a) drew a fresh Copilot review with six unresolved threads. All six are
+reconciled here (Stage's final allowed review-fix cycle for shipment 055-S), across plan, feature,
+tasks, shipment, and continuity memory, preserving dependency acyclicity and execution order:
+
+- **Strict-safety action records (thread 1, plan intro line 28 / `docs/plans/...:28`).** The plan
+  named security-sensitive shared-fetch and exposed-MCP-contract changes but carried no explicit
+  risk-action record or approval state. **Resolution:** added `## Strict-Safety Action Records` with
+  two high-risk `ProposedAction`/`ActionRisk`/`ActionResult` entries (SA-1 shared-fetch security
+  behavior, SA-2 exposed MCP contract), each with concrete targets, rollback/containment, approval
+  basis (the standing dark-factory authorization for autonomous implementation + PR merge; no
+  destructive action authorized), `ActionRisk: high`, and `ActionResult: approved`. Intro line 28
+  cross-reference updated.
+- **064.017-T exceeds its <5-function envelope (thread 2, `064.017-T:35`).** The task's acceptance
+  criteria required changes to `fetch_page`, `crawl`, `_fetch_with_retries`, `_robots_allow`, and
+  `_discover_toc_links` — five functions — so the conditional split guard could not make it
+  compliant. **Resolution:** the split is executed now. New successor **064.024-T** (T-agg-aux) owns
+  the ancillary (`_robots_allow`/`_discover_toc_links`) budget threading + their two re-raise
+  clauses and takes over 064.016-T scenario (c)(iii) green-ownership; 064.017-T is narrowed to
+  `fetch_page`/`crawl`/`_fetch_with_retries` (3 functions) + 2 small classes + 1 additive field.
+  Chain: `064.016 → 064.017 → 064.024 → 064.014` (064.014-T re-pointed from 064.017-T to 064.024-T);
+  dependency edges, execution order, feature DoD, shipment 055-S membership/order, and continuity
+  memory updated. Acyclicity preserved (linear insertion).
+- **Hard resource limits never assigned numeric values (thread 3, `064-F:34`).** The §H7 caps were
+  symbolic. **Resolution:** pinned concrete, workload-grounded constants in a new §H7 "Selected
+  numeric limits" block (source of truth) and propagated them to the feature DoD and the H7 cap
+  tasks (064.012/064.013/064.014/064.016/064.017/064.024): `MAX_PAGES_LIMIT = 1000`
+  (`Field(ge=1, le=1000)`, 20× the current 50-page crawl default; `>=1001` → `-32602`),
+  `MAX_RESPONSE_BYTES = 10 MiB` (10 485 760 bytes; exact-cap allowed, mid-stream abort on the
+  crossing byte), and `MAX_TOTAL_FETCH_BYTES = 512 MiB` (536 870 912 bytes; request-scoped
+  during-read budget, exact-total allowed, mid-stream abort on the crossing byte). Rationale and
+  exact boundary behavior documented in every affected artifact.
+- **064.022-T / 064.023-T transport path missing `src/` (threads 4 and 6, `064.022-T:22`,
+  `064.023-T:22`).** `docline/mcp/stdio.py` does not exist; the real module is
+  `src/docline/mcp/stdio.py`. **Resolution:** corrected the two task file-scopes and reconciled the
+  same stale path in the plan (T2, T-era-i1, T-era-i2 file scopes, Rollback module list, and the
+  `__main__.py` references) to the `src/`-prefixed form.
+- **064.004-T claims a nonexistent/untracked `.mcp.json` (thread 5, `064.004-T:31`).** The repo's
+  `.mcp.json` is git-ignored (`.gitignore`) and not a verifiable tracked source. **Resolution:**
+  replaced the "mirror the repo's `.mcp.json`" note with a concrete, verifiable format source — the
+  documented GitHub Copilot / VS Code `.vscode/mcp.json` `servers` stdio entry shape
+  (`type`/`command`/`args`) plus the MCP stdio transport spec — and required a SELF-CONTAINED inline
+  README example; retitled the task and reconciled Scope item 4 and plan T4.
+
+Re-review verdict (cycle-6, post-remediation): all six threads addressed consistently; the aggregate
+budget is split into an envelope-compliant impl pair (064.017 core + 064.024 ancillary) with an
+acyclic, order-preserving chain; the H7 caps are numeric and measurable before the red harnesses;
+the transport paths and the docs-config format source are verifiable; and the plan carries explicit
+strict-safety high-risk action records for the two high-blast-radius surfaces. All P0/P1 findings
+closed.
+
 ## Rollback
 
-**Not purely additive.** The release unit adds new modules (`docline/mcp/stdio.py`,
-`docline/mcp/__main__.py`) and one `[project.scripts]` entry-point line, but it ALSO modifies
+**Not purely additive.** The release unit adds new modules (`src/docline/mcp/stdio.py`,
+`src/docline/mcp/__main__.py`) and one `[project.scripts]` entry-point line, but it ALSO modifies
 existing files whose behavior changes for both interfaces:
 
 - `src/docline/mcp/server.py` — adapter `DoclineMcpServer` gains `call_tool` (static allow-list
@@ -1269,7 +1386,8 @@ existing files whose behavior changes for both interfaces:
   (§H7 item 3, cycle-3): `FetchResponse` gains a `body_byte_count` field carrying the raw wire byte
   count, and the crawl enforces `MAX_TOTAL_FETCH_BYTES` via a request-scoped remaining-byte budget
   threaded into `fetch_page`/the bounded reader and decremented per chunk while bytes are read
-  (main pages, retries, ancillary robots/TOC), aborting mid-read (064.016/064.017). Additive field +
+  (main pages, retries via 064.016/064.017; ancillary robots/TOC via split successor 064.024),
+  aborting mid-read. Additive field +
   threaded budget; also affects CLI crawls.
 - `src/docline/app.py` — `get_manifest()` `fetch` description literal corrected to HTTP(S)-only
   (re-exposed unchanged by `get_mcp_manifest()`) (064.019, cycle-3). Text-only advertising change;
@@ -1288,8 +1406,70 @@ prior (weaker) SSRF/resource behavior on BOTH interfaces — reviewers must trea
 cross-interface change, not an isolated new transport. The MCP-only additions (stdio loop, dual-era
 protocol surface, adapter callable surface, entry point) can be reverted independently of the
 shared-fetch hardening if only the transport needs backing out; the shared-fetch tasks
-(064.010–064.013, 064.016–064.017) and the `fetch`-advertising correction (064.019) are
+(064.010–064.013, 064.016–064.017, 064.024) and the `fetch`-advertising correction (064.019) are
 self-contained and revertible on their own.
+
+## Strict-Safety Action Records
+
+The `strict-safety` capability pack is installed. This release unit carries two **high-blast-radius**
+changes that must not stay implicit: (1) a shared-fetch **security-behavior** change on an existing
+runtime path used by BOTH the CLI and the new MCP surface, and (2) a NEW **exposed MCP contract**
+over an untrusted local stdio transport. Neither is a *destructive* action (no file/dir deletion,
+no history rewrite, no data drop, no system-config/package change), so no destructive-action
+approval gate applies. The operator's standing dark-factory instruction explicitly authorizes
+autonomous implementation and autonomous PR merge for this work, but authorizes **no destructive
+action**; that standing authorization is the approval basis recorded below. Execution of both
+actions is owned by the Ship agent — these records are the planning-time risk surface Stage carries
+forward into build, review, runtime verification, and closure.
+
+### SA-1 — Shared-fetch security-behavior change (SSRF-by-resolution + resource caps)
+
+- **ProposedAction.summary:** Harden the shared fetch code path — add SSRF-by-DNS-resolution
+  rejection with address-pinned connect on the initial URL and every redirect (§H6), and hard
+  resource caps (§H7): `MAX_PAGES_LIMIT = 1000` upper bound, streamed `MAX_RESPONSE_BYTES` = 10 MiB
+  per-response cap, and a request-scoped during-read aggregate `MAX_TOTAL_FETCH_BYTES` = 512 MiB
+  budget. This tightens accepted inputs on an existing runtime path shared by CLI `docline fetch`
+  and the MCP `fetch` tool.
+- **targets:** `src/docline/fetch/url_policy.py`, `src/docline/fetch/http.py`,
+  `src/docline/fetch/crawl.py`, `src/docline/app_models.py`. Delivered by tasks 064.010–064.013,
+  064.016–064.017, 064.024.
+- **change_kind:** shared-code security / behavior change (NOT purely additive) — cross-interface
+  blast radius.
+- **rollback / containment:** self-contained and revertible per shared-fetch task (see `## Rollback`);
+  reverting restores the prior (weaker) SSRF/resource behavior on both interfaces. Blast radius is
+  contained by sizing caps well above legitimate use (20× the current 50-page crawl default; 10 MiB
+  per response; 512 MiB aggregate) and keeping the existing `tests/fetch` suite green (or
+  deliberately updating it for the new bound). No data migration, no persisted-schema change.
+- **approval_required:** covered by the standing dark-factory authorization for autonomous
+  implementation + PR merge; NOT destructive, so no separate destructive-action approval is required.
+- **ActionRisk:** `high` — shared-code security change with cross-interface blast radius.
+- **ActionResult:** `approved` (pre-authorized by the standing dark-factory instruction; execution
+  owned by Ship — `planned` for the current Stage artifact, transitions to `applied` when Ship builds
+  and merges).
+
+### SA-2 — New exposed MCP contract over untrusted stdio + adapter callable-surface change
+
+- **ProposedAction.summary:** Expose docline over a NEW untrusted local stdio JSON-RPC 2.0 transport
+  (dual-era: legacy `initialize` + modern `server/discover`/`_meta`) and change the
+  `DoclineMcpServer` adapter's callable surface (`call_tool` allow-list, `list_callable_tools()`,
+  `describe_server()`), promoting previously CLI-only assumptions to a security boundary guarded by
+  H1–H7.
+- **targets:** new `src/docline/mcp/stdio.py`, `src/docline/mcp/__main__.py`, `[project.scripts]` in
+  `pyproject.toml`; modified `src/docline/mcp/server.py`. Delivered by tasks 064.001–064.009,
+  064.015, 064.018–064.023, 064.002–064.004, 064.008.
+- **change_kind:** new external contract + adapter callable-surface change (interface/config change);
+  introduces an untrusted-input boundary.
+- **rollback / containment:** the MCP-only additions (stdio loop, dual-era surface, adapter callable
+  surface, entry point) revert independently of the shared-fetch hardening (see `## Rollback`).
+  The boundary is contained by fail-closed guardrails: H1 `workspace_root` reject (`-32602`), H3
+  error non-disclosure, H4 closed allow-list, H5 stdout hygiene, applied through ONE hardened
+  dispatch across both protocol eras. Revert = drop the feature branch.
+- **approval_required:** covered by the standing dark-factory authorization for autonomous
+  implementation + PR merge; NOT destructive, so no separate destructive-action approval is required.
+- **ActionRisk:** `high` — new untrusted attack surface / exposed contract.
+- **ActionResult:** `approved` (pre-authorized by the standing dark-factory instruction; execution
+  owned by Ship — `planned` for the current Stage artifact, transitions to `applied` when Ship builds
+  and merges).
 
 ## Risks
 

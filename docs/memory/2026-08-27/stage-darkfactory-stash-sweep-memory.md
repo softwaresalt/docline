@@ -130,21 +130,46 @@ traceability checks resolve against the real `harvested` reason.
   §H7 cap-tasks, Tasks narrative, Verification) still prescribing the accumulator, and the feature DoD
   claiming `server/discover` advertises the fetch description — both **remediated in-place** and
   re-verified clean. Added plan `### Cycle-5 review remediation` subsection. Gate: PASS.
-- Tasks (test-first, width-isolated, single linear/acyclic chain of **23**; execution order):
+- **Cycle-6 review (PR #166, HEAD dbadb4a, 6 threads) — closed here (Stage's final allowed
+  review-fix cycle).** Planning/backlog/memory only (no production/test code; operator's uncommitted
+  `.autoharness/config.yaml`, `.github/agents/_orchestrator.agent.md`, `.github/agents/_ship.agent.md`,
+  `.gitignore` edits preserved and NOT staged). Thread→fix: (1) added plan
+  `## Strict-Safety Action Records` with two high-risk `ProposedAction`/`ActionRisk`/`ActionResult`
+  entries — SA-1 shared-fetch security behavior + SA-2 exposed MCP contract — each with concrete
+  targets, rollback/containment, approval basis (standing dark-factory authorization for autonomous
+  implementation + PR merge; no destructive action), `ActionRisk: high`, `ActionResult: approved`.
+  (2) executed the 064.017-T <5-function split: new successor **064.024-T** owns the ancillary
+  (`_robots_allow`/`_discover_toc_links`) budget threading + two re-raise clauses + 064.016-T
+  scenario (c)(iii) green-ownership; 064.017-T narrowed to 3 functions; chain
+  `064.016 → 064.017 → 064.024 → 064.014` (064.014-T re-pointed to 064.024-T); plan edges +
+  execution order + feature DoD + shipment 055-S membership updated; acyclicity preserved.
+  (3) pinned numeric H7 limits (source of truth = plan §H7 "Selected numeric limits"):
+  **MAX_PAGES_LIMIT = 1000** (`Field(ge=1, le=1000)`; 20× the 50-page crawl default; `>=1001` →
+  `-32602`), **MAX_RESPONSE_BYTES = 10 MiB** (10 485 760 B), **MAX_TOTAL_FETCH_BYTES = 512 MiB**
+  (536 870 912 B); rationale + exact boundary behavior propagated to feature DoD and
+  064.012/064.013/064.014/064.016/064.017/064.024. (4/6) corrected 064.022-T/064.023-T transport
+  path to **`src/docline/mcp/stdio.py`** and reconciled the same stale path across the plan
+  (T2/T-era-i1/T-era-i2 scopes, Rollback, `__main__.py`). (5) 064.004-T no longer claims the
+  git-ignored `.mcp.json`; grounded the example in the verifiable GitHub Copilot / VS Code
+  `.vscode/mcp.json` `servers` stdio format + self-contained inline README example; reconciled Scope
+  item 4 + plan T4. Added plan `### Cycle-6 review remediation` subsection. Gate: PASS (focused
+  multi-persona review, all P0/P1 closed).
+- Tasks (test-first, width-isolated, single linear/acyclic chain of **24**; execution order):
   064.001-T (protocol/parity harness) → 064.005-T (dispatch/error incl. -32600 harness) →
   064.006-T (H1-H3 harness) → 064.007-T (H4-H6 literal harness) → 064.010-T (shared-fetch SSRF
   harness) → 064.011-T (shared-fetch SSRF + address-pinned connect impl) → 064.012-T (per-dimension
   cap harness) → 064.013-T (per-dimension cap impl: max_pages + response byte) → 064.016-T
   (aggregate byte-accounting harness) → 064.017-T (raw-byte retention + byte-accurate aggregate
-  impl) → 064.014-T (MCP untrusted-fetch end-to-end boundary harness) → 064.015-T (adapter
+  impl, core: main+retry) → 064.024-T (aggregate budget on ancillary robots/TOC fetches, cycle-6
+  split) → 064.014-T (MCP untrusted-fetch end-to-end boundary harness) → 064.015-T (adapter
   call_tool + list_callable_tools) → 064.018-T (fetch HTTP(S)-only advertising parity harness) →
   064.019-T (fetch description correction impl) → 064.002-T (core stdio transport loop, legacy-era
   base: dispatch/serve/-32600/H2) → 064.009-T (stdio runtime guardrails H1/H3/H4/H5) → 064.020-T
   (dual-era discovery/modern-negotiation harness) → 064.021-T (legacy + era-routing harness) →
   064.022-T (modern negotiation impl: server/discover + _meta + -32022) → 064.023-T (dual-era
   routing + legacy retention impl) → 064.008-T (subprocess smoke harness) → 064.003-T (docline-mcp
-  entry point) → 064.004-T (README/.mcp.json docs).
-- Shipment 055-S = 064-F + **23 tasks** (queued, priority high). Handoff token to Ship.
+  entry point) → 064.004-T (README client MCP config docs).
+- Shipment 055-S = 064-F + **24 tasks** (queued, priority high). Handoff token to Ship.
 
 ## Blocked/deferred backlog (durable, NOT shipped)
 
@@ -164,13 +189,13 @@ EVIDENCE / UNBLOCK requirements and `Do NOT fabricate` guardrails. Semantic link
 ## Next steps
 
 - Ship claims shipment 055-S → harness-architect authors the linear red harness chain, then
-  build-feature turns it green in execution order (23-task chain above). Key make-green order:
+  build-feature turns it green in execution order (24-task chain above). Key make-green order:
   shared-fetch SSRF+pinned-connect+proxy-disable 064.011 → per-dimension caps 064.013 → threaded
-    during-read aggregate budget 064.017 → adapter 064.015 (call_tool + list_callable_tools) → fetch-desc correction 064.019 →
+    during-read aggregate budget 064.017 (core: main+retry) → 064.024 (ancillary robots/TOC) → adapter 064.015 (call_tool + list_callable_tools) → fetch-desc correction 064.019 →
   core transport 064.002 (legacy-era base; greens the fetch boundary 064.014 via routing) → stdio
   guardrails 064.009 (H1/H3/H4/H5) → modern negotiation 064.022 (server/discover + _meta + -32022)
   → dual-era routing 064.023 → entry point 064.003 (greens smoke 064.008) → docs 064.004 →
-  review/CI/PR → merge. Cross-interface blast radius: 064.011/064.013/064.017 change shared fetch
+  review/CI/PR → merge. Cross-interface blast radius: 064.011/064.013/064.017/064.024 change shared fetch
   behavior (url_policy/http/crawl/app_models) for the CLI too; 064.019 changes the CLI --manifest
   advertising text; the dual-era surface (064.020-064.023) is additive to the transport with no
   legacy-client behavior change.
