@@ -40,7 +40,16 @@
   grows 24 → 26, `064.024 → 064.025 → 064.026 → 064.014`), and the **interactive stdio-liveness**
   contract (064.008-T interactive `Popen` smoke + 064.002-T serve() non-greedy `read1`/`os.read` +
   stdout flush) that detects live deadlocks an EOF-first smoke masks.
-  See `## Plan Review Remediation` (cycle-3, cycle-4, cycle-5, cycle-6, cycle-7, and cycle-8 subsections).
+  Cycle-9 (PR #166, fresh review on HEAD 546a256, round 3 of the second three-cycle allowance)
+  reconciles two further threads: the JSON-RPC request-shape contract now validates the `id` type per
+  MCP 2026-07-28 `RequestId` (a present `id` that is an object/array/bool/null → `-32600`, never
+  echoed, `id:null` frame; an absent id stays a notification), specified once in the shared
+  pre-routing `dispatch()` guard and inherited by both eras (asserted for the legacy/shared path in
+  064.005-T and for the modern path in 064.021-T scenario (c), implemented in 064.002-T with a
+  shape-before-`_meta`/era ordering criterion in 064.022-T, + feature DoD), and a stray unsupported
+  `links:` frontmatter block on `061.001-T` is removed in favor of the two intended `informs`
+  relationships in the supported `item_links` store. No new task (manifest stays 26).
+  See `## Plan Review Remediation` (cycle-3, cycle-4, cycle-5, cycle-6, cycle-7, cycle-8, and cycle-9 subsections).
 - Cross-interface blast radius: this release unit is NOT purely additive. It hardens the
   **shared** fetch code (`fetch/url_policy.py`, `fetch/http.py`, `app_models.py`) that both
   the CLI and the MCP surface call, and it changes the existing `DoclineMcpServer` adapter's
@@ -204,10 +213,22 @@ criterion, not an advisory item.
   - Request-shape validation (`-32600`): after a frame parses as JSON, the decoded value MUST be
     validated as a JSON-RPC 2.0 request object BEFORE method routing. A syntactically valid JSON
     payload that is not a valid request — a non-object root (array, string, number, bool, null),
-    a missing or non-`"2.0"` `jsonrpc` member, or a missing/non-string `method` — returns an
+    a missing or non-`"2.0"` `jsonrpc` member, a missing/non-string `method`, or a present `id`
+    whose JSON type is not a string or number — returns an
     **Invalid Request** `-32600` envelope, distinct from the `-32700` parse error (invalid JSON)
     and `-32601` method-not-found (well-formed request, unknown method). Restoring `-32600` keeps
     the advertised JSON-RPC 2.0 surface spec-compliant.
+    Per the MCP 2026-07-28 `RequestId` definition, a request `id`, when present, MUST be a JSON
+    string or number; an `id` that is an object, array, boolean, or `null` is an invalid request
+    (`-32600`) and MUST NOT be echoed back into the response — the error frame carries `id: null`.
+    An ABSENT `id` remains an id-less notification (silent, handled generically), distinct from a
+    present `null` id (which is a `-32600` invalid request, never a notification). Because this
+    request-shape validation runs in the single shared `dispatch()` BEFORE `_meta` extraction, era
+    classification, and method routing, both the legacy and modern eras inherit the id-type guard
+    identically and cannot echo a malformed id: a malformed id short-circuits to `-32600` (`id:null`)
+    and never surfaces as `-32022`/`-32602`/`-32601` or a wrapped modern result (this pre-routing
+    ordering is test-bound for the modern path in `064.021-T` scenario (c) and made an explicit
+    acceptance criterion in `064.022-T`).
   - Method map (dual-era — see `## Protocol Era Model`):
     - **Legacy era:** `initialize` → capabilities + legacy `protocolVersion` (`2025-11-25`) +
       serverInfo; `notifications/initialized` → silent; `ping` → `{}` (legacy-only utility,
@@ -740,7 +761,9 @@ Backlog IDs are shown in brackets. All MCP-transport harness tasks author into
    asserted by T-era-h2/`064.021-T`) — with fetch/process parity vs
    `execute_fetch`/`execute_process`; error envelopes as one parametrized scenario covering
    `-32700`, **`-32600` invalid request (non-object root; missing/invalid `jsonrpc`;
-   missing/non-string `method`)**, `-32601`, `-32602`, `-32603`; id-less notification is silent.
+   missing/non-string `method`; present `id` whose type is not string or number — object/array/
+   bool/null, never echoed, error frame carries `id:null`)**, `-32601`, `-32602`, `-32603`; id-less
+   notification is silent.
    Verify red [green@T2]. Depends on T1.
 3. T1c [064.006-T] — Security gates H1–H3 harness (tests domain, 3 scenarios). H1 workspace_root
    escape (`/` and `C:\\`) rejected with `-32602`, nothing written outside workspace [green@T2s];
@@ -1074,7 +1097,9 @@ Execution order: 064.001 → 064.005 → 064.006 → 064.007 → 064.010 → 064
   `server/discover` is not a description surface (it carries versions/capabilities/identity/cache
   metadata only), so it is excluded from this assertion.
 - JSON-RPC 2.0 conformance: `-32600` returned for a non-object root, a missing/invalid `jsonrpc`,
-  and a missing/non-string `method` (parametrized), distinct from `-32700` and `-32601`.
+  a missing/non-string `method`, and a present `id` whose type is not a JSON string or number
+  (object/array/bool/null — MCP 2026-07-28 `RequestId`; the malformed id is never echoed, the
+  `-32600` frame carries `id:null`) (parametrized), distinct from `-32700` and `-32601`.
 - MCP boundary end-to-end (T-e2e [064.014-T]): a `tools/call` fetch to a hostname resolving to
   loopback/private is rejected (address-pinned connect closes DNS-rebinding); over-limit
   `max_pages` is rejected `-32602`; an oversized response (per-response cap incl. redirect) or a
@@ -1636,6 +1661,58 @@ envelope-compliant width-isolated pair with an acyclic, order-preserving chain (
 064.026 → 064.014`); the interactive stdio-liveness contract is specified on both the test (Popen
 framing) and server (non-greedy read + flush) sides from one shared requirement. All P0/P1 findings
 closed.
+
+### Cycle-9 review remediation (PR #166 review cycle 9, fresh Copilot review on HEAD 546a256)
+
+The cycle-8 commit (546a256) drew a fresh Copilot review with two unresolved threads (Stage resumed
+under the second operator-authorized three-cycle allowance, round 3 — the final cycle before
+convergence evaluation). Both are reconciled here across plan, feature DoD, tasks, the dual-era
+parity records, and continuity memory, preserving dependency acyclicity, execution order, and every
+2-hour/width/scenario/function budget. This cycle adds NO new task (the fixes are in-place
+strengthenings of an existing request-shape contract and a stray-frontmatter cleanup), so the
+manifest stays at 26 tasks.
+
+- **Request-shape contract never validates the JSON-RPC `id` type (thread 1, `064.002-T:25`).**
+  MCP 2026-07-28 defines `RequestId` as ONLY a JSON string or number, so an `id` that is an object,
+  array, boolean, or `null` could be echoed into a structurally invalid response while the task
+  still passed its stated `-32600` checks (which covered only root / `jsonrpc` / `method`).
+  **Resolution:** the shared `dispatch()` request-shape guard now ALSO rejects a present `id` whose
+  JSON type is not string or number (object/array/bool/null → `-32600`), and the malformed id is
+  NEVER echoed — the `-32600` frame carries `id: null`. An ABSENT `id` remains an id-less
+  notification (silent), distinct from a present `null` id (a `-32600` invalid request, not a
+  notification). Because request-shape validation runs BEFORE era classification in the single
+  hardened `dispatch()`, both the legacy and modern eras inherit the id-type guard identically and
+  cannot echo a malformed id. The new cases are added as extra parametrized rows to the EXISTING
+  `-32600` request-shape case set in `064.005-T` (no new scenario — the parametrization widens
+  in-place; scenario budget stays 3), and implemented as additional inline guard clauses in
+  `dispatch()` in `064.002-T` (no new function — the ≤4-function transport budget holds). To make
+  the pre-routing ordering test-bound on the MODERN path (not merely structural), `064.021-T`
+  scenario (c) gains a parametrized modern (`_meta`-bearing) malformed-id row — asserting `-32600` +
+  `id:null` with NO modern wrapper even when `_meta` carries an unsupported version or an unknown
+  method — and `064.022-T` gains an explicit acceptance criterion that request-shape validation
+  precedes `_meta` extraction / version negotiation / era routing / method dispatch. Both remain
+  parametrized rows / ordering constraints, so the 3-scenario, ≤4/≤5-function, and ≤2-file budgets
+  are unchanged. Plan request-shape validation paragraph, T1b harness summary, feature DoD JSON-RPC
+  conformance clause, `064.005-T`, `064.002-T`, and the dual-era parity records
+  `064.021-T`/`064.022-T` (guard-parity + ordering) all reconciled.
+- **Stray unsupported semantic-link frontmatter on a blocked spike (thread 2, `061.001-T:16`).**
+  `061.001-T` carried a `links:` block in its YAML frontmatter, but the backlog tooling contract
+  (`.github/instructions/backlogit-yaml-header-tooling.instructions.md`) requires semantic links to
+  live in the `item_links` relationship store, created via `backlogit_add_link`. **Resolution:** the
+  unsupported `links:` frontmatter was removed, and the two intended `informs` relationships
+  (`061.001-T → 060.001-T`, `061.001-T → 060.002-T`) are represented durably in `item_links`
+  (created through the supported `link add` path; verified present via `link list` and an
+  `item_links` SQL query, and confirmed to survive an index sync as db-only links). Relationship
+  traceability is preserved with no duplicate links introduced. This thread touches backlog metadata
+  only — no plan contract change.
+
+Re-review verdict (cycle-9, post-remediation): the request-id-type gap is closed at both the harness
+(`064.005-T`, legacy/shared path) and impl (`064.002-T`) contracts with the never-echo `id:null` rule
+specified once in the shared pre-routing guard; the pre-routing ordering is now test-bound on the
+MODERN path too (`064.021-T` scenario (c) malformed-id row + `064.022-T` request-shape-precedence
+criterion), so a malformed id cannot surface as `-32022`/`-32602`/`-32601` or a wrapped result; the
+stray link frontmatter is removed and the intended `informs` relationships are represented through the
+supported `item_links` store. All P0/P1 findings closed; no budgets breached; no new task added.
 
 ## Rollback
 
