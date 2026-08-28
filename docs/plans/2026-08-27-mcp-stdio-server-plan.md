@@ -34,9 +34,9 @@
   cap so only the crossing byte is read (064.012-T/064.013-T and 064.016-T/064.017-T/064.024-T), and
   the regenerated 24-task continuity memory (`064.017 → 064.024 → 064.014`).
   Cycle-8 (PR #166, fresh review on HEAD 4271ca7) reconciles two further threads: the §H7 **item 4
-  request-amplification bound** (a `MAX_FETCH_ATTEMPTS = 4000` frontier-pop cap in `fetch/crawl.py`
-  counting the print-page / duplicate / out-of-scope non-counting branches + a `MAX_DEPTH_LIMIT = 64`
-  `FetchRequest.depth` upper bound), split into a NEW width-isolated pair 064.025-T/064.026-T (chain
+  request-amplification bound** (a `MAX_FETCH_ATTEMPTS = 4000` request-count bound + a `MAX_DEPTH_LIMIT = 64`
+  `FetchRequest.depth` upper bound — the count-bound mechanism was later reworked in cycle-11, see below),
+  split into a NEW width-isolated pair 064.025-T/064.026-T (chain
   grows 24 → 26, `064.024 → 064.025 → 064.026 → 064.014`), and the **interactive stdio-liveness**
   contract (064.008-T interactive `Popen` smoke + 064.002-T serve() non-greedy `read1`/`os.read` +
   stdout flush) that detects live deadlocks an EOF-first smoke masks.
@@ -61,7 +61,23 @@
   rejecting overflow literals (`1e400` → `inf`) → `-32600`, both before era routing, so
   no non-finite number can enter `RequestId` or response serialization (in-place strengthening of
   064.002-T impl + 064.005-T harness, no new task).
-  See `## Plan Review Remediation` (cycle-3, cycle-4, cycle-5, cycle-6, cycle-7, cycle-8, cycle-9, and cycle-10 subsections).
+  Cycle-11 (PR #166, fresh review on HEAD f172806, round 2 of the third three-cycle allowance)
+  reconciles two further threads: (A) the §H7 **item 4** request-count bound is REWORKED — the cycle-8
+  `fetch/crawl.py` frontier-pop counter did NOT bound actual outbound requests (robots, TOC, retries,
+  and redirect hops bypass a main-page-pop counter, and the byte budgets bound VOLUME not COUNT), so it
+  is REPLACED by a request-scoped fetch-attempt budget enforced at the common `fetch_page` boundary
+  (`fetch/http.py`) that debits every outbound attempt AND redirect hop (main pages, robots, TOC,
+  retries, redirects), riding the existing `RemainingByteBudget` threading and raising
+  `FetchAttemptBudgetExceededError` (a subclass of `AggregateBudgetExceededError`) so the existing
+  `crawl.py` re-raise clauses propagate it — 064.025-T/064.026-T re-scoped in place (impl file set
+  `fetch/crawl.py` → `fetch/http.py`, still 2 files; chain, membership, and order unchanged); and (B)
+  `server/discover` is routed through the SAME modern `_meta` validator as every modern request —
+  a valid discovery request MUST supply BOTH `io.modelcontextprotocol/protocolVersion` AND
+  `io.modelcontextprotocol/clientCapabilities`, missing/malformed → `-32602` (unsupported version →
+  `-32022`, version-first), while still requiring NO prior `initialize` (pre-handshake availability
+  does not waive required `_meta`) — reconciled across 064.020-T/064.022-T, the Protocol Era Model,
+  method map, feature DoD, and memory (no new task).
+  See `## Plan Review Remediation` (cycle-3, cycle-4, cycle-5, cycle-6, cycle-7, cycle-8, cycle-9, cycle-10, and cycle-11 subsections).
 - Cross-interface blast radius: this release unit is NOT purely additive. It hardens the
   **shared** fetch code (`fetch/url_policy.py`, `fetch/http.py`, `app_models.py`) that both
   the CLI and the MCP surface call, and it changes the existing `DoclineMcpServer` adapter's
@@ -76,9 +92,11 @@ In scope:
    and delegates to `DoclineMcpServer`:
    - **Legacy era (`2025-11-25` and earlier):** `initialize`, `notifications/initialized`,
      `tools/list`, `tools/call`, `ping`.
-   - **Modern era (`2026-07-28`):** `server/discover` (MUST), plus `tools/list` / `tools/call`
+   - **Modern era (`2026-07-28`):** `server/discover` (MUST), `tools/list`, and `tools/call` — all
      served statelessly with per-request `_meta` carrying BOTH
-     `io.modelcontextprotocol/protocolVersion` AND `io.modelcontextprotocol/clientCapabilities`;
+     `io.modelcontextprotocol/protocolVersion` AND `io.modelcontextprotocol/clientCapabilities`
+     (`server/discover` itself is routed through the same `_meta` validator even though it needs no
+     prior `initialize`; cycle-11);
      unsupported versions return `-32022 UnsupportedProtocolVersionError` and missing/malformed
      `clientCapabilities` returns `-32602` (checked after version); results carry
      `resultType:"complete"` and `_meta.io.modelcontextprotocol/serverInfo`; list results AND the
@@ -248,15 +266,17 @@ criterion, not an advisory item.
     - **Legacy era:** `initialize` → capabilities + legacy `protocolVersion` (`2025-11-25`) +
       serverInfo; `notifications/initialized` → silent; `ping` → `{}` (legacy-only utility,
       removed in the modern era).
-    - **Modern era:** `server/discover` → `DiscoverResult` (supportedVersions, capabilities,
-      serverInfo in `_meta`, `resultType:"complete"`, and — since `DiscoverResult` is a
-      `CacheableResult` — `ttlMs`/`cacheScope`) via a single adapter accessor;
-      `tools/list` / `tools/call` served statelessly with the per-request `_meta` carrying BOTH
-      `io.modelcontextprotocol/protocolVersion` AND `io.modelcontextprotocol/clientCapabilities`
-      (no prior handshake); an unsupported protocol version returns `-32022`, and a request with
+    - **Modern era:** `server/discover`, `tools/list`, and `tools/call` are all served statelessly
+      with the per-request `_meta` carrying BOTH `io.modelcontextprotocol/protocolVersion` AND
+      `io.modelcontextprotocol/clientCapabilities` (no prior handshake) and are validated by the SAME
+      `_meta` validator: an unsupported protocol version returns `-32022`, and a request with
       missing/malformed `clientCapabilities` returns `-32602` (validated only after version is
-      accepted, so version negotiation takes precedence);
-      modern results carry `resultType:"complete"` + serverInfo `_meta` (list results also
+      accepted, so version negotiation takes precedence). `server/discover` is **not** exempt — it is
+      a modern method that requires both `_meta` members even though it needs no prior `initialize`
+      (pre-handshake availability does not waive required `_meta`; cycle-11) — and returns a
+      `DiscoverResult` (supportedVersions, capabilities, serverInfo in `_meta`, `resultType:"complete"`,
+      and — since `DiscoverResult` is a `CacheableResult` — `ttlMs`/`cacheScope`) via a single adapter
+      accessor. Modern results carry `resultType:"complete"` + serverInfo `_meta` (list results also
       `ttlMs`/`cacheScope`).
     - Common: `tools/list` → callable allow-list via `server.list_callable_tools()`;
       `tools/call` → `server.call_tool`. The version/identity/capability source of truth lives
@@ -370,7 +390,7 @@ opens").
 | Concern | Legacy era (`2025-11-25` and earlier) | Modern era (`2026-07-28`) |
 |---|---|---|
 | Open / negotiate | `initialize` handshake → capabilities + `protocolVersion` + serverInfo | per-request `_meta` carries BOTH `io.modelcontextprotocol/protocolVersion` AND `io.modelcontextprotocol/clientCapabilities`; no handshake |
-| Discovery | `tools/list` after handshake | `server/discover` (MUST) returns supportedVersions + capabilities + serverInfo + cache metadata (`ttlMs`/`cacheScope` — `DiscoverResult` is a `CacheableResult`); answerable before any request |
+| Discovery | `tools/list` after handshake | `server/discover` (MUST) returns supportedVersions + capabilities + serverInfo + cache metadata (`ttlMs`/`cacheScope` — `DiscoverResult` is a `CacheableResult`); answerable before any `initialize` but still routed through the modern `_meta` validator — MUST carry BOTH `protocolVersion` AND `clientCapabilities` (cycle-11) |
 | Version mismatch | n/a (handshake pins) | `-32022 UnsupportedProtocolVersionError` with `data.supported` + `data.requested`; missing/malformed `clientCapabilities` → `-32602` (checked after version) |
 | Result shape | plain result | `resultType:"complete"` + serverInfo in result `_meta`; list results AND the `DiscoverResult` carry `ttlMs`/`cacheScope` |
 | `ping` | supported | removed |
@@ -378,17 +398,23 @@ opens").
 - **Era routing (server-selected):** a request carrying modern per-request `_meta` is served
   statelessly under `2026-07-28` (the modern branch is **request-stateless** — it never consults
   prior session state); an `initialize` request selects **legacy semantics for the stdio process**
-  by latching a per-process legacy-era selection that governs subsequent metadata-free operations; a
-  `server/discover` call is answerable before any `initialize` (stdio probe). The request-shape
-  classifier resolves the era in this precedence: modern `_meta` → modern (stateless);
-  `server/discover` → discovery (pre-handshake); `initialize` → set the per-process legacy latch and
-  serve legacy; an otherwise metadata-free operation (`tools/call`/`tools/list` with no `_meta`) is
-  served legacy **only when the legacy latch is already set**, and is **rejected** (an error result,
-  never dispatched) when it arrives **before** that `initialize` selection. A metadata-free
-  operation is therefore never silently classified as legacy before initialization, so a malformed
-  modern request (one missing its `_meta`) cannot bypass the required `_meta` validation by falling
-  through to the legacy path. A dedicated **pre-initialize operation test** asserts this reject.
-  The legacy handshake selects the process era; it is not the request shape that opens legacy.
+  by latching a per-process legacy-era selection that governs subsequent metadata-free operations. A
+  `server/discover` call is answerable before any `initialize` (stdio probe), but — as a **modern,
+  modern-only method** — it is routed through the SAME per-request `_meta` validator as every modern
+  request and MUST carry BOTH `io.modelcontextprotocol/protocolVersion` AND
+  `io.modelcontextprotocol/clientCapabilities` (unsupported version → `-32022`; then missing/malformed
+  `clientCapabilities` → `-32602`); pre-handshake availability does **not** waive required `_meta`
+  (cycle-11). The request-shape classifier resolves the era in this precedence: modern `_meta` (or a
+  `server/discover`, which is modern-only) → modern (stateless, `_meta`-validated — a modern method
+  arriving without valid `_meta` is rejected `-32602`/`-32022`, never dispatched); `initialize` → set
+  the per-process legacy latch and serve legacy; an otherwise metadata-free operation
+  (`tools/call`/`tools/list` with no `_meta`) is served legacy **only when the legacy latch is already
+  set**, and is **rejected** (an error result, never dispatched) when it arrives **before** that
+  `initialize` selection. A metadata-free operation is therefore never silently classified as legacy
+  before initialization, so a malformed modern request (one missing its `_meta`) cannot bypass the
+  required `_meta` validation by falling through to the legacy path. A dedicated **pre-initialize
+  operation test** asserts this reject. The legacy handshake selects the process era; it is not the
+  request shape that opens legacy.
 - **Advertised versions:** `server/discover.supportedVersions` and `-32022 data.supported`
   enumerate both eras (`["2026-07-28", "2025-11-25"]`); the legacy `initialize` response pins
   `2025-11-25`.
@@ -630,33 +656,52 @@ Security/reliability guardrails promoted to blocking design constraints after pl
     while `page_count` never reaches its cap and the byte budgets stay unspent. Therefore two
     coupled, hard, measurable request-count bounds are required (shared-code hardening, both
     interfaces):
-    (a) a **fetch-attempt/frontier-pop cap**: `fetch/crawl.py` maintains a per-request `fetch_attempts`
-    counter incremented on EVERY frontier pop (an actual main-page fetch) — so the print-page,
-    duplicate, and out-of-scope branches all count — and aborts the crawl by RAISING a typed error
-    (a `DoclineError` subclass) once attempts would exceed `MAX_FETCH_ATTEMPTS`; the crawl RAISES,
-    it does not silently return the accumulated skipped results. Implement as a pre-fetch increment
-    plus abort, or extend the loop guard to `while frontier and page_count < max_pages and
-    fetch_attempts < MAX_FETCH_ATTEMPTS`. This caps FRONTIER POPS (main-page fetch attempts), which
-    is the unbounded amplification vector; the bounded per-pop multipliers — per-pop retries
-    (`_fetch_with_retries`) and per-hop redirects — remain governed by their existing small
-    constants, and the ancillary `robots.txt` (per-origin cached) and depth-0 TOC-script fetches
-    (`_discover_toc_links`) remain governed by the per-response cap + the aggregate byte budget, so
-    the total outbound-request count is a finite bounded product of the pop cap and those existing
-    limits rather than an unbounded chain. (b) a **depth upper bound**: `FetchRequest.depth` gains a
-    hard `Field(le=…)` upper bound (preserving `default=0`) so an over-limit value is rejected at
-    validation and surfaces as `-32602` on the MCP boundary, closing the unbounded-depth
-    frontier-expansion vector at the untrusted input.
-    **Coverage requirement.** The red harness MUST drive each of the three non-counting branches to
-    consume frontier pops without incrementing `page_count`, using a branch-accurate fake transport:
-    (i) **print** — each print response naturally enqueues a fresh in-scope link (a self-sustaining
-    frontier); (ii) **duplicate final URL** — an emitted page preloads many distinct alias request
-    URLs, each of which redirects (via `response.url`) to an already-emitted final URL, hitting the
-    `final_key in emitted_urls` branch; (iii) **out-of-scope** — an emitted page preloads many
-    distinct in-scope request URLs, each of which redirects to an out-of-section final URL, hitting
-    the `not _url_within_section_scope(final_url, …)` branch. Assert that consuming the frontier
-    through each branch trips `MAX_FETCH_ATTEMPTS` while `page_count` stays below `max_pages`; plus an
-    over-limit `depth` (`>= MAX_DEPTH_LIMIT + 1`) rejected at model validation AND a request
-    OMITTING `depth` still validating (depth defaults to 0).
+    (a) a **request-scoped fetch-attempt budget at the common outbound-fetch boundary**: `fetch_page`
+    in `fetch/http.py` — the single choke point through which every DIRECT outbound request flows
+    (main-page fetches, `robots.txt` via `_robots_allow`, mdBook TOC-script fetches via
+    `_discover_toc_links`, per-pop retries via `_fetch_with_retries` — each a distinct `fetch_page`
+    call) — debits a per-request attempt allowance seeded at `MAX_FETCH_ATTEMPTS`, one debit **before**
+    each such outbound request (pre-I/O), and aborts the crawl by RAISING a typed
+    `FetchAttemptBudgetExceededError` (a `DoclineError` subclass of `AggregateBudgetExceededError`) the
+    instant a debit would exceed the cap; the crawl RAISES, it does not silently return the accumulated
+    skipped results. **Redirect hops** — which urllib follows INSIDE a single `fetch_page`'s
+    `opener.open()`, not at the boundary — are debited the SAME way the aggregate byte budget already
+    counts intermediate 3xx bodies: one attempt per hop debited INSIDE the shared
+    `_ValidatingRedirectHandler` **before** the next hop is followed (pre-I/O), from the same
+    request-scoped budget object, raising `FetchAttemptBudgetExceededError` on breach — so a
+    post-`open()` `handler.redirect_count` tally (which would let urllib follow up to `max_redirects`
+    hops beyond the cap before raising) is NOT used for enforcement (`handler.redirect_count` is
+    retained for observability only). This per-hop redirect-attempt debit is delivered by the
+    redirect-drain impl `064.028-T` (harness `064.027-T`), co-located with the intermediate-body byte
+    decrement in the same composite handler; the boundary debit for direct outbound calls is delivered
+    by `064.026-T` (harness `064.025-T`). The allowance rides the SAME request-scoped
+    budget object (`RemainingByteBudget`) that `064.017-T`/`064.024-T` already thread through every
+    `fetch_page` call, and because the abort subclasses `AggregateBudgetExceededError` the four existing
+    `except AggregateBudgetExceededError: raise` clauses in `crawl.py` propagate it out of `crawl()` —
+    so no new `crawl.py` re-raise is needed. **Enforcing at the boundary — not with a `fetch/crawl.py`
+    frontier-pop counter (the cycle-8 mechanism, REJECTED by cycle-11) — is required**: a frontier-pop
+    counter counts only main-page pops and leaves robots, TOC, retries, and redirect hops (all real
+    outbound requests) uncounted, and the per-response/aggregate byte budgets bound transfer VOLUME not
+    request COUNT (empty/tiny robots/TOC responses barely spend the byte budget). Debiting at the
+    single `fetch_page` choke point for direct outbound calls, and inside the shared redirect handler
+    for redirect hops, makes auxiliary, retry, and redirect traffic decrement the same request-scoped
+    bound, so none of them can exceed `MAX_FETCH_ATTEMPTS`. (b) a **depth upper bound**:
+    `FetchRequest.depth` gains a hard `Field(le=…)` upper bound (preserving `default=0`) so an
+    over-limit value is rejected at validation and surfaces as `-32602` on the MCP boundary, closing
+    the unbounded-depth frontier-expansion vector at the untrusted input.
+    **Coverage requirement.** The red harness MUST prove that AUXILIARY and RETRY/REDIRECT traffic
+    alone cannot bypass the cap, using a fake transport that keeps emitted `page_count` low while
+    driving high outbound traffic: (i) **robots** — enabling `robots.txt` fetching issues
+    `_robots_allow` `fetch_page` calls that each debit the budget; (ii) **TOC** — mdBook TOC-script
+    discovery issues `_discover_toc_links` `fetch_page` calls that each debit the budget; (iii)
+    **retries** — transient failures make `_fetch_with_retries` issue multiple `fetch_page` calls per
+    pop, each debiting at the boundary (robots/TOC/retries proven by `064.025-T`); (iv) **redirects** —
+    responses that redirect make the shared `_ValidatingRedirectHandler` debit one attempt per hop
+    BEFORE following it (pre-I/O), from the same request-scoped budget (proven by the redirect-drain
+    harness `064.027-T`, alongside the intermediate-body byte decrement). Assert that a crawl whose
+    emitted `page_count` stays below `max_pages` but whose robots/TOC/retry/redirect outbound traffic
+    is high still trips `MAX_FETCH_ATTEMPTS` and RAISES; plus an over-limit `depth` (`>= MAX_DEPTH_LIMIT + 1`) rejected at
+    model validation AND a request OMITTING `depth` still validating (depth defaults to 0).
   **Selected numeric limits (cycle-6, review-mandated — measurable boundary before red tests).**
   These constants are pinned now so the H7 harnesses (`064.012-T`, `064.016-T`, `064.014-T`) assert
   exact boundaries rather than implementation-time judgment. They are named module constants in the
@@ -698,21 +743,29 @@ Security/reliability guardrails promoted to blocking design constraints after pl
     `crawl()`) the instant a read returns a byte beyond the aggregate allowance (the over-budget
     transfer is at most `budget + 1`, not `budget + CHUNK_SIZE`). Defaults to unbounded (`None`) for
     a standalone single fetch so existing CLI single-fetch callers are unaffected.
-  - **`MAX_FETCH_ATTEMPTS = 4 * MAX_PAGES_LIMIT = 4000`** (per-request frontier-pop / actual
-    main-page fetch-attempt cap, enforced in `fetch/crawl.py`; §H7 item 4a). Rationale: `MAX_PAGES_LIMIT`
-    (1000) caps only *emitted* pages, but every frontier pop is a real fetch and the print-page /
-    duplicate / out-of-scope branches pop-and-fetch without incrementing `page_count`. Even a
-    skip-heavy legitimate crawl (redirects, duplicates, robots-disallowed, print variants) fetches
-    at most a small multiple of its emitted-page budget, so `4×` the hard page cap gives generous
-    headroom while hard-capping total main-page FETCH ATTEMPTS (frontier pops) at 4000 regardless of
-    how many are uncounted by `page_count` — closing the tiny-`/print`-page amplification vector.
-    Scope of the bound: this caps FRONTIER POPS, not raw HTTP transactions; the per-pop retries
-    (`_fetch_with_retries`) and per-hop redirects, and the ancillary per-origin-cached `robots.txt`
-    and depth-0 TOC-script fetches, remain bounded by their existing small constants and by the
-    per-response + aggregate byte caps — so the total outbound-request count is a finite bounded
-    product, not an unbounded chain. Boundary: exactly 4000 fetch
-    attempts are allowed; the 4001st is refused (the crawl RAISES a typed error, it does not return
-    the accumulated skipped results). Defaults to the same hard cap for CLI and MCP (shared code).
+  - **`MAX_FETCH_ATTEMPTS = 4 * MAX_PAGES_LIMIT = 4000`** (per-request outbound-fetch-attempt budget,
+    enforced at the common `fetch_page` boundary in `fetch/http.py`; §H7 item 4a). Rationale: `MAX_PAGES_LIMIT`
+    (1000) caps only *emitted* pages, but every outbound request is real — main-page fetches, the
+    print-page / duplicate / out-of-scope pops that fetch without incrementing `page_count`, per-pop
+    retries, redirect hops, and the ancillary `robots.txt`/TOC fetches. Even a skip-heavy legitimate
+    crawl (redirects, duplicates, robots-disallowed, print variants, retries) issues at most a small
+    multiple of its emitted-page budget of outbound requests, so `4×` the hard page cap gives generous
+    headroom while hard-capping TOTAL OUTBOUND ATTEMPTS at 4000 regardless of how many are uncounted by
+    `page_count` — closing the tiny-`/print`-page AND auxiliary/retry/redirect amplification vectors.
+    Scope of the bound: `fetch_page` debits ONE attempt per DIRECT outbound request (pre-I/O), and
+    the shared `_ValidatingRedirectHandler` debits ONE attempt per redirect hop before following it
+    (pre-I/O; `handler.redirect_count` is observability-only, not post-hoc enforcement), so main-page
+    fetches, per-pop retries
+    (`_fetch_with_retries`, each a distinct `fetch_page` call), per-hop redirects, and the
+    per-origin-cached `robots.txt` and depth-0 TOC-script fetches (`_discover_toc_links`) ALL decrement
+    the same request-scoped budget — auxiliary, retry, and redirect traffic cannot exceed the cap. This
+    REPLACES the cycle-8 `fetch/crawl.py` frontier-pop counter, which counted only main-page pops and
+    left robots/TOC/retries/redirects uncounted (see cycle-11 remediation). Boundary: exactly 4000
+    outbound attempts are allowed; the attempt that would cross the cap is refused (the crawl RAISES
+    `FetchAttemptBudgetExceededError`, a `DoclineError` subclass of `AggregateBudgetExceededError`, so
+    the existing four `crawl.py` re-raise clauses propagate it; it does not return the accumulated
+    skipped results). The attempt allowance defaults to the shared hard cap for a crawl request and to
+    unbounded/None for a standalone single fetch (shared code, CLI + MCP).
   - **`MAX_DEPTH_LIMIT = 64`** (`FetchRequest.depth` bound: `Field(default=0, ge=0, le=64)` — the
     existing `default=0` is PRESERVED so `depth` stays optional and a request omitting it defaults
     to 0; §H7 item 4b).
@@ -736,14 +789,20 @@ Security/reliability guardrails promoted to blocking design constraints after pl
   `064.016-T` scenario (c)(iii) green-ownership. This isolates the shared-model (`FetchResponse`)
   blast radius and the non-ASCII/invalid-byte accounting tests from the per-dimension caps and keeps
   each impl task within the 2-hour/<5-function envelope.
-  The **request-amplification bound** (§H7 item 4 — the fetch-attempt/frontier cap
-  `MAX_FETCH_ATTEMPTS = 4000` in `fetch/crawl.py` covering the print-page / duplicate / out-of-scope
-  non-counting branches, plus the `FetchRequest.depth` upper bound `MAX_DEPTH_LIMIT = 64` in
-  `app_models.py`) is a distinct request-COUNT dimension (not byte VOLUME) delivered by harness
-  `064.025-T` + impl `064.026-T` (`fetch/crawl.py` / `app_models.py`, cycle-8 split — see
-  `## Plan Review Remediation` cycle-8). It is split from `064.013-T` (pinned to `app_models.py`
-  `max_pages` + `fetch/http.py` byte cap = 2 files) because the fetch-attempt counter lives in
-  `fetch/crawl.py`, a third file, which would breach `064.013-T`'s 2-file/function envelope.
+  The **request-amplification bound** (§H7 item 4 — the request-scoped fetch-attempt budget
+  `MAX_FETCH_ATTEMPTS = 4000` on the shared `RemainingByteBudget`, debited pre-I/O at the common
+  `fetch_page` boundary in `fetch/http.py` for every DIRECT outbound request (main pages, robots, TOC,
+  retries) and per redirect hop inside the shared `_ValidatingRedirectHandler` before each hop is
+  followed, plus the `FetchRequest.depth` upper bound `MAX_DEPTH_LIMIT = 64` in `app_models.py`) is a
+  distinct request-COUNT dimension (not byte VOLUME): the boundary debit is delivered by harness
+  `064.025-T` + impl `064.026-T`, and the redirect-hop debit is delivered alongside the
+  intermediate-body byte decrement by harness `064.027-T` + impl `064.028-T`
+  (`fetch/http.py` / `app_models.py`, cycle-8 split, mechanism reworked cycle-11 — see
+  `## Plan Review Remediation` cycle-8 and cycle-11). The attempt allowance rides the SAME
+  request-scoped budget object (`RemainingByteBudget`) that `064.017-T`/`064.024-T` already thread
+  through every `fetch_page` call, and the abort (`FetchAttemptBudgetExceededError`) subclasses
+  `AggregateBudgetExceededError`, so the four existing `crawl.py` re-raise clauses propagate it with
+  NO new `fetch/crawl.py` edit — keeping `064.026-T` at 2 files (`fetch/http.py` + `app_models.py`).
   The **intermediate-redirect-body drain** (§H7 item 2, cycle-10 — extend the EXISTING single
   `_ValidatingRedirectHandler` (with all `http_error_301/302/303/307/308` aliases rebound) so its
   bounded proxy reads/counts each intermediate 3xx body against the SAME per-response
@@ -759,8 +818,9 @@ Security/reliability guardrails promoted to blocking design constraints after pl
   over-limit `max_pages` (rejected `-32602`), an oversized response body (aborted, including on the
   terminal post-redirect response AND every intermediate 3xx redirect body via `064.028-T`), and a
   crawl exceeding the aggregate budget (aborted) are asserted in the MCP boundary
-  harness `064.014-T`; the request-amplification depth over-limit (`-32602`) and fetch-attempt cap
-  are proven at the unit level in `064.025-T` (keeping `064.014-T` within its 3-scenario budget).
+  harness `064.014-T`; the request-amplification depth over-limit (`-32602`) and outbound-attempt
+  budget (direct-request debits at the `fetch_page` boundary proven in `064.025-T`; the redirect-hop
+  per-hop debit proven in `064.027-T`) are proven at the unit level (keeping `064.014-T` within its 3-scenario budget).
   Caps are set high enough not to break legitimate CLI crawls; the existing
   fetch suite must remain green (or be deliberately updated for the new bound).
 
@@ -918,31 +978,39 @@ Backlog IDs are shown in brackets. All MCP-transport harness tasks author into
    RAISES). 2 functions touched, single file — within the 2-hour/<5-function envelope. Turns the
    ancillary sub-vector of T-agg-h green. Existing fetch suite stays green. Depends on T-agg-i.
 10c. T-amp-h [064.025-T] — Shared-fetch request-amplification harness (tests domain, 2 scenarios).
-   Author the failing harness for the request-COUNT bound (§H7 item 4): (1) a branch-accurate fake
-   transport drives `crawl()` to RAISE a typed error once total frontier pops reach
-   `MAX_FETCH_ATTEMPTS = 4000` while `page_count` stays below `max_pages`, asserting the counter
-   increments in EACH non-counting branch — **print** (each print response naturally enqueues a
-   fresh in-scope link, a self-sustaining frontier), **duplicate** (an emitted page preloads many
-   distinct alias request URLs that each redirect to an already-emitted final URL → `final_key in
-   emitted_urls`), and **out-of-scope** (an emitted page preloads many distinct in-scope request
-   URLs that each redirect to an out-of-section final URL → `not _url_within_section_scope`); only
-   the print branch enqueues links, so duplicate/out-of-scope pops are seeded from the emitted
-   page's preloaded frontier, not by those branches enqueuing; (2) `FetchRequest.depth >=
-   MAX_DEPTH_LIMIT + 1` (`>= 65`) is rejected at model validation (`-32602`), AND a request OMITTING
-   `depth` still validates (defaults to 0). This is a distinct dimension from the byte caps
-   (T-cap/T-agg), so it stays
+   Author the failing harness for the request-COUNT bound (§H7 item 4): (1) a fake transport drives
+   `crawl()` to RAISE a typed error once TOTAL outbound attempts — the first 4000 debits succeed and
+   the debit that would cross `MAX_FETCH_ATTEMPTS = 4000` is refused BEFORE its outbound I/O — while
+   `page_count` stays below `max_pages`, proving AUXILIARY and RETRY traffic alone cannot bypass the
+   cap: **robots** (`_robots_allow` `fetch_page` calls debit the budget at the boundary), **TOC**
+   (`_discover_toc_links` `fetch_page` calls debit the budget at the boundary), and **retries**
+   (`_fetch_with_retries` issues multiple `fetch_page` calls per pop, each debiting one at the
+   boundary) — a crawl whose emitted `page_count` stays low but whose robots/TOC/retry traffic is high
+   still trips the cap and RAISES (the **redirect-hop** attempt debit — one per hop inside the shared
+   redirect handler, pre-next-hop — is proven by `064.027-T`, not here); (2)
+   `FetchRequest.depth >= MAX_DEPTH_LIMIT + 1` (`>= 65`) is rejected at model validation (`-32602`),
+   AND a request OMITTING `depth` still validates (defaults to 0). This is a distinct dimension from
+   the byte caps (T-cap/T-agg), so it stays
    width-isolated. Verify red [green@T-amp-i]. Depends on T-agg-aux.
-10d. T-amp-i [064.026-T] — Crawl fetch-attempt + depth amplification-bound impl (code domain, ≤2
-   files: `fetch/crawl.py` + `app_models.py`). (a) `fetch/crawl.py` adds a per-request
-   `fetch_attempts` counter incremented on EVERY frontier pop (extend the loop guard to
-   `while frontier and page_count < crawl_config.max_pages and fetch_attempts < MAX_FETCH_ATTEMPTS`,
-   or pre-fetch increment + abort) so the print-page / duplicate / out-of-scope branches count, and
-   RAISES a typed `DoclineError` subclass at the cap; (b) `app_models.py` bounds
-   `FetchRequest.depth` with `Field(default=0, ge=0, le=64)` (`MAX_DEPTH_LIMIT`; the `default=0` is
-   preserved so `depth` stays optional). Split out of T-cap-i
-   (064.013-T, pinned to `app_models.py` + `fetch/http.py`) because the counter lives in
-   `fetch/crawl.py`, a third file. Turns T-amp-h green. Existing fetch suite stays green (bounds
-   sized 4× the page cap / 64-deep). Depends on T-amp-h.
+10d. T-amp-i [064.026-T] — Request-scoped fetch-attempt budget + depth amplification-bound impl
+   (code domain, ≤2 files: `fetch/http.py` + `app_models.py`). (a) `fetch/http.py` seeds a per-request
+   fetch-attempt allowance `MAX_FETCH_ATTEMPTS = 4000` on the SAME request-scoped budget object
+   (`RemainingByteBudget`, threaded through every `fetch_page` call by 064.017-T/064.024-T); `fetch_page`
+   debits one attempt BEFORE each direct outbound request (main-page/robots/TOC/retries — each a
+   distinct `fetch_page` call; pre-I/O) and RAISES `FetchAttemptBudgetExceededError` (a `DoclineError`
+   subclass of `AggregateBudgetExceededError`, so the four existing `crawl.py` re-raise clauses
+   propagate it — no `fetch/crawl.py` edit) when a debit would cross the cap (the first 4000 debits
+   succeed; the crossing debit is refused before its outbound I/O). Redirect-hop attempt debits are NOT owned here:
+   they live inside the shared `_ValidatingRedirectHandler` (one per hop, pre-next-hop) and are
+   delivered by `064.028-T`, which already threads the same budget into that handler for its byte
+   decrement; (b) `app_models.py` bounds `FetchRequest.depth` with
+   `Field(default=0, ge=0, le=64)` (`MAX_DEPTH_LIMIT`; the `default=0` is preserved so `depth` stays
+   optional). The mechanism moved from a `fetch/crawl.py` frontier-pop counter (cycle-8, REJECTED) to
+   the `fetch_page` boundary (cycle-11) so robots/TOC/retries/redirects — all real outbound requests —
+   are counted; the file set changes from `fetch/crawl.py` + `app_models.py` to `fetch/http.py` +
+   `app_models.py` while staying at 2 files (threading + abort-propagation reused from 064.017-T/064.024-T).
+   Turns T-amp-h green. Existing fetch suite stays green (bounds sized 4× the page cap / 64-deep;
+   attempt allowance unbounded for a standalone single fetch). Depends on T-amp-h.
 10e. T-redir-h [064.027-T] — Intermediate-redirect-body drain harness (tests domain, 3 scenarios).
    Author the failing harness for the redirect-body vector (§H7 item 2, cycle-10): via a fake
    transport returning a controllable chain of 3xx responses with intermediate bodies of known raw
@@ -954,7 +1022,12 @@ Backlog IDs are shown in brackets. All MCP-transport harness tasks author into
    single under-cap chain unable to reach 512 MiB, so the harness proves the decrement/cross-remaining
    behavior hermetically), an intermediate 3xx body crossing the remaining `MAX_TOTAL_FETCH_BYTES`
    allowance is aborted mid-drain (each intermediate body decrements the SAME budget while
-   redirecting; `crawl()` RAISES `AggregateBudgetExceededError`); (c) a redirect chain within both
+   redirecting; `crawl()` RAISES `AggregateBudgetExceededError`) — AND, on the SAME request-scoped
+   budget, each redirect hop also debits ONE `MAX_FETCH_ATTEMPTS` fetch-attempt before the next hop is
+   followed (pre-I/O), so a chain that would cross `MAX_FETCH_ATTEMPTS` is refused with
+   `FetchAttemptBudgetExceededError` before the crossing hop's I/O (the redirect-hop half of §H7
+   item 4a — added as an assertion on this scenario, not a new scenario; `handler.redirect_count` is
+   observability-only); (c) a redirect chain within both
    allowances still follows to its final response AND the §H6 revalidation + count still run. Verify
    red (urllib currently drains intermediate bodies with an unbounded `fp.read()`) [green@T-redir-i].
    Depends on T-amp-i.
@@ -967,7 +1040,11 @@ Backlog IDs are shown in brackets. All MCP-transport harness tasks author into
    `min(CHUNK_SIZE, per_response_remainder + 1, aggregate_remainder + 1)`), counting actual bytes and
    decrementing BOTH a fresh per-response `MAX_RESPONSE_BYTES` allowance (reset per hop) AND the
    request-scoped `RemainingByteBudget` (passed into `_ValidatingRedirectHandler.__init__` at
-   `http.py:119`; when threaded), raising the typed cap error mid-drain on breach, while preserving
+   `http.py:119`; when threaded), raising the typed cap error mid-drain on breach, AND debiting ONE
+   fetch-attempt from that same `RemainingByteBudget` `MAX_FETCH_ATTEMPTS` allowance (seeded by
+   `064.026-T`) per hop BEFORE delegating to `super()` — i.e. before the next hop is followed — raising
+   `FetchAttemptBudgetExceededError` on breach (the redirect-hop half of §H7 item-4a, co-located with
+   the byte decrement; `handler.redirect_count` observability-only), while preserving
    the redirect (wrap the intermediate `fp` in a bounded proxy and delegate to
    `super().http_error_302(...)` so the existing `redirect_request` §H6 revalidation + `max_redirects`
    count and the stdlib Location/loop/scheme logic are unchanged).
@@ -1750,7 +1827,10 @@ harness+impl pair (see below), so the manifest grows 24 → 26 tasks and the cha
   `064.026-T` (keeping its 3-scenario budget; the amplification bound is proven at the unit level in
   `064.025-T`). Plan §H7, "Selected numeric limits", "Cap tasks", decomposition list, dependency
   edges, execution order, Rollback, SA-1 record, feature DoD H7 clause, and shipment 055-S
-  membership all updated.
+  membership all updated. **[Superseded by cycle-11: the fetch-attempt bound moved from this
+  `fetch/crawl.py` frontier-pop counter to the common `fetch_page` outbound-fetch boundary in
+  `fetch/http.py` so robots/TOC/retry/redirect requests are also counted; `064.026-T`'s impl file set
+  is now `fetch/http.py` + `app_models.py` (still 2 files). See the Cycle-11 subsection below.]**
 - **EOF-driven subprocess smoke test cannot detect live stdio deadlocks (thread 2, `064.008-T:26`).**
   With the pipe left open, a buffered `read(CHUNK_SIZE)` can wait for the requested byte count after
   a short frame, and block-buffered stdout can retain a response unless explicitly flushed; closing
@@ -1918,6 +1998,79 @@ pair, single file each; Finding B: in-place kwarg + inline clause + parametrized
 linear acyclic test-first chain (`… → 064.026 → 064.027 → 064.028 → 064.014 → …`, 28 tasks), and no
 2-hour/width/scenario/function budget is breached. All P0/P1 findings closed.
 
+### Cycle-11 review remediation (PR #166, fresh Copilot review on HEAD f172806, third three-cycle allowance round 2)
+
+Cycle-11 reconciles two threads on HEAD `f172806`. Both are in-place strengthenings — **no new
+task** is created and the manifest stays at 28 tasks; the single linear acyclic test-first chain,
+every dependency edge, shipment `055-S` membership, and execution order are all unchanged. Reconciled
+across plan, feature DoD, tasks, and continuity memory.
+
+- **The cycle-8 `MAX_FETCH_ATTEMPTS` frontier-pop counter does not bound actual outbound requests
+  (thread A, `064.025-T`/`064.026-T`).** The cycle-8 mechanism placed a per-request `fetch_attempts`
+  counter in `fetch/crawl.py` that incremented only on main-page frontier pops. But robots.txt
+  (`_robots_allow`), mdBook TOC-script discovery (`_discover_toc_links`), per-pop retries
+  (`_fetch_with_retries` issues a fresh `fetch_page` per attempt), and redirect hops
+  (`_ValidatingRedirectHandler`) are all real outbound requests a main-page-pop counter never sees,
+  and the per-response/aggregate BYTE budgets bound transfer VOLUME not request COUNT (empty or tiny
+  robots/TOC responses barely spend the byte budget) — so the frontier-pop counter is bypassable.
+  **Resolution:** the frontier-pop counter is REPLACED by a request-scoped fetch-attempt budget on
+  the SAME request-scoped budget object (`RemainingByteBudget`) that `064.017-T`/`064.024-T` already
+  thread through every `fetch_page` call: a per-request attempt allowance seeded at
+  `MAX_FETCH_ATTEMPTS = 4000`, debited ONE **before** each direct outbound request at the common
+  `fetch_page` boundary (`fetch/http.py`; main pages, robots, TOC, retries — each a distinct
+  `fetch_page` call, pre-I/O) AND ONE per redirect hop **inside** the shared `_ValidatingRedirectHandler`
+  before the next hop is followed (pre-I/O), exactly as the aggregate byte budget already decrements
+  intermediate 3xx bodies in that same handler — NOT a post-`open()` `handler.redirect_count` tally
+  (which would let urllib follow up to `max_redirects` hops beyond the cap before raising;
+  `handler.redirect_count` is retained for observability only),
+  RAISING a typed `FetchAttemptBudgetExceededError` — a `DoclineError` subclass of
+  `AggregateBudgetExceededError`, so the four existing `except AggregateBudgetExceededError: raise`
+  clauses in `crawl.py` propagate it out of `crawl()` with NO new `crawl.py` edit — the instant a
+  debit would cross the cap. Because every direct outbound request funnels through `fetch_page` and
+  every redirect hop funnels through the shared handler, auxiliary/retry/redirect traffic cannot bypass
+  the count. Ownership: the boundary debit is delivered by `064.026-T` (harness `064.025-T`, proving
+  robots/TOC/retry debits); the per-hop redirect-attempt debit is delivered by the redirect-drain impl
+  `064.028-T` (harness `064.027-T`), co-located with the intermediate-body byte decrement it already
+  owns — no new task and no new file for either. `064.025-T`/`064.026-T` are **re-scoped in place**:
+  the harness now proves the cap trips from robots/TOC/retry traffic while `page_count` stays low, and
+  the impl file set moves `fetch/crawl.py` → `fetch/http.py` (still 2 files with `app_models.py`); the
+  `FetchRequest.depth` `Field(default=0, ge=0, le=64)` upper bound is unchanged. Dependency chain
+  (`064.024 → 064.025 → 064.026 → 064.027 → 064.028 → 064.014`), shipment `055-S` membership, and
+  execution order are unchanged. Plan §H7 item 4, "Selected numeric limits" `MAX_FETCH_ATTEMPTS` note,
+  "Cap tasks", decomposition 10c/10d/10e/10f, Rollback, feature DoD H7 clause, and
+  `064.025-T`/`064.026-T`/`064.027-T`/`064.028-T` all reconciled; the cycle-8 subsection above carries a
+  superseding pointer to this mechanism.
+- **`server/discover` was treated as a bare pre-handshake call exempt from `_meta` validation
+  (thread B, `064.020-T`/`064.022-T`).** The Protocol Era Model, method map, and tasks described every
+  modern `tools/*` request as requiring per-request `_meta` with BOTH
+  `io.modelcontextprotocol/protocolVersion` AND `io.modelcontextprotocol/clientCapabilities`, but the
+  era-routing precedence carried a separate `server/discover → discovery (pre-handshake)` branch and
+  the method map/table presented `server/discover` as "answerable before any request" — implying it
+  could be served WITHOUT `_meta`. MCP `2026-07-28` requires per-request `_meta` on every modern
+  request, and `server/discover` is a modern-only method. **Resolution:** `server/discover` is routed
+  through the SAME per-request `_meta` validator as every modern request — a valid discovery request
+  MUST supply BOTH `protocolVersion` AND `clientCapabilities` (unsupported version → `-32022`, then
+  missing/malformed `clientCapabilities` → `-32602`, version-first) — while still requiring NO prior
+  `initialize` (pre-handshake availability does NOT waive required `_meta`). Reconciled across the
+  Scope modern-era bullet, the Design method map, the Protocol Era Model table (Discovery row) and
+  era-routing precedence, the feature DoD dual-era clause, `064.020-T` (scenario (a) sends
+  `server/discover` WITH valid `_meta`; scenario (c) adds `server/discover` rejection rows as an axis —
+  scenario budget stays 3), and `064.022-T` (`server/discover` dispatch runs through the `_meta`
+  dual-member validator before returning the `DiscoverResult` — an ordering constraint on the existing
+  validator, no new function, `<=2`-file/`<5`-function budget unaffected). No new task; the
+  metadata-free `tools/*` pre-initialize reject (`064.021-T`/`064.023-T`) is unchanged.
+
+Re-review verdict (cycle-11, post-remediation): the request-COUNT bound now debits pre-I/O at the
+`fetch_page` choke point for direct outbound calls (`064.026-T`/`064.025-T`) AND per redirect hop
+inside the shared `_ValidatingRedirectHandler` before the next hop is followed (`064.028-T`/`064.027-T`),
+so robots/TOC/retry/redirect outbound traffic cannot bypass
+`MAX_FETCH_ATTEMPTS`, reusing the existing request-scoped budget threading and `crawl.py` re-raise
+clauses (`064.025-T`/`064.026-T` re-scoped in place, still 2 files, chain/membership/order unchanged);
+`server/discover` is no longer exempt from `_meta` validation and is validated identically to every
+modern request while remaining answerable pre-`initialize`. Both fixes are in-place (no new task,
+manifest stays 28), the chain stays a single linear acyclic test-first chain, and no
+2-hour/width/scenario/function budget is breached. All P1 findings closed.
+
 ## Rollback
 
 **Not purely additive.** The release unit adds new modules (`src/docline/mcp/stdio.py`,
@@ -1940,10 +2093,12 @@ existing files whose behavior changes for both interfaces:
   (main pages, retries via 064.016/064.017; ancillary robots/TOC via split successor 064.024),
   aborting mid-read. Additive field +
   threaded budget; also affects CLI crawls.
-- `src/docline/fetch/crawl.py` + `src/docline/app_models.py` — request-amplification bound (§H7
-  item 4, cycle-8): the crawl loop adds a per-request `fetch_attempts` counter incremented on every
-  frontier pop (so the print-page / duplicate / out-of-scope non-counting branches count) and
-  RAISES a typed error once attempts exceed `MAX_FETCH_ATTEMPTS = 4000`, and `FetchRequest.depth`
+- `src/docline/fetch/http.py` + `src/docline/app_models.py` — request-amplification bound (§H7
+  item 4, cycle-8; mechanism reworked cycle-11): `fetch_page` seeds a per-request fetch-attempt
+  allowance on the shared request-scoped budget and debits it on every outbound request AND every
+  redirect hop — so main pages, robots, TOC, retries, and redirects all count — RAISING
+  `FetchAttemptBudgetExceededError` (a `DoclineError` subclass of `AggregateBudgetExceededError`)
+  once attempts would exceed `MAX_FETCH_ATTEMPTS = 4000`, and `FetchRequest.depth`
     gains a hard `Field(default=0, ge=0, le=64)` upper bound (`MAX_DEPTH_LIMIT`; default preserved),
     rejecting over-limit depth `-32602`
     (064.025/064.026). Tightens accepted request COUNT on the shared path; also affects CLI crawls.
@@ -1994,7 +2149,7 @@ forward into build, review, runtime verification, and closure.
   resource caps (§H7): `MAX_PAGES_LIMIT = 1000` upper bound, streamed `MAX_RESPONSE_BYTES` = 10 MiB
   per-response cap, a request-scoped during-read aggregate `MAX_TOTAL_FETCH_BYTES` = 512 MiB
   budget (also decrementing intermediate 3xx redirect bodies), a request-amplification bound
-  (`MAX_FETCH_ATTEMPTS` = 4000 frontier-pop cap +
+  (`MAX_FETCH_ATTEMPTS` = 4000 outbound-fetch-attempt budget at the `fetch_page` boundary +
   `MAX_DEPTH_LIMIT` = 64 depth upper bound, §H7 item 4), and an extension of the existing
   `_ValidatingRedirectHandler` (all redirect-code aliases rebound) that bounded-reads/counts every
   intermediate 3xx redirect body against the same per-response and aggregate allowances (§H7 item 2,
