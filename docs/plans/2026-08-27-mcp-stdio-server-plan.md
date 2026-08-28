@@ -27,7 +27,13 @@
   (`MAX_PAGES_LIMIT`/`MAX_RESPONSE_BYTES`/`MAX_TOTAL_FETCH_BYTES`) with boundary behavior, the
   `src/`-prefixed transport paths (064.022-T/064.023-T), and a verifiable client MCP config format
   source for 064.004-T (no reliance on the git-ignored `.mcp.json`).
-  See `## Plan Review Remediation` (cycle-3, cycle-4, cycle-5, and cycle-6 subsections).
+  Cycle-7 (PR #166, fresh review on HEAD b38d3b0) reconciles four further threads: the required
+  standards-valid MCP `CallToolResult` wire shape for both eras (`content` is `ContentBlock[]`,
+  modern adds `resultType`; 064.005-T/064.021-T harnesses + 064.002-T/064.022-T impl + feature DoD),
+  the exact per-response and aggregate byte-cap boundaries via a `min(…, remainder + 1)` read-size
+  cap so only the crossing byte is read (064.012-T/064.013-T and 064.016-T/064.017-T/064.024-T), and
+  the regenerated 24-task continuity memory (`064.017 → 064.024 → 064.014`).
+  See `## Plan Review Remediation` (cycle-3, cycle-4, cycle-5, cycle-6, and cycle-7 subsections).
 - Cross-interface blast radius: this release unit is NOT purely additive. It hardens the
   **shared** fetch code (`fetch/url_policy.py`, `fetch/http.py`, `app_models.py`) that both
   the CLI and the MCP surface call, and it changes the existing `DoclineMcpServer` adapter's
@@ -233,10 +239,19 @@ criterion, not an advisory item.
     allow-list of its own; fail closed), `-32603` internal error. Messages MUST be generic and non-reflective: no
     absolute paths, no `PathContainmentError` text, no tracebacks in `message`/`data`; log full
     detail to stderr.
-  - Tool-result mapping: `execute_fetch`/`execute_process` model failure as a *successful* call
-    returning `success=False` + `error`. Map a validated-but-failed tool result to a JSON-RPC
-    *result* whose MCP content carries the error text with `isError=true`; reserve `-326xx`
-    envelopes for framing/validation/internal faults only.
+  - Tool-result mapping (MCP `CallToolResult` wire shape, both eras): dispatch()'s tools/call
+    handler shapes every successful `tools/call` return (`fetch`/`process`/`export_schema`) INLINE
+    into a standards-valid `CallToolResult` whose `result.content` is a non-empty `ContentBlock[]`
+    (typed text block(s)), with `result.structuredContent` mirroring the domain result when
+    applicable — NOT the raw `FetchResult`/`ProcessResult`/`str` serialized directly (which real MCP
+    clients reject). For `fetch`/`process`, `execute_fetch`/`execute_process` model failure as a
+    *successful* call returning `success=False` + `error`; map a validated-but-failed tool result to
+    a JSON-RPC *result* whose MCP `content` carries the sanitized error text with `isError=true`.
+    Reserve `-326xx` envelopes for framing/validation/internal faults only (e.g. `export_schema`
+    with non-empty arguments → `-32602`, NOT an `isError` result). The legacy transport (T2) shapes
+    this inline; the modern branch (T-era-i1) reuses the SAME `CallToolResult` body and applies only
+    the `resultType:"complete"` wrapper on top, so both eras emit an identical, standards-conformant
+    tool-result body (asserted by `064.005-T` legacy and `064.021-T` scenario (c) modern).
   - Fetch resource bounds (§H7): the untrusted `tools/call` `fetch` path inherits a hard
     `max_pages` upper bound (enforced in the shared `FetchRequest` model), a streamed
     per-response byte cap (`MAX_RESPONSE_BYTES`) enforced in `fetch/http.py` on the initial
@@ -527,9 +542,12 @@ Security/reliability guardrails promoted to blocking design constraints after pl
     10 MiB is far above a typical documentation page (KB–low-MB) yet bounds a single hostile
     response from exhausting memory via the current unbounded `response.read()`. Applies to the
     initial response body AND every redirect hop's final response. Boundary: a response up to and
-    including exactly `10_485_760` raw wire bytes is allowed; the bounded reader aborts mid-stream
-    (typed error) the instant reading the next chunk would push the response past `10_485_760` (the
-    over-cap response is never fully buffered).
+    including exactly `10_485_760` raw wire bytes is allowed; the bounded reader caps each
+    individual read size at `min(CHUNK_SIZE, MAX_RESPONSE_BYTES - bytes_read + 1)`, so at the
+    boundary only the single crossing byte can be pulled from the socket — never a full extra
+    `CHUNK_SIZE` chunk. It aborts mid-stream (typed error) the instant a read returns a byte beyond
+    `10_485_760` (the over-cap response is never fully buffered; the over-cap transfer is at most
+    `MAX_RESPONSE_BYTES + 1`, not `MAX_RESPONSE_BYTES + CHUNK_SIZE`).
   - **`MAX_TOTAL_FETCH_BYTES = 512 * 1024 * 1024 = 536_870_912`** (512 MiB) aggregate per-request
     crawl budget. Rationale: bounds the *product* of the page and per-response caps — the naive
     product `MAX_PAGES_LIMIT × MAX_RESPONSE_BYTES` (1000 × 10 MiB ≈ 10 GiB) is the amplification
@@ -538,12 +556,15 @@ Security/reliability guardrails promoted to blocking design constraints after pl
     The aggregate is the effective transfer bound for the "many large pages" attack (it trips after
     at most ⌊512 MiB / 10 MiB⌋ = 51 full-size responses, well inside the 1000-page count cap).
     Boundary: the request-scoped remaining-byte budget starts at `536_870_912` and is decremented
-    per chunk as raw wire bytes are read across **every** `fetch_page` call for the request (main
-    pages, retried over-cap attempts, and ancillary `robots.txt`/TOC fetches); a total of exactly
-    `536_870_912` raw bytes is allowed; the read aborts mid-stream (raising
-    `AggregateBudgetExceededError`, re-raised out of `crawl()`) the instant the next chunk would
-    push cumulative request raw bytes past `536_870_912`. Defaults to unbounded (`None`) for a
-    standalone single fetch so existing CLI single-fetch callers are unaffected.
+    by the actual bytes read across **every** `fetch_page` call for the request (main pages, retried
+    over-cap attempts, and ancillary `robots.txt`/TOC fetches). The bounded reader caps each read
+    size at `min(CHUNK_SIZE, per_response_remainder + 1, aggregate_remainder + 1)` and counts the
+    actual bytes returned, so at either boundary only the single crossing byte can be pulled from
+    the socket — never a full extra `CHUNK_SIZE` chunk. A total of exactly `536_870_912` raw bytes
+    is allowed; the read aborts mid-stream (raising `AggregateBudgetExceededError`, re-raised out of
+    `crawl()`) the instant a read returns a byte beyond the aggregate allowance (the over-budget
+    transfer is at most `budget + 1`, not `budget + CHUNK_SIZE`). Defaults to unbounded (`None`) for
+    a standalone single fetch so existing CLI single-fetch callers are unaffected.
 
   Cap tasks: the `max_pages` upper bound (`MAX_PAGES_LIMIT = 1000`) and the streamed per-response
   `MAX_RESPONSE_BYTES` (10 MiB) cap are delivered by harness `064.012-T` + impl `064.013-T`
@@ -612,9 +633,13 @@ Backlog IDs are shown in brackets. All MCP-transport harness tasks author into
    **unchanged** (full four-tool manifest, `test_manifest_parity.py` green) [green@T-adapter]; and
    the adapter invariant — the transport advertises ONLY the callable set, never `list_tools()`.
    Verify red. No dependency (first).
-2. T1b [064.005-T] — Dispatch parity + error-envelope + notification harness (tests domain,
-   3 scenarios). `tools/call` fetch + process parity vs `execute_fetch`/`execute_process` with
-   `success=False` → `isError` result; error envelopes as one parametrized scenario covering
+2. T1b [064.005-T] — Dispatch parity + CallToolResult wire-shape + error-envelope + notification
+   harness (tests domain, 3 scenarios). `tools/call` fetch/process/export_schema (success AND
+   failure) each return a standards-valid MCP `CallToolResult` — `result.content` is a
+   `ContentBlock[]`, `success=False` → `isError=true` with sanitized error text in `content`,
+   `structuredContent` mirrored when applicable (legacy-era body; the modern `resultType` wrapper is
+   asserted by T-era-h2/`064.021-T`) — with fetch/process parity vs
+   `execute_fetch`/`execute_process`; error envelopes as one parametrized scenario covering
    `-32700`, **`-32600` invalid request (non-object root; missing/invalid `jsonrpc`;
    missing/non-string `method`)**, `-32601`, `-32602`, `-32603`; id-less notification is silent.
    Verify red [green@T2]. Depends on T1.
@@ -803,11 +828,16 @@ Backlog IDs are shown in brackets. All MCP-transport harness tasks author into
     the process era is latched by `initialize`, not selected by an unadorned request shape (the
     **pre-initialize operation test**), AND `initialize` and `server/discover` report the **same**
     identity/capabilities/supportedVersions from the single `describe_server()` source; (c)
-    **modern-path guardrail parity (parametrized)** — a modern (`_meta`, no
-    `initialize`) `tools/call` `process`/`fetch` enforces §H1 (`workspace_root` reject `-32602`),
-    §H3 (absolute-path sanitization in `isError`), and §H5 (clean stdout) IDENTICALLY to the legacy
-    path, proving the guards apply pre-handshake and era routing cannot branch around them. Verify
-    red [green@T-era-i2]. Depends on T-era-h1.
+    **modern-path guardrail parity + CallToolResult wire shape (parametrized)** — a modern (`_meta`,
+    no `initialize`) `tools/call` (`fetch`/`process`/`export_schema`) enforces §H1 (`workspace_root`
+    reject `-32602`), §H3 (absolute-path sanitization in `isError`), and §H5 (clean stdout)
+    IDENTICALLY to the legacy path, AND every successful modern `tools/call` wraps a standards-valid
+    `CallToolResult` (`result.content` is a `ContentBlock[]`; `structuredContent` mirrored when
+    applicable; `fetch`/`process` failure → `isError=true`; `export_schema` non-empty args → `-32602`,
+    not `isError`) inside the `resultType:"complete"` envelope — the SAME body `064.005-T` asserts,
+    differing only by the modern wrapper — proving the guards apply pre-handshake, era routing cannot
+    branch around them, and the modern era emits a standards-conformant wire shape. Verify
+    red [green@T-era-i2, wire-shape + guard parity green@T-era-i1]. Depends on T-era-h1.
 19. T-era-i1 [064.022-T] — Modern-era negotiation + modern-branch routing impl (code domain,
     ≤2 files: `src/docline/mcp/stdio.py` + `src/docline/mcp/server.py`).
     Implement `server/discover` dispatch backed by the `describe_server()` accessor **introduced by
@@ -819,10 +849,13 @@ Backlog IDs are shown in brackets. All MCP-transport harness tasks author into
     and `ttlMs`/`cacheScope` on the `DiscoverResult` itself as a `CacheableResult`);
     and **the MODERN branch of the era classifier** (detect modern `_meta` → route to modern
     handlers, served statelessly) **funnelled through the SAME hardened dispatch** as legacy so
-    §H1/§H3/§H4/§H5 apply by construction (modern envelope is a post-return wrapper only).
+    §H1/§H3/§H4/§H5 apply by construction, **reusing dispatch()'s inline CallToolResult shaping** and
+    applying the modern envelope as a post-return wrapper only (so the modern era emits the SAME
+    standards-valid `CallToolResult` body as legacy).
     Ownership boundary (cycle-3, refined cycle-4): THIS task owns the modern branch routed through
     the shared hardened dispatch — so T-era-h1 scenario (b) "modern request served statelessly"
-    AND T-era-h2 scenario (c) modern-path guard parity both green HERE — while T-era-i2 owns the
+    AND T-era-h2 scenario (c) modern-path guard parity + CallToolResult wire shape both green HERE —
+    while T-era-i2 owns the
     legacy branch + no-drift VERIFICATION (it verifies parity, not first-wires it). Function/split
     guard: if the dual-member `_meta` validator + modern result-shape wrapper exceed the
     2-hour/<5-function envelope, split the result-shape wrapper to a successor before implementing.
@@ -1366,6 +1399,52 @@ acyclic, order-preserving chain; the H7 caps are numeric and measurable before t
 the transport paths and the docs-config format source are verifiable; and the plan carries explicit
 strict-safety high-risk action records for the two high-blast-radius surfaces. All P0/P1 findings
 closed.
+
+### Cycle-7 review remediation (PR #166 review cycle 7, fresh Copilot review on HEAD b38d3b0)
+
+The cycle-6 commit (b38d3b0) drew a fresh Copilot review with four unresolved threads. All four are
+reconciled here (Stage resumed under a fresh operator-authorized three-cycle allowance, round 1),
+across plan, feature DoD, tasks, and continuity memory, preserving dependency acyclicity, execution
+order, and shipment 055-S membership (no new tasks; no edge changes):
+
+- **`064.005-T` never requires a valid MCP `CallToolResult` wire shape (thread 1, `064.005-T:25`).**
+  The harness asserted app-level parity + `isError` only, so an implementation could serialize
+  `FetchResult`/`ProcessResult` directly and pass while real MCP clients reject the response.
+  **Resolution:** strengthened the dispatch-parity scenario (in-place, no new scenario) to require a
+  standards-valid `CallToolResult` for BOTH eras: `result.content` is a `ContentBlock[]`; the modern
+  result additionally carries `resultType:"complete"`; parametrized over `fetch`/`process`/
+  `export_schema` × success/failure; `structuredContent` asserted when mirrored. The LEGACY body is
+  asserted by `064.005-T` (green@`064.002-T`) and the MODERN wrapper by `064.021-T` scenario (c)
+  (green@`064.022-T`), preserving the milestone model. Impl tasks `064.002-T` (legacy shaping step)
+  and `064.022-T` (modern wrapper around the SAME body) now require the shared, standards-conformant
+  body; feature DoD and plan Design "Tool-result mapping" reconciled. Scenario counts stay at 3
+  (both harnesses); width stays test-only — no split required.
+- **Per-response 10 MiB cap allows a full-chunk over-read at the boundary (thread 2, `064.013-T:26`).**
+  Checking after each fixed `read(CHUNK_SIZE)` lets a whole extra chunk transfer before overflow is
+  detected. **Resolution:** `064.013-T` now caps each read at
+  `min(CHUNK_SIZE, remaining_response_bytes + 1)` so only the single crossing byte can be consumed;
+  `064.012-T` asserts (via an instrumented transport recording read sizes) that an over-cap response
+  transfers AT MOST `MAX_RESPONSE_BYTES + 1` bytes, not `MAX_RESPONSE_BYTES + CHUNK_SIZE`. Plan §H7
+  boundary language updated.
+- **Aggregate 512 MiB budget has the same chunk-overread gap (thread 3, `064.017-T:26`).**
+  **Resolution:** `064.017-T` now caps each read at
+  `min(CHUNK_SIZE, per_response_remainder + 1, aggregate_remainder + 1)`, counts the actual bytes
+  returned, and decrements both allowances by that count, so only the crossing byte is read;
+  `064.016-T` asserts the crossing-byte-only transfer. `064.024-T` (ancillary robots/TOC) shares the
+  SAME `fetch_page` bounded reader and inherits the cap, so its transfer also stops at the crossing
+  byte (`064.016-T` scenario (c)(iii)). Plan §H7 aggregate boundary language updated.
+- **Structured continuity memory stale after the cycle-6 split (thread 4, `.backlogit/memories.json:3`).**
+  The `stage-2026-08-27-darkfactory-stash-sweep` entry still recorded 23 tasks and `064.017 → 064.014`.
+  **Resolution:** regenerated that entry to 24 tasks with the `064.017 → 064.024 → 064.014` chain and
+  the corrected 24-task execution order, and added the cycle-6 split + cycle-7 reconcile notes, while
+  preserving the `orchestrator:055-S:pr166-review-breaker` key.
+
+Re-review verdict (cycle-7, post-remediation): all four threads reconciled consistently across plan,
+feature DoD, backlog acceptance criteria, and memory; the exact-boundary read-size cap
+(`min(..., remainder + 1)`) is specified uniformly for the per-response and aggregate readers and the
+shared ancillary reader; the `CallToolResult` wire shape is required for both eras from one shared
+shaping step; no dependency edges or shipment membership changed (chain and 24-item manifest already
+correct). All P0/P1 findings closed.
 
 ## Rollback
 
