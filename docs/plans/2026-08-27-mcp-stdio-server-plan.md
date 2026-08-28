@@ -49,7 +49,19 @@
   shape-before-`_meta`/era ordering criterion in 064.022-T, + feature DoD), and a stray unsupported
   `links:` frontmatter block on `061.001-T` is removed in favor of the two intended `informs`
   relationships in the supported `item_links` store. No new task (manifest stays 26).
-  See `## Plan Review Remediation` (cycle-3, cycle-4, cycle-5, cycle-6, cycle-7, cycle-8, and cycle-9 subsections).
+  Cycle-10 (PR #166, fresh review on HEAD 62df1b7, round 3 of the second three-cycle allowance)
+  reconciles two further threads confirmed against actual `urllib` redirect + Python JSON behavior:
+  (A) the existing single `_ValidatingRedirectHandler` is extended (all `http_error_301/302/303/307/308`
+  aliases rebound; ONE composite handler) to bounded-read/count every INTERMEDIATE 3xx redirect body
+  (urllib's in-handler unbounded `fp.read()` bypassed both the
+  per-response `MAX_RESPONSE_BYTES` cap and the aggregate `MAX_TOTAL_FETCH_BYTES` budget), split into
+  a NEW width-isolated pair 064.027-T/064.028-T (chain grows 26 → 28,
+  `064.026 → 064.027 → 064.028 → 064.014`); and (B) strict `parse_constant` rejection of the non-finite
+  JSON constant TOKENS `NaN`/`Infinity`/`-Infinity` → `-32700`, plus a `math.isfinite()` id guard
+  rejecting overflow literals (`1e400` → `inf`) → `-32600`, both before era routing, so
+  no non-finite number can enter `RequestId` or response serialization (in-place strengthening of
+  064.002-T impl + 064.005-T harness, no new task).
+  See `## Plan Review Remediation` (cycle-3, cycle-4, cycle-5, cycle-6, cycle-7, cycle-8, cycle-9, and cycle-10 subsections).
 - Cross-interface blast radius: this release unit is NOT purely additive. It hardens the
   **shared** fetch code (`fetch/url_policy.py`, `fetch/http.py`, `app_models.py`) that both
   the CLI and the MCP surface call, and it changes the existing `DoclineMcpServer` adapter's
@@ -222,7 +234,10 @@ criterion, not an advisory item.
     string or number; an `id` that is an object, array, boolean, or `null` is an invalid request
     (`-32600`) and MUST NOT be echoed back into the response — the error frame carries `id: null`.
     An ABSENT `id` remains an id-less notification (silent, handled generically), distinct from a
-    present `null` id (which is a `-32600` invalid request, never a notification). Because this
+    present `null` id (which is a `-32600` invalid request, never a notification). A present *numeric*
+    `id` that is not finite (an overflow literal such as `1e400`, which `json.loads` parses to
+    `float('inf')` WITHOUT invoking `parse_constant`) is likewise an invalid `RequestId` → `-32600`
+    with `id:null`, via a `math.isfinite()` clause in the same request-shape guard. Because this
     request-shape validation runs in the single shared `dispatch()` BEFORE `_meta` extraction, era
     classification, and method routing, both the legacy and modern eras inherit the id-type guard
     identically and cannot echo a malformed id: a malformed id short-circuits to `-32600` (`id:null`)
@@ -265,12 +280,18 @@ criterion, not an advisory item.
     preserved). Dropping the suffix would silently lose the next JSON-RPC request. A test MUST
     cover two complete frames arriving in a single chunk (both are dispatched), including the case
     where the second frame immediately follows an oversized-drained first frame.
-    Memory stays bounded even for an unterminated or chunked-oversized input. The parse-error
+    Memory stays bounded even for an unterminated or chunked-oversized input. The frame parse
+    (`json.loads`) passes a `parse_constant` callback that rejects Python's permissive non-finite
+    JSON tokens (`NaN`/`Infinity`/`-Infinity`) as a `-32700` parse error, and the parse-error
     handler catches `ValueError` AND `RecursionError` (deeply nested JSON raises `RecursionError`,
     a `RuntimeError` subclass that `json.JSONDecodeError` handling would miss) so one hostile
-    message degrades to an envelope rather than crashing the loop.
-  - Error envelopes: `-32700` parse error (invalid JSON), `-32600` invalid request (valid JSON
-    but not a valid request object — see request-shape validation above), `-32601` method not
+    message degrades to an envelope rather than crashing the loop. Response serialization uses
+    `json.dumps(..., allow_nan=False)` and degrades a serialization `ValueError` to a `-32603`
+    envelope rather than emitting a non-JSON token or crashing the loop.
+  - Error envelopes: `-32700` parse error (invalid JSON, including the non-finite `NaN`/`Infinity`/
+    `-Infinity` tokens rejected via `parse_constant`), `-32600` invalid request (valid JSON
+    but not a valid request object — see request-shape validation above, including a non-finite
+    numeric `id` from an overflow literal), `-32601` method not
     found, `-32602` invalid params (wrap Pydantic `ValidationError`) and unknown/unroutable tool
     name (the adapter `call_tool`'s typed unknown-tool error, mapped here — the transport holds no
     allow-list of its own; fail closed), `-32603` internal error. Messages MUST be generic and non-reflective: no
@@ -504,8 +525,33 @@ Security/reliability guardrails promoted to blocking design constraints after pl
      over-limit value is rejected at validation and surfaces as `-32602` on the MCP boundary.
   2. **Streamed response-byte cap.** `fetch/http.py` reads the body in bounded chunks up to a
      hard `MAX_RESPONSE_BYTES` cap and aborts once exceeded — never a single unbounded
-     `response.read()`. The cap applies to the initial response AND to the body of every redirect
-     hop's final response.
+     `response.read()`. The cap applies to the initial response, the terminal response
+     `opener.open()` returns after following redirects, **AND every intermediate 3xx redirect body**.
+     **Intermediate-redirect-body drain (cycle-10, review-mandated).** The bounded reader above
+     replaces only the *terminal* `response.read()` (the response `opener.open()` returns); it does
+     NOT see the intermediate 3xx bodies that `urllib.request.HTTPRedirectHandler.http_error_302`
+     (aliased to 301/303/307/308) drains with its OWN unbounded `fp.read()` *before* `opener.open()`
+     returns. A hostile server can therefore return a chain of 3xx responses whose intermediate
+     bodies are arbitrarily large (or many under-cap bodies) and exhaust memory/network while
+     bypassing BOTH the per-response `MAX_RESPONSE_BYTES` cap and the request-scoped aggregate
+     `MAX_TOTAL_FETCH_BYTES` budget. Required: **extend the EXISTING single redirect handler**
+     `_ValidatingRedirectHandler` (`fetch/http.py:41`, already installed on the opener and already
+     overriding `redirect_request` for §H6 per-redirect revalidation + the `max_redirects` count) with
+     an `http_error_302` override whose bounded-reading proxy drains each intermediate body through the
+     SAME bounded reader — counting the actual bytes and decrementing BOTH a fresh per-response
+     allowance AND the request-scoped aggregate budget (bytes are counted **even while redirecting**)
+     — and raises the typed cap error mid-drain on breach, while **preserving the redirect** (the
+     recommended minimal technique wraps the intermediate `fp` in a bounded proxy and delegates to
+     `super().http_error_302(...)` so the existing `redirect_request` §H6 revalidation + count and the
+     stdlib Location/loop/scheme logic are unchanged). Two urllib specifics MUST be honored: (1) the
+     subclass MUST rebind ALL redirect aliases (`http_error_301 = http_error_303 = http_error_307 =
+     http_error_308 = http_error_302`) — a subclass overriding only `http_error_302` leaves the other
+     four codes bound to the BASE unbounded handler; (2) do NOT install a SECOND redirect handler —
+     `OpenerDirector` dispatches a given `http_error_NNN` to handlers in order and stops at the first
+     returning a response, so two redirect handlers cannot both run; the drain MUST be folded into the
+     existing handler as ONE composite handler. Delivered by the width-isolated pair `064.027-T`
+     (harness) / `064.028-T` (`fetch/http.py`), split out because the drain must also decrement the
+     request-scoped aggregate budget that only exists after `064.017-T`/`064.024-T`.
   3. **Aggregate crawl-byte budget (byte-accurate, enforceable).** Per-response and per-page caps
     do not bound their product: a single small `tools/call` `fetch` at the `max_pages` cap
     against an attacker-controlled server returning maximum-under-cap responses drives
@@ -626,7 +672,9 @@ Security/reliability guardrails promoted to blocking design constraints after pl
     Rationale: docline stages text-centric documents (HTML/Markdown, occasionally moderate PDFs);
     10 MiB is far above a typical documentation page (KB–low-MB) yet bounds a single hostile
     response from exhausting memory via the current unbounded `response.read()`. Applies to the
-    initial response body AND every redirect hop's final response. Boundary: a response up to and
+    initial response body, the terminal post-redirect response body, AND every intermediate 3xx
+    redirect body (the last bounded-drained by the extended `_ValidatingRedirectHandler` of
+    `064.028-T`, using this SAME cap — no new constant). Boundary: a response up to and
     including exactly `10_485_760` raw wire bytes is allowed; the bounded reader caps each
     individual read size at `min(CHUNK_SIZE, MAX_RESPONSE_BYTES - bytes_read + 1)`, so at the
     boundary only the single crossing byte can be pulled from the socket — never a full extra
@@ -696,9 +744,21 @@ Security/reliability guardrails promoted to blocking design constraints after pl
   `## Plan Review Remediation` cycle-8). It is split from `064.013-T` (pinned to `app_models.py`
   `max_pages` + `fetch/http.py` byte cap = 2 files) because the fetch-attempt counter lives in
   `fetch/crawl.py`, a third file, which would breach `064.013-T`'s 2-file/function envelope.
+  The **intermediate-redirect-body drain** (§H7 item 2, cycle-10 — extend the EXISTING single
+  `_ValidatingRedirectHandler` (with all `http_error_301/302/303/307/308` aliases rebound) so its
+  bounded proxy reads/counts each intermediate 3xx body against the SAME per-response
+  `MAX_RESPONSE_BYTES` cap AND the request-scoped `MAX_TOTAL_FETCH_BYTES` budget, closing urllib's
+  in-handler unbounded `fp.read()` bypass — ONE composite handler, not a second) is
+  delivered by harness `064.027-T` + impl `064.028-T` (`fetch/http.py`, cycle-10 split — see
+  `## Plan Review Remediation` cycle-10). It reuses the existing `MAX_RESPONSE_BYTES` cap
+  (`064.013-T`) and the request-scoped budget (`064.017-T`/`064.024-T`) — no new numeric constant —
+  and is split from `064.013-T`/`064.017-T` because a custom redirect handler + opener wiring is
+  additional width and the intermediate drain must decrement the aggregate budget that only exists
+  after `064.017-T`/`064.024-T`.
   End-to-end proof: a `tools/call` `fetch` with
-  over-limit `max_pages` (rejected `-32602`), an oversized response body (aborted, including on a
-  redirect), and a crawl exceeding the aggregate budget (aborted) are asserted in the MCP boundary
+  over-limit `max_pages` (rejected `-32602`), an oversized response body (aborted, including on the
+  terminal post-redirect response AND every intermediate 3xx redirect body via `064.028-T`), and a
+  crawl exceeding the aggregate budget (aborted) are asserted in the MCP boundary
   harness `064.014-T`; the request-amplification depth over-limit (`-32602`) and fetch-attempt cap
   are proven at the unit level in `064.025-T` (keeping `064.014-T` within its 3-scenario budget).
   Caps are set high enough not to break legitimate CLI crawls; the existing
@@ -881,18 +941,53 @@ Backlog IDs are shown in brackets. All MCP-transport harness tasks author into
    (064.013-T, pinned to `app_models.py` + `fetch/http.py`) because the counter lives in
    `fetch/crawl.py`, a third file. Turns T-amp-h green. Existing fetch suite stays green (bounds
    sized 4× the page cap / 64-deep). Depends on T-amp-h.
+10e. T-redir-h [064.027-T] — Intermediate-redirect-body drain harness (tests domain, 3 scenarios).
+   Author the failing harness for the redirect-body vector (§H7 item 2, cycle-10): via a fake
+   transport returning a controllable chain of 3xx responses with intermediate bodies of known raw
+   byte lengths, assert (a) an intermediate 3xx body exceeding `MAX_RESPONSE_BYTES` (10 MiB) is
+   aborted without full buffering (over-read ≤ `MAX_RESPONSE_BYTES + 1`, each read
+   `min(CHUNK_SIZE, remaining + 1)`), **parametrized over all five redirect codes
+   301/302/303/307/308** (rows, not new scenarios — proving the alias rebind); (b) with the
+   request-scoped budget seeded low / pre-consumed (urllib's default `max_redirects = 5` makes a
+   single under-cap chain unable to reach 512 MiB, so the harness proves the decrement/cross-remaining
+   behavior hermetically), an intermediate 3xx body crossing the remaining `MAX_TOTAL_FETCH_BYTES`
+   allowance is aborted mid-drain (each intermediate body decrements the SAME budget while
+   redirecting; `crawl()` RAISES `AggregateBudgetExceededError`); (c) a redirect chain within both
+   allowances still follows to its final response AND the §H6 revalidation + count still run. Verify
+   red (urllib currently drains intermediate bodies with an unbounded `fp.read()`) [green@T-redir-i].
+   Depends on T-amp-i.
+10f. T-redir-i [064.028-T] — Bounded-draining redirect handler impl (code domain, ≤1 file:
+   `fetch/http.py`). EXTEND the EXISTING single `_ValidatingRedirectHandler` (not a second handler —
+   `OpenerDirector` would run only the first redirect handler that returns a response) with an
+   `http_error_302` override, and rebind all aliases
+   (`http_error_301 = http_error_303 = http_error_307 = http_error_308 = http_error_302`). The
+   override bounded-reads/drains each intermediate 3xx body through the SAME bounded reader (per-read
+   `min(CHUNK_SIZE, per_response_remainder + 1, aggregate_remainder + 1)`), counting actual bytes and
+   decrementing BOTH a fresh per-response `MAX_RESPONSE_BYTES` allowance (reset per hop) AND the
+   request-scoped `RemainingByteBudget` (passed into `_ValidatingRedirectHandler.__init__` at
+   `http.py:119`; when threaded), raising the typed cap error mid-drain on breach, while preserving
+   the redirect (wrap the intermediate `fp` in a bounded proxy and delegate to
+   `super().http_error_302(...)` so the existing `redirect_request` §H6 revalidation + `max_redirects`
+   count and the stdlib Location/loop/scheme logic are unchanged).
+   Reuses `MAX_RESPONSE_BYTES` (T-cap-i) + `RemainingByteBudget`/`AggregateBudgetExceededError`
+   (T-agg-i/T-agg-aux) — no new constant, no `app_models.py`/`crawl.py` change. Because the single
+   validating handler is on the shared opener, main + retry + ancillary fetches are all covered. Turns
+   T-redir-h green. Existing fetch suite stays green (small/empty legitimate 3xx bodies drain and
+   follow normally). Depends on T-redir-h.
 11. T-e2e [064.014-T] — MCP untrusted-fetch end-to-end boundary harness (tests domain,
     3 scenarios). Through `tools/call` fetch (stdin JSON → dispatch → `server.fetch` →
     `execute_fetch`): (a) a public hostname resolving to loopback/private is rejected end-to-end
     (§H6); (b) an over-limit `max_pages` (`>= 1001`) is rejected `-32602` end-to-end (§H7); (c) an
-    oversized response (per-response `MAX_RESPONSE_BYTES` = 10 MiB cap incl. redirect) OR a crawl
+    oversized response (per-response `MAX_RESPONSE_BYTES` = 10 MiB cap incl. the terminal
+    post-redirect response AND every intermediate 3xx redirect body) OR a crawl
     exceeding the aggregate `MAX_TOTAL_FETCH_BYTES` = 512 MiB budget is aborted
     end-to-end (§H7). Authored red (no dispatch loop yet). The shared-fetch guards (T-ssrf-i,
-    T-cap-i, T-agg-i, T-agg-aux, T-amp-i) already enforce in `execute_fetch`, so once the dispatch loop routes
+    T-cap-i, T-agg-i, T-agg-aux, T-amp-i, T-redir-i) already enforce in `execute_fetch`, so once the dispatch loop routes
     `server.fetch` these all go green at **T2** — no separate boundary wiring is required. The
     request-amplification bound (§H7 item 4) is proven at the unit level in T-amp-h, keeping this
     harness within its 3-scenario budget. Depends
-    on T-amp-i (the full aggregate budget plus the request-amplification bound are in place).
+    on T-redir-i (the full aggregate budget, the request-amplification bound, and the
+    intermediate-redirect-body drain are in place).
 12. T-adapter [064.015-T] — Adapter callable surface + identity accessor (code domain, ≤2 files:
     `src/docline/mcp/server.py` + optionally a versions constant).
     Implement `DoclineMcpServer.call_tool(name, arguments)` (static `{name: adapter_callable}`
@@ -1054,11 +1149,11 @@ Backlog IDs are shown in brackets. All MCP-transport harness tasks author into
 
 Dependency edges: T1b→T1, T1c→T1b, T1d→T1c, T-ssrf-h→T1d, T-ssrf-i→T-ssrf-h, T-cap-h→T-ssrf-i,
 T-cap-i→T-cap-h, T-agg-h→T-cap-i, T-agg-i→T-agg-h, T-agg-aux→T-agg-i, T-amp-h→T-agg-aux,
-T-amp-i→T-amp-h, T-e2e→T-amp-i, T-adapter→T-e2e,
+T-amp-i→T-amp-h, T-redir-h→T-amp-i, T-redir-i→T-redir-h, T-e2e→T-redir-i, T-adapter→T-e2e,
 T-desc-h→T-adapter, T-desc-i→T-desc-h, T2→T-desc-i, T2s→T2, T-era-h1→T2s, T-era-h2→T-era-h1,
 T-era-i1→T-era-h2, T-era-i2→T-era-i1, T2b→T-era-i2, T3→T2b, T4→T3.
 Execution order: 064.001 → 064.005 → 064.006 → 064.007 → 064.010 → 064.011 → 064.012 → 064.013 →
-064.016 → 064.017 → 064.024 → 064.025 → 064.026 → 064.014 → 064.015 → 064.018 → 064.019 → 064.002 → 064.009 → 064.020 →
+064.016 → 064.017 → 064.024 → 064.025 → 064.026 → 064.027 → 064.028 → 064.014 → 064.015 → 064.018 → 064.019 → 064.002 → 064.009 → 064.020 →
 064.021 → 064.022 → 064.023 → 064.008 → 064.003 → 064.004.
 
 ## Verification
@@ -1068,11 +1163,16 @@ Execution order: 064.001 → 064.005 → 064.006 → 064.007 → 064.010 → 064
   `SERVER.list_tools()` is left unchanged (full four-tool manifest)**; the MCP surface uses the
   new `list_callable_tools()`, so `test_manifest_parity.py::test_mcp_server_list_tools_exposes_shared_manifest`
   needs no edit. No existing parity test is rewritten to accommodate the callable subset.
-- `pytest tests/fetch` green: the shared-fetch SSRF-by-resolution, per-dimension resource-cap, and
-  **byte-accurate aggregate accounting** unit harnesses pass — including the non-ASCII multibyte
+- `pytest tests/fetch` green: the shared-fetch SSRF-by-resolution, per-dimension resource-cap,
+  **byte-accurate aggregate accounting**, and **intermediate-redirect-body drain** unit harnesses
+  pass — including the non-ASCII multibyte
   and invalid-byte payloads proving the aggregate cap counts raw wire bytes via the request-scoped
   during-read remaining-byte budget
-  (not decoded characters, and not a post-return `body_byte_count` sum) — and the pre-existing fetch suite remains green under the new bounds
+  (not decoded characters, and not a post-return `body_byte_count` sum), and the redirect-body
+  harness proving each intermediate 3xx body is bounded-read/counted against the same per-response
+  and aggregate allowances (the extended `_ValidatingRedirectHandler`, with all redirect-code aliases
+  rebound, replaces urllib's unbounded in-handler `fp.read()`) while legitimate redirects still
+  follow and §H6 revalidation still runs — and the pre-existing fetch suite remains green under the new bounds
   (caps sized above legitimate use).
 - Dual-era protocol conformance (T-era-h1/h2 → T-era-i1/i2): `server/discover` returns a
   `DiscoverResult` (supportedVersions for both eras, capabilities, serverInfo, `resultType`, and
@@ -1099,10 +1199,17 @@ Execution order: 064.001 → 064.005 → 064.006 → 064.007 → 064.010 → 064
 - JSON-RPC 2.0 conformance: `-32600` returned for a non-object root, a missing/invalid `jsonrpc`,
   a missing/non-string `method`, and a present `id` whose type is not a JSON string or number
   (object/array/bool/null — MCP 2026-07-28 `RequestId`; the malformed id is never echoed, the
-  `-32600` frame carries `id:null`) (parametrized), distinct from `-32700` and `-32601`.
+  `-32600` frame carries `id:null`) (parametrized), distinct from `-32700` and `-32601`. `-32700`
+  is also returned for the non-finite JSON constant TOKENS `NaN`/`Infinity`/`-Infinity` (rejected by
+  the strict `parse_constant` callback before the id-type guard and era routing); and a present
+  numeric `id` that is not finite (an overflow literal such as `1e400` → `float('inf')`, which
+  `parse_constant` does not catch) is rejected `-32600` with `id:null` by the id guard's
+  `math.isfinite()` clause — so no non-finite float, in token or overflow form, can enter `RequestId`
+  or response serialization.
 - MCP boundary end-to-end (T-e2e [064.014-T]): a `tools/call` fetch to a hostname resolving to
   loopback/private is rejected (address-pinned connect closes DNS-rebinding); over-limit
-  `max_pages` is rejected `-32602`; an oversized response (per-response cap incl. redirect) or a
+  `max_pages` is rejected `-32602`; an oversized response (per-response cap incl. the terminal
+  post-redirect response AND every intermediate 3xx redirect body) or a
   crawl exceeding the aggregate `MAX_TOTAL_FETCH_BYTES` budget is aborted (the crawl RAISES the
   typed budget error out of `crawl()`, not recorded as a per-page skip). These green at T2 (the
   shared-fetch guards enforce via `execute_fetch`; no separate boundary wiring).
@@ -1714,6 +1821,97 @@ criterion), so a malformed id cannot surface as `-32022`/`-32602`/`-32601` or a 
 stray link frontmatter is removed and the intended `informs` relationships are represented through the
 supported `item_links` store. All P0/P1 findings closed; no budgets breached; no new task added.
 
+### Cycle-10 review remediation
+
+Cycle-10 (PR #166, fresh Copilot review on HEAD `62df1b7`, round 3 of the second three-cycle
+allowance — final convergence cycle) reconciles two further threads, both confirmed against actual
+`urllib` redirect behavior and Python JSON parsing behavior by an internal multi-persona adversarial
+re-review (Security, Correctness, Scope/Width, Cross-interface blast-radius, Protocol-compliance).
+Reconciled across plan, feature DoD, tasks, Rollback, SA-1, Risks, execution order, dependency edges,
+shipment `055-S`, and continuity memory, preserving dependency acyclicity and every
+2-hour/width/scenario/function budget. Finding A adds ONE new width-isolated harness+impl pair (the
+manifest grows 26 → 28 tasks; the chain gains `064.026 → 064.027 → 064.028 → 064.014`, with `064.014-T`
+re-pointed from `064.026-T` to `064.028-T`); Finding B is an in-place strengthening (no new task).
+
+- **Redirect handler drains intermediate 3xx bodies with an unbounded `fp.read()` (thread A,
+  `064.013-T:26`).** The per-response streamed cap (`064.013-T`) and the aggregate during-read budget
+  (`064.017-T`/`064.024-T`) only replace the *terminal* `response.read()` the opener returns.
+  `urllib.request.HTTPRedirectHandler.http_error_302` (aliased to 301/303/307/308) drains each
+  intermediate 3xx body with its OWN unbounded `fp.read()` *before* `opener.open()` returns (verified
+  by reading the CPython source), so a hostile redirect chain bypasses BOTH the per-response
+  `MAX_RESPONSE_BYTES` cap and the request-scoped aggregate `MAX_TOTAL_FETCH_BYTES` budget — and the
+  plan's "applies to every redirect hop" claim was aspirational (the specified mechanism could not see
+  intermediate bodies). **Resolution:** §H7 item 2 now requires **extending the EXISTING single
+  redirect handler** `_ValidatingRedirectHandler` (`fetch/http.py:41`, already installed and already
+  overriding `redirect_request` for §H6 revalidation + the `max_redirects` count) with an
+  `http_error_302` override — plus rebinding ALL aliases
+  (`http_error_301 = http_error_303 = http_error_307 = http_error_308 = http_error_302`, since a
+  subclass overriding only `http_error_302` leaves the other four codes on the BASE unbounded handler,
+  verified) — whose bounded proxy reads/counts each intermediate 3xx body
+  through the SAME bounded reader against a fresh per-response cap AND the request-scoped aggregate
+  budget (bytes counted even while redirecting), raising the typed cap error mid-drain on breach while
+  preserving the redirect (wrap the intermediate `fp` + delegate to `super().http_error_302(...)` so
+  the existing `redirect_request` §H6 revalidation + count and the stdlib Location/loop/scheme logic
+  are unchanged). It is ONE composite handler, NOT a second handler — `OpenerDirector` dispatches a
+  given `http_error_NNN` to handlers in order and stops at the first returning a response, so two
+  redirect handlers could not both run (one would bypass either H6 validation or the bounded drain).
+  Delivered by a NEW width-isolated pair — harness **`064.027-T`** (T-redir-h, tests
+  domain, 3 scenarios: per-response intermediate-body cap [parametrized over 301/302/303/307/308 to
+  prove the alias rebind], aggregate intermediate-body accounting [budget seeded low / pre-consumed,
+  since `max_redirects` default 5 makes a single under-cap chain unable to reach 512 MiB],
+  redirect-still-follows + §H6-preserved) and impl **`064.028-T`** (T-redir-i, code domain, ≤1 file
+  `fetch/http.py`, reusing existing caps — no new constant). Split from `064.013-T`/`064.017-T`
+  because the redirect-handler override is additional width and the drain must decrement the aggregate
+  budget that only exists after `064.017-T`/`064.024-T`. `064.014-T` is re-pointed onto `064.028-T`
+  (its per-response "incl. redirect" scenario becomes truly redirect-enforced; 3-scenario budget
+  unchanged). Plan §H7 item 2, "Selected numeric limits" `MAX_RESPONSE_BYTES` note, "Cap tasks",
+  decomposition (10e/10f), dependency edges, execution order, Verification, Rollback, SA-1 record,
+  Risks, feature DoD H7 clause, `064.012-T`/`064.013-T` scope-carve notes, and shipment `055-S`
+  membership/order all reconciled.
+- **`json.loads` accepts `NaN`/`Infinity`/`-Infinity` (thread B, `064.002-T:25`).** Python's
+  `json.loads` parses the non-finite JSON extensions to `float` values (verified: `json.loads("NaN")`
+  → `nan`); such an `id` passes the string-or-number RequestId guard and, when echoed via
+  `json.dumps` (default `allow_nan=True`), is re-emitted as the bare non-JSON token `NaN`/`Infinity`/
+  `-Infinity`, corrupting the JSON-RPC frame. **Resolution:** the frame parse (`json.loads` in
+  `serve()`/the frame reader, before `dispatch()`) MUST pass a strict `parse_constant` callback that
+  REJECTS the `NaN`/`Infinity`/`-Infinity` TOKENS, mapping them to `-32700` (invalid JSON per RFC 8259 /
+  JSON-RPC 2.0). Critically, `parse_constant` does NOT fire for numeric OVERFLOW literals: `json.loads("1e400")`
+  returns `float('inf')` WITHOUT invoking it (verified), so the request-shape guard ALSO gains a
+  `math.isfinite()` clause that rejects a non-finite numeric `id` as `-32600` (`id:null`). Because both
+  guards run BEFORE era routing, no non-finite float — token OR overflow form — can enter `RequestId`
+  or any response serialization, and both eras inherit them.
+  Defense-in-depth: the response serializer emits with `allow_nan=False` and degrades a serialization
+  `ValueError` to a `-32603` envelope rather than crashing the serve loop. Implemented as a `kwarg` on
+  the EXISTING single `json.loads` call plus an inline clause in the EXISTING `dispatch()` id guard in
+  `064.002-T` (no new function — the ≤4-function transport
+  budget holds); asserted as extra parametrized rows on the EXISTING `-32700` parse-error case (tokens)
+  AND the EXISTING `-32600` invalid-id case (overflow literals) in the
+  `064.005-T` error-envelope scenario (no new scenario — budget stays 3). Plan request-shape /
+  error-envelope paragraph, Verification JSON-RPC conformance bullet, feature DoD JSON-RPC conformance
+  clause, `064.002-T`, and `064.005-T` all reconciled.
+
+Internal multi-persona adversarial re-review (Security / Correctness / Scope-Width / Cross-interface /
+Protocol-compliance), run against the CPython `urllib` source and empirical `json`/`urllib` probes
+BEFORE this commit, caught four in-cycle corrections now folded into the resolutions above: (1) a
+subclass overriding only `http_error_302` leaves 301/303/307/308 on the base unbounded handler → all
+five aliases MUST be rebound (and `064.027-T` parametrizes the cap scenario across them); (2) two
+redirect handlers cannot coexist (`OpenerDirector` runs only the first that returns a response) → the
+drain is folded into the EXISTING `_ValidatingRedirectHandler`, not a new handler; (3) with
+`max_redirects` default 5 a single under-cap chain cannot reach 512 MiB → the aggregate scenario seeds
+the budget low / pre-consumed to prove the decrement hermetically; (4) `parse_constant` does not catch
+overflow literals (`1e400` → `inf`) → a `math.isfinite()` id guard (`-32600`) closes that path.
+
+Re-review verdict (cycle-10, post-remediation): the redirect-drain bypass is closed by extending the
+existing single `_ValidatingRedirectHandler` (all redirect-code aliases rebound; ONE composite
+handler) to bounded-read/count intermediate 3xx bodies against the same per-response and aggregate
+allowances while preserving redirect function and §H6 revalidation; the non-finite framing bug is
+closed by a strict `parse_constant` rejection (`-32700`, tokens) plus a `math.isfinite()` id guard
+(`-32600`, overflow literals) before era routing, guaranteeing no non-finite number reaches
+`RequestId` or response serialization. Both fixes stay width-isolated (Finding A: 1 new harness+impl
+pair, single file each; Finding B: in-place kwarg + inline clause + parametrized rows), the chain stays a single
+linear acyclic test-first chain (`… → 064.026 → 064.027 → 064.028 → 064.014 → …`, 28 tasks), and no
+2-hour/width/scenario/function budget is breached. All P0/P1 findings closed.
+
 ## Rollback
 
 **Not purely additive.** The release unit adds new modules (`src/docline/mcp/stdio.py`,
@@ -1743,6 +1941,13 @@ existing files whose behavior changes for both interfaces:
     gains a hard `Field(default=0, ge=0, le=64)` upper bound (`MAX_DEPTH_LIMIT`; default preserved),
     rejecting over-limit depth `-32602`
     (064.025/064.026). Tightens accepted request COUNT on the shared path; also affects CLI crawls.
+- `src/docline/fetch/http.py` — intermediate-redirect-body drain (§H7 item 2, cycle-10): the
+  existing single `_ValidatingRedirectHandler` is extended (with all redirect-code aliases rebound)
+  so its bounded proxy reads/counts each intermediate 3xx redirect body against the per-response
+  `MAX_RESPONSE_BYTES` cap and the request-scoped aggregate budget, replacing urllib's in-handler
+  unbounded `fp.read()` (064.027/064.028). ONE composite handler; reuses existing caps (no new
+  constant); closes the redirect bypass of both byte budgets. Also affects CLI fetch (a hostile
+  redirect chain that previously drained now aborts).
 - `src/docline/app.py` — `get_manifest()` `fetch` description literal corrected to HTTP(S)-only
   (re-exposed unchanged by `get_mcp_manifest()`) (064.019, cycle-3). Text-only advertising change;
   flows to both `docline --manifest` (CLI) and
@@ -1760,7 +1965,7 @@ prior (weaker) SSRF/resource behavior on BOTH interfaces — reviewers must trea
 cross-interface change, not an isolated new transport. The MCP-only additions (stdio loop, dual-era
 protocol surface, adapter callable surface, entry point) can be reverted independently of the
 shared-fetch hardening if only the transport needs backing out; the shared-fetch tasks
-(064.010–064.013, 064.016–064.017, 064.024, 064.025–064.026) and the `fetch`-advertising correction (064.019) are
+(064.010–064.013, 064.016–064.017, 064.024, 064.025–064.026, 064.027–064.028) and the `fetch`-advertising correction (064.019) are
 self-contained and revertible on their own.
 
 ## Strict-Safety Action Records
@@ -1782,12 +1987,16 @@ forward into build, review, runtime verification, and closure.
   rejection with address-pinned connect on the initial URL and every redirect (§H6), and hard
   resource caps (§H7): `MAX_PAGES_LIMIT = 1000` upper bound, streamed `MAX_RESPONSE_BYTES` = 10 MiB
   per-response cap, a request-scoped during-read aggregate `MAX_TOTAL_FETCH_BYTES` = 512 MiB
-  budget, and a request-amplification bound (`MAX_FETCH_ATTEMPTS` = 4000 frontier-pop cap +
-  `MAX_DEPTH_LIMIT` = 64 depth upper bound, §H7 item 4). This tightens accepted inputs on an existing runtime path shared by CLI `docline fetch`
+  budget (also decrementing intermediate 3xx redirect bodies), a request-amplification bound
+  (`MAX_FETCH_ATTEMPTS` = 4000 frontier-pop cap +
+  `MAX_DEPTH_LIMIT` = 64 depth upper bound, §H7 item 4), and an extension of the existing
+  `_ValidatingRedirectHandler` (all redirect-code aliases rebound) that bounded-reads/counts every
+  intermediate 3xx redirect body against the same per-response and aggregate allowances (§H7 item 2,
+  closing urllib's in-handler unbounded `fp.read()` bypass). This tightens accepted inputs on an existing runtime path shared by CLI `docline fetch`
   and the MCP `fetch` tool.
 - **targets:** `src/docline/fetch/url_policy.py`, `src/docline/fetch/http.py`,
   `src/docline/fetch/crawl.py`, `src/docline/app_models.py`. Delivered by tasks 064.010–064.013,
-  064.016–064.017, 064.024, 064.025–064.026.
+  064.016–064.017, 064.024, 064.025–064.026, 064.027–064.028.
 - **change_kind:** shared-code security / behavior change (NOT purely additive) — cross-interface
   blast radius.
 - **rollback / containment:** self-contained and revertible per shared-fetch task (see `## Rollback`);
@@ -1829,8 +2038,9 @@ forward into build, review, runtime verification, and closure.
 ## Risks
 
 - Medium: shared-fetch hardening (§H6/§H7) changes existing CLI `docline fetch` behavior — a
-  hostname that resolves to a private address, or a crawl exceeding the new `max_pages`/response-byte
-  /aggregate caps, now fails where it previously succeeded. Mitigated by sizing caps above legitimate
+  hostname that resolves to a private address, a crawl exceeding the new `max_pages`/response-byte
+  /aggregate caps, or a redirect chain whose intermediate 3xx bodies exceed those caps, now fails
+  where it previously succeeded. Mitigated by sizing caps above legitimate
   use and keeping the existing `tests/fetch` suite green (or deliberately updating it for the new bound).
 - Medium: dual-era protocol surface adds real complexity (era classification, per-request `_meta`
   negotiation, two result shapes). Mitigated by sourcing identity/versions from a single
@@ -1846,6 +2056,16 @@ forward into build, review, runtime verification, and closure.
 - Low: address-pinned connect (§H6) connects to a validated IP while preserving the `Host` header /
   SNI; verify TLS certificate validation still targets the hostname (not the IP) so pinning does not
   weaken cert checks. Covered by the SSRF harness (064.010-T).
+- Low: extending the existing `_ValidatingRedirectHandler` to bounded-drain intermediate 3xx bodies
+  (§H7 item 2, 064.028-T) overrides stdlib redirect body draining; mitigated by wrapping the
+  intermediate `fp` in a bounded proxy and delegating to `super().http_error_302(...)` so the
+  existing `redirect_request` (§H6 revalidation + `max_redirects` count) and the stdlib
+  Location/loop/scheme logic are preserved, by rebinding all `http_error_301/302/303/307/308` aliases
+  to the bounded override, and by a redirect-still-follows scenario (064.027-T) proving legitimate
+  redirects are not broken. Residual (out of scope, cycle-10):
+  the stdlib loop-detection/disallowed-scheme paths raise `HTTPError` holding an unread `fp`; those
+  are bounded by `max_redirects` (default 5) and terminate the fetch, so they are not a new
+  amplification vector — noted for monitoring, not a blocker.
 - Low: stdout contamination would corrupt the JSON-RPC stream — mitigated by routing all logs
   to stderr and asserting clean stdout framing in tests.
 - Low: manifest drift between CLI and MCP — mitigated by the T1 parity assertion against the
