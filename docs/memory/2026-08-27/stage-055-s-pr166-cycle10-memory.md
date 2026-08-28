@@ -109,7 +109,7 @@ corrections.
   re-review note) + verdict.
 - Feature `064-F` DoD: H7 redirect-drain (composite handler) clause + JSON-RPC
   `-32700` (tokens) / `-32600` (overflow) non-finite clauses.
-- Shipment `055-S`: added `064.027-T`, `064.028-T` (28 members: `064-F` + 27
+- Shipment `055-S`: added `064.027-T`, `064.028-T` (29 members: `064-F` + 28
   tasks). Commit field left at operator's `62df1b7` (continuity); `updated_at`
   bumped.
 - `.backlogit/memories.json`: cycle-10 note appended to
@@ -120,7 +120,7 @@ corrections.
 
 - Dependency graph 064.*: acyclic, single linear chain, 27 edges / 28 nodes;
   `064.027→064.026`, `064.028→064.027`, `064.014→064.028` present; no cycle.
-- Shipment membership: `064-F` + all 27 `064.*` tasks; parent-first.
+- Shipment membership: `064-F` + all 28 `064.*` tasks; parent-first.
 - Budgets: 064.027 = 3 scenarios; 064.028 = ≤1 file; 064.002 = ≤4 functions
   (kwarg only); 064.005 = 3 scenarios (rows only). All within heuristics.
 - `memories.json` valid JSON (4 keys).

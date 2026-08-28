@@ -154,7 +154,7 @@ traceability checks resolve against the real `harvested` reason.
   `.vscode/mcp.json` `servers` stdio format + self-contained inline README example; reconciled Scope
   item 4 + plan T4. Added plan `### Cycle-6 review remediation` subsection. Gate: PASS (focused
   multi-persona review, all P0/P1 closed).
-- Tasks (test-first, width-isolated, single linear/acyclic chain of **26** (cycle-8 grew 24 → 26); execution order):
+- Tasks (test-first, width-isolated, single linear/acyclic chain of **28** (cycle-8 grew 24 → 26; cycle-10 grew 26 → 28); execution order):
   064.001-T (protocol/parity harness) → 064.005-T (dispatch/error incl. -32600 harness) →
   064.006-T (H1-H3 harness) → 064.007-T (H4-H6 literal harness) → 064.010-T (shared-fetch SSRF
   harness) → 064.011-T (shared-fetch SSRF + address-pinned connect impl) → 064.012-T (per-dimension
@@ -162,7 +162,9 @@ traceability checks resolve against the real `harvested` reason.
   (aggregate byte-accounting harness) → 064.017-T (raw-byte retention + byte-accurate aggregate
   impl, core: main+retry) → 064.024-T (aggregate budget on ancillary robots/TOC fetches, cycle-6
   split) → 064.025-T (request-amplification harness: non-counting branches + depth, cycle-8) →
-  064.026-T (fetch-attempt counter + depth bound impl, cycle-8) → 064.014-T (MCP untrusted-fetch end-to-end boundary harness) → 064.015-T (adapter
+  064.026-T (fetch-attempt counter + depth bound impl, cycle-8) → 064.027-T (intermediate-redirect-body
+  drain harness, cycle-10) → 064.028-T (bounded-draining redirect handler impl, cycle-10) →
+  064.014-T (MCP untrusted-fetch end-to-end boundary harness) → 064.015-T (adapter
   call_tool + list_callable_tools) → 064.018-T (fetch HTTP(S)-only advertising parity harness) →
   064.019-T (fetch description correction impl) → 064.002-T (core stdio transport loop, legacy-era
   base: dispatch/serve/-32600/H2) → 064.009-T (stdio runtime guardrails H1/H3/H4/H5) → 064.020-T
@@ -170,7 +172,7 @@ traceability checks resolve against the real `harvested` reason.
   064.022-T (modern negotiation impl: server/discover + _meta + -32022) → 064.023-T (dual-era
   routing + legacy retention impl) → 064.008-T (subprocess smoke harness) → 064.003-T (docline-mcp
   entry point) → 064.004-T (README client MCP config docs).
-- Shipment 055-S = 064-F + **26 tasks** (queued, priority high). Handoff token to Ship.
+- Shipment 055-S = 064-F + **28 tasks** (queued, priority high). Handoff token to Ship.
 
 ## Blocked/deferred backlog (durable, NOT shipped)
 
@@ -190,9 +192,9 @@ EVIDENCE / UNBLOCK requirements and `Do NOT fabricate` guardrails. Semantic link
 ## Next steps
 
 - Ship claims shipment 055-S → harness-architect authors the linear red harness chain, then
-  build-feature turns it green in execution order (26-task chain above). Key make-green order:
+  build-feature turns it green in execution order (28-task chain above). Key make-green order:
   shared-fetch SSRF+pinned-connect+proxy-disable 064.011 → per-dimension caps 064.013 → threaded
-    during-read aggregate budget 064.017 (core: main+retry) → 064.024 (ancillary robots/TOC) → request-amplification bound 064.026 (crawl.py fetch-attempt counter + app_models depth) → adapter 064.015 (call_tool + list_callable_tools) → fetch-desc correction 064.019 →
+    during-read aggregate budget 064.017 (core: main+retry) → 064.024 (ancillary robots/TOC) → request-amplification bound 064.026 (crawl.py fetch-attempt counter + app_models depth) → intermediate-redirect-body drain 064.028 (extends _ValidatingRedirectHandler; harness 064.027) → adapter 064.015 (call_tool + list_callable_tools) → fetch-desc correction 064.019 →
   core transport 064.002 (legacy-era base; greens the fetch boundary 064.014 via routing) → stdio
   guardrails 064.009 (H1/H3/H4/H5) → modern negotiation 064.022 (server/discover + _meta + -32022)
   → dual-era routing 064.023 → entry point 064.003 (greens smoke 064.008) → docs 064.004 →
@@ -235,3 +237,28 @@ never staged; no push/PR/claim/build/production-code).
   064.002-T/064.008-T/064.012-T/064.013-T/064.014-T; shipment 055-S membership (26 tasks);
   `.backlogit/memories.json` (both keys). Do NOT fold the amplification counter into 064.013-T or
   drop the depth bound.
+
+## Cycle-10 reconcile (PR #166, HEAD 62df1b7, round 3 of 3 — final)
+
+Fresh Copilot review raised two threads; both remediated (scope: planning/backlog/memory only; no
+source/test/config edits; operator's uncommitted config/agent/.gitignore edits preserved, never
+staged; no push/PR/claim/build/production-code). This cycle grew the chain 26 → 28.
+
+- **Finding A — intermediate 3xx redirect bodies bypass the per-response + aggregate byte caps.**
+  urllib's `HTTPRedirectHandler.http_error_302` (aliased 301/303/307/308) drains each intermediate
+  redirect body with its own unbounded `fp.read()` before `opener.open()` returns. Extended the
+  EXISTING single `_ValidatingRedirectHandler` (ONE composite handler; all five aliases rebound) to
+  bounded-read and count each intermediate body against a fresh per-response `MAX_RESPONSE_BYTES`
+  AND the request-scoped `MAX_TOTAL_FETCH_BYTES` budget, preserving §H6 revalidation. NEW
+  width-isolated pair **064.027-T** (harness, tests/fetch, 3 scenarios) / **064.028-T** (impl,
+  `fetch/http.py`, ≤1 file, reuses existing caps). 064.014-T re-pointed 064.026→064.028; chain
+  `064.026 → 064.027 → 064.028 → 064.014`.
+- **Finding B — non-finite JSON constants (in-place strengthening, no new task).** strict
+  `parse_constant` → `-32700` for NaN/Infinity tokens plus a `math.isfinite()` clause in the
+  `dispatch()` id guard → `-32600` (id:null) for non-finite numeric ids (064.002-T impl + 064.005-T
+  harness rows).
+- Updated: plan §H7 item 2 + Selected-numeric-limits + Cap-tasks + decomposition (10e/10f) +
+  dep-edges + execution-order + Verification + Rollback + SA-1 + Risks + cycle-10 remediation
+  subsection + intro cycle list; feature 064-F DoD; the current-state Tasks list, shipment count,
+  and make-green order above; `.backlogit/memories.json`. Shipment 055-S = 064-F + **28 tasks**
+  (29 members). Chain acyclic; shipment membership parent-first in dependency/execution order.

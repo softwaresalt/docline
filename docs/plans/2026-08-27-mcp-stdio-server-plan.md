@@ -46,9 +46,9 @@
   echoed, `id:null` frame; an absent id stays a notification), specified once in the shared
   pre-routing `dispatch()` guard and inherited by both eras (asserted for the legacy/shared path in
   064.005-T and for the modern path in 064.021-T scenario (c), implemented in 064.002-T with a
-  shape-before-`_meta`/era ordering criterion in 064.022-T, + feature DoD), and a stray unsupported
-  `links:` frontmatter block on `061.001-T` is removed in favor of the two intended `informs`
-  relationships in the supported `item_links` store. No new task (manifest stays 26).
+  shape-before-`_meta`/era ordering criterion in 064.022-T, + feature DoD),   and the two intended `informs`
+    relationships on `061.001-T` are kept durable in a tracked `links:` frontmatter block (the
+    git-ignored `item_links` DB cache is reconstructed from it on sync, not the reverse). No new task (manifest stays 26).
   Cycle-10 (PR #166, fresh review on HEAD 62df1b7, round 3 of the second three-cycle allowance)
   reconciles two further threads confirmed against actual `urllib` redirect + Python JSON behavior:
   (A) the existing single `_ValidatingRedirectHandler` is extended (all `http_error_301/302/303/307/308`
@@ -896,7 +896,9 @@ Backlog IDs are shown in brackets. All MCP-transport harness tasks author into
    `except AggregateBudgetExceededError: raise` before each
    `except (DoclineError, OSError)` (mirroring the existing `except CrawlUrlRejectedError: raise`), so
    `crawl()` RAISES rather than recording a per-page skip. `FetchResponse.body_byte_count` carries a
-   default (`= 0`, or is placed before the defaulted `redirect_count`) so the frozen dataclass and
+   default (`= 0`) and is **appended after** the existing defaulted `redirect_count` field (never
+   inserted before it — inserting before `redirect_count` would shift its positional-argument slot
+   and silently break `FetchResponse`'s public positional constructor) so the frozen dataclass and
    existing constructors stay valid. The budget defaults to unbounded for standalone single fetch.
    Isolated from T-cap-i so the shared-model (`FetchResponse`) blast radius and the byte-accurate
    during-read accounting land in one bounded task. **Split executed (cycle-6, PR #166 review):** the
@@ -1064,7 +1066,7 @@ Backlog IDs are shown in brackets. All MCP-transport harness tasks author into
     T-adapter) — the legacy `initialize` handshake still returns capabilities + `2025-11-25` +
     serverInfo, `notifications/initialized` is silent, `ping` → `{}`. This anchor asserts ONLY the
     legacy handshake surface (no cross-era comparison), so it cannot be "already green" while
-    depending on an unbuilt `server/discover`; the initialize-vs-discover no-drift equality is NOT
+    depending on an unbuilt `server/discover`; the initialize-vs-discover no-drift check is NOT
     part of it and lives in (b); (b) **era routing + no-drift (genuinely red** until T-era-i1
     discovery + T-era-i2 legacy branch) — a `tools/call` carrying modern `_meta` is served under
     modern semantics with no prior `initialize`, while the same method after `initialize` is served
@@ -1072,7 +1074,9 @@ Backlog IDs are shown in brackets. All MCP-transport harness tasks author into
     `_meta`) received **before** any `initialize` is **rejected** — never served as legacy — proving
     the process era is latched by `initialize`, not selected by an unadorned request shape (the
     **pre-initialize operation test**), AND `initialize` and `server/discover` report the **same**
-    identity/capabilities/supportedVersions from the single `describe_server()` source; (c)
+    identity/capabilities from the single `describe_server()` source, with `initialize.protocolVersion`
+    (legacy singular) **contained in** `server/discover.supportedVersions` (modern plural) — a
+    containment check, not singular-vs-plural field equality; (c)
     **modern-path guardrail parity + CallToolResult wire shape (parametrized)** — a modern (`_meta`,
     no `initialize`) `tools/call` (`fetch`/`process`/`export_schema`) enforces §H1 (`workspace_root`
     reject `-32602`), §H3 (absolute-path sanitization in `isError`), and §H5 (clean stdout)
@@ -1520,9 +1524,9 @@ unchanged; only acceptance-criteria text is reconciled.
   **Resolution:** the description correction is limited to the CLI manifest and `tools/list`
   (064.019-T, plan Task 14, Verification, Rollback).
 - **Cross-era equality marked "already green" too early (Correctness P2, 064.021-T)** — the
-  initialize-vs-`server/discover` no-drift equality cannot be green when 064.021-T is authored
+  initialize-vs-`server/discover` no-drift check cannot be green when 064.021-T is authored
   because `server/discover` is not implemented until successor 064.022-T. **Resolution:** scenario
-  (a) is a legacy-only green anchor; the no-drift equality moves to scenario (b) and stays red until
+  (a) is a legacy-only green anchor; the no-drift check moves to scenario (b) and stays red until
   discovery/legacy routing exist (064.021-T, plan Task 18).
 - **Aggregate enforcement during read (Security P1, 064.017-T)** — same root cause as the 064.013-T
   thread; summing after `fetch_page` returns cannot enforce a hard bound and ignores failed retried
@@ -1802,24 +1806,26 @@ manifest stays at 26 tasks.
   are unchanged. Plan request-shape validation paragraph, T1b harness summary, feature DoD JSON-RPC
   conformance clause, `064.005-T`, `064.002-T`, and the dual-era parity records
   `064.021-T`/`064.022-T` (guard-parity + ordering) all reconciled.
-- **Stray unsupported semantic-link frontmatter on a blocked spike (thread 2, `061.001-T:16`).**
-  `061.001-T` carried a `links:` block in its YAML frontmatter, but the backlog tooling contract
-  (`.github/instructions/backlogit-yaml-header-tooling.instructions.md`) requires semantic links to
-  live in the `item_links` relationship store, created via `backlogit_add_link`. **Resolution:** the
-  unsupported `links:` frontmatter was removed, and the two intended `informs` relationships
-  (`061.001-T → 060.001-T`, `061.001-T → 060.002-T`) are represented durably in `item_links`
-  (created through the supported `link add` path; verified present via `link list` and an
-  `item_links` SQL query, and confirmed to survive an index sync as db-only links). Relationship
-  traceability is preserved with no duplicate links introduced. This thread touches backlog metadata
-  only — no plan contract change.
+- **Semantic-link durability for a blocked spike (thread 2, `061.001-T:16`; durability
+  corrected in the current cycle).** `061.001-T`'s two intended `informs` relationships
+  (`061.001-T → 060.001-T`, `061.001-T → 060.002-T`) live in the `item_links` relationship store,
+  created via the supported `link add` path and verified present via `link list` and an `item_links`
+  SQL query. **Resolution:** because `.backlogit/backlogit.db` is a disposable, git-ignored query
+  cache (`.gitignore:227`) rather than a tracked source, the durable tracked representation of these
+  links is the tool-managed `links:` frontmatter block that `backlogit sync` materializes onto
+  `061.001-T` from `item_links` and re-reads on a fresh index rebuild. That block is RETAINED (not
+  stripped) so the relationships survive a fresh checkout / index rebuild — an earlier attempt to
+  remove it left the links represented only in the git-ignored cache, which would not survive the
+  handoff. Relationship traceability is preserved with no duplicate links introduced. This thread
+  touches backlog metadata only — no plan contract change.
 
 Re-review verdict (cycle-9, post-remediation): the request-id-type gap is closed at both the harness
 (`064.005-T`, legacy/shared path) and impl (`064.002-T`) contracts with the never-echo `id:null` rule
 specified once in the shared pre-routing guard; the pre-routing ordering is now test-bound on the
 MODERN path too (`064.021-T` scenario (c) malformed-id row + `064.022-T` request-shape-precedence
 criterion), so a malformed id cannot surface as `-32022`/`-32602`/`-32601` or a wrapped result; the
-stray link frontmatter is removed and the intended `informs` relationships are represented through the
-supported `item_links` store. All P0/P1 findings closed; no budgets breached; no new task added.
+intended `informs` relationships on `061.001-T` are kept durable in a tracked `links:` frontmatter
+block (the git-ignored `item_links` DB cache is reconstructed from it on sync). All P0/P1 findings closed; no budgets breached; no new task added.
 
 ### Cycle-10 review remediation
 

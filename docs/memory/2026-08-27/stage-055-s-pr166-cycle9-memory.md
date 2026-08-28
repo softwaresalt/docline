@@ -59,20 +59,24 @@ ordering coherent (valid-id unknown-method still `-32601`; pre-initialize reject
 and modern negotiation preserved), notification-vs-null-id consistent, budgets
 intact, cross-surface consistent. No remaining P0/P1.
 
-## Finding 2 — unsupported semantic-link frontmatter on `061.001-T`
+## Finding 2 — semantic-link durability for `061.001-T`
 
-`061.001-T` carried a `links:` YAML frontmatter block (unsupported per
-`.github/instructions/backlogit-yaml-header-tooling.instructions.md`). Removed the
-block. The two intended `informs` relationships (`061.001-T → 060.001-T`,
-`061.001-T → 060.002-T`) already existed durably in `item_links` (created via a
-prior `link add`; verified with `link list` + SQL). No duplicate links.
+`061.001-T`'s two intended `informs` relationships (`061.001-T → 060.001-T`,
+`061.001-T → 060.002-T`) live in the `item_links` relationship store (created via
+`link add`; verified with `link list` + SQL). No duplicate links.
 
-NOTE (tool behavior): `backlogit sync` re-materializes db-only links back INTO
-frontmatter (`migrate db-only links ... written=2`). To keep the committed
-artifact clean, the `links:` block was removed AFTER the last sync and NOT synced
-again before commit. A future `sync` by Ship will round-trip the block back into
-frontmatter as db-only-link materialization — this is tool-managed state outside
-the commit; the relationship store itself remains correct and queryable.
+DURABILITY (corrected this cycle): `item_links` is materialized only in
+`.backlogit/backlogit.db`, which is a disposable, git-ignored query cache
+(`.gitignore:227`) — NOT a tracked source. After a fresh checkout / index rebuild
+there is no tracked data from which to reconstruct db-only links. The durable,
+tracked source of truth is the tool-managed `links:` frontmatter block that
+`backlogit sync` materializes onto `061.001-T` from `item_links` and re-reads on
+rebuild (verified: `sync` round-trips db-only links into this exact frontmatter
+block). That block is RETAINED on `061.001-T` — an earlier removal (to keep the
+artifact "clean") left the links represented only in the git-ignored cache, which
+would not survive the handoff. A fresh-index rebuild (`sync` from Markdown source
+with the DB removed) reconstructs both `informs` links from the retained
+frontmatter block; the DB remains the disposable query surface.
 
 ## Verification
 
@@ -83,7 +87,8 @@ the commit; the relationship store itself remains correct and queryable.
   (002→019, 005→001, 021→020, 022→021).
 - Shipment `055-S`: covering feature `064-F` + 26 tasks, status queued; all edited
   tasks are members.
-- `item_links` 061.001-T: both `informs` links present (queryable).
+- `item_links` 061.001-T: both `informs` links present (queryable) and retained in
+  the tracked `links:` frontmatter block so they survive a fresh index rebuild.
 
 ## Next steps
 
