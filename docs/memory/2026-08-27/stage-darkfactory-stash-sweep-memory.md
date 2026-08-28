@@ -154,14 +154,15 @@ traceability checks resolve against the real `harvested` reason.
   `.vscode/mcp.json` `servers` stdio format + self-contained inline README example; reconciled Scope
   item 4 + plan T4. Added plan `### Cycle-6 review remediation` subsection. Gate: PASS (focused
   multi-persona review, all P0/P1 closed).
-- Tasks (test-first, width-isolated, single linear/acyclic chain of **24**; execution order):
+- Tasks (test-first, width-isolated, single linear/acyclic chain of **26** (cycle-8 grew 24 → 26); execution order):
   064.001-T (protocol/parity harness) → 064.005-T (dispatch/error incl. -32600 harness) →
   064.006-T (H1-H3 harness) → 064.007-T (H4-H6 literal harness) → 064.010-T (shared-fetch SSRF
   harness) → 064.011-T (shared-fetch SSRF + address-pinned connect impl) → 064.012-T (per-dimension
   cap harness) → 064.013-T (per-dimension cap impl: max_pages + response byte) → 064.016-T
   (aggregate byte-accounting harness) → 064.017-T (raw-byte retention + byte-accurate aggregate
   impl, core: main+retry) → 064.024-T (aggregate budget on ancillary robots/TOC fetches, cycle-6
-  split) → 064.014-T (MCP untrusted-fetch end-to-end boundary harness) → 064.015-T (adapter
+  split) → 064.025-T (request-amplification harness: non-counting branches + depth, cycle-8) →
+  064.026-T (fetch-attempt counter + depth bound impl, cycle-8) → 064.014-T (MCP untrusted-fetch end-to-end boundary harness) → 064.015-T (adapter
   call_tool + list_callable_tools) → 064.018-T (fetch HTTP(S)-only advertising parity harness) →
   064.019-T (fetch description correction impl) → 064.002-T (core stdio transport loop, legacy-era
   base: dispatch/serve/-32600/H2) → 064.009-T (stdio runtime guardrails H1/H3/H4/H5) → 064.020-T
@@ -169,7 +170,7 @@ traceability checks resolve against the real `harvested` reason.
   064.022-T (modern negotiation impl: server/discover + _meta + -32022) → 064.023-T (dual-era
   routing + legacy retention impl) → 064.008-T (subprocess smoke harness) → 064.003-T (docline-mcp
   entry point) → 064.004-T (README client MCP config docs).
-- Shipment 055-S = 064-F + **24 tasks** (queued, priority high). Handoff token to Ship.
+- Shipment 055-S = 064-F + **26 tasks** (queued, priority high). Handoff token to Ship.
 
 ## Blocked/deferred backlog (durable, NOT shipped)
 
@@ -189,16 +190,48 @@ EVIDENCE / UNBLOCK requirements and `Do NOT fabricate` guardrails. Semantic link
 ## Next steps
 
 - Ship claims shipment 055-S → harness-architect authors the linear red harness chain, then
-  build-feature turns it green in execution order (24-task chain above). Key make-green order:
+  build-feature turns it green in execution order (26-task chain above). Key make-green order:
   shared-fetch SSRF+pinned-connect+proxy-disable 064.011 → per-dimension caps 064.013 → threaded
-    during-read aggregate budget 064.017 (core: main+retry) → 064.024 (ancillary robots/TOC) → adapter 064.015 (call_tool + list_callable_tools) → fetch-desc correction 064.019 →
+    during-read aggregate budget 064.017 (core: main+retry) → 064.024 (ancillary robots/TOC) → request-amplification bound 064.026 (crawl.py fetch-attempt counter + app_models depth) → adapter 064.015 (call_tool + list_callable_tools) → fetch-desc correction 064.019 →
   core transport 064.002 (legacy-era base; greens the fetch boundary 064.014 via routing) → stdio
   guardrails 064.009 (H1/H3/H4/H5) → modern negotiation 064.022 (server/discover + _meta + -32022)
   → dual-era routing 064.023 → entry point 064.003 (greens smoke 064.008) → docs 064.004 →
-  review/CI/PR → merge. Cross-interface blast radius: 064.011/064.013/064.017/064.024 change shared fetch
+  review/CI/PR → merge. Cross-interface blast radius: 064.011/064.013/064.017/064.024/064.026 change shared fetch
   behavior (url_policy/http/crawl/app_models) for the CLI too; 064.019 changes the CLI --manifest
   advertising text; the dual-era surface (064.020-064.023) is additive to the transport with no
   legacy-client behavior change.
 - Blocked features 060–063 remain blocked until their evidence requirements are met; re-triage
   when Foundry credentials, representative corpora, a GPU host, or production I/O profiling
   become available.
+
+## Cycle-8 reconcile (PR #166, HEAD 4271ca7, round 2 of 3)
+
+Fresh Copilot review on 4271ca7 raised two threads; both remediated (scope: planning/backlog/memory
+only; no source/test/config edits; operator's uncommitted config/agent/.gitignore edits preserved,
+never staged; no push/PR/claim/build/production-code).
+
+- **Finding 1 (`064.013-T:25`) — max_pages does not bound actual fetch work; depth unbounded.**
+  `crawl.py` `_is_print_page`, duplicate (`final_key in emitted_urls`), and out-of-scope
+  (`not _url_within_section_scope(final_url, …)`) branches fetch WITHOUT `page_count += 1` (only the
+  print branch also enqueues links; duplicate/out-of-scope `continue` before link extraction),
+  while every frontier pop is a real fetch and `FetchRequest.depth` (`app_models.py:24`,
+  `Field(default=0, ge=0)`) had no upper bound → an attacker chains tiny under-cap `/print` pages to exceed
+  `MAX_PAGES_LIMIT` requests under the byte budgets. Added §H7 **item 4 request-amplification bound**
+  (request COUNT, not byte VOLUME): `MAX_FETCH_ATTEMPTS = 4 × MAX_PAGES_LIMIT = 4000` frontier-pop
+  counter in `fetch/crawl.py` (increments on EVERY pop; typed abort) + `MAX_DEPTH_LIMIT = 64`
+  (`FetchRequest.depth` `Field(default=0, ge=0, le=64)`, default preserved, over-limit `-32602`). Split into NEW width-isolated
+  pair **064.025-T** (harness, 2 scenarios) / **064.026-T** (impl: `crawl.py` counter +
+  `app_models.py` depth bound, 2 files) — split from 064.013-T because the counter lives in
+  `crawl.py`, a 3rd file beyond 064.013-T's pinned 2-file envelope. 064.014-T re-pointed
+  064.024→064.026; chain `064.024 → 064.025 → 064.026 → 064.014`.
+- **Finding 2 (`064.008-T:26`) — EOF-driven subprocess smoke cannot detect live stdio deadlocks.**
+  Rewrote 064.008-T to interactive `subprocess.Popen` (send+flush one frame, require its response
+  BEFORE the next frame with stdin OPEN, then EOF; timeout-bounded reads) and required 064.002-T
+  serve() NON-GREEDY input read (`read1`/`os.read`) + explicit stdout flush after every response
+  (a greedy `read(CHUNK_SIZE)` or unflushed stdout deadlocks the live probe).
+- Updated: plan §H7 item 4 + Selected-numeric-limits + Cap-tasks + decomposition (T-amp-h/T-amp-i) +
+  dep-edges + execution-order + Rollback + SA-1 + cycle-8 remediation subsection; plan T2/T2b +
+  Verification smoke bullet; feature 064-F DoD (H7 clause + interactive-liveness clause);
+  064.002-T/064.008-T/064.012-T/064.013-T/064.014-T; shipment 055-S membership (26 tasks);
+  `.backlogit/memories.json` (both keys). Do NOT fold the amplification counter into 064.013-T or
+  drop the depth bound.

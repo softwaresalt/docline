@@ -33,7 +33,14 @@
   the exact per-response and aggregate byte-cap boundaries via a `min(…, remainder + 1)` read-size
   cap so only the crossing byte is read (064.012-T/064.013-T and 064.016-T/064.017-T/064.024-T), and
   the regenerated 24-task continuity memory (`064.017 → 064.024 → 064.014`).
-  See `## Plan Review Remediation` (cycle-3, cycle-4, cycle-5, cycle-6, and cycle-7 subsections).
+  Cycle-8 (PR #166, fresh review on HEAD 4271ca7) reconciles two further threads: the §H7 **item 4
+  request-amplification bound** (a `MAX_FETCH_ATTEMPTS = 4000` frontier-pop cap in `fetch/crawl.py`
+  counting the print-page / duplicate / out-of-scope non-counting branches + a `MAX_DEPTH_LIMIT = 64`
+  `FetchRequest.depth` upper bound), split into a NEW width-isolated pair 064.025-T/064.026-T (chain
+  grows 24 → 26, `064.024 → 064.025 → 064.026 → 064.014`), and the **interactive stdio-liveness**
+  contract (064.008-T interactive `Popen` smoke + 064.002-T serve() non-greedy `read1`/`os.read` +
+  stdout flush) that detects live deadlocks an EOF-first smoke masks.
+  See `## Plan Review Remediation` (cycle-3, cycle-4, cycle-5, cycle-6, cycle-7, and cycle-8 subsections).
 - Cross-interface blast radius: this release unit is NOT purely additive. It hardens the
   **shared** fetch code (`fetch/url_policy.py`, `fetch/http.py`, `app_models.py`) that both
   the CLI and the MCP surface call, and it changes the existing `DoclineMcpServer` adapter's
@@ -184,6 +191,13 @@ criterion, not an advisory item.
   - `serve(stdin, stdout, server: DoclineMcpServer | None = None) -> int` — read/dispatch/write
     loop; `server` defaults to the existing module singleton `SERVER` (single construction
     path); terminates cleanly on EOF. Reserves the real stdout exclusively for JSON-RPC frames.
+    **Interactive liveness (cycle-8):** frames are read with a NON-GREEDY primitive (`read1` /
+    `os.read`, returning as soon as any bytes are available and never blocking to fill a whole
+    `CHUNK_SIZE`) and stdout is FLUSHED after EVERY response frame, so an interactive client that
+    sends one frame, awaits its response, then sends the next — with stdin still OPEN (the T2b
+    [`064.008-T`] live subprocess smoke test) — never deadlocks. A greedy `read(CHUNK_SIZE)` that
+    waits for the full chunk after a short frame, or a block-buffered stdout that withholds the
+    response until the pipe closes, would live-lock that probe; an EOF-first test would mask it.
   - `dispatch(message: dict, server: DoclineMcpServer) -> dict | None` — pure function mapping a
     single JSON-RPC request to a response dict (or `None` for any id-less notification —
     handled generically, no per-notification special case). Unit-testable without stdio.
@@ -215,7 +229,9 @@ criterion, not an advisory item.
   - Input bounds (DoS): frame reads MUST be bounded at the byte level, not size-checked after an
     unbounded `readline()`. A naive `stdin.readline()` (or `.read()` until newline) buffers an
     arbitrarily large — or never-terminated — frame into memory before any length check runs, so
-    the check provides no real bound. Instead read from the raw binary stream in fixed-size chunks
+    the check provides no real bound. Instead read from the raw binary stream with a NON-GREEDY
+    primitive (`read1` / `os.read`, which returns available bytes without blocking to fill the
+    request) in fixed-size chunks
     up to a hard `MAX_FRAME_BYTES` cap while scanning for the newline terminator: as soon as the
     accumulated bytes exceed the cap before a newline arrives, stop buffering, emit an
     error envelope, and **drain** the rest of that oversized frame in bounded chunks (discarding up
@@ -526,6 +542,54 @@ Security/reliability guardrails promoted to blocking design constraints after pl
     the SAME request-scoped budget and decrement it while their bytes are read (identically to main
     pages), so a hostile server cannot amplify transfer via oversized-but-under-cap
     `robots.txt`/TOC payloads outside the budget.
+  4. **Request-amplification bound (request COUNT, not byte VOLUME — cycle-8, review-mandated).**
+    The per-response (item 2) and aggregate (item 3) caps bound total *bytes transferred*, but
+    they do NOT bound the *number of requests*. `FetchRequest.max_pages` does not cap actual fetch
+    work either: the crawl loop (`fetch/crawl.py`) issues a real network fetch on **every** frontier
+    pop, but only increments `page_count` on *emitted* pages — three branches fetch a page yet
+    `continue` WITHOUT `page_count += 1`: the print-page branch
+    (`_is_print_page(final_url, response.body)`, which ALSO enqueues the page's links), the duplicate
+    branch (`final_key in emitted_urls`), and the out-of-scope-section branch
+    (`domain_lock and not _url_within_section_scope(final_url, section_scope)`). Only the print-page
+    branch enqueues links; the duplicate and out-of-scope branches simply consume a frontier pop
+    (a real fetch) and continue. Combined with `FetchRequest.depth` having **no upper bound**
+    (`app_models.py:24`, `Field(default=0, ge=0)`, flowed into `CrawlConfig.max_depth` at
+    `app.py:606`), an attacker-controlled server can chain tiny under-cap `/print` pages — each far
+    below `MAX_RESPONSE_BYTES` and contributing almost nothing to the `MAX_TOTAL_FETCH_BYTES`
+    aggregate — that each enqueue fresh in-scope links (a self-sustaining frontier), and can seed the
+    duplicate/out-of-scope pops from an emitted page that enqueues many distinct alias URLs which
+    each redirect to an already-emitted or out-of-section final URL — driving **far more than
+    `MAX_PAGES_LIMIT`** actual fetches (connection/DNS/robots amplification, retry storms)
+    while `page_count` never reaches its cap and the byte budgets stay unspent. Therefore two
+    coupled, hard, measurable request-count bounds are required (shared-code hardening, both
+    interfaces):
+    (a) a **fetch-attempt/frontier-pop cap**: `fetch/crawl.py` maintains a per-request `fetch_attempts`
+    counter incremented on EVERY frontier pop (an actual main-page fetch) — so the print-page,
+    duplicate, and out-of-scope branches all count — and aborts the crawl by RAISING a typed error
+    (a `DoclineError` subclass) once attempts would exceed `MAX_FETCH_ATTEMPTS`; the crawl RAISES,
+    it does not silently return the accumulated skipped results. Implement as a pre-fetch increment
+    plus abort, or extend the loop guard to `while frontier and page_count < max_pages and
+    fetch_attempts < MAX_FETCH_ATTEMPTS`. This caps FRONTIER POPS (main-page fetch attempts), which
+    is the unbounded amplification vector; the bounded per-pop multipliers — per-pop retries
+    (`_fetch_with_retries`) and per-hop redirects — remain governed by their existing small
+    constants, and the ancillary `robots.txt` (per-origin cached) and depth-0 TOC-script fetches
+    (`_discover_toc_links`) remain governed by the per-response cap + the aggregate byte budget, so
+    the total outbound-request count is a finite bounded product of the pop cap and those existing
+    limits rather than an unbounded chain. (b) a **depth upper bound**: `FetchRequest.depth` gains a
+    hard `Field(le=…)` upper bound (preserving `default=0`) so an over-limit value is rejected at
+    validation and surfaces as `-32602` on the MCP boundary, closing the unbounded-depth
+    frontier-expansion vector at the untrusted input.
+    **Coverage requirement.** The red harness MUST drive each of the three non-counting branches to
+    consume frontier pops without incrementing `page_count`, using a branch-accurate fake transport:
+    (i) **print** — each print response naturally enqueues a fresh in-scope link (a self-sustaining
+    frontier); (ii) **duplicate final URL** — an emitted page preloads many distinct alias request
+    URLs, each of which redirects (via `response.url`) to an already-emitted final URL, hitting the
+    `final_key in emitted_urls` branch; (iii) **out-of-scope** — an emitted page preloads many
+    distinct in-scope request URLs, each of which redirects to an out-of-section final URL, hitting
+    the `not _url_within_section_scope(final_url, …)` branch. Assert that consuming the frontier
+    through each branch trips `MAX_FETCH_ATTEMPTS` while `page_count` stays below `max_pages`; plus an
+    over-limit `depth` (`>= MAX_DEPTH_LIMIT + 1`) rejected at model validation AND a request
+    OMITTING `depth` still validating (depth defaults to 0).
   **Selected numeric limits (cycle-6, review-mandated — measurable boundary before red tests).**
   These constants are pinned now so the H7 harnesses (`064.012-T`, `064.016-T`, `064.014-T`) assert
   exact boundaries rather than implementation-time judgment. They are named module constants in the
@@ -565,6 +629,31 @@ Security/reliability guardrails promoted to blocking design constraints after pl
     `crawl()`) the instant a read returns a byte beyond the aggregate allowance (the over-budget
     transfer is at most `budget + 1`, not `budget + CHUNK_SIZE`). Defaults to unbounded (`None`) for
     a standalone single fetch so existing CLI single-fetch callers are unaffected.
+  - **`MAX_FETCH_ATTEMPTS = 4 * MAX_PAGES_LIMIT = 4000`** (per-request frontier-pop / actual
+    main-page fetch-attempt cap, enforced in `fetch/crawl.py`; §H7 item 4a). Rationale: `MAX_PAGES_LIMIT`
+    (1000) caps only *emitted* pages, but every frontier pop is a real fetch and the print-page /
+    duplicate / out-of-scope branches pop-and-fetch without incrementing `page_count`. Even a
+    skip-heavy legitimate crawl (redirects, duplicates, robots-disallowed, print variants) fetches
+    at most a small multiple of its emitted-page budget, so `4×` the hard page cap gives generous
+    headroom while hard-capping total main-page FETCH ATTEMPTS (frontier pops) at 4000 regardless of
+    how many are uncounted by `page_count` — closing the tiny-`/print`-page amplification vector.
+    Scope of the bound: this caps FRONTIER POPS, not raw HTTP transactions; the per-pop retries
+    (`_fetch_with_retries`) and per-hop redirects, and the ancillary per-origin-cached `robots.txt`
+    and depth-0 TOC-script fetches, remain bounded by their existing small constants and by the
+    per-response + aggregate byte caps — so the total outbound-request count is a finite bounded
+    product, not an unbounded chain. Boundary: exactly 4000 fetch
+    attempts are allowed; the 4001st is refused (the crawl RAISES a typed error, it does not return
+    the accumulated skipped results). Defaults to the same hard cap for CLI and MCP (shared code).
+  - **`MAX_DEPTH_LIMIT = 64`** (`FetchRequest.depth` bound: `Field(default=0, ge=0, le=64)` — the
+    existing `default=0` is PRESERVED so `depth` stays optional and a request omitting it defaults
+    to 0; §H7 item 4b).
+    Rationale: legitimate documentation trees are shallow (section → chapter → page, typically
+    depth 0–6); 64 is an order of magnitude above any realistic doc hierarchy while preventing an
+    untrusted caller from setting `depth` to a huge value to force deep frontier expansion. Combined
+    with domain-lock, section-scope, dedup, and the `MAX_FETCH_ATTEMPTS` cap, depth 64 bounds the
+    discovery tree. Boundary: `depth` in `0..64` inclusive is accepted; `>= 65` is rejected at
+    Pydantic validation → `-32602` on the MCP boundary. `depth` flows into `CrawlConfig.max_depth`
+    (`app.py:606`), so the model bound closes the untrusted-input depth vector.
 
   Cap tasks: the `max_pages` upper bound (`MAX_PAGES_LIMIT = 1000`) and the streamed per-response
   `MAX_RESPONSE_BYTES` (10 MiB) cap are delivered by harness `064.012-T` + impl `064.013-T`
@@ -578,10 +667,20 @@ Security/reliability guardrails promoted to blocking design constraints after pl
   `064.016-T` scenario (c)(iii) green-ownership. This isolates the shared-model (`FetchResponse`)
   blast radius and the non-ASCII/invalid-byte accounting tests from the per-dimension caps and keeps
   each impl task within the 2-hour/<5-function envelope.
+  The **request-amplification bound** (§H7 item 4 — the fetch-attempt/frontier cap
+  `MAX_FETCH_ATTEMPTS = 4000` in `fetch/crawl.py` covering the print-page / duplicate / out-of-scope
+  non-counting branches, plus the `FetchRequest.depth` upper bound `MAX_DEPTH_LIMIT = 64` in
+  `app_models.py`) is a distinct request-COUNT dimension (not byte VOLUME) delivered by harness
+  `064.025-T` + impl `064.026-T` (`fetch/crawl.py` / `app_models.py`, cycle-8 split — see
+  `## Plan Review Remediation` cycle-8). It is split from `064.013-T` (pinned to `app_models.py`
+  `max_pages` + `fetch/http.py` byte cap = 2 files) because the fetch-attempt counter lives in
+  `fetch/crawl.py`, a third file, which would breach `064.013-T`'s 2-file/function envelope.
   End-to-end proof: a `tools/call` `fetch` with
   over-limit `max_pages` (rejected `-32602`), an oversized response body (aborted, including on a
   redirect), and a crawl exceeding the aggregate budget (aborted) are asserted in the MCP boundary
-  harness `064.014-T`. Caps are set high enough not to break legitimate CLI crawls; the existing
+  harness `064.014-T`; the request-amplification depth over-limit (`-32602`) and fetch-attempt cap
+  are proven at the unit level in `064.025-T` (keeping `064.014-T` within its 3-scenario budget).
+  Caps are set high enough not to break legitimate CLI crawls; the existing
   fetch suite must remain green (or be deliberately updated for the new bound).
 
 ## Tasks (decomposition)
@@ -733,6 +832,32 @@ Backlog IDs are shown in brackets. All MCP-transport harness tasks author into
    Takes over green-ownership of `064.016-T` scenario (c)(iii) (ancillary-fetch accrual; `crawl()`
    RAISES). 2 functions touched, single file — within the 2-hour/<5-function envelope. Turns the
    ancillary sub-vector of T-agg-h green. Existing fetch suite stays green. Depends on T-agg-i.
+10c. T-amp-h [064.025-T] — Shared-fetch request-amplification harness (tests domain, 2 scenarios).
+   Author the failing harness for the request-COUNT bound (§H7 item 4): (1) a branch-accurate fake
+   transport drives `crawl()` to RAISE a typed error once total frontier pops reach
+   `MAX_FETCH_ATTEMPTS = 4000` while `page_count` stays below `max_pages`, asserting the counter
+   increments in EACH non-counting branch — **print** (each print response naturally enqueues a
+   fresh in-scope link, a self-sustaining frontier), **duplicate** (an emitted page preloads many
+   distinct alias request URLs that each redirect to an already-emitted final URL → `final_key in
+   emitted_urls`), and **out-of-scope** (an emitted page preloads many distinct in-scope request
+   URLs that each redirect to an out-of-section final URL → `not _url_within_section_scope`); only
+   the print branch enqueues links, so duplicate/out-of-scope pops are seeded from the emitted
+   page's preloaded frontier, not by those branches enqueuing; (2) `FetchRequest.depth >=
+   MAX_DEPTH_LIMIT + 1` (`>= 65`) is rejected at model validation (`-32602`), AND a request OMITTING
+   `depth` still validates (defaults to 0). This is a distinct dimension from the byte caps
+   (T-cap/T-agg), so it stays
+   width-isolated. Verify red [green@T-amp-i]. Depends on T-agg-aux.
+10d. T-amp-i [064.026-T] — Crawl fetch-attempt + depth amplification-bound impl (code domain, ≤2
+   files: `fetch/crawl.py` + `app_models.py`). (a) `fetch/crawl.py` adds a per-request
+   `fetch_attempts` counter incremented on EVERY frontier pop (extend the loop guard to
+   `while frontier and page_count < crawl_config.max_pages and fetch_attempts < MAX_FETCH_ATTEMPTS`,
+   or pre-fetch increment + abort) so the print-page / duplicate / out-of-scope branches count, and
+   RAISES a typed `DoclineError` subclass at the cap; (b) `app_models.py` bounds
+   `FetchRequest.depth` with `Field(default=0, ge=0, le=64)` (`MAX_DEPTH_LIMIT`; the `default=0` is
+   preserved so `depth` stays optional). Split out of T-cap-i
+   (064.013-T, pinned to `app_models.py` + `fetch/http.py`) because the counter lives in
+   `fetch/crawl.py`, a third file. Turns T-amp-h green. Existing fetch suite stays green (bounds
+   sized 4× the page cap / 64-deep). Depends on T-amp-h.
 11. T-e2e [064.014-T] — MCP untrusted-fetch end-to-end boundary harness (tests domain,
     3 scenarios). Through `tools/call` fetch (stdin JSON → dispatch → `server.fetch` →
     `execute_fetch`): (a) a public hostname resolving to loopback/private is rejected end-to-end
@@ -740,9 +865,11 @@ Backlog IDs are shown in brackets. All MCP-transport harness tasks author into
     oversized response (per-response `MAX_RESPONSE_BYTES` = 10 MiB cap incl. redirect) OR a crawl
     exceeding the aggregate `MAX_TOTAL_FETCH_BYTES` = 512 MiB budget is aborted
     end-to-end (§H7). Authored red (no dispatch loop yet). The shared-fetch guards (T-ssrf-i,
-    T-cap-i, T-agg-i, T-agg-aux) already enforce in `execute_fetch`, so once the dispatch loop routes
-    `server.fetch` these all go green at **T2** — no separate boundary wiring is required. Depends
-    on T-agg-aux (the full aggregate budget, ancillary included, is in place).
+    T-cap-i, T-agg-i, T-agg-aux, T-amp-i) already enforce in `execute_fetch`, so once the dispatch loop routes
+    `server.fetch` these all go green at **T2** — no separate boundary wiring is required. The
+    request-amplification bound (§H7 item 4) is proven at the unit level in T-amp-h, keeping this
+    harness within its 3-scenario budget. Depends
+    on T-amp-i (the full aggregate budget plus the request-amplification bound are in place).
 12. T-adapter [064.015-T] — Adapter callable surface + identity accessor (code domain, ≤2 files:
     `src/docline/mcp/server.py` + optionally a versions constant).
     Implement `DoclineMcpServer.call_tool(name, arguments)` (static `{name: adapter_callable}`
@@ -876,10 +1003,18 @@ Backlog IDs are shown in brackets. All MCP-transport harness tasks author into
     scenario already greened at T-era-i1 and must stay green. Depends on T-era-i1.
 21. T2b [064.008-T] — Subprocess smoke-test harness for the entry point (tests domain, 1 scenario).
     Author the failing automated subprocess test (matching `test_manifest_parity.py::`
-    `test_python_m_docline_cli_runs_main`) that spawns `python -m docline.mcp` / `docline-mcp`,
-    probes `server/discover` then pipes `tools/list` (modern path) — or the legacy
-    `initialize`+`tools/list` — then EOF, and asserts clean exit + tool names matching the
-    advertised MCP tool set (`docline --manifest` minus the excluded `ingest_local_dir`). Red until
+    `test_python_m_docline_cli_runs_main`) that launches `python -m docline.mcp` / `docline-mcp` via
+    `subprocess.Popen` with stdin AND stdout as pipes and keeps stdin OPEN across frames: it sends
+    and FLUSHES one frame (the modern `server/discover` probe, or the legacy `initialize`), REQUIRES
+    and reads that response BEFORE sending the next frame (`tools/list`), reads the `tools/list`
+    response, and only THEN closes stdin (EOF) and awaits a clean exit. This interactive
+    send→flush→require-response→send-next sequence DETECTS a live stdio deadlock (a greedy/buffered
+    server read waiting for a full `CHUNK_SIZE`, or a block-buffered unflushed stdout) that an
+    EOF-first "write everything then read" test masks; each response read is timeout-bounded so a
+    deadlock FAILS deterministically rather than hanging the suite. Asserts clean exit + tool names
+    matching the advertised MCP tool set (`docline --manifest` minus the excluded `ingest_local_dir`).
+    Its PASS depends on serve() (T2) reading non-greedily (`read1`/`os.read`) and flushing stdout
+    after every response (cycle-8). Red until
     the entry point exists [green@T3]. Depends on T-era-i2 (the fully hardened dual-era server ships
     in the executable).
 22. T3 [064.003-T] — `docline-mcp` entry point + module bootstrap (packaging surface only —
@@ -895,11 +1030,12 @@ Backlog IDs are shown in brackets. All MCP-transport harness tasks author into
     duplication). Depends on T3.
 
 Dependency edges: T1b→T1, T1c→T1b, T1d→T1c, T-ssrf-h→T1d, T-ssrf-i→T-ssrf-h, T-cap-h→T-ssrf-i,
-T-cap-i→T-cap-h, T-agg-h→T-cap-i, T-agg-i→T-agg-h, T-agg-aux→T-agg-i, T-e2e→T-agg-aux, T-adapter→T-e2e,
+T-cap-i→T-cap-h, T-agg-h→T-cap-i, T-agg-i→T-agg-h, T-agg-aux→T-agg-i, T-amp-h→T-agg-aux,
+T-amp-i→T-amp-h, T-e2e→T-amp-i, T-adapter→T-e2e,
 T-desc-h→T-adapter, T-desc-i→T-desc-h, T2→T-desc-i, T2s→T2, T-era-h1→T2s, T-era-h2→T-era-h1,
 T-era-i1→T-era-h2, T-era-i2→T-era-i1, T2b→T-era-i2, T3→T2b, T4→T3.
 Execution order: 064.001 → 064.005 → 064.006 → 064.007 → 064.010 → 064.011 → 064.012 → 064.013 →
-064.016 → 064.017 → 064.024 → 064.014 → 064.015 → 064.018 → 064.019 → 064.002 → 064.009 → 064.020 →
+064.016 → 064.017 → 064.024 → 064.025 → 064.026 → 064.014 → 064.015 → 064.018 → 064.019 → 064.002 → 064.009 → 064.020 →
 064.021 → 064.022 → 064.023 → 064.008 → 064.003 → 064.004.
 
 ## Verification
@@ -947,8 +1083,10 @@ Execution order: 064.001 → 064.005 → 064.006 → 064.007 → 064.010 → 064
   shared-fetch guards enforce via `execute_fetch`; no separate boundary wiring).
 - `ruff check .`, `ruff format --check .`, `pyright src/` clean.
 - Automated subprocess smoke (authored red in T2b [064.008-T], turned green by the T3 [064.003-T]
-  entry point) replaces manual verification: `docline-mcp` handling a `server/discover` probe (or
-  legacy `initialize`) + `tools/list` + EOF, tool names matching the advertised MCP tool set
+  entry point) replaces manual verification: `docline-mcp` handling an INTERACTIVE `server/discover`
+  probe (or legacy `initialize`) — one frame sent and flushed, its response required BEFORE the next
+  `tools/list` frame with stdin still open, then EOF — so a live stdio deadlock is detected, tool
+  names matching the advertised MCP tool set
   (`docline --manifest` minus the excluded `ingest_local_dir`).
 
 ## Plan Review Remediation
@@ -1446,6 +1584,59 @@ shared ancillary reader; the `CallToolResult` wire shape is required for both er
 shaping step; no dependency edges or shipment membership changed (chain and 24-item manifest already
 correct). All P0/P1 findings closed.
 
+### Cycle-8 review remediation (PR #166 review cycle 8, fresh Copilot review on HEAD 4271ca7)
+
+The cycle-7 commit (4271ca7) drew a fresh Copilot review with two unresolved threads (Stage resumed
+under the fresh operator-authorized three-cycle allowance, round 2). Both are reconciled here across
+plan, feature DoD, tasks, dependency chain, shipment 055-S membership, and continuity memory,
+preserving dependency acyclicity and execution order. This cycle ADDS a new width-isolated
+harness+impl pair (see below), so the manifest grows 24 → 26 tasks and the chain gains
+`064.024 → 064.025 → 064.026 → 064.014` (064.014-T re-pointed from 064.024-T to 064.026-T).
+
+- **`max_pages` does not bound actual fetch work; depth has no upper bound (thread 1, `064.013-T:25`).**
+  `crawl.py` fetches print pages, duplicate final URLs, and out-of-scope-section final URLs and
+  enqueues their links WITHOUT incrementing `page_count` (the `_is_print_page`, `final_key in
+  emitted_urls`, and `not _url_within_section_scope(final_url, …)` branches each `continue` without
+  `page_count += 1`), while every frontier pop is a real fetch and `FetchRequest.depth` has no
+  upper bound (`app_models.py:24`). An attacker can chain tiny under-cap `/print` pages to trigger
+  far more than `MAX_PAGES_LIMIT` requests while staying below the per-response and aggregate BYTE
+  budgets (which bound VOLUME, not COUNT). **Resolution:** added §H7 **item 4 — request-amplification
+  bound** with two hard, measurable, numeric limits in the "Selected numeric limits" block:
+  `MAX_FETCH_ATTEMPTS = 4 × MAX_PAGES_LIMIT = 4000` (a per-request frontier-pop counter incremented
+  on EVERY pop — so the three non-counting branches count — aborting `crawl()` with a typed error at
+  the cap) and `MAX_DEPTH_LIMIT = 64` (`FetchRequest.depth` `Field(default=0, ge=0, le=64)`, default preserved, over-limit
+  `-32602`). Because the fetch-attempt counter lives in `fetch/crawl.py` — a third file beyond
+  `064.013-T`'s pinned 2-file envelope (`app_models.py` + `fetch/http.py`) — the work is SPLIT into a
+  new width-isolated pair: harness **`064.025-T`** (T-amp-h, tests domain, 2 scenarios: drives each
+  non-counting branch to prove the attempt cap trips while `page_count` stays low; depth over-limit
+  rejection) and impl **`064.026-T`** (T-amp-i, code domain, 2 files: `fetch/crawl.py` counter +
+  `app_models.py` depth bound). The end-to-end boundary harness `064.014-T` is re-pointed onto
+  `064.026-T` (keeping its 3-scenario budget; the amplification bound is proven at the unit level in
+  `064.025-T`). Plan §H7, "Selected numeric limits", "Cap tasks", decomposition list, dependency
+  edges, execution order, Rollback, SA-1 record, feature DoD H7 clause, and shipment 055-S
+  membership all updated.
+- **EOF-driven subprocess smoke test cannot detect live stdio deadlocks (thread 2, `064.008-T:26`).**
+  With the pipe left open, a buffered `read(CHUNK_SIZE)` can wait for the requested byte count after
+  a short frame, and block-buffered stdout can retain a response unless explicitly flushed; closing
+  stdin first masks both. **Resolution:** rewrote `064.008-T` to an INTERACTIVE `subprocess.Popen`
+  harness — send and flush one frame (modern `server/discover` or legacy `initialize`), REQUIRE its
+  response BEFORE sending the next (`tools/list`) frame with stdin still OPEN, read that response,
+  THEN close stdin (EOF) and await clean exit; each response read is timeout-bounded so a deadlock
+  FAILS deterministically. Its PASS depends on the server side, so `064.002-T` serve() now REQUIRES
+  a NON-GREEDY input read (`read1`/`os.read`) and an EXPLICIT stdout flush after EVERY response
+  (also propagated to the bounded frame-read helper). Plan T2 serve()/input-bounds, plan T2b
+  decomposition entry, the Verification "automated subprocess smoke" bullet, `064.008-T`,
+  `064.002-T`, and feature DoD line 1 (interactive-liveness clause) all reconciled. Scope preserved:
+  no source/test code written; `064.002-T` and `064.008-T` retain their existing file/scenario
+  envelopes (the change is a behavioral requirement, not a new function or scenario).
+
+Re-review verdict (cycle-8, post-remediation): both threads reconciled consistently; the
+request-amplification bound is numeric and measurable before its red harness, split into an
+envelope-compliant width-isolated pair with an acyclic, order-preserving chain (`064.024 → 064.025 →
+064.026 → 064.014`); the interactive stdio-liveness contract is specified on both the test (Popen
+framing) and server (non-greedy read + flush) sides from one shared requirement. All P0/P1 findings
+closed.
+
 ## Rollback
 
 **Not purely additive.** The release unit adds new modules (`src/docline/mcp/stdio.py`,
@@ -1468,6 +1659,13 @@ existing files whose behavior changes for both interfaces:
   (main pages, retries via 064.016/064.017; ancillary robots/TOC via split successor 064.024),
   aborting mid-read. Additive field +
   threaded budget; also affects CLI crawls.
+- `src/docline/fetch/crawl.py` + `src/docline/app_models.py` — request-amplification bound (§H7
+  item 4, cycle-8): the crawl loop adds a per-request `fetch_attempts` counter incremented on every
+  frontier pop (so the print-page / duplicate / out-of-scope non-counting branches count) and
+  RAISES a typed error once attempts exceed `MAX_FETCH_ATTEMPTS = 4000`, and `FetchRequest.depth`
+    gains a hard `Field(default=0, ge=0, le=64)` upper bound (`MAX_DEPTH_LIMIT`; default preserved),
+    rejecting over-limit depth `-32602`
+    (064.025/064.026). Tightens accepted request COUNT on the shared path; also affects CLI crawls.
 - `src/docline/app.py` — `get_manifest()` `fetch` description literal corrected to HTTP(S)-only
   (re-exposed unchanged by `get_mcp_manifest()`) (064.019, cycle-3). Text-only advertising change;
   flows to both `docline --manifest` (CLI) and
@@ -1485,7 +1683,7 @@ prior (weaker) SSRF/resource behavior on BOTH interfaces — reviewers must trea
 cross-interface change, not an isolated new transport. The MCP-only additions (stdio loop, dual-era
 protocol surface, adapter callable surface, entry point) can be reverted independently of the
 shared-fetch hardening if only the transport needs backing out; the shared-fetch tasks
-(064.010–064.013, 064.016–064.017, 064.024) and the `fetch`-advertising correction (064.019) are
+(064.010–064.013, 064.016–064.017, 064.024, 064.025–064.026) and the `fetch`-advertising correction (064.019) are
 self-contained and revertible on their own.
 
 ## Strict-Safety Action Records
@@ -1506,12 +1704,13 @@ forward into build, review, runtime verification, and closure.
 - **ProposedAction.summary:** Harden the shared fetch code path — add SSRF-by-DNS-resolution
   rejection with address-pinned connect on the initial URL and every redirect (§H6), and hard
   resource caps (§H7): `MAX_PAGES_LIMIT = 1000` upper bound, streamed `MAX_RESPONSE_BYTES` = 10 MiB
-  per-response cap, and a request-scoped during-read aggregate `MAX_TOTAL_FETCH_BYTES` = 512 MiB
-  budget. This tightens accepted inputs on an existing runtime path shared by CLI `docline fetch`
+  per-response cap, a request-scoped during-read aggregate `MAX_TOTAL_FETCH_BYTES` = 512 MiB
+  budget, and a request-amplification bound (`MAX_FETCH_ATTEMPTS` = 4000 frontier-pop cap +
+  `MAX_DEPTH_LIMIT` = 64 depth upper bound, §H7 item 4). This tightens accepted inputs on an existing runtime path shared by CLI `docline fetch`
   and the MCP `fetch` tool.
 - **targets:** `src/docline/fetch/url_policy.py`, `src/docline/fetch/http.py`,
   `src/docline/fetch/crawl.py`, `src/docline/app_models.py`. Delivered by tasks 064.010–064.013,
-  064.016–064.017, 064.024.
+  064.016–064.017, 064.024, 064.025–064.026.
 - **change_kind:** shared-code security / behavior change (NOT purely additive) — cross-interface
   blast radius.
 - **rollback / containment:** self-contained and revertible per shared-fetch task (see `## Rollback`);
