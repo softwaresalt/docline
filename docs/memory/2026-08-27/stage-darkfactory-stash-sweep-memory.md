@@ -110,6 +110,26 @@ traceability checks resolve against the real `harvested` reason.
     function/split guards on 064.017/064.022, scenario-budget attestations on 064.020/064.021, SSRF
     address normalization (IPv4-mapped/ULA/CGNAT/0.0.0.0) + empty-ProxyHandler system-proxy suppression,
     and a per-request disk-exhaustion residual in Risks. Gate: PASS after in-place remediation.
+- **Cycle-5 review (PR #166, HEAD b90fa77, 7 threads) — closed here.** Planning/backlog/memory only
+  (no production/test code; operator's uncommitted config/agent/.gitignore edits preserved and NOT
+  staged). Thread→fix: (1) era classifier — legacy era is now **latched per-process by `initialize`**;
+  metadata-free operations before that latch are **rejected**, never served as legacy; the modern
+  `_meta` branch stays **request-stateless**; added a **pre-initialize operation test** (plan Protocol
+  Era Model + Verification; 064.021-T scenario b, greened by the legacy branch in 064.023-T; feature
+  DoD). (2) feature 064-F H7 DoD — replaced the insecure post-return `body_byte_count` accumulator with
+  the **request-scoped during-read remaining-byte budget** (decremented per chunk, counts retries +
+  ancillary robots/TOC, aborts mid-read); `body_byte_count` retained ONLY as per-response observability
+  (matches 064.016/064.017 + §H7). (3) 064.015-T — allow-list values are **uniform (arguments: dict)
+  adapter callables** (fetch/process build a request object; `export_schema` accepts only `{}`); the
+  dispatchability test **invokes all three tools** (plan Design + H4 + Task 12). (4/5/7) `get_manifest()`
+  is the description **edit target** (re-exposed by `get_mcp_manifest()`) at the Design fetch-advertising
+  note, Task 14, and the Rollback inventory. (6) `.backlogit/memories.json`
+  `stage-2026-08-27-darkfactory-stash-sweep` regenerated to the during-read budget + `get_manifest()`
+  target so a future session cannot restore the rejected approach. Internal 4-persona adversarial
+  re-review (Security/Correctness/Consistency/Scope) surfaced two P1s — remnant plan passages (Scope,
+  §H7 cap-tasks, Tasks narrative, Verification) still prescribing the accumulator, and the feature DoD
+  claiming `server/discover` advertises the fetch description — both **remediated in-place** and
+  re-verified clean. Added plan `### Cycle-5 review remediation` subsection. Gate: PASS.
 - Tasks (test-first, width-isolated, single linear/acyclic chain of **23**; execution order):
   064.001-T (protocol/parity harness) → 064.005-T (dispatch/error incl. -32600 harness) →
   064.006-T (H1-H3 harness) → 064.007-T (H4-H6 literal harness) → 064.010-T (shared-fetch SSRF
