@@ -55,7 +55,7 @@ traceability checks resolve against the real `harvested` reason.
     **fetch resource caps — hard `max_pages` upper bound + streamed `MAX_RESPONSE_BYTES` cap incl.
     redirects + aggregate `MAX_TOTAL_FETCH_BYTES` crawl budget (H7)**.
   - Cycle-2b multi-persona re-review (Consistency/Security/Architecture/Scope) closed 1 P1 + P2s:
-    64-F DoD → H1-H7; address-pinned connect (DNS-rebinding) in-scope; aggregate crawl-byte budget
+    064-F DoD → H1-H7; address-pinned connect (DNS-rebinding) in-scope; aggregate crawl-byte budget
     added; adapter surface extracted to 064.015-T with the `list_tools()`-parity-only /
     `list_callable_tools()`-sole-advertise invariant; 064.009 narrowed to H1/H3/H4/H5 (shared-fetch
     guards auto-enforce via `execute_fetch`, no boundary wiring); explicit red-only harness milestone
@@ -79,6 +79,37 @@ traceability checks resolve against the real `harvested` reason.
     ownership) + P2 (describe_server() moved into adapter task 064.015 so identity single-source
     holds at every commit), Consistency P2 (064.013 title retitled off "aggregate"), and P3s
     (aux robots/TOC bytes accrue to the aggregate; 064.021 scenario-a reframed as regression anchor).
+  - **Cycle-4 review (PR #166, 12 threads) — closed here.** Planning/backlog/memory only (no
+    production/test code). (1) Plan scope narrowed: the §H6/§H7 shared-fetch hardening explicitly
+    DOES change `execute_fetch` for both interfaces and is in scope; only `execute_process` and
+    non-hardening fetch changes are excluded. (2) Frame reader gains a **carry-over buffer**
+    (preserve post-newline bytes in normal + oversized-drain paths) + two-frames-in-one-chunk test
+    (§H2, 064.006/064.002). (3+12) Aggregate byte budget is enforced by a **request-scoped
+    remaining-byte budget threaded into `fetch_page`/the bounded reader, decremented while chunks
+    are read** (aborting mid-read), counting retried failures + ancillary robots/TOC fetches — NOT
+    a post-return accumulator (§H7 item 3, 064.016/064.017; 064.013 delegation note). (4) SSRF pin
+    also **disables inherited proxies** (empty ProxyHandler) so `HTTP(S)_PROXY` cannot re-resolve
+    (§H6 item 3, 064.010/064.011). (5) H4 maps the **adapter's typed unknown-tool error** to
+    -32602; no allow-list duplicated in `stdio.py` (§H4, 064.009). (6) Memory feature ID
+    `64-F`→`064-F`. (7) 064.018 locates the fetch tool **by name** (`.tools` is a list, not a dict).
+    (8) `DiscoverResult` carries required **`ttlMs`/`cacheScope`** (CacheableResult; 064.020/064.022).
+    (9) Modern `_meta` validates **both `protocolVersion` AND `clientCapabilities`** (064.020/064.022).
+    (10) `server/discover` is NOT a description surface — fetch-desc correction limited to CLI
+    `--manifest` + `tools/list` (064.019). (11) 064.021 scenario-a is a legacy-only green anchor;
+    the initialize-vs-discover no-drift equality stays RED until discovery (064.022) exists. Plan +
+    memory reconciled; the 23-task chain and edges are unchanged.
+  - **Cycle-4 internal 4-persona plan-review (Security/Architecture/Scope/Correctness) — closed here.**
+    Architecture returned a blocking P1: an aggregate-budget AggregateBudgetExceededError (DoclineError
+    subclass) would be swallowed by crawl.py's FOUR broad `except (DoclineError, OSError)` handlers
+    (crawl main loop, _fetch_with_retries, _robots_allow, _discover_toc_links). Closed by requiring
+    `except AggregateBudgetExceededError: raise` at all four sites (mirroring the existing
+    CrawlUrlRejectedError re-raise) so crawl() RAISES (064.016/064.017, plan §H7). Also folded in:
+    modern guard-funnel intrinsic at 064.022 (064.023 verifies), clientCapabilities rejection pinned to
+    -32602 (version-first precedence), named UnknownToolError caught before -32603, body_byte_count
+    default on the frozen dataclass, get_manifest (not get_mcp_manifest) as the description edit target,
+    function/split guards on 064.017/064.022, scenario-budget attestations on 064.020/064.021, SSRF
+    address normalization (IPv4-mapped/ULA/CGNAT/0.0.0.0) + empty-ProxyHandler system-proxy suppression,
+    and a per-request disk-exhaustion residual in Risks. Gate: PASS after in-place remediation.
 - Tasks (test-first, width-isolated, single linear/acyclic chain of **23**; execution order):
   064.001-T (protocol/parity harness) → 064.005-T (dispatch/error incl. -32600 harness) →
   064.006-T (H1-H3 harness) → 064.007-T (H4-H6 literal harness) → 064.010-T (shared-fetch SSRF
@@ -114,8 +145,8 @@ EVIDENCE / UNBLOCK requirements and `Do NOT fabricate` guardrails. Semantic link
 
 - Ship claims shipment 055-S → harness-architect authors the linear red harness chain, then
   build-feature turns it green in execution order (23-task chain above). Key make-green order:
-  shared-fetch SSRF+pinned-connect 064.011 → per-dimension caps 064.013 → byte-accurate aggregate
-  064.017 → adapter 064.015 (call_tool + list_callable_tools) → fetch-desc correction 064.019 →
+  shared-fetch SSRF+pinned-connect+proxy-disable 064.011 → per-dimension caps 064.013 → threaded
+    during-read aggregate budget 064.017 → adapter 064.015 (call_tool + list_callable_tools) → fetch-desc correction 064.019 →
   core transport 064.002 (legacy-era base; greens the fetch boundary 064.014 via routing) → stdio
   guardrails 064.009 (H1/H3/H4/H5) → modern negotiation 064.022 (server/discover + _meta + -32022)
   → dual-era routing 064.023 → entry point 064.003 (greens smoke 064.008) → docs 064.004 →

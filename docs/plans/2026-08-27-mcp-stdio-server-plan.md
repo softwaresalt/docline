@@ -13,8 +13,11 @@
   Security, Scope, Consistency). Cycle-3 (PR #166) adds authoritative-spec-driven **dual-era
   protocol conformance** (MCP `2026-07-28` `server/discover` + per-request `_meta` negotiation +
   `-32022`, alongside the retained legacy `initialize` handshake), **enforceable aggregate
-  transfer-byte accounting**, and an **HTTP(S)-only `fetch` advertising correction**. See
-  `## Plan Review Remediation` (cycle-3 subsection).
+  transfer-byte accounting**, and an **HTTP(S)-only `fetch` advertising correction**. Cycle-4
+  (PR #166) reconciles twelve unresolved review threads: threaded during-read aggregate budget,
+  frame carry-over buffering, proxy-disable for the SSRF pin, adapter-owned unknown-tool mapping,
+  required `DiscoverResult` cache metadata + `clientCapabilities`, and scope/parity wording fixes.
+  See `## Plan Review Remediation` (cycle-3 and cycle-4 subsections).
 - Cross-interface blast radius: this release unit is NOT purely additive. It hardens the
   **shared** fetch code (`fetch/url_policy.py`, `fetch/http.py`, `app_models.py`) that both
   the CLI and the MCP surface call, and it changes the existing `DoclineMcpServer` adapter's
@@ -30,10 +33,12 @@ In scope:
    - **Legacy era (`2025-11-25` and earlier):** `initialize`, `notifications/initialized`,
      `tools/list`, `tools/call`, `ping`.
    - **Modern era (`2026-07-28`):** `server/discover` (MUST), plus `tools/list` / `tools/call`
-     served statelessly with the protocol version read from each request's
-     `_meta.io.modelcontextprotocol/protocolVersion`; unsupported versions return
-     `-32022 UnsupportedProtocolVersionError`; results carry `resultType:"complete"` and
-     `_meta.io.modelcontextprotocol/serverInfo`; list results carry `ttlMs`/`cacheScope`.
+     served statelessly with per-request `_meta` carrying BOTH
+     `io.modelcontextprotocol/protocolVersion` AND `io.modelcontextprotocol/clientCapabilities`;
+     unsupported versions return `-32022 UnsupportedProtocolVersionError` and missing/malformed
+     `clientCapabilities` returns `-32602` (checked after version); results carry
+     `resultType:"complete"` and `_meta.io.modelcontextprotocol/serverInfo`; list results AND the
+     `DiscoverResult` (a `CacheableResult`) carry `ttlMs`/`cacheScope`.
    - **Era routing:** a request carrying modern `_meta` is served under modern semantics; an
      `initialize` request selects legacy semantics. Authoritative basis: MCP spec
      `2026-07-28` (`server/discover.mdx`, `basic/versioning.mdx`, `basic/transports/stdio.mdx`)
@@ -74,9 +79,16 @@ Out of scope (explicitly):
   `subscriptions/listen`, Multi Round-Trip Requests (MRTR), the tasks/sampling/roots/logging
   features, and OpenTelemetry `_meta` conventions are all deferred (not required for a
   tools-only stdio server; adding them would be scope creep).
-- Any change to `execute_fetch` / `execute_process` *processing* behavior (I/O parity must be
-  preserved). The `fetch` advertising correction changes only the advertised description text to
-  match the existing rejection behavior, not the behavior itself.
+- Any change to `execute_process` *processing* behavior, and any change to `execute_fetch`
+  behavior **beyond** the specified §H6/§H7 hardening. The in-scope shared-fetch hardening —
+  DNS-resolution SSRF rejection + address-pinned connect (§H6) and the `max_pages` /
+  per-response / aggregate resource caps (§H7) — **deliberately DOES change** shared
+  `execute_fetch` behavior for BOTH the CLI and the MCP surface; that security work is squarely
+  in scope (see `## Plan Hardening` §H6/§H7, the shared-fetch tasks in `## Tasks`, `## Rollback`,
+  and `## Risks`). Only `execute_fetch` changes *outside* that specified hardening are excluded,
+  so implementers must NOT treat the §H6/§H7 security work as out of scope. The `fetch`
+  advertising correction changes only the advertised description text to match the existing
+  rejection behavior, not processing behavior.
 - Adopting the `mcp` SDK or FastAPI (see deliberation Option B rejection).
 
 ## Constitution Check
@@ -156,11 +168,15 @@ criterion, not an advisory item.
       serverInfo; `notifications/initialized` → silent; `ping` → `{}` (legacy-only utility,
       removed in the modern era).
     - **Modern era:** `server/discover` → `DiscoverResult` (supportedVersions, capabilities,
-      serverInfo in `_meta`, `resultType:"complete"`) via a single adapter accessor;
-      `tools/list` / `tools/call` served statelessly with the protocol version taken from
-      `_meta.io.modelcontextprotocol/protocolVersion` (no prior handshake), an unsupported
-      version returning `-32022`, and modern results carrying `resultType:"complete"` +
-      serverInfo `_meta` (list results also `ttlMs`/`cacheScope`).
+      serverInfo in `_meta`, `resultType:"complete"`, and — since `DiscoverResult` is a
+      `CacheableResult` — `ttlMs`/`cacheScope`) via a single adapter accessor;
+      `tools/list` / `tools/call` served statelessly with the per-request `_meta` carrying BOTH
+      `io.modelcontextprotocol/protocolVersion` AND `io.modelcontextprotocol/clientCapabilities`
+      (no prior handshake); an unsupported protocol version returns `-32022`, and a request with
+      missing/malformed `clientCapabilities` returns `-32602` (validated only after version is
+      accepted, so version negotiation takes precedence);
+      modern results carry `resultType:"complete"` + serverInfo `_meta` (list results also
+      `ttlMs`/`cacheScope`).
     - Common: `tools/list` → callable allow-list via `server.list_callable_tools()`;
       `tools/call` → `server.call_tool`. The version/identity/capability source of truth lives
       in exactly ONE adapter accessor (mirroring the single-source tool allow-list), so
@@ -173,6 +189,14 @@ criterion, not an advisory item.
     accumulated bytes exceed the cap before a newline arrives, stop buffering, emit an
     error envelope, and **drain** the rest of that oversized frame in bounded chunks (discarding up
     to the next newline or EOF) so the loop resynchronizes without ever holding the whole frame.
+    **Carry-over buffer (required, both paths).** A fixed-size chunk read can return a frame's
+    newline terminator followed by the first bytes of the NEXT frame; the reader MUST retain those
+    post-newline bytes in a carry-over buffer and seed the next frame's accumulation from them —
+    never discard them — in BOTH the normal-frame path AND the oversized-drain path (when draining
+    to the next newline, any bytes after that newline belong to the following frame and MUST be
+    preserved). Dropping the suffix would silently lose the next JSON-RPC request. A test MUST
+    cover two complete frames arriving in a single chunk (both are dispatched), including the case
+    where the second frame immediately follows an oversized-drained first frame.
     Memory stays bounded even for an unterminated or chunked-oversized input. The parse-error
     handler catches `ValueError` AND `RecursionError` (deeply nested JSON raises `RecursionError`,
     a `RuntimeError` subclass that `json.JSONDecodeError` handling would miss) so one hostile
@@ -180,7 +204,8 @@ criterion, not an advisory item.
   - Error envelopes: `-32700` parse error (invalid JSON), `-32600` invalid request (valid JSON
     but not a valid request object — see request-shape validation above), `-32601` method not
     found, `-32602` invalid params (wrap Pydantic `ValidationError`) and unknown/unroutable tool
-    name (fail closed), `-32603` internal error. Messages MUST be generic and non-reflective: no
+    name (the adapter `call_tool`'s typed unknown-tool error, mapped here — the transport holds no
+    allow-list of its own; fail closed), `-32603` internal error. Messages MUST be generic and non-reflective: no
     absolute paths, no `PathContainmentError` text, no tracebacks in `message`/`data`; log full
     detail to stderr.
   - Tool-result mapping: `execute_fetch`/`execute_process` model failure as a *successful* call
@@ -191,9 +216,12 @@ criterion, not an advisory item.
     `max_pages` upper bound (enforced in the shared `FetchRequest` model), a streamed
     per-response byte cap (`MAX_RESPONSE_BYTES`) enforced in `fetch/http.py` on the initial
     response AND every redirect hop — replacing the unbounded `response.read()` — and a
-    byte-accurate aggregate crawl budget (`MAX_TOTAL_FETCH_BYTES`) that sums the **raw** body
-    byte count retained on `FetchResponse` (not decoded characters). These live in shared fetch
-    code (see §H7 and the shared-fetch tasks), not in the transport module.
+    byte-accurate aggregate crawl budget (`MAX_TOTAL_FETCH_BYTES`) enforced by a request-scoped
+    remaining-byte budget threaded into `fetch_page`/the bounded reader and decremented per chunk as
+    the **raw** wire bytes are read (aborting mid-read; counting retried failures and ancillary
+    robots/TOC fetches), with the raw `body_byte_count` also retained on `FetchResponse` for
+    per-response accounting. These live in shared fetch code (see §H7 and the shared-fetch tasks),
+    not in the transport module.
   - `fetch` advertising (cycle-3): the shared manifest's `fetch` tool description MUST state
     HTTP(S)-only, matching `execute_fetch`'s rejection of every non-HTTP(S) source
     (`src/docline/app.py:596-603`). The prior "a URL or file path" text over-advertised an input
@@ -242,10 +270,10 @@ opens").
 
 | Concern | Legacy era (`2025-11-25` and earlier) | Modern era (`2026-07-28`) |
 |---|---|---|
-| Open / negotiate | `initialize` handshake → capabilities + `protocolVersion` + serverInfo | per-request `_meta.io.modelcontextprotocol/protocolVersion`; no handshake |
-| Discovery | `tools/list` after handshake | `server/discover` (MUST) returns supportedVersions + capabilities + serverInfo; answerable before any request |
-| Version mismatch | n/a (handshake pins) | `-32022 UnsupportedProtocolVersionError` with `data.supported` + `data.requested` |
-| Result shape | plain result | `resultType:"complete"` + serverInfo in result `_meta`; list results carry `ttlMs`/`cacheScope` |
+| Open / negotiate | `initialize` handshake → capabilities + `protocolVersion` + serverInfo | per-request `_meta` carries BOTH `io.modelcontextprotocol/protocolVersion` AND `io.modelcontextprotocol/clientCapabilities`; no handshake |
+| Discovery | `tools/list` after handshake | `server/discover` (MUST) returns supportedVersions + capabilities + serverInfo + cache metadata (`ttlMs`/`cacheScope` — `DiscoverResult` is a `CacheableResult`); answerable before any request |
+| Version mismatch | n/a (handshake pins) | `-32022 UnsupportedProtocolVersionError` with `data.supported` + `data.requested`; missing/malformed `clientCapabilities` → `-32602` (checked after version) |
+| Result shape | plain result | `resultType:"complete"` + serverInfo in result `_meta`; list results AND the `DiscoverResult` carry `ttlMs`/`cacheScope` |
 | `ping` | supported | removed |
 
 - **Era routing (server-selected):** a request carrying modern per-request `_meta` is served
@@ -273,9 +301,15 @@ opens").
   original P0 workspace-containment bypass (client sets `workspace_root:"/"`/`C:\\`), and a modern
   branch that skips the §H3 sanitizer would leak absolute paths in modern `isError` content. The
   modern result wrapper (`resultType`, serverInfo `_meta`, list `ttlMs`/`cacheScope`) is applied
-  AFTER the shared guarded handler returns, never as a parallel unguarded handler. The dual-era
-  harnesses (064.021-T) MUST include modern-path (`_meta`, no `initialize`) H1/H3/H5 parity
-  scenarios, and 064.023-T MUST carry the guard-parity enforcement as an acceptance criterion.
+  AFTER the shared guarded handler returns, never as a parallel unguarded handler. **Ownership
+  (cycle-4):** the modern branch is BUILT to funnel through the shared hardened dispatch by
+  **064.022-T** (guards-by-construction the moment the modern branch is reachable), which greens the
+  modern-path H1/H3/H5 parity scenario (064.021-T scenario c) at 064.022 — so no 064.022→064.023
+  build window exposes an unguarded modern pre-handshake path. **064.023-T** then VERIFIES parity is
+  not regressed by the legacy branch (rather than wiring the guards for the first time). The
+  dual-era harness 064.021-T carries the modern-path (`_meta`, no `initialize`) H1/H3/H5 parity
+  scenario, and both 064.022-T (funnel) and 064.023-T (verify) carry guard-parity acceptance
+  criteria.
 - **Scope guardrail:** only discovery + version negotiation + the existing tool surface are
   added. `subscriptions/listen`, MRTR, and the tasks/sampling/roots/logging features are out of
   scope (see Scope).
@@ -311,18 +345,27 @@ Security/reliability guardrails promoted to blocking design constraints after pl
 - **H2 — Untrusted-input bounds.** Frame reading is bounded at the byte level: a fixed-chunk
   binary read scans for the newline terminator up to a hard `MAX_FRAME_BYTES` cap and, on
   overflow, emits an error envelope and drains the remainder of the oversized frame in bounded
-  chunks so memory never holds a whole hostile frame. `RecursionError`/`ValueError` both degrade
+  chunks so memory never holds a whole hostile frame. A **carry-over buffer** preserves any bytes
+  read after a frame's newline (a chunk read can straddle a frame boundary) and seeds the next
+  frame from them, in both the normal and oversized-drain paths, so a following request in the same
+  chunk is never dropped. `RecursionError`/`ValueError` both degrade
   to an error envelope; the loop survives hostile input. Tests: (a) oversized single line; (b)
   deeply nested array; (c) an **unterminated / chunked oversized** input (bytes exceeding the cap
   arrive with no newline) is rejected with bounded memory while waiting for the terminator, and
-  the loop resynchronizes on the next valid frame.
+  the loop resynchronizes on the next valid frame; (d) **two complete frames in a single chunk**
+  are both dispatched (carry-over preserves the post-newline suffix), including a valid frame
+  immediately following an oversized-drained frame in the same chunk.
 - **H3 — Error-text non-disclosure.** No absolute paths / tracebacks in envelopes OR in
   `isError` tool-result content (the `success=False` mapping surfaces `ProcessResult.error` /
   `FetchResult.error`, which may embed absolute resolved paths via `PathContainmentError`).
   Sanitize/genericize both surfaces. Test: a containment/validation failure — as an envelope
   AND as an `isError` result — contains no absolute-path substring.
-- **H4 — Closed tool allow-list.** Static `{name: method}` map; unknown names (incl.
-  `ingest_local_dir` if unrouted, and dunders) fail closed with `-32602`, never `AttributeError`.
+- **H4 — Closed tool allow-list.** The static `{name: method}` map lives in EXACTLY ONE place —
+  the adapter (`DoclineMcpServer.call_tool`, task 064.015-T). `call_tool` raises a typed
+  unknown-tool error for any name absent from that allow-list (incl. `ingest_local_dir` if
+  unrouted, and dunders); the transport MAPS that typed error to a `-32602` envelope and carries
+  no tool names of its own. Fail closed, never `AttributeError`, and never a second allow-list
+  duplicated in `stdio.py` (which would recreate advertise/dispatch drift).
 - **H5 — stdout reserved for frames.** Child-library stdout redirected during tool execution;
   test asserts stdout carries only well-formed JSON-RPC frames across a fetch/process call.
 - **H6 — fetch SSRF by DNS resolution (P0, blocking).** Literal-IP rejection is NOT sufficient
@@ -334,8 +377,11 @@ Security/reliability guardrails promoted to blocking design constraints after pl
   local/metadata services. Required behavior (shared-code hardening, both interfaces):
   1. **Resolution/connect-time validation.** Before connecting, resolve the host and reject if
      **any** resolved address (all A/AAAA records) is loopback, private (RFC 1918 / RFC 4193),
-     link-local, or a metadata address (`169.254.169.254`). Literal-IP hosts keep their existing
-     fast-path rejection. This closes the name→private gap `is_private_host` leaves open.
+     link-local, or a metadata address (`169.254.169.254`). Normalize IPv4-mapped IPv6
+     (`::ffff:a.b.c.d`) to its IPv4 form before classification, and include ULA (`fc00::/7`),
+     CGNAT (`100.64.0.0/10`), and `0.0.0.0` so alternate-encoding SSRF bypasses are covered.
+     Literal-IP hosts keep their existing fast-path rejection. This closes the name→private gap
+     `is_private_host` leaves open.
   2. **Redirects revalidated.** Every redirect target is re-resolved and re-validated at
      connect time, not just compared by `netloc`, so a redirect to a name that resolves to a
      private address is rejected mid-chain.
@@ -345,7 +391,16 @@ Security/reliability guardrails promoted to blocking design constraints after pl
      validation lookup returns a public IP; `urllib`'s own connect lookup, TTL 0, returns
      `127.0.0.1`). The connection MUST be pinned to the specific validated IP (connect to the
      resolved address while preserving the `Host` header / SNI) so no second, unvalidated
-     resolution occurs. This is a blocking acceptance criterion, not a deferred follow-up.
+     resolution occurs. **Inherited proxies MUST be disabled for this fetcher.**
+     `request.build_opener(handler)` installs urllib's default `ProxyHandler`, which honors
+     `HTTP(S)_PROXY` environment variables and would hand the ORIGINAL hostname to a proxy that
+     performs its own second, unvalidated DNS resolution — reopening rebinding whenever proxy vars
+     are set. The fetcher MUST install an explicitly empty `ProxyHandler({})` (NOT `ProxyHandler(None)`,
+     which falls back to `getproxies()` and would still honor macOS SystemConfiguration /
+     Windows-registry system proxies) so no proxy re-resolves the host on any platform; alternatively
+     an IP-pinned `CONNECT` path may be specified and tested. This is a blocking acceptance
+     criterion, not a deferred follow-up, with a proxy-variables-set test proving no proxy-side
+     resolution occurs.
   Delivered by the shared-fetch SSRF tasks (harness `064.010-T`, impl `064.011-T` in
   `url_policy.py`/`http.py`). End-to-end proof: a `tools/call` `fetch` to a hostname resolving to
   loopback/private is rejected through the full boundary (stdin JSON → dispatch → `server.fetch`
@@ -377,22 +432,48 @@ Security/reliability guardrails promoted to blocking design constraints after pl
     characters, and `errors="replace"` collapses each invalid byte to a single `U+FFFD`, so a
     hostile server can drive far more than `MAX_TOTAL_FETCH_BYTES` of real transfer while the
     character/re-encode total stays under budget — the bound is not enforceable as written.
-    Therefore: the bounded reader MUST **retain the actual raw body byte count** (the length of the
-    bytes read from the network, captured *before* decoding) on `FetchResponse` (a new
-    `body_byte_count: int` field set from the bounded read in `fetch/http.py`), and the crawl MUST
-    accumulate **that exact value** — never a character count or a re-encode — toward
-    `MAX_TOTAL_FETCH_BYTES`. Tests MUST include a **non-ASCII multibyte** payload and an
-    **invalid-byte** payload (where `errors="replace"` would otherwise under-count) proving the
-    aggregate uses raw wire bytes and aborts correctly.
+    Therefore two coupled requirements: (1) the bounded reader MUST **retain the actual raw body
+    byte count** (the length of the bytes read from the network, captured *before* decoding) on
+    `FetchResponse` (a new `body_byte_count: int` field set from the bounded read in
+    `fetch/http.py`) for accurate per-response accounting; and (2) the aggregate MUST be enforced by
+    a **request-scoped remaining-byte budget threaded into `fetch_page` and its bounded reader and
+    decremented WHILE CHUNKS ARE READ** — not by a post-hoc `crawl.py` accumulator that sums
+    `body_byte_count` only after `fetch_page` returns a *successful* `FetchResponse`. A post-return
+    accumulator cannot enforce a hard bound: the response that crosses the budget has already been
+    fully read before it is summed, and bytes consumed by over-cap attempts that raise and are
+    retried by `_fetch_with_retries` never return a `FetchResponse` to accrue at all. Instead,
+    `crawl.py` seeds ONE request-scoped budget per crawl request and passes it through **every**
+    `fetch_page` call (main pages, retries, and the ancillary fetches below); the bounded reader
+    decrements that shared budget per chunk and aborts the read **mid-stream** the instant the
+    remaining aggregate allowance would be exceeded (the crossing response is never fully buffered).
+    The budget accumulates the exact raw wire bytes — never a character count or a re-encode. The
+    budget defaults to unbounded for a standalone single fetch so existing CLI single-fetch callers
+    are unaffected. Tests MUST include a **non-ASCII multibyte** payload and an **invalid-byte**
+    payload (where `errors="replace"` would otherwise under-count) proving the aggregate uses raw
+    wire bytes, PLUS a **repeated-failure** case (a retried over-cap attempt still decrements the
+    shared budget) and a **mid-read abort** case (the crossing response aborts before full
+    buffering).
+    **Propagation requirement (cycle-4, review-mandated).** The mid-read abort raises a typed
+    `AggregateBudgetExceededError` (a `DoclineError` subclass, per the typed-error convention). Because
+    `crawl.py` catches `DoclineError` broadly at FOUR sites — the `crawl()` main loop, `_fetch_with_retries`,
+    `_robots_allow`, and `_discover_toc_links` — the budget error would be silently swallowed and recorded
+    as a per-page skip, letting the crawl continue over the remaining frontier with budget `0` and
+    degrading a clean byte-abort into a `max_pages × backoff` time-exhaustion. Therefore the budget error
+    MUST be re-raised at all four sites via `except AggregateBudgetExceededError: raise` placed immediately
+    before each broad `except (DoclineError, OSError)` handler (mirroring the existing
+    `except CrawlUrlRejectedError: raise` pattern; `_robots_allow` has no prior re-raise clause and needs
+    one added), so `crawl()` itself RAISES the budget error rather than returning skipped results. The
+    harness asserts `crawl()` propagates (raises), not that it returns skipped pages.
     **Auxiliary-fetch coverage (cycle-3 adversarial re-review).** The crawl also issues auxiliary
     `fetch_page` calls that are NOT appended to `results` — `robots.txt` fetches
     (`fetch/crawl.py` `_robots_allow`) and mdBook TOC-script fetches (`_discover_toc_links`). Each
     is individually bounded by the per-response `MAX_RESPONSE_BYTES` cap and `robots.txt` is cached
     per-origin, so the uncounted amplification is bounded (~`(origins + toc_scripts) ×
     MAX_RESPONSE_BYTES`, none staged to disk) — not an unbounded leak. Still, to make the aggregate
-    a true "all transfer for this request" bound, these auxiliary responses' `body_byte_count` MUST
-    also accrue to the same `MAX_TOTAL_FETCH_BYTES` running total (so a hostile server cannot amplify
-    transfer via oversized-but-under-cap `robots.txt`/TOC payloads outside the budget).
+    a true "all transfer for this request" bound, these auxiliary `fetch_page` calls MUST receive
+    the SAME request-scoped budget and decrement it while their bytes are read (identically to main
+    pages), so a hostile server cannot amplify transfer via oversized-but-under-cap
+    `robots.txt`/TOC payloads outside the budget.
   Cap tasks: the `max_pages` upper bound and the streamed per-response `MAX_RESPONSE_BYTES` cap are
   delivered by harness `064.012-T` + impl `064.013-T` (`app_models.py` / `fetch/http.py`). The
   byte-accurate **aggregate** budget — raw-byte retention on `FetchResponse`, the exact-byte crawl
@@ -475,15 +556,19 @@ Backlog IDs are shown in brackets. All MCP-transport harness tasks author into
 5. T-ssrf-h [064.010-T] — Shared-fetch SSRF connect-time resolution harness (tests domain,
    3 scenarios). Unit tests in `tests/fetch/`: (a) initial URL whose public hostname resolves to
    loopback/private is rejected; (b) a redirect target whose hostname resolves to private is
-   rejected mid-chain; (c) **address-pinned connect / DNS-rebinding** — when validation-time and
-   connect-time resolution differ, the connection uses the validated address (no second
-   resolution), and any private address in the validated record set is rejected. Verify red
+   rejected mid-chain; (c) **address-pinned connect / DNS-rebinding (parametrized)** — when
+   validation-time and connect-time resolution differ, the connection uses the validated address
+   (no second resolution), and any private address in the validated record set is rejected; and,
+   with `HTTP(S)_PROXY` set, the fetcher does not delegate resolution to an inherited proxy (no
+   proxy-side re-resolution of the hostname). Verify red
    [green@T-ssrf-i]. Depends on T1d.
 6. T-ssrf-i [064.011-T] — Shared-fetch SSRF connect-time resolution impl (code domain,
    ≤2 files: `fetch/url_policy.py`, `fetch/http.py`). Resolve the host and reject if ANY resolved
    address is loopback/private/link-local/metadata; revalidate every redirect target at connect
    time (not by `netloc` compare); **connect to the specific validated IP (address-pinned),
-   preserving the `Host` header / SNI, so `urllib` performs no second unvalidated resolution**
+   preserving the `Host` header / SNI, so `urllib` performs no second unvalidated resolution**, and
+   **disable inherited/environment proxies** on this fetcher's opener (install `ProxyHandler({})`
+   so `build_opener` does not hand the hostname to an `HTTP(S)_PROXY` proxy that re-resolves it)
    (closes DNS-rebinding). Turns T-ssrf-h green. Existing fetch suite stays green. Depends on
    T-ssrf-h.
 7. T-cap-h [064.012-T] — Shared-fetch per-dimension resource-cap harness (tests domain,
@@ -504,17 +589,33 @@ Backlog IDs are shown in brackets. All MCP-transport harness tasks author into
    not decoded characters or a re-encode: (a) a **non-ASCII multibyte** body (byte length >
    character length) accrues its raw byte length toward `MAX_TOTAL_FETCH_BYTES`; (b) an
    **invalid-byte** body (where `errors="replace"` collapses bytes to `U+FFFD`) accrues its
-   original raw byte length, not the replaced-character length; (c) a crawl whose cumulative
-   **raw** bytes exceed the budget is aborted even though the decoded character total stays under
-   budget (the undercount-bypass attack). Verify red [green@T-agg-i]. Depends on T-cap-i.
+   original raw byte length, not the replaced-character length; (c) **parametrized during-read
+   enforcement** — a request whose cumulative **raw** bytes exceed the budget is aborted even
+   though the decoded character total stays under budget (undercount-bypass), covering a main-page
+   response that aborts **mid-read** before full buffering, a retried over-cap attempt whose bytes
+   still decrement the shared request budget, and an ancillary robots/TOC fetch decrementing the
+   same budget. Verify red [green@T-agg-i]. Depends on T-cap-i.
 10. T-agg-i [064.017-T] — Raw-byte retention + byte-accurate aggregate accounting impl (code
-    domain, ≤2 files: `fetch/http.py`, `fetch/crawl.py`). Add `FetchResponse.body_byte_count: int`
-    set from the length of the bytes read by the bounded reader **before decoding** (the
-    `body_bytes` already materialized at the streamed read); make the `fetch/crawl.py` aggregate
-    accumulator sum that exact `body_byte_count` value and abort the crawl once
-    `MAX_TOTAL_FETCH_BYTES` is exceeded. Isolated from T-cap-i so the shared-model
-    (`FetchResponse`) blast radius and the non-ASCII/invalid-byte accounting land in one bounded
-    task. Turns T-agg-h green. Existing fetch suite stays green. Depends on T-agg-h.
+   domain, ≤2 files: `fetch/http.py`, `fetch/crawl.py`). Add `FetchResponse.body_byte_count: int`
+   set from the length of the bytes read by the bounded reader **before decoding** (the
+   `body_bytes` already materialized at the streamed read) for per-response accounting; and enforce
+   `MAX_TOTAL_FETCH_BYTES` via a **request-scoped remaining-byte budget threaded into `fetch_page`
+   and its bounded reader, decremented per chunk while bytes are read** and aborting the read
+   mid-stream once the remaining allowance would be exceeded — NOT a post-return `crawl.py`
+   accumulator (which cannot see the crossing response before it is fully read, nor bytes from
+   over-cap attempts retried by `_fetch_with_retries`). `crawl.py` seeds one budget per request and
+   threads it through every `fetch_page` call (main, retries, and ancillary robots/TOC). The typed
+   `AggregateBudgetExceededError` (a `DoclineError` subclass) MUST be re-raised at all four `crawl.py`
+   broad-handler sites (`crawl()` main loop, `_fetch_with_retries`, `_robots_allow`,
+   `_discover_toc_links`) via `except AggregateBudgetExceededError: raise` before each
+   `except (DoclineError, OSError)` (mirroring the existing `except CrawlUrlRejectedError: raise`), so
+   `crawl()` RAISES rather than recording a per-page skip. `FetchResponse.body_byte_count` carries a
+   default (`= 0`, or is placed before the defaulted `redirect_count`) so the frozen dataclass and
+   existing constructors stay valid. The budget defaults to unbounded for standalone single fetch.
+   Isolated from T-cap-i so the shared-model (`FetchResponse`) blast radius and the byte-accurate
+   during-read accounting land in one bounded task; a split guard peels the ancillary
+   (robots/TOC) accrual + re-raise to a successor if the envelope is exceeded. Turns T-agg-h green.
+   Existing fetch suite stays green. Depends on T-agg-h.
 11. T-e2e [064.014-T] — MCP untrusted-fetch end-to-end boundary harness (tests domain,
     3 scenarios). Through `tools/call` fetch (stdin JSON → dispatch → `server.fetch` →
     `execute_fetch`): (a) a public hostname resolving to loopback/private is rejected end-to-end
@@ -543,18 +644,21 @@ Backlog IDs are shown in brackets. All MCP-transport harness tasks author into
     Split from T2 so the transport task stays at ≤4 functions.
 13. T-desc-h [064.018-T] — `fetch` advertising parity harness (tests domain, 2 scenarios). Author
     the failing parity test in `tests/parity/`: (a) the advertised `fetch` tool description
-    (`get_mcp_manifest().tools['fetch'].description`, reached via BOTH `list_tools()` and
-    `list_callable_tools()`) states HTTP(S)-only and does **not** claim "file path" / local-file
-    support; (b) manifest⇄behavior parity — the advertised input contract matches
-    `execute_fetch`'s scheme rejection (`execute_fetch` fails any non-`http`/`https` source), so
-    the advertisement cannot promise an input mode the executor rejects. Verify red
+    (located by name as the existing manifest tests do —
+    `next(t for t in get_mcp_manifest().tools if t.name == "fetch").description`, NOT
+    `tools["fetch"]` which raises `TypeError` because `.tools` is a `list[ManifestTool]`; reached
+    via BOTH `list_tools()` and `list_callable_tools()`) states HTTP(S)-only and does **not** claim
+    "file path" / local-file support; (b) manifest⇄behavior parity — the advertised input contract
+    matches `execute_fetch`'s scheme rejection (`execute_fetch` fails any non-`http`/`https`
+    source), so the advertisement cannot promise an input mode the executor rejects. Verify red
     [green@T-desc-i]. Depends on T-adapter.
 14. T-desc-i [064.019-T] — `fetch` advertising correction impl (code domain, 1 file:
     `src/docline/app.py`). Correct the shared `fetch` description in `get_mcp_manifest`
     (`app.py:465-468`) to state HTTP(S)-only (e.g. "Fetch a document from an HTTP(S) URL and stage
     it for processing."), fixing the advertisement on BOTH the CLI `--manifest` and the MCP
-    `tools/list`/`server/discover` surfaces. No processing behavior change. Turns T-desc-h green.
-    Depends on T-desc-h.
+    `tools/list` surfaces. (`server/discover` carries no individual tool descriptions — only
+    versions/capabilities/identity/cache metadata — so it is not a description surface.) No
+    processing behavior change. Turns T-desc-h green. Depends on T-desc-h.
 15. T2 [064.002-T] — Core stdio transport loop, **legacy-era base** (code domain, ≤2 files:
     `docline/mcp/stdio.py` + entry wiring). Implement `dispatch` + `serve`, request-shape
     validation returning **`-32600`**, the bounded binary frame read/drain helper AND its runtime
@@ -578,19 +682,28 @@ Backlog IDs are shown in brackets. All MCP-transport harness tasks author into
 17. T-era-h1 [064.020-T] — Dual-era discovery + modern-negotiation harness (tests domain,
     3 scenarios). Author failing tests in `tests/parity/test_mcp_stdio.py`: (a) `server/discover`
     (answerable with no prior `initialize`) returns a `DiscoverResult` — `supportedVersions`
-    (both eras), `capabilities`, serverInfo in `_meta`, `resultType:"complete"`; (b) a modern
-    request whose `_meta.io.modelcontextprotocol/protocolVersion` = `2026-07-28` is served
-    statelessly (no handshake) and the result carries `resultType:"complete"` + serverInfo `_meta`
-    (list results also `ttlMs`/`cacheScope`); (c) a request with an unsupported `_meta`
-    protocolVersion returns **`-32022`** with `data.supported` (list) + `data.requested`. Verify
+    (both eras), `capabilities`, serverInfo in `_meta`, `resultType:"complete"`, AND `ttlMs` +
+    `cacheScope` (`DiscoverResult` is a `CacheableResult`); (b) a well-formed modern request whose
+    `_meta` carries BOTH `io.modelcontextprotocol/protocolVersion` = `2026-07-28` AND
+    `io.modelcontextprotocol/clientCapabilities` is served statelessly (no handshake) and the
+    result carries `resultType:"complete"` + serverInfo `_meta` (list results also
+    `ttlMs`/`cacheScope`); (c) **parametrized modern-metadata rejection** — an unsupported `_meta`
+    protocolVersion returns **`-32022`** with `data.supported` (list) + `data.requested`, and a
+    request with missing/malformed `clientCapabilities` returns **`-32602`** (checked after version
+    acceptance, so version negotiation takes precedence). Verify
     red [green@T-era-i1]. Depends on T2s.
 18. T-era-h2 [064.021-T] — Legacy-era retention + era-routing harness (tests domain, 3 scenarios).
-    Author failing tests: (a) the legacy `initialize` handshake still returns capabilities +
-    `2025-11-25` + serverInfo, `notifications/initialized` is silent, `ping` → `{}`, AND reports the
-    **same** identity/capabilities as `server/discover` (single-source `describe_server()` — no
-    drift); (b) era routing — a `tools/call` carrying modern `_meta` is served under modern
-    semantics with no prior `initialize`, while the same method after `initialize` is served under
-    legacy semantics; (c) **modern-path guardrail parity (parametrized)** — a modern (`_meta`, no
+    Author failing tests: (a) **legacy-only regression anchor (green at authoring** from T2 +
+    T-adapter) — the legacy `initialize` handshake still returns capabilities + `2025-11-25` +
+    serverInfo, `notifications/initialized` is silent, `ping` → `{}`. This anchor asserts ONLY the
+    legacy handshake surface (no cross-era comparison), so it cannot be "already green" while
+    depending on an unbuilt `server/discover`; the initialize-vs-discover no-drift equality is NOT
+    part of it and lives in (b); (b) **era routing + no-drift (genuinely red** until T-era-i1
+    discovery + T-era-i2 legacy branch) — a `tools/call` carrying modern `_meta` is served under
+    modern semantics with no prior `initialize`, while the same method after `initialize` is served
+    under legacy semantics, AND `initialize` and `server/discover` report the **same**
+    identity/capabilities/supportedVersions from the single `describe_server()` source; (c)
+    **modern-path guardrail parity (parametrized)** — a modern (`_meta`, no
     `initialize`) `tools/call` `process`/`fetch` enforces §H1 (`workspace_root` reject `-32602`),
     §H3 (absolute-path sanitization in `isError`), and §H5 (clean stdout) IDENTICALLY to the legacy
     path, proving the guards apply pre-handshake and era routing cannot branch around them. Verify
@@ -599,25 +712,32 @@ Backlog IDs are shown in brackets. All MCP-transport harness tasks author into
     ≤2 files: `docline/mcp/stdio.py` + `src/docline/mcp/server.py`).
     Implement `server/discover` dispatch backed by the `describe_server()` accessor **introduced by
     T-adapter (consume, do not re-introduce)** (supportedVersions, capabilities, serverInfo);
-    per-request `_meta` protocol-version extraction + validation; the
+    per-request `_meta` extraction + validation of BOTH `protocolVersion` (unsupported → `-32022`)
+    AND `clientCapabilities` (missing/malformed → `-32602`, checked after version); the
     `-32022 UnsupportedProtocolVersionError` envelope (`data.supported` + `data.requested`); the
-    modern result shape (`resultType:"complete"`, serverInfo `_meta`, list `ttlMs`/`cacheScope`);
+    modern result shape (`resultType:"complete"`, serverInfo `_meta`, list `ttlMs`/`cacheScope`,
+    and `ttlMs`/`cacheScope` on the `DiscoverResult` itself as a `CacheableResult`);
     and **the MODERN branch of the era classifier** (detect modern `_meta` → route to modern
-    handlers, served statelessly). Ownership boundary (cycle-3 arch remediation): THIS task owns the
-    modern branch — so T-era-h1 scenario (b) "modern request served statelessly" greens HERE —
-    while T-era-i2 owns the legacy branch + guard parity + no-drift. Turns T-era-h1 green. Depends
-    on T-era-h2 (last dual-era harness authored first).
-20. T-era-i2 [064.023-T] — Dual-era routing completion + legacy retention + guard parity (code
-    domain, ≤2 files: `docline/mcp/stdio.py` + `src/docline/mcp/server.py`). Implement the **LEGACY
-    branch** of the request-shape era classifier (`initialize` → legacy) on top of T-era-i1's modern
-    branch, keep the legacy handshake/`ping` path (from T2) intact, and verify no drift — both
-    `initialize` and `server/discover` read the single `describe_server()` accessor (from T-adapter),
-    so no-drift holds by construction. **Guardrail
-    parity (blocking):** both eras MUST funnel every `tools/call`/`process` through the SAME
-    hardened dispatch path so §H1/§H3/§H4/§H5 apply before the modern result wrapper — the era
-    classifier changes only negotiation + envelope shape, never which guards run (prevents a modern
-    pre-handshake `workspace_root` P0 re-open). Turns T-era-h2 green (incl. the modern-path
-    guard-parity scenario). Depends on T-era-i1.
+    handlers, served statelessly) **funnelled through the SAME hardened dispatch** as legacy so
+    §H1/§H3/§H4/§H5 apply by construction (modern envelope is a post-return wrapper only).
+    Ownership boundary (cycle-3, refined cycle-4): THIS task owns the modern branch routed through
+    the shared hardened dispatch — so T-era-h1 scenario (b) "modern request served statelessly"
+    AND T-era-h2 scenario (c) modern-path guard parity both green HERE — while T-era-i2 owns the
+    legacy branch + no-drift VERIFICATION (it verifies parity, not first-wires it). Function/split
+    guard: if the dual-member `_meta` validator + modern result-shape wrapper exceed the
+    2-hour/<5-function envelope, split the result-shape wrapper to a successor before implementing.
+    Turns T-era-h1 green. Depends on T-era-h2 (last dual-era harness authored first).
+20. T-era-i2 [064.023-T] — Dual-era routing completion + legacy retention + guard-parity **verify**
+    (code domain, ≤2 files: `docline/mcp/stdio.py` + `src/docline/mcp/server.py`). Implement the
+    **LEGACY branch** of the request-shape era classifier (`initialize` → legacy) on top of
+    T-era-i1's modern branch, keep the legacy handshake/`ping` path (from T2) intact, and verify no
+    drift — both `initialize` and `server/discover` read the single `describe_server()` accessor
+    (from T-adapter), so no-drift holds by construction. **Guardrail parity (blocking, VERIFY not
+    wire):** T-era-i1 already funnels the modern branch through the SAME hardened dispatch so
+    §H1/§H3/§H4/§H5 apply by construction; this task VERIFIES both eras share that one path and does
+    not regress it (the era classifier changes only negotiation + envelope shape, never which guards
+    run). Greens the T-era-h2 legacy-retention + era-routing scenarios; the modern-path guard-parity
+    scenario already greened at T-era-i1 and must stay green. Depends on T-era-i1.
 21. T2b [064.008-T] — Subprocess smoke-test harness for the entry point (tests domain, 1 scenario).
     Author the failing automated subprocess test (matching `test_manifest_parity.py::`
     `test_python_m_docline_cli_runs_main`) that spawns `python -m docline.mcp` / `docline-mcp`,
@@ -657,26 +777,32 @@ Execution order: 064.001 → 064.005 → 064.006 → 064.007 → 064.010 → 064
   (not decoded characters) — and the pre-existing fetch suite remains green under the new bounds
   (caps sized above legitimate use).
 - Dual-era protocol conformance (T-era-h1/h2 → T-era-i1/i2): `server/discover` returns a
-  `DiscoverResult` (supportedVersions for both eras, capabilities, serverInfo, `resultType`); a
-  modern request with a supported `_meta` protocolVersion is served statelessly; an unsupported
-  `_meta` protocolVersion returns **`-32022`** with `data.supported`+`data.requested`; the legacy
-  `initialize` handshake still works and reports the same identity/capabilities as
-  `server/discover` (single-source `describe_server()`); era routing serves modern `_meta`
-  requests statelessly and `initialize` requests under legacy semantics.
-- **Dual-era guardrail parity (T-era-h2 → T-era-i2):** a modern (`_meta`, no `initialize`)
+  `DiscoverResult` (supportedVersions for both eras, capabilities, serverInfo, `resultType`, and
+  `ttlMs`/`cacheScope` as a `CacheableResult`); a modern request carrying a supported `_meta`
+  protocolVersion AND `clientCapabilities` is served statelessly; an unsupported `_meta`
+  protocolVersion returns **`-32022`** with `data.supported`+`data.requested`, and missing/malformed
+  `clientCapabilities` returns **`-32602`** (checked after version); the legacy `initialize` handshake
+  still works and reports the
+  same identity/capabilities as `server/discover` (single-source `describe_server()`); era routing
+  serves modern `_meta` requests statelessly and `initialize` requests under legacy semantics.
+- **Dual-era guardrail parity (T-era-h2 → T-era-i1 funnel, verified at T-era-i2):** a modern
+  (`_meta`, no `initialize`)
   `tools/call` `process` with `workspace_root` is rejected `-32602` (§H1), modern-path `isError`
   content sanitizes absolute paths (§H3), and modern-path stdout stays clean (§H5) — identically to
   the legacy path — proving both eras funnel through ONE hardened dispatch and the modern
   pre-handshake surface cannot bypass a guard.
 - `fetch` advertising parity (T-desc-h → T-desc-i): the advertised `fetch` description states
-  HTTP(S)-only across `tools/list`, `server/discover`, and `docline --manifest`, and matches
-  `execute_fetch`'s rejection of non-HTTP(S) sources (no "file path" advertisement).
+  HTTP(S)-only across `tools/list` and `docline --manifest` (located by name, not by subscript),
+  and matches `execute_fetch`'s rejection of non-HTTP(S) sources (no "file path" advertisement).
+  `server/discover` is not a description surface (it carries versions/capabilities/identity/cache
+  metadata only), so it is excluded from this assertion.
 - JSON-RPC 2.0 conformance: `-32600` returned for a non-object root, a missing/invalid `jsonrpc`,
   and a missing/non-string `method` (parametrized), distinct from `-32700` and `-32601`.
 - MCP boundary end-to-end (T-e2e [064.014-T]): a `tools/call` fetch to a hostname resolving to
   loopback/private is rejected (address-pinned connect closes DNS-rebinding); over-limit
   `max_pages` is rejected `-32602`; an oversized response (per-response cap incl. redirect) or a
-  crawl exceeding the aggregate `MAX_TOTAL_FETCH_BYTES` budget is aborted. These green at T2 (the
+  crawl exceeding the aggregate `MAX_TOTAL_FETCH_BYTES` budget is aborted (the crawl RAISES the
+  typed budget error out of `crawl()`, not recorded as a per-page skip). These green at T2 (the
   shared-fetch guards enforce via `execute_fetch`; no separate boundary wiring).
 - `ruff check .`, `ruff format --check .`, `pyright src/` clean.
 - Automated subprocess smoke (authored red in T2b [064.008-T], turned green by the T3 [064.003-T]
@@ -928,6 +1054,109 @@ authoritative-spec-driven dual-era protocol conformance (with cross-era guardrai
 single identity source), the corrected `fetch` advertising, and the memory reason are consistently
 recorded across plan, deliberation, backlog, and memory. All P0/P1/P2 findings closed.
 
+### Cycle-4 review remediation (PR #166 review cycle 4)
+
+A fourth Copilot review on PR #166 left twelve unresolved threads. All treated as valid and closed
+here (planning/backlog/memory artifacts only — Stage touches no production/test code). Each fix
+propagates through plan, backlog task acceptance criteria, dependencies, and memory so the harness
+stays executable, security-first, simple, and composable. The 23-task chain and its edges are
+unchanged; only acceptance-criteria text is reconciled.
+
+- **Plan scope wording contradicted the §H6/§H7 hardening (Consistency/Scope P2)** — the "out of
+  scope" line excluded "any change to `execute_fetch` … processing behavior," which reads as
+  excluding the in-scope DNS-rejection + crawl-limit security work. **Resolution:** the exclusion
+  is narrowed to `execute_process` processing behavior and to `execute_fetch` changes *outside* the
+  specified §H6/§H7 hardening; the security work is explicitly in scope (`## Scope`).
+- **Bounded frame reader dropped the next request (Correctness/Security P2)** — a fixed-chunk
+  `read()` can return a newline plus the head of the next frame; draining or returning through the
+  newline without retaining the suffix loses the following JSON-RPC request. **Resolution:** a
+  carry-over buffer is required in BOTH the normal and oversized-drain paths, with a two-frames-in-
+  one-chunk test (Design "Input bounds", §H2, 064.006-T H2 scenario, 064.002-T).
+- **Aggregate byte budget not enforceable by a post-return accumulator (Security P1, two threads —
+  064.013-T + 064.017-T)** — a `crawl.py` accumulator that sums `body_byte_count` only after
+  `fetch_page` returns cannot bound work: the crossing response is already fully read, and bytes
+  from over-cap attempts retried by `_fetch_with_retries`, plus robots.txt/TOC fetches, never
+  accrue. **Resolution:** the aggregate is enforced by a request-scoped remaining-byte budget
+  threaded into `fetch_page`/the bounded reader and decremented **while chunks are read** (aborting
+  mid-read), across retries and ancillary fetches, with a repeated-failure/ancillary test
+  (§H7 item 3, 064.016-T, 064.017-T; 064.013-T delegation note).
+- **DNS-rebinding via inherited proxies (Security P1, 064.011-T)** — `request.build_opener` installs
+  urllib's default `ProxyHandler`, so with `HTTP(S)_PROXY` set the original hostname is handed to a
+  proxy that performs a second, unvalidated resolution, defeating the address pin. **Resolution:**
+  §H6 item 3 now requires disabling inherited/environment proxies (empty `ProxyHandler({})`) or a
+  specified IP-pinned `CONNECT`, with a proxy-variables-set test (064.010-T scenario c, 064.011-T).
+- **Allow-list duplicated in the transport (Architecture P2, 064.009-T)** — mapping tool identity
+  in `stdio.py` recreates the advertise/dispatch drift the adapter single-source is meant to
+  prevent. **Resolution:** H4 is implemented by mapping the adapter `call_tool`'s typed unknown-tool
+  error to `-32602`; the transport carries no allow-list (§H4, 064.009-T).
+- **Memory feature ID missing its leading zero (Consistency P3)** — `64-F` should be `064-F`.
+  **Resolution:** corrected in the session memory.
+- **`ManifestTool` list lookup would raise `TypeError` (Correctness P2, 064.018-T)** —
+  `get_mcp_manifest().tools` is a `list[ManifestTool]`, so `tools['fetch']` fails. **Resolution:**
+  locate the entry by `name` (`next(t for t in … if t.name == "fetch")`) as the existing manifest
+  tests do (064.018-T, plan Task 13).
+- **`DiscoverResult` missing required cache metadata (Spec P2, 064.020-T)** — `DiscoverResult` is a
+  `CacheableResult`, so `ttlMs`/`cacheScope` are required on the discover result. **Resolution:**
+  asserted on `server/discover` (064.020-T, 064.022-T, Protocol Era Model, method map).
+- **Modern request metadata validated only `protocolVersion` (Spec P2, 064.022-T)** — the
+  2026-07-28 request schema requires both `protocolVersion` and `clientCapabilities`. **Resolution:**
+  both are validated; missing/malformed `clientCapabilities` returns `-32602` (checked after version)
+  (064.020-T, 064.022-T,
+  Protocol Era Model).
+- **`server/discover` claimed to advertise the fetch description (Spec/Correctness P2, 064.019-T)** —
+  `server/discover` exposes versions/capabilities/identity/cache metadata, not tool descriptions.
+  **Resolution:** the description correction is limited to the CLI manifest and `tools/list`
+  (064.019-T, plan Task 14, Verification, Rollback).
+- **Cross-era equality marked "already green" too early (Correctness P2, 064.021-T)** — the
+  initialize-vs-`server/discover` no-drift equality cannot be green when 064.021-T is authored
+  because `server/discover` is not implemented until successor 064.022-T. **Resolution:** scenario
+  (a) is a legacy-only green anchor; the no-drift equality moves to scenario (b) and stays red until
+  discovery/legacy routing exist (064.021-T, plan Task 18).
+- **Aggregate enforcement during read (Security P1, 064.017-T)** — same root cause as the 064.013-T
+  thread; summing after `fetch_page` returns cannot enforce a hard bound and ignores failed retried
+  attempts. **Resolution:** the threaded during-read budget above; count failed attempts and
+  auxiliary responses (064.017-T, §H7 item 3).
+
+Re-review verdict (cycle-4, post-remediation): every unresolved PR #166 thread is reconciled across
+plan, backlog acceptance criteria, dependencies, and memory. The chain remains a single linear,
+acyclic, test-first sequence of 23 tasks within the 2-hour/width-isolation limits.
+
+**Cycle-4 internal multi-persona adversarial re-review (Security / Architecture / Scope /
+Correctness).** The cycle-4 edits were themselves put through a four-persona plan-review before
+commit; findings remediated in-place:
+
+- **Architecture P1 (blocking) — aggregate-budget abort swallowed by crawl.py.** A DoclineError-
+  subclass `AggregateBudgetExceededError` would be caught by `crawl.py`'s FOUR broad
+  `except (DoclineError, OSError)` handlers (`crawl()` main loop, `_fetch_with_retries`,
+  `_robots_allow`, `_discover_toc_links`), recording the abort as a per-page skip and degrading the
+  byte-abort into a `max_pages × backoff` time-exhaustion. Closed: §H7 item 3 and 064.017-T now
+  require `except AggregateBudgetExceededError: raise` at all four sites (mirroring the existing
+  `except CrawlUrlRejectedError: raise`), and 064.016-T asserts `crawl()` RAISES rather than
+  returning skipped results.
+- **Security/Architecture P2 — modern-branch guard funnel timing.** The stateless pre-handshake
+  modern branch (064.022) was introduced one task before its guards (064.023), risking a transient
+  §H1 re-open. Closed: 064.022 now funnels the modern branch through the SAME hardened dispatch
+  (guards-by-construction), greening the modern-path parity scenario (064.021 c) at 064.022;
+  064.023 VERIFIES parity rather than first-wiring it.
+- **Correctness/Scope P2 — unpinned `clientCapabilities` rejection code.** Pinned to `-32602` with
+  version-first precedence across 064.020-T, 064.022-T, and the Protocol Era Model.
+- **Correctness P3 — dataclass ordering + function-name attribution.** `FetchResponse.body_byte_count`
+  must carry a default (frozen dataclass ends with a defaulted field); the corrected `fetch`
+  description literal lives in `get_manifest()` (not `get_mcp_manifest`, which re-exposes it). Both fixed.
+- **Architecture P3 — name the unknown-tool exception.** Named `UnknownToolError` (a DoclineError
+  subclass) in 064.015-T; 064.009-T catches it specifically, ordered before the generic `-32603`.
+- **Scope P2/P3 — envelope + attestations.** Added function-budget + split guards to 064.017-T and
+  064.022-T and scenario-budget attestations to 064.020-T/064.021-T; retitled 064.017-T off the
+  superseded "sum in crawl" phrasing.
+- **Security P3s (hardening) — SSRF address classification + system proxies + per-request disk.**
+  §H6 now normalizes IPv4-mapped IPv6 and rejects ULA/CGNAT/`0.0.0.0`; the proxy disable pins an
+  empty `ProxyHandler({})` (never `getproxies()`) to suppress system/registry proxies; a per-request
+  disk/transfer residual is named in `## Risks`.
+
+Re-review verdict (cycle-4 internal, post-remediation): the P1 abort-propagation gap is closed, the
+modern-path guard funnel is intrinsic, error codes and the typed-error contract are pinned, and the
+scope guards are symmetric across sibling impl tasks. All P0/P1 findings closed.
+
 ## Rollback
 
 **Not purely additive.** The release unit adds new modules (`docline/mcp/stdio.py`,
@@ -945,11 +1174,14 @@ existing files whose behavior changes for both interfaces:
   CLI fetch.
 - `src/docline/fetch/http.py` + `src/docline/fetch/crawl.py` — byte-accurate aggregate accounting
   (§H7 item 3, cycle-3): `FetchResponse` gains a `body_byte_count` field carrying the raw wire byte
-  count, and the crawl accumulates it toward `MAX_TOTAL_FETCH_BYTES` (064.016/064.017). Additive
-  field + accumulator; also affects CLI crawls.
+  count, and the crawl enforces `MAX_TOTAL_FETCH_BYTES` via a request-scoped remaining-byte budget
+  threaded into `fetch_page`/the bounded reader and decremented per chunk while bytes are read
+  (main pages, retries, ancillary robots/TOC), aborting mid-read (064.016/064.017). Additive field +
+  threaded budget; also affects CLI crawls.
 - `src/docline/app.py` — `get_mcp_manifest` `fetch` description corrected to HTTP(S)-only
   (064.019, cycle-3). Text-only advertising change; flows to both `docline --manifest` (CLI) and
-  the MCP `tools/list`/`server/discover` surfaces. No processing-behavior change.
+  the MCP `tools/list` surface (`server/discover` carries no tool descriptions). No
+  processing-behavior change.
 - `src/docline/mcp/stdio.py` + `src/docline/mcp/server.py` — dual-era protocol surface (cycle-3):
   modern `server/discover`, per-request `_meta` version negotiation, `-32022`, modern result shape,
   and era routing, plus a single `describe_server()` identity/version accessor
@@ -990,3 +1222,37 @@ self-contained and revertible on their own.
 - Low: manifest drift between CLI and MCP — mitigated by the T1 parity assertion against the
   single shared manifest source (callable allow-list), with `list_tools()` retained for full-manifest
   parity.
+- Low (residual, cycle-4): `MAX_TOTAL_FETCH_BYTES` is a **per-request** budget. On the untrusted
+  stdio surface an attacker can still issue many sequential `tools/call` `fetch` requests, each
+  staging up to the aggregate budget under `output_dir`; nothing bounds cumulative cross-request
+  disk/network transfer. Accepted as out of scope for this release unit (per-request bounding closes
+  the single-request amplification vector); a session/global transfer or `output_dir` size quota is
+  a named follow-up, not a blocker.
+
+## Plan Review
+
+### Cycle-4 gate (PR #166 unresolved-thread reconciliation)
+
+- **Trigger:** Stage finalization of shipment 055-S — reconcile the twelve unresolved PR #166
+  Copilot review threads, then run a fresh multi-persona adversarial plan-review before commit.
+- **Personas run (4):** Security Lens Reviewer, Architecture Strategist, Scope Boundary Auditor,
+  Correctness Reviewer (cross-model where available; MCP-tool-surface + shared-fetch trust boundary
+  both trigger the security/parity lenses).
+- **Raw persona verdicts:** Security **PASS** (1 P2, 3 P3); Correctness **PASS** (3 P3);
+  Scope **ADVISORY** (2 P2, 4 P3); Architecture **FAIL** (1 P1, 2 P2, 3 P3).
+- **Blocking finding (Architecture P1):** the aggregate-budget `AggregateBudgetExceededError`
+  (a `DoclineError` subclass) would be swallowed by `crawl.py`'s four broad
+  `except (DoclineError, OSError)` handlers, so the specified retry-handler-only fix left the cap
+  unable to abort cleanly. **Remediated in-place** before commit: §H7 item 3 + 064.017-T now
+  require `except AggregateBudgetExceededError: raise` at all four sites (mirroring the existing
+  `except CrawlUrlRejectedError: raise`), and 064.016-T asserts `crawl()` RAISES.
+- **Other findings:** all P2/P3 items (guard-funnel timing, pinned `clientCapabilities` `-32602`,
+  named `UnknownToolError`, `body_byte_count` default, `get_manifest` attribution, scenario/function
+  budget guards + attestations, SSRF address-normalization + system-proxy suppression, per-request
+  disk residual) were remediated in-place. See the "Cycle-4 internal multi-persona adversarial
+  re-review" subsection under `## Plan Review Remediation` for the item-by-item disposition.
+- **Gate decision (post-remediation): PASS.** The single P1 is closed; no P0/P1 remains. Hardening
+  signals are present (`## Plan Hardening` §H1–§H7) and satisfied. The chain is a single linear,
+  acyclic, test-first sequence of 23 tasks within the 2-hour/width-isolation limits. Runtime
+  verification and rollback/blast-radius are covered in `## Verification` and `## Rollback`. Ready
+  for the harvested backlog to proceed to Ship.
