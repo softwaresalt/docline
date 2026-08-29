@@ -33,6 +33,7 @@ dev = [
 
 [project.scripts]
 docline = "docline.cli:main"
+docline-mcp = "docline.mcp.__main__:main"
 
 [project.optional-dependencies]
 pdf = ["docling>=2,<3"]
