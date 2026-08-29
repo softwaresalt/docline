@@ -41,6 +41,16 @@ MODERN_CACHE_TTL_MS = 60_000
 MODERN_CACHE_SCOPE = "session"
 
 
+class _SessionState:
+    """Per-connection era state: the legacy latch set by an ``initialize`` handshake."""
+
+    __slots__ = ("legacy_latched",)
+
+    def __init__(self, legacy_latched: bool = False) -> None:
+        """Initialize the session with the legacy latch unset by default."""
+        self.legacy_latched = legacy_latched
+
+
 class _ByteReader(Protocol):
     """A non-greedy binary input stream exposing ``read1``."""
 
@@ -237,12 +247,19 @@ def _dispatch_modern(
     return _error(echo_id, -32601, "Method not found")
 
 
-def dispatch(message: object, server: DoclineMcpServer) -> dict | None:
+def dispatch(
+    message: object, server: DoclineMcpServer, session: _SessionState | None = None
+) -> dict | None:
     """Map a single JSON-RPC request to a response dict, or ``None`` for a notification.
 
     Performs request-shape validation (``-32600``) BEFORE the id-absent
     notification-suppression branch, so a malformed no-id payload returns
     ``-32600`` (``id:null``) while an otherwise-valid no-id request is silent.
+
+    ``session`` carries the per-connection legacy era latch. When omitted (direct
+    unit dispatch) it defaults to a legacy-latched session; :func:`serve` supplies
+    a fresh unlatched session per connection so a pre-initialize legacy-candidate
+    request is rejected until an ``initialize`` handshake latches the era.
     """
     if not isinstance(message, dict):
         return _error(None, -32600, "Invalid Request")
@@ -270,7 +287,12 @@ def dispatch(message: object, server: DoclineMcpServer) -> dict | None:
     if _is_modern_request(message, method):
         return _dispatch_modern(message, echo_id, method, server, _request_meta(message))
 
+    # Legacy branch: initialize latches the per-connection legacy era; any other
+    # legacy-candidate op arriving before the latch is rejected (never served legacy).
+    if session is None:
+        session = _SessionState(legacy_latched=True)
     if method == "initialize":
+        session.legacy_latched = True
         info = server.describe_server()
         return _result(
             echo_id,
@@ -280,6 +302,8 @@ def dispatch(message: object, server: DoclineMcpServer) -> dict | None:
                 "serverInfo": info["serverInfo"],
             },
         )
+    if not session.legacy_latched:
+        return _error(echo_id, -32600, "Server not initialized")
     if method == "notifications/initialized":
         return _result(echo_id, {})
     if method == "ping":
@@ -307,7 +331,9 @@ def _emit(stdout: _ByteWriter, obj: dict) -> None:
     stdout.flush()
 
 
-def _process_frame(frame: bytes, stdout: _ByteWriter, server: DoclineMcpServer) -> None:
+def _process_frame(
+    frame: bytes, stdout: _ByteWriter, server: DoclineMcpServer, session: _SessionState
+) -> None:
     """Parse one frame and emit its response (unless it is a silent notification)."""
     try:
         message = json.loads(frame, parse_constant=_reject_constant)
@@ -315,7 +341,7 @@ def _process_frame(frame: bytes, stdout: _ByteWriter, server: DoclineMcpServer) 
         _emit(stdout, _error(None, -32700, "Parse error"))
         return
     try:
-        response = dispatch(message, server)
+        response = dispatch(message, server, session)
     except RecursionError:
         _emit(stdout, _error(None, -32603, "Internal error"))
         return
@@ -350,12 +376,13 @@ def serve(stdin: _ByteReader, stdout: _ByteWriter, server: DoclineMcpServer = SE
         ``0`` on clean EOF exit.
     """
     buffer = bytearray()
+    session = _SessionState()
     while True:
         newline = buffer.find(b"\n")
         if newline != -1:
             frame = bytes(buffer[:newline])
             del buffer[: newline + 1]
-            _process_frame(frame, stdout, server)
+            _process_frame(frame, stdout, server, session)
             continue
         if len(buffer) > MAX_FRAME_BYTES:
             # Oversized frame with no terminator: discard, report, resynchronize.
@@ -368,7 +395,7 @@ def serve(stdin: _ByteReader, stdout: _ByteWriter, server: DoclineMcpServer = SE
         chunk = stdin.read1(cap)
         if not chunk:
             if buffer.strip():
-                _process_frame(bytes(buffer), stdout, server)
+                _process_frame(bytes(buffer), stdout, server, session)
             return 0
         buffer.extend(chunk)
 
