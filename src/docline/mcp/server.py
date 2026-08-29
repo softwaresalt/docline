@@ -1,17 +1,53 @@
 """MCP server adapters for manifest discovery and shared fetch/process operations."""
 
+import copy
 from enum import Enum
 
-from docline.app import execute_fetch, execute_process, get_mcp_manifest
+from pydantic import BaseModel, ConfigDict
+
+from docline.app import execute_fetch, execute_process, get_manifest, get_mcp_manifest
 from docline.app_models import (
     FetchRequest,
     FetchResult,
+    ManifestTool,
     McpManifestResponse,
     ProcessRequest,
     ProcessResult,
 )
-from docline.mcp.exceptions import McpTransportError
+from docline.mcp.exceptions import McpTransportError, UnknownToolError
 from docline.schema.export import export_base_frontmatter_schema_json
+
+# Protocol versions advertised by both eras (modern first, legacy pinned).
+LEGACY_PROTOCOL_VERSION = "2025-11-25"
+MODERN_PROTOCOL_VERSION = "2026-07-28"
+SUPPORTED_PROTOCOL_VERSIONS = (MODERN_PROTOCOL_VERSION, LEGACY_PROTOCOL_VERSION)
+
+# Server identity — single source consumed by both initialize and server/discover.
+SERVER_NAME = "docline-mcp"
+SERVER_VERSION = "0.1.0"
+
+# Tools dispatchable on the untrusted MCP surface (a subset of the shared
+# manifest; ``ingest_local_dir`` is excluded — its ``source_path`` has no
+# workspace-containment validator).
+_CALLABLE_TOOL_NAMES = ("fetch", "process", "export_schema")
+
+
+class _ExportSchemaArgs(BaseModel):
+    """Empty argument model for ``export_schema`` — rejects any non-empty args."""
+
+    model_config = ConfigDict(extra="forbid")
+
+
+def _omit_workspace_root(schema: dict[str, object]) -> dict[str, object]:
+    """Return a deep copy of ``schema`` with the ``workspace_root`` property removed."""
+    result = copy.deepcopy(schema)
+    props = result.get("properties")
+    if isinstance(props, dict):
+        props.pop("workspace_root", None)
+    required = result.get("required")
+    if isinstance(required, list) and "workspace_root" in required:
+        required.remove("workspace_root")
+    return result
 
 
 class TransportMode(Enum):
@@ -103,6 +139,66 @@ class DoclineMcpServer:
             Draft 2020-12 dialect and the stable docline ``$id``.
         """
         return export_base_frontmatter_schema_json()
+
+    def list_callable_tools(self) -> McpManifestResponse:
+        """Return the callable allow-list manifest for the untrusted MCP surface.
+
+        Excludes ``ingest_local_dir`` and removes the ``workspace_root`` property
+        from the advertised ``process`` schema (the two sanctioned MCP-only
+        parity divergences). This — not :meth:`list_tools` — is the sole tool
+        advertise source for the stdio transport.
+        """
+        tools: list[ManifestTool] = []
+        for tool in get_manifest().tools:
+            if tool.name not in _CALLABLE_TOOL_NAMES:
+                continue
+            params = tool.parameters
+            if tool.name == "process":
+                params = _omit_workspace_root(params)
+            tools.append(
+                ManifestTool(name=tool.name, description=tool.description, parameters=params)
+            )
+        return McpManifestResponse(tools=tools)
+
+    def call_tool(self, name: str, arguments: dict[str, object]) -> object:
+        """Dispatch a ``tools/call`` through the static callable allow-list.
+
+        Each allow-list entry is a uniform ``(arguments: dict) -> object``
+        adapter — no ``getattr`` dispatch, so dunder/attribute injection is
+        impossible and every callable name is explicitly enumerated.
+
+        Args:
+            name: The requested tool name.
+            arguments: The raw argument dict from the tools/call params.
+
+        Returns:
+            The domain result (``FetchResult``/``ProcessResult``/``str``).
+
+        Raises:
+            UnknownToolError: When ``name`` is absent from the allow-list.
+            ValidationError: When ``arguments`` fail model validation.
+        """
+        if name == "fetch":
+            return self.fetch(arguments)
+        if name == "process":
+            return self.process(arguments)
+        if name == "export_schema":
+            _ExportSchemaArgs.model_validate(arguments or {})
+            return self.export_schema()
+        raise UnknownToolError(f"Unknown or unroutable tool: {name!r}")
+
+    def describe_server(self) -> dict[str, object]:
+        """Return the single-source server identity/version/capability descriptor.
+
+        Consumed by both the legacy ``initialize`` and the modern
+        ``server/discover`` so the two negotiation entry points cannot drift.
+        """
+        return {
+            "serverInfo": {"name": SERVER_NAME, "version": SERVER_VERSION},
+            "capabilities": {"tools": {}},
+            "protocolVersion": LEGACY_PROTOCOL_VERSION,
+            "supportedVersions": list(SUPPORTED_PROTOCOL_VERSIONS),
+        }
 
 
 def get_manifest_response() -> McpManifestResponse:
