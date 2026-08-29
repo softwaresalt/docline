@@ -286,7 +286,12 @@ class _ValidatingRedirectHandler(request.HTTPRedirectHandler):
         # Re-validate every redirect target: scheme/literal, then resolution.
         validate_crawl_url(newurl)
         resolve_and_validate(urlparse(newurl).hostname or "")
-        return super().redirect_request(req, fp, code, msg, headers, newurl)
+        new = super().redirect_request(req, fp, code, msg, headers, newurl)
+        if new is not None and self._budget is not None:
+            # Debit one attempt per FOLLOWED hop, after validation and before the
+            # hop's outbound I/O (§H7 item 4a); a rejected redirect debits nothing.
+            self._budget.debit_attempt()
+        return new
 
     def http_error_302(
         self,
