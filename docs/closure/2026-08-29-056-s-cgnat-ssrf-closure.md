@@ -7,8 +7,6 @@ merge_shas: [9560d48]
 date: 2026-08-29
 ---
 
-# Operational Closure — 056-S: sitemap CGNAT (100.64.0.0/10) SSRF gap
-
 - **Shipment:** 056-S
 - **Feature:** 065-F (tasks 065.001-T, 065.002-T)
 - **PR:** #167 — MERGED 2026-08-29T09:09:48Z
