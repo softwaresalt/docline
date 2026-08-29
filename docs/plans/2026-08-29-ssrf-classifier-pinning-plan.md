@@ -52,11 +52,15 @@ consumers via explicit dependency edges.
 - Domain: tests. Files: `tests/fetch/` (new parity test module).
 - One parametrized family pinning every rejected class **directly** (never via the flag table):
   private, loopback, link-local, multicast, reserved, unspecified, CGNAT `100.64.0.0/10`, ULA
-  `fc00::/7`, IPv6 site-local `fec0::/10`, and a CVE-2024-4032-affected prefix (e.g.
-  `192.0.0.0/24`). Assert one shared predicate is consumed by both `sitemap` and `url_policy`
-  (delegation identity), and that an unparseable address is `unsafe=True` (fail-closed).
+  `fc00::/7`, and IPv6 site-local `fec0::/10`. Assert one shared predicate is consumed by both
+  `sitemap` and `url_policy` (delegation identity), and that an unparseable address is
+  `unsafe=True` (fail-closed).
+- Over-block guard (positive tests): assert the classifier does **not** reject the
+  globally-reachable exceptions inside CVE-2024-4032-affected ranges — `192.0.0.9`, `192.0.0.10`
+  (PCP/NAT64 anycast) and a representative reachable `2001::/23` sub-address — so the CVE mitigation
+  never blocks valid public-unicast destinations.
 - AC: harness compiles; new tests fail (red) against current divergence (sitemap misses ULA and
-  site-local; neither predicate pins the CVE prefix independent of `is_private`). Depends on: none.
+  site-local). Depends on: none.
 
 ### A.T2 — Consolidate onto one canonical predicate + add site-local/CVE-prefix checks (green)
 
@@ -64,11 +68,13 @@ consumers via explicit dependency edges.
 - Make `url_policy.is_unsafe_resolved_address` the single classifier; `sitemap` deletes its
   duplicate predicate + `_METADATA_IPS`/`_CGNAT_NETWORK` copies and delegates (import direction
   `sitemap -> url_policy`, verified acyclic). Add explicit `fec0::/10` (`is_site_local`)
-  membership and explicit network-membership checks for the CVE-2024-4032-affected special-use
-  prefixes so classification does not depend on the runtime `ipaddress` patch level. Preserve
-  fail-closed and every existing reject.
-- AC: A.T1 class-parity greens; `ruff`/`pyright` clean; live fetch-path behavior unchanged.
-  Depends on A.T1.
+  membership to the canonical predicate. Do **not** hand-roll wholesale rejection of the
+  CVE-2024-4032-affected prefixes — those ranges keep globally-reachable exceptions (e.g.
+  `192.0.0.9`/`192.0.0.10`, six reachable `2001::/23` subranges) and a wholesale reject would block
+  valid destinations. The CVE mitigation is the runtime floor (see hardening); the predicate keeps
+  relying on the six flags for those ranges. Preserve fail-closed and every existing reject.
+- AC: A.T1 class-parity greens (including the over-block guard for `192.0.0.9`/`192.0.0.10`);
+  `ruff`/`pyright` clean; live fetch-path behavior unchanged. Depends on A.T1.
 
 ### A.T3 — Harness: metadata-IP membership as normalized-object comparison (red)
 
@@ -102,17 +108,22 @@ consumers via explicit dependency edges.
 
 ### A.T6 — Route sitemap fetch through the public pinned sink (green)
 
-- Domain: src. Files: `src/docline/fetch/sitemap.py` (and, if a resolve-once pinned-target boundary
-  is required, an explicit **public** `http.py` boundary — do not export or consume private
-  `_Pinned*` classes).
-- Make the sitemap SSRF guarantee flow through the public HTTP sink as one inseparable unit:
-  `http.fetch_page` / `build_fetch_opener(ProxyHandler({}), pinned handlers,
-  _ValidatingRedirectHandler)` so resolution, validation, connect, redirect revalidation, and
-  proxy suppression are atomic and the validated IP is pinned while Host/SNI/cert keep the
-  hostname. Eliminate the TOCTOU-prone hostname-return contract (consumes 0A56B201). Reuse the
-  shipped pinning; do not re-implement it.
-- AC: A.T5 harness greens; full `pytest` clean; HTTPS cert/SNI verify against hostname. Depends on
-  A.T5 and A.T4 (the full-suite green gate requires the metadata fix landed too).
+- Domain: src. Files: `src/docline/fetch/sitemap.py` (reuse the public `http.fetch_page`; no new
+  `http.py` boundary required — do not export or consume private `_Pinned*` classes).
+- **Concrete contract** (removes the API ambiguity): keep `validate_sitemap_url(url) -> str` as a
+  synchronous SSRF **preflight** (scheme/host/literal-IP classification via the canonical
+  predicate; it explicitly does NOT perform an authoritative resolve-and-return-hostname handoff).
+  Add one authoritative retrieval entry point:
+  `async def fetch_sitemap(url: str, *, timeout_seconds: float = 30.0, max_redirects: int = 5) ->
+  FetchResponse` that calls `validate_sitemap_url(url)` then delegates to
+  `http.fetch_page(url, timeout_seconds=..., max_redirects=...)`, so resolution, validation,
+  connect, redirect revalidation, and proxy suppression are atomic and the validated IP is pinned
+  while Host/SNI/cert keep the hostname. This is the single sitemap fetch path; the TOCTOU-prone
+  hostname-return workflow is removed by making `validate_sitemap_url` preflight-only and routing
+  every fetch through `fetch_sitemap`. Reuse the shipped pinning; do not re-implement it.
+- AC: A.T5 harness greens against `fetch_sitemap`; full `pytest` clean; HTTPS cert/SNI verify
+  against hostname; `sitemap.__all__` exports `fetch_sitemap`. Depends on A.T5 and A.T4 (the
+  full-suite green gate requires the metadata fix landed too).
 
 ## Dependency graph
 
@@ -151,11 +162,14 @@ auditor's corrective.
 - **Risk class: high** (security boundary, fail-closed SSRF classifier). ProposedAction:
   consolidate + repin. Rollback: single-shipment revert; live-path behavior preserved.
 - **CVE-2024-4032 guard**: `is_private`/`is_global` tables changed in Python 3.12.4 and pyproject
-  currently permits 3.12.0-3.12.3. The canonical predicate adds explicit network-membership checks
-  for the affected prefixes so classification is patch-independent; A.T1 pins a CVE-affected prefix
-  directly. Recommended complementary defense: raise `requires-python` to `>=3.12.4` (carried as an
-  open question / independent manifest decision — not required because the explicit checks close the
-  gap in-code).
+  currently permits 3.12.0-3.12.3. The mitigation is the runtime floor `requires-python >= 3.12.4`
+  (recommended in-shipment via a manifest bump, or tracked as the open question), because the
+  corrected CPython tables already encode the documented allow-list exceptions (e.g. `192.0.0.9`,
+  `192.0.0.10`, reachable `2001::/23` subranges). The predicate deliberately does **not** hand-roll
+  wholesale rejection of these prefixes, which would block those globally-reachable exceptions;
+  A.T1 adds positive over-block guards asserting they stay accepted. The security-critical SSRF
+  classes (private/loopback/link-local/CGNAT/ULA/site-local/metadata) are pinned by explicit
+  membership independent of the flag table.
 - **Regression guard**: A.T1 enumerates every class both predicates currently reject so
   consolidation cannot drop one; the union (adds ULA + site-local to sitemap) only tightens.
 - **HTTPS integrity guard**: A.T5 asserts SNI/cert target the hostname, never the pinned IP.

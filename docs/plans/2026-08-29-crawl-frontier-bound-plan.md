@@ -49,9 +49,12 @@ cannot grow the in-memory `frontier` deque and `visited` set without bound, inde
      admissions (the cap is not derived from either budget).
   3. Under-cap regression: a crawl whose discovery stays below the cap produces identical results
      with and without the cap (uses the exact default `max_frontier`).
-  4. Redirect aliases do not circumvent the intended bound: distinct redirect final URLs are
-     admitted to `visited` only within the existing `max_pages` x `MAX_REDIRECTS` envelope, and
-     the discovered-link admission cap is what bounds fan-out growth.
+  4. Non-page-counting branches do not circumvent the intended bound: distinct final URLs reached
+     via print-page, duplicate-final, and redirect-alias paths (which do **not** all increment
+     `page_count`) are admitted to `visited` only within the absolute per-request
+     `MAX_FETCH_ATTEMPTS` budget, and the discovered-link admission cap is what bounds fan-out
+     growth. Exercise at least one non-page-counting branch (e.g. a redirect chain to a distinct
+     final URL) so the harness pins the real envelope, not `max_pages`.
 - AC: harness compiles; tests fail (red) against the current unbounded append. Depends on: none.
 
 ### B.T2 — Enforce explicit frontier admission cap in the crawl loop (green)
@@ -71,9 +74,12 @@ cannot grow the in-memory `frontier` deque and `visited` set without bound, inde
 The cap bounds the **only unbounded growth vector**: discovered-link admissions at the two
 discovery branches, where a single page can enqueue arbitrarily many links. The other `visited`
 insertions — the seed key, each fetched page's final-URL key, and redirect-alias keys — are
-already bounded by the existing budgets (`max_pages` fetched pages, each with at most
-`MAX_REDIRECTS` redirect aliases). They are not the exhaustion vector and are explicitly out of
-scope for the new cap; B.T1 scenario 4 pins that they stay within the existing envelope.
+already bounded by the absolute per-request `MAX_FETCH_ATTEMPTS` budget (every outbound attempt and
+every followed redirect debits it), **not** by `max_pages` x `max_redirects` (`page_count` is not
+incremented for print-page, duplicate-final, or some scope-skip branches, and `max_redirects` is
+configurable). They are not the exhaustion vector and are explicitly out of scope for the new cap;
+so total resident identity keys are bounded by `MAX_FETCH_ATTEMPTS + max_frontier`. B.T1 scenario 4
+pins that non-page-counting branches stay within the `MAX_FETCH_ATTEMPTS` envelope.
 
 ## Dependency graph
 

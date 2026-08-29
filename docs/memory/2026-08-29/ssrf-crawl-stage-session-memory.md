@@ -49,9 +49,12 @@ Reviewers: Security Lens (gpt-5.6-sol), Architecture Strategist (gpt-5.6-terra),
 - Sitemap fix bound to the public `fetch_page`/`build_fetch_opener` sink (proxy suppression +
   redirect revalidation + pinning as one unit) (Security/Arch/Scope P2).
 - Added `066.004-T -> 066.006-T` join so the full-suite green gate is attainable (Arch P2).
-- Crawl: precise invariant (cap bounds discovered-link admissions; final-URL/redirect-alias
-  `visited` already bounded by max_pages x MAX_REDIRECTS); 4 scenario groups; debug-log-only
-  observability; explicit default `MAX_FRONTIER = 10_000` (Arch P1 + Scope P2/P3).
+- Crawl: precise invariant (cap bounds discovered-link admissions; seed/final-URL/redirect-alias
+  `visited` growth bounded by the absolute `MAX_FETCH_ATTEMPTS` budget, NOT `max_pages` x
+  `max_redirects` since `page_count` skips print-page/duplicate-final branches and `max_redirects`
+  is configurable; total resident keys <= `MAX_FETCH_ATTEMPTS + max_frontier`); 4 scenario groups
+  incl. a non-page-counting branch; debug-log-only observability; explicit default
+  `MAX_FRONTIER = 10_000` (Arch P1 + Scope P2/P3).
 
 ## Artifacts
 

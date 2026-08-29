@@ -144,7 +144,12 @@ Linked `related_to` `064-F`/`065-F` (same address classes, prior surfaces).
 
 ## Open questions
 
-- Whether to raise `requires-python` to `>=3.12.4` for CVE-2024-4032 — independent manifest
-  decision, out of scope; carried forward from the prior deliberation.
-- If sitemap discovery is later wired into the live crawl, whether to route it through
-  `fetch_page` wholesale — noted for the future activation shipment, not this unit.
+- Whether to raise `requires-python` to `>=3.12.4` for CVE-2024-4032. The prior deliberation
+  treated this as an out-of-scope manifest decision; this shipment now treats the runtime floor as
+  the **recommended** CVE mitigation (the corrected CPython tables encode the allow-list exceptions
+  the predicate must not block), so the plan carries it as an in-shipment manifest bump or a tracked
+  follow-up rather than hand-rolled prefix rejection.
+- Broader live-crawl sitemap **discovery orchestration** (which module drives sitemap enumeration
+  into the crawl frontier) remains out of scope for a future activation shipment. Note: the pinning
+  mechanism is NOT deferred — this shipment routes all sitemap retrieval through the pinned
+  `fetch_sitemap` -> `fetch_page` sink (see the plan's A.T6), closing the TOCTOU now.
