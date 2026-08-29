@@ -83,24 +83,43 @@ class _RecordingStdout:
         return [json.loads(line) for line in bytes(self._buf).split(b"\n") if line.strip()]
 
 
+# A legacy handshake frame prepended by the drivers so the per-connection legacy
+# era latch (064.023-T) is set before subsequent bare frames are dispatched. Its
+# response is stripped from the returned list. Dedicated pre-initialize reject
+# tests opt out with ``latch=False``.
+_LATCH_FRAME = _frame({"jsonrpc": "2.0", "id": "__latch__", "method": "initialize", "params": {}})
+
+
 def _drive_serve(
     frames: list[Any],
     server: DoclineMcpServer | None = None,
     timeout: float = 10.0,
+    latch: bool = True,
 ) -> list[dict]:
-    """Run serve() to completion over ``frames`` (EOF-first) and return responses."""
+    """Run serve() to completion over ``frames`` (EOF-first) and return responses.
+
+    When ``latch`` is True (default) a legacy ``initialize`` frame is prepended so
+    the per-connection legacy era latch is set; its response is dropped so callers
+    observe only their own frames' responses.
+    """
     from docline.mcp.stdio import serve
 
     payload = b"".join(
         _frame(f) if not isinstance(f, (bytes, bytearray)) else bytes(f) for f in frames
     )
+    if latch:
+        payload = _LATCH_FRAME + payload
     stdin = _EofStdin(payload)
     stdout = _RecordingStdout()
     worker = threading.Thread(target=serve, args=(stdin, stdout, server or SERVER))
     worker.start()
     worker.join(timeout)
     assert not worker.is_alive(), "serve() did not terminate on EOF within timeout"
-    return stdout.responses()
+    responses = stdout.responses()
+    if latch:
+        # Drop the prepended latch handshake response.
+        responses = [r for r in responses if r.get("id") != "__latch__"]
+    return responses
 
 
 class _InteractiveStdin:
@@ -545,18 +564,27 @@ class _RecordingReadStdin:
 
 
 def _drive_bytes(
-    payload: bytes, server: DoclineMcpServer | None = None
+    payload: bytes, server: DoclineMcpServer | None = None, latch: bool = True
 ) -> tuple[list[dict], list[int]]:
-    """Drive serve() over a raw byte payload using the recording stdin."""
+    """Drive serve() over a raw byte payload using the recording stdin.
+
+    When ``latch`` is True (default) a legacy ``initialize`` frame is prepended so
+    the per-connection legacy era latch is set; its response is dropped.
+    """
     from docline.mcp.stdio import CHUNK_SIZE, serve
 
+    if latch:
+        payload = _LATCH_FRAME + payload
     stdin = _RecordingReadStdin(payload, CHUNK_SIZE)
     stdout = _RecordingStdout()
     worker = threading.Thread(target=serve, args=(stdin, stdout, server or SERVER))
     worker.start()
     worker.join(15.0)
     assert not worker.is_alive(), "serve() did not terminate within timeout"
-    return stdout.responses(), stdin.read_sizes
+    responses = stdout.responses()
+    if latch:
+        responses = [r for r in responses if r.get("id") != "__latch__"]
+    return responses, stdin.read_sizes
 
 
 def _exact_payload_frame(n: int) -> bytes:
@@ -704,7 +732,8 @@ def test_h5_stdout_carries_only_jsonrpc_frames(monkeypatch, tmp_path) -> None:
     )
     from docline.mcp.stdio import serve
 
-    stdin = _EofStdin(frame)
+    # Prepend a legacy initialize so the per-connection legacy latch is set.
+    stdin = _EofStdin(_LATCH_FRAME + frame)
     stdout = _RecordingStdout()
     worker = threading.Thread(target=serve, args=(stdin, stdout, SERVER))
     worker.start()
@@ -899,3 +928,195 @@ def test_modern_version_precedence_over_caps(method: str) -> None:
     resp = _dispatch(_modern_msg(method, _meta_block(version="1999-01-01", include_caps=False)))
     assert resp is not None and "error" in resp, resp
     assert resp["error"]["code"] == -32022
+
+
+# ---------------------------------------------------------------------------
+# 064.021-T — legacy-era retention + era-routing harness
+# ---------------------------------------------------------------------------
+
+
+def test_legacy_initialize_handshake_anchor() -> None:
+    """Scenario (a) green anchor: the legacy initialize/ping/notifications path is retained."""
+    init = _dispatch({"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {}})["result"]
+    assert init["protocolVersion"] == LEGACY_PROTOCOL_VERSION
+    assert "capabilities" in init and "serverInfo" in init
+    assert init["serverInfo"].get("name")
+    # notifications/initialized is a silent notification.
+    assert _drive_serve([{"jsonrpc": "2.0", "method": "notifications/initialized"}]) == []
+    # ping -> {} (legacy-only utility).
+    ping = _dispatch({"jsonrpc": "2.0", "id": 2, "method": "ping"})["result"]
+    assert ping == {}
+
+
+def test_era_routing_modern_member_served_without_handshake() -> None:
+    """Scenario (b)(i): a modern-member request is served modern with no prior initialize."""
+    responses = _drive_serve([_modern_msg("tools/list", _meta_block(), id_=1)], latch=False)
+    r = responses[0]["result"]
+    assert r["resultType"] == "complete"
+
+
+def test_era_routing_legacy_after_initialize() -> None:
+    """Scenario (b)(i): after initialize, a bare (no modern member) request is served legacy."""
+    frames = [
+        {"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {}},
+        {"jsonrpc": "2.0", "id": 2, "method": "tools/list"},
+    ]
+    responses = _drive_serve(frames, latch=False)
+    r2 = next(r for r in responses if r.get("id") == 2)["result"]
+    assert "resultType" not in r2  # plain legacy result, not a modern envelope
+    assert [t["name"] for t in r2["tools"]] == ["fetch", "process", "export_schema"]
+
+
+def test_ancillary_meta_after_initialize_stays_legacy() -> None:
+    """Scenario (b)(i-a): a retained legacy client's ancillary _meta stays on the legacy path."""
+    frames = [
+        {"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {}},
+        {
+            "jsonrpc": "2.0",
+            "id": 2,
+            "method": "tools/list",
+            "params": {"_meta": {"progressToken": "tok"}},
+        },
+    ]
+    responses = _drive_serve(frames, latch=False)
+    r2 = next(r for r in responses if r.get("id") == 2)
+    # Not routed to the modern validator and rejected; served as a plain legacy result.
+    assert "result" in r2
+    assert "resultType" not in r2["result"]
+
+
+def test_modern_wins_after_legacy_latch() -> None:
+    """Scenario (b)(i-b): a modern-member request after a legacy latch is still served modern."""
+    frames = [
+        {"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {}},
+        _modern_msg("tools/list", _meta_block(), id_=2),
+    ]
+    responses = _drive_serve(frames, latch=False)
+    r2 = next(r for r in responses if r.get("id") == 2)["result"]
+    assert r2["resultType"] == "complete"
+
+
+def test_no_drift_initialize_vs_server_discover() -> None:
+    """Scenario (b)(ii): initialize and server/discover share one identity source (no drift)."""
+    init = _dispatch({"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {}})["result"]
+    disc = _dispatch(_modern_msg("server/discover", _meta_block(caps={"tools": {}})))["result"]
+    assert init["serverInfo"] == disc["_meta"][SERVERINFO_META_KEY]
+    assert init["capabilities"] == disc["capabilities"]
+    # Legacy singular protocolVersion is CONTAINED IN modern plural supportedVersions.
+    assert init["protocolVersion"] in disc["supportedVersions"]
+
+
+@pytest.mark.parametrize(
+    "frame",
+    [
+        {"jsonrpc": "2.0", "id": 9, "method": "tools/list"},  # metadata-free
+        {
+            "jsonrpc": "2.0",
+            "id": 9,
+            "method": "tools/call",
+            "params": {"name": "export_schema", "arguments": {}},
+        },  # metadata-free tools/call
+        {
+            "jsonrpc": "2.0",
+            "id": 9,
+            "method": "tools/list",
+            "params": {"_meta": {"progressToken": "tok"}},
+        },  # ancillary-_meta-only
+        {"jsonrpc": "2.0", "id": 9, "method": "ping"},  # legacy utility pre-latch
+    ],
+)
+def test_pre_initialize_operation_rejected(frame: dict) -> None:
+    """Scenario (b)(iii): an op lacking a modern member before init is rejected, not legacy."""
+    responses = _drive_serve([frame], latch=False)
+    assert len(responses) == 1
+    assert "error" in responses[0], responses[0]
+    assert responses[0]["error"]["code"] == -32600
+
+
+def _modern_tools_call(name: str, arguments: dict, id_: int = 1) -> dict:
+    """Build a modern (_meta-bearing) tools/call for the named tool."""
+    return {
+        "jsonrpc": "2.0",
+        "id": id_,
+        "method": "tools/call",
+        "params": {"_meta": _meta_block(), "name": name, "arguments": arguments},
+    }
+
+
+def test_modern_tools_call_h1_workspace_root_rejected(monkeypatch, tmp_path) -> None:
+    """Scenario (c): the modern path enforces H1 workspace_root reject identically to legacy."""
+    monkeypatch.chdir(tmp_path)
+    tmp_path.joinpath("staging").mkdir()
+    resp = _dispatch(
+        _modern_tools_call("process", {"staging_dir": "staging", "workspace_root": "/"})
+    )
+    assert resp["error"]["code"] == -32602
+
+
+def test_modern_tools_call_success_wraps_calltoolresult(monkeypatch, tmp_path) -> None:
+    """Scenario (c): a modern success wraps a valid CallToolResult in the resultType envelope."""
+    monkeypatch.chdir(tmp_path)
+    tmp_path.joinpath("staging").mkdir()
+    r = _dispatch(
+        _modern_tools_call("process", {"staging_dir": "staging", "output_dir": "output"})
+    )["result"]
+    assert r["resultType"] == "complete"
+    assert r["_meta"][SERVERINFO_META_KEY]["name"]
+    assert _is_content_block_list(r["content"])
+    assert r.get("isError", False) is False
+    expected = execute_process(ProcessRequest(staging_dir="staging", output_dir="output"))
+    assert r["structuredContent"] == expected.model_dump()
+
+
+def test_modern_tools_call_failure_maps_to_iserror() -> None:
+    """Scenario (c): a modern validated-but-failed fetch maps to isError under the envelope."""
+    r = _dispatch(_modern_tools_call("fetch", {"source": "ftp://example.com"}))["result"]
+    assert r["resultType"] == "complete"
+    assert r["isError"] is True
+    assert _is_content_block_list(r["content"])
+
+
+def test_modern_export_schema_wire_shape() -> None:
+    """Scenario (c): a modern export_schema returns a ContentBlock[] under the envelope."""
+    r = _dispatch(_modern_msg("tools/call", _meta_block()))["result"]
+    assert r["resultType"] == "complete"
+    assert _is_content_block_list(r["content"])
+
+
+@pytest.mark.parametrize("bad_id", [{"x": 1}, [1], True])
+def test_modern_malformed_id_short_circuits_minus_32600(bad_id: Any) -> None:
+    """Scenario (c): request-shape id validation precedes _meta/era for the modern path too."""
+    frame = _frame(
+        {
+            "jsonrpc": "2.0",
+            "id": bad_id,
+            "method": "tools/call",
+            "params": {"_meta": _meta_block(), "name": "export_schema", "arguments": {}},
+        }
+    )
+    resp = _single(frame)
+    assert resp["error"]["code"] == -32600
+    assert resp["id"] is None
+    assert "result" not in resp
+
+
+def test_modern_malformed_id_unsupported_version_still_32600() -> None:
+    """Scenario (c): a malformed id short-circuits even with an unsupported modern version."""
+    frame = _frame(
+        {
+            "jsonrpc": "2.0",
+            "id": {"bad": 1},
+            "method": "tools/call",
+            "params": {"_meta": _meta_block(version="1999-01-01"), "name": "export_schema"},
+        }
+    )
+    resp = _single(frame)
+    assert resp["error"]["code"] == -32600
+    assert resp["id"] is None
+
+
+def test_modern_meta_malformed_no_id_returns_32600_not_suppressed() -> None:
+    """Scenario (c): a malformed _meta-bearing payload with no id is -32600 id:null, not silent."""
+    resp = _single(_frame({"jsonrpc": "2.0", "params": {"_meta": _meta_block()}}))
+    assert resp["error"]["code"] == -32600
+    assert resp["id"] is None
