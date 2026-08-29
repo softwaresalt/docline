@@ -7,7 +7,10 @@ here; shared framing/driver helpers live at the top of the module.
 from __future__ import annotations
 
 import json
+import subprocess
+import sys
 import threading
+from pathlib import Path
 from typing import Any
 
 import pytest
@@ -1313,3 +1316,57 @@ def test_h8_transport_optin_accept_anchor(monkeypatch, tmp_path) -> None:
         server=optin,
     )
     assert not (resp.get("error") and resp["error"]["code"] == -32602)
+
+
+# ---------------------------------------------------------------------------
+# 064.008-T — docline-mcp subprocess interactive smoke harness
+# ---------------------------------------------------------------------------
+
+
+def _read_frame_bounded(pipe, timeout: float = 15.0) -> bytes:
+    """Read one line/frame from ``pipe`` bounded by ``timeout`` (deadlock -> fail)."""
+    holder: dict[str, bytes] = {}
+
+    def _reader() -> None:
+        holder["line"] = pipe.readline()
+
+    worker = threading.Thread(target=_reader, daemon=True)
+    worker.start()
+    worker.join(timeout)
+    if worker.is_alive():
+        raise AssertionError("timed out waiting for a response frame (stdio deadlock)")
+    return holder.get("line", b"")
+
+
+def test_docline_mcp_subprocess_interactive_smoke() -> None:
+    """python -m docline.mcp answers each frame before EOF (no greedy-read/buffer deadlock)."""
+    repo_root = Path(__file__).resolve().parents[2]
+    proc = subprocess.Popen(  # noqa: S603
+        [sys.executable, "-m", "docline.mcp"],
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        cwd=repo_root,
+    )
+    try:
+        assert proc.stdin is not None and proc.stdout is not None
+        # Frame 1: legacy initialize latches the era; require its response first.
+        proc.stdin.write(_frame({"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {}}))
+        proc.stdin.flush()
+        line1 = _read_frame_bounded(proc.stdout)
+        assert line1.strip(), "no response to initialize while stdin is still open"
+        assert json.loads(line1)["id"] == 1
+        # Frame 2: tools/list, required BEFORE closing stdin.
+        proc.stdin.write(_frame({"jsonrpc": "2.0", "id": 2, "method": "tools/list"}))
+        proc.stdin.flush()
+        line2 = _read_frame_bounded(proc.stdout)
+        assert line2.strip(), "no response to tools/list while stdin is still open"
+        names = [t["name"] for t in json.loads(line2)["result"]["tools"]]
+        assert names == ["fetch", "process", "export_schema"]
+        assert "ingest_local_dir" not in names
+        proc.stdin.close()
+        assert proc.wait(timeout=15.0) == 0
+    finally:
+        if proc.poll() is None:
+            proc.kill()
+            proc.wait(timeout=5.0)
