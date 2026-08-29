@@ -142,3 +142,48 @@ async def fetch_page_wrapper(url: str) -> object:
     from docline.fetch.http import fetch_page
 
     return await fetch_page(url)
+
+
+# ---------------------------------------------------------------------------
+# Connection pinning — observe the actual destination handed to create_connection
+# ---------------------------------------------------------------------------
+
+
+def test_connect_pins_socket_to_validated_address(monkeypatch: pytest.MonkeyPatch) -> None:
+    """_connect_validated_address connects to the validated IP, never the hostname."""
+    from docline.fetch.http import _connect_validated_address
+
+    monkeypatch.setattr(
+        socket, "getaddrinfo", _fake_getaddrinfo({"ok.example.com": ["93.184.216.34"]})
+    )
+    captured: dict[str, object] = {}
+
+    def _fake_create(address, timeout=None, source_address=None):
+        captured["address"] = address
+        return object()
+
+    monkeypatch.setattr(socket, "create_connection", _fake_create)
+    _connect_validated_address("ok.example.com", 443, None, None)
+    assert captured["address"] == ("93.184.216.34", 443)
+
+
+def test_connect_falls_back_to_next_validated_address(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A validated-but-unreachable first address falls back to the next validated address."""
+    from docline.fetch.http import _connect_validated_address
+
+    monkeypatch.setattr(
+        socket,
+        "getaddrinfo",
+        _fake_getaddrinfo({"ok.example.com": ["93.184.216.34", "93.184.216.35"]}),
+    )
+    tried: list[str] = []
+
+    def _fake_create(address, timeout=None, source_address=None):
+        tried.append(address[0])
+        if address[0] == "93.184.216.34":
+            raise OSError("simulated unreachable address")
+        return object()
+
+    monkeypatch.setattr(socket, "create_connection", _fake_create)
+    _connect_validated_address("ok.example.com", 80, None, None)
+    assert tried == ["93.184.216.34", "93.184.216.35"]
