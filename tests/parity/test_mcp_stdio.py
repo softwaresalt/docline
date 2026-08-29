@@ -1370,3 +1370,81 @@ def test_docline_mcp_subprocess_interactive_smoke() -> None:
         if proc.poll() is None:
             proc.kill()
             proc.wait(timeout=5.0)
+
+
+# ---------------------------------------------------------------------------
+# 064.035-T — §H8 server-side opt-in startup config harness
+# ---------------------------------------------------------------------------
+
+_ENV_OPTIN = "DOCLINE_MCP_ALLOW_EXTERNAL_PDF_ENGINES"
+
+
+def _run_main_capture(monkeypatch, env: str | None = None, argv: list[str] | None = None):
+    """Run docline.mcp.__main__.main() with a patched serve() that captures the server."""
+    import docline.mcp.__main__ as mainmod
+
+    captured: dict[str, Any] = {}
+
+    def _fake_serve(_stdin, _stdout, server):
+        captured["server"] = server
+        return 0
+
+    monkeypatch.setattr(mainmod, "serve", _fake_serve)
+    monkeypatch.delenv(_ENV_OPTIN, raising=False)
+    if env is not None:
+        monkeypatch.setenv(_ENV_OPTIN, env)
+    monkeypatch.setattr(sys, "argv", ["docline-mcp", *(argv or [])])
+    rc = mainmod.main()
+    return captured["server"], rc
+
+
+@pytest.mark.parametrize(
+    "value,expected",
+    [
+        ("1", True),
+        ("0", False),
+        ("false", False),
+        ("true", False),
+        ("yes", False),
+        ("", False),
+        ("   ", False),
+        (" 1", False),
+        ("1 ", False),
+        (" 1 ", False),
+        ("1\n", False),
+    ],
+)
+def test_h8_startup_env_resolution(monkeypatch, value: str, expected: bool) -> None:
+    """Scenario (a): only the raw exact token '1' enables; padded/other values fail closed."""
+    server, rc = _run_main_capture(monkeypatch, env=value)
+    assert server.external_pdf_engines_enabled is expected
+    assert rc == 0
+
+
+def test_h8_startup_env_unset_disabled(monkeypatch) -> None:
+    """Scenario (a) anchor: with no env var the server is disabled."""
+    server, _ = _run_main_capture(monkeypatch, env=None)
+    assert server.external_pdf_engines_enabled is False
+
+
+def test_h8_startup_cli_flag_enables(monkeypatch) -> None:
+    """Scenario (b): the --allow-external-pdf-engine flag constructs an enabled server."""
+    server, _ = _run_main_capture(monkeypatch, argv=["--allow-external-pdf-engine"])
+    assert server.external_pdf_engines_enabled is True
+
+
+def test_h8_startup_no_flag_no_env_disabled(monkeypatch) -> None:
+    """Scenario (b) anchor: absence of both the env token and the flag disables."""
+    server, _ = _run_main_capture(monkeypatch)
+    assert server.external_pdf_engines_enabled is False
+
+
+def test_h8_startup_fresh_instance_not_module_server(monkeypatch, capsys) -> None:
+    """Scenario (c): main() builds a fresh instance, never mutating the module SERVER; no secret."""
+    server, _ = _run_main_capture(monkeypatch, argv=["--allow-external-pdf-engine"])
+    assert server is not SERVER
+    assert SERVER.external_pdf_engines_enabled is False
+    captured = capsys.readouterr()
+    for secret in ("AZURE_AI_FOUNDRY_KEY", "AZURE_AI_FOUNDRY_ENDPOINT", "MISTRAL_API_KEY"):
+        assert secret not in captured.out
+        assert secret not in captured.err
