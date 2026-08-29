@@ -58,3 +58,50 @@ NEXT (manifest order): 064.027(r)/028(g) redirect-body drain+fp-closure (extend 
 - tools/list == SERVER.list_callable_tools() (3 tools, process omits workspace_root); initialize protocolVersion 2025-11-25.
 - Error codes: -32700 (incl NaN/Inf tokens), -32600 (shape/id rules, id echo vs null), -32601, -32602 (unknown tool/invalid params/workspace_root/ext-engine), -32603.
 
+## SESSION-END STATUS (2026-08-29) — 23/36 tasks complete, branch fully GREEN + PUSHED
+Branch feat/055-s-mcp-stdio-server pushed to origin. Full suite: 1753 passed, 17 skipped, 0 failed.
+Completed & committed (red→green, per-task): 064.001,005,006,007 (transport harnesses) + entire
+shared-fetch hardening 010/011,012/013,016/017,024,025/026,027/028,029/030 (SSRF-by-resolution +
+address-pinned connect + proxy disable + per-response/aggregate byte caps + attempt budget +
+redirect-body drain/fp-closure + depth bound) + 014 e2e + 015 adapter + 018/019 fetch-desc +
+002 legacy transport + 009 guardrails H1/H3/H4/H5. Legacy MCP stdio server is COMPLETE and green.
+
+## REMAINING WORK (13 tasks, manifest order) — HANDOFF
+- 064.020(r)/021(r)/022(g)/023(g): MODERN dual-era protocol (server/discover, per-request _meta
+  negotiation keyed on io.modelcontextprotocol/protocolVersion|clientCapabilities by KEY MEMBERSHIP,
+  -32022 UnsupportedProtocolVersion with data.supported+data.requested, resultType:"complete"
+  wrapper + serverInfo _meta + ttlMs/cacheScope; per-process legacy latch via initialize).
+  **IMPORTANT**: era routing rejects a metadata-free op before any initialize/modern-_meta. The
+  committed 001/005 harness tests send BARE tools/list / tools/call WITHOUT negotiating era; when
+  023's pre-init reject lands, those tests MUST be updated to negotiate first (send initialize, or
+  thread a shared session-state latch through dispatch). dispatch() will need a per-connection
+  session-state param (currently pure/stateless) OR the latch stored on the server instance; serve()
+  owns one state per connection. Modern branch MUST funnel through the SAME hardened dispatch so
+  H1/H3/H4/H5 apply (022 builds modern branch guarded-by-construction; 023 verifies parity).
+  describe_server() already exposes supportedVersions [2026-07-28, 2025-11-25] + capabilities +
+  serverInfo — consume it for both initialize and server/discover.
+- 064.031(r)/032(g)/033(r)/034(g): §H8 external-PDF-engine opt-in gate. server.py:
+  _MCP_LOCAL_PDF_ENGINES={auto,docling,heuristic}; ExternalEngineNotAllowedError(DoclineError);
+  DoclineMcpServer(external_pdf_engines_enabled=False); list_callable_tools() filters process
+  pdf_engine enum when not opted in (same site as workspace_root omission); guard in BOTH call_tool
+  process adapter AND public process() chokepoint. stdio.py: map ExternalEngineNotAllowedError->-32602
+  before generic -32603 (both eras). Extend 001 semantic-parity normalization for the engine delta (031).
+- 064.008(r)/003(g): subprocess smoke (Popen interactive send→flush→require-response→send-next,
+  stdin open, timeout-bounded) + entry point src/docline/mcp/__main__.py main() + pyproject
+  [project.scripts] docline-mcp = "docline.mcp.__main__:main".
+- 064.035(r)/036(g): §H8 startup opt-in in __main__ main(): env DOCLINE_MCP_ALLOW_EXTERNAL_PDF_ENGINES
+  exact "1" OR --allow-external-pdf-engine flag, resolved once, fresh DoclineMcpServer(...) to
+  serve(server=...), never mutate module SERVER, never from request data, no-secret logging.
+- 064.004: docs — README "Running the local stdio MCP server" + .vscode/mcp.json example + §H8 posture;
+  docs/ARCHITECTURE.md top-level domain/dependency map (mcp/stdio transport, __main__ bootstrap,
+  DoclineMcpServer adapter, shared docline.app façade, core never imports mcp/cli, §H8 MCP-only).
+
+## Then: PR lifecycle (Copilot review + GraphQL resolve + CI + merge-commit), runtime verification,
+## operational-closure, backlog archival (shipment-reconcile pre/post + backlogit_ship_shipment),
+## post-merge closure PR (P-014), compound-refresh, compact-context. Preserve stash 0A56B201,
+## 87F2C06D, 0A56B202 for Stage.
+
+## Gate note: pyright MUST run as `pyright --pythonpath .venv\Scripts\python.exe src/` (venv has pydantic).
+## Test hygiene: fetch e2e tests that invoke execute_fetch MUST monkeypatch.chdir(tmp_path) to avoid
+## polluting the worktree with .cache/staging (breaks test_mcp_server_process_missing_staging_dir_fails).
+
