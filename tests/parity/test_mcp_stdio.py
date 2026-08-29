@@ -1120,3 +1120,119 @@ def test_modern_meta_malformed_no_id_returns_32600_not_suppressed() -> None:
     resp = _single(_frame({"jsonrpc": "2.0", "params": {"_meta": _meta_block()}}))
     assert resp["error"]["code"] == -32600
     assert resp["id"] is None
+
+
+# ---------------------------------------------------------------------------
+# 064.031-T — §H8 external-engine adapter-policy harness (advertise + dispatch)
+# ---------------------------------------------------------------------------
+
+_LOCAL_ENGINES = {"auto", "docling", "heuristic"}
+_FULL_ENGINES = {"auto", "docling", "heuristic", "mistral_ocr"}
+
+
+def _process_enum(server: DoclineMcpServer) -> list[str]:
+    """Return the advertised process pdf_engine enum from list_callable_tools()."""
+    tools = server.list_callable_tools().model_dump(by_alias=True)["tools"]
+    process = next(t for t in tools if t["name"] == "process")
+    return process["inputSchema"]["properties"]["pdf_engine"]["enum"]
+
+
+def test_h8_default_server_advertises_only_local_engines() -> None:
+    """Scenario (a): a default server omits external engines from the advertised enum."""
+    assert set(_process_enum(DoclineMcpServer())) == _LOCAL_ENGINES
+
+
+def test_h8_optin_server_advertises_full_engine_enum() -> None:
+    """Scenario (a): an opt-in server advertises the full shared engine enum."""
+    optin = DoclineMcpServer(external_pdf_engines_enabled=True)
+    assert set(_process_enum(optin)) == _FULL_ENGINES
+
+
+def test_h8_default_dispatch_denies_external_engine(monkeypatch, tmp_path) -> None:
+    """Scenario (b): the adapter denies a non-allow-list engine before egress on both hops."""
+    import docline.readers.mistral as mistral_mod
+    from docline.mcp.exceptions import ExternalEngineNotAllowedError
+
+    called = {"n": 0}
+
+    def _sentinel(*_a, **_k):
+        called["n"] += 1
+        return "should-not-be-reached"
+
+    monkeypatch.setattr(mistral_mod, "read_pdf_mistral", _sentinel)
+    monkeypatch.chdir(tmp_path)
+    tmp_path.joinpath("staging").mkdir()
+    default = DoclineMcpServer()
+    with pytest.raises(ExternalEngineNotAllowedError) as excinfo:
+        default.call_tool("process", {"staging_dir": "staging", "pdf_engine": "mistral_ocr"})
+    assert called["n"] == 0
+    msg = str(excinfo.value)
+    assert "mistral_ocr" in msg
+    # No full-arguments echo, no credential value (§H3 alignment).
+    assert "staging" not in msg
+    for secret in ("AZURE_AI_FOUNDRY_KEY", "MISTRAL_API_KEY"):
+        assert secret not in msg
+    # The public process() chokepoint denies identically.
+    with pytest.raises(ExternalEngineNotAllowedError):
+        default.process({"staging_dir": "staging", "pdf_engine": "mistral_ocr"})
+    assert called["n"] == 0
+
+
+def test_h8_spoofed_enable_flag_in_arguments_still_denied(monkeypatch, tmp_path) -> None:
+    """Scenario (b)(i): a client-supplied enable flag can never spoof the instance opt-in."""
+    from docline.mcp.exceptions import ExternalEngineNotAllowedError
+
+    monkeypatch.chdir(tmp_path)
+    tmp_path.joinpath("staging").mkdir()
+    default = DoclineMcpServer()
+    with pytest.raises(ExternalEngineNotAllowedError):
+        default.call_tool(
+            "process",
+            {
+                "staging_dir": "staging",
+                "pdf_engine": "mistral_ocr",
+                "external_pdf_engines_enabled": True,
+                "allow_external": True,
+            },
+        )
+
+
+def test_h8_ingest_local_dir_not_callable_no_egress_bypass() -> None:
+    """Scenario (b)(ii): ingest_local_dir is not in the callable allow-list (H4 fail-closed)."""
+    from docline.mcp.exceptions import UnknownToolError
+
+    default = DoclineMcpServer()
+    with pytest.raises(UnknownToolError):
+        default.call_tool(
+            "ingest_local_dir",
+            {"source_path": "x", "output": "y", "pdf_engine": "mistral_ocr"},
+        )
+    advertised = [t["name"] for t in default.list_callable_tools().model_dump()["tools"]]
+    assert "ingest_local_dir" not in advertised
+
+
+def test_h8_optin_dispatch_accepts_external_engine(monkeypatch, tmp_path) -> None:
+    """Scenario (c): an opt-in server does NOT raise the gate error (egress stubbed)."""
+    import docline.readers.mistral as mistral_mod
+
+    monkeypatch.setattr(mistral_mod, "read_pdf_mistral", lambda *_a, **_k: "")
+    monkeypatch.chdir(tmp_path)
+    tmp_path.joinpath("staging").mkdir()
+    optin = DoclineMcpServer(external_pdf_engines_enabled=True)
+    result = optin.call_tool(
+        "process",
+        {"staging_dir": "staging", "output_dir": "output", "pdf_engine": "mistral_ocr"},
+    )
+    assert result is not None  # ProcessResult; the gate did not fire
+
+
+def test_h8_manifest_parity_delta_is_exact() -> None:
+    """Scenario (c): CLI manifest + list_tools keep all engines; only list_callable_tools omits."""
+    manifest = get_manifest()
+    proc = next(t for t in manifest.tools if t.name == "process")
+    assert set(proc.parameters["properties"]["pdf_engine"]["enum"]) == _FULL_ENGINES
+    default = DoclineMcpServer()
+    listed = default.list_tools().model_dump(by_alias=True)["tools"]
+    lproc = next(t for t in listed if t["name"] == "process")
+    assert "mistral_ocr" in lproc["inputSchema"]["properties"]["pdf_engine"]["enum"]
+    assert "mistral_ocr" not in _process_enum(default)
