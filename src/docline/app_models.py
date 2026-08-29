@@ -6,6 +6,11 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from docline.paths import PathContainmentError, validate_workspace_relative_path
 
+# Hard upper bound on ``FetchRequest.max_pages`` (§H7 item 1). An over-limit
+# value is rejected at model validation and surfaces as ``-32602`` on the MCP
+# boundary. Sized far above any legitimate crawl (20x the crawler default of 50).
+MAX_PAGES_LIMIT: int = 1000
+
 
 class FetchRequest(BaseModel):
     """Parameters for a document fetch operation.
@@ -14,7 +19,8 @@ class FetchRequest(BaseModel):
         source: URL or file path to fetch.
         depth: Crawl depth for web sources. 0 means single page only.
         max_pages: Optional page budget for web crawls. ``None`` uses the
-            bounded crawler default; a value raises or lowers that cap.
+            bounded crawler default; a value raises or lowers that cap, bounded
+            above by :data:`MAX_PAGES_LIMIT` (§H7 item 1).
         output_dir: Directory where staged files are written.
     """
 
@@ -22,7 +28,7 @@ class FetchRequest(BaseModel):
 
     source: str = Field(min_length=1)
     depth: int = Field(default=0, ge=0)
-    max_pages: int | None = Field(default=None, ge=1)
+    max_pages: int | None = Field(default=None, ge=1, le=MAX_PAGES_LIMIT)
     output_dir: str = ".cache/staging"
 
     @field_validator("output_dir")

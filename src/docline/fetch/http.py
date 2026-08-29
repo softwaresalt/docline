@@ -5,7 +5,7 @@ import http.client
 import socket
 import ssl
 from dataclasses import dataclass
-from typing import IO
+from typing import IO, Protocol
 from urllib import error, request
 from urllib.parse import urlparse
 
@@ -15,6 +15,14 @@ from docline.fetch.url_policy import (
 )
 from docline.schema.models import DoclineError
 
+# Fixed read chunk size for the bounded streamed body reader.
+CHUNK_SIZE: int = 64 * 1024
+
+# Hard streamed per-response entity-body byte cap (§H7 item 2, 10 MiB). Applies
+# to the initial response, the terminal post-redirect response, and every
+# intermediate 3xx redirect body (via the bounded-draining redirect handler).
+MAX_RESPONSE_BYTES: int = 10 * 1024 * 1024
+
 
 class FetchTimeoutError(DoclineError):
     """Raised when an HTTP request exceeds its configured timeout."""
@@ -22,6 +30,58 @@ class FetchTimeoutError(DoclineError):
 
 class FetchError(DoclineError):
     """Raised when an HTTP request fails for a non-timeout reason."""
+
+
+class ResponseByteLimitError(DoclineError):
+    """Raised when a single response body exceeds ``MAX_RESPONSE_BYTES``."""
+
+
+class _Readable(Protocol):
+    """A minimal readable stream: ``read(size) -> bytes``."""
+
+    def read(self, size: int = ..., /) -> bytes: ...
+
+
+def read_body_capped(
+    response: _Readable,
+    max_bytes: int,
+    budget: object | None = None,
+) -> bytes:
+    """Read a response body in bounded chunks, aborting once ``max_bytes`` is crossed.
+
+    Each read requests at most ``min(CHUNK_SIZE, max_bytes - read + 1)`` bytes so
+    at the boundary the reader observes at most the single crossing byte and the
+    over-cap response is never fully buffered (buffered content <=
+    ``max_bytes + 1``).
+
+    Args:
+        response: A readable stream exposing ``read(size) -> bytes``.
+        max_bytes: The hard per-response byte allowance.
+        budget: Reserved for the request-scoped aggregate budget (threaded in by
+            later hardening tasks); unused here.
+
+    Returns:
+        The full response body bytes when within the cap.
+
+    Raises:
+        ResponseByteLimitError: When the body exceeds ``max_bytes``.
+    """
+    chunks: list[bytes] = []
+    total = 0
+    while True:
+        to_read = min(CHUNK_SIZE, max_bytes - total + 1)
+        if to_read <= 0:
+            to_read = 1
+        chunk = response.read(to_read)
+        if not chunk:
+            break
+        total += len(chunk)
+        chunks.append(chunk)
+        if total > max_bytes:
+            raise ResponseByteLimitError(
+                f"Response body exceeded the {max_bytes}-byte per-response cap."
+            )
+    return b"".join(chunks)
 
 
 @dataclass(frozen=True)
@@ -200,7 +260,7 @@ async def fetch_page(
         opener = build_fetch_opener(max_redirects, redirect_handler=handler)
         req = request.Request(validated_url, headers={"User-Agent": "docline-crawler/1.0"})
         with opener.open(req, timeout=timeout_seconds) as response:
-            body_bytes = response.read()
+            body_bytes = read_body_capped(response, MAX_RESPONSE_BYTES)
             charset = response.headers.get_content_charset() or "utf-8"
             body = body_bytes.decode(charset, errors="replace")
             final_url = response.geturl()
@@ -232,9 +292,13 @@ async def fetch_page(
 
 
 __all__ = [
+    "CHUNK_SIZE",
+    "MAX_RESPONSE_BYTES",
     "FetchError",
     "FetchResponse",
     "FetchTimeoutError",
+    "ResponseByteLimitError",
     "build_fetch_opener",
     "fetch_page",
+    "read_body_capped",
 ]
