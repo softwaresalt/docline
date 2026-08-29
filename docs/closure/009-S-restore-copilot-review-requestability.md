@@ -8,7 +8,7 @@ code_changes: false
 closed_at: 2026-06-02
 closed_by: ship
 references:
-  - docs/archive/plans/2026-06-01-restore-copilot-review-requestability-plan.md
+  - docs/plans/2026-06-01-restore-copilot-review-requestability-plan.md
   - docs/decisions/2026-06-01-restore-copilot-review-requestability-deliberation.md
 ---
 

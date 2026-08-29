@@ -10,7 +10,7 @@ tasks:
   - 025.003-T  # T2 TOC manifest emission
   - 025.004-T  # T4 integration tests
   - 025.005-T  # T5 docs
-related_plan: docs/archive/plans/2026-06-10-local-dir-ingest-plan.md
+related_plan: docs/plans/2026-06-10-local-dir-ingest-plan.md
 related_decision: docs/decisions/2026-06-09-powerbi-corpus-coverage.md
 ---
 

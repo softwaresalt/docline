@@ -38,7 +38,7 @@ from PDFs that currently OOM.
 |---|---|---|
 | 018.001-T | Build corpus analysis script and run against `.elt/output/` | `scripts/spike_h1_corpus_analysis.py`; precise rescue intersection rates |
 | 018.002-T | Author decision artifact with measured tier rescue rates | `docs/decisions/2026-06-04-spike-h1-header-synthesis.md` |
-| 018.003-T | Author follow-on shipment plan stub | `docs/archive/plans/2026-06-04-h1-synthesis-implementation-stub.md` |
+| 018.003-T | Author follow-on shipment plan stub | `docs/plans/2026-06-04-h1-synthesis-implementation-stub.md` |
 | 018.004-T | Author closure document for 017-S | This file |
 
 ## Quality Gate Evidence
@@ -72,7 +72,7 @@ To be populated after the PR runs through the cross-OS matrix.
 ## Handoff to next Stage cycle
 
 The follow-on implementation work is captured at
-`docs/archive/plans/2026-06-04-h1-synthesis-implementation-stub.md`. The next
+`docs/plans/2026-06-04-h1-synthesis-implementation-stub.md`. The next
 Stage cycle should hydrate that stub, write a complete implementation
 plan, route through plan-review, and harvest into a new feature +
 shipment. The stub already lists module placement, API sketch,
@@ -125,7 +125,7 @@ captures the implementation work for the next Stage cycle.
 * Decision artifact: `docs/decisions/2026-06-04-spike-h1-header-synthesis.md`
 * Plan: `docs/plans/2026-06-04-h1-header-synthesis-spike.md`
 * Plan-review: `docs/decisions/2026-06-04-plan-review-h1-header-synthesis-spike.md`
-* Follow-on stub: `docs/archive/plans/2026-06-04-h1-synthesis-implementation-stub.md`
+* Follow-on stub: `docs/plans/2026-06-04-h1-synthesis-implementation-stub.md`
 * Deliberation: `docs/decisions/2026-06-04-deliberation-h1-header-synthesis.md`
 * Spike script: `scripts/spike_h1_corpus_analysis.py`
 * Corpus: `.elt/output/` (2026-06-04 load test, 965 parts)

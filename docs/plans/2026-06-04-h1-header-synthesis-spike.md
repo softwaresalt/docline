@@ -45,7 +45,7 @@ synthesize missing H1 headers so that every emitted part has a non-null
      behind an explicit opt-in extra)
    * Risk register (what could go wrong, what the spike did NOT measure)
 3. **Follow-on shipment plan stub** at
-   `docs/archive/plans/2026-06-04-h1-synthesis-implementation-stub.md` with:
+   `docs/plans/2026-06-04-h1-synthesis-implementation-stub.md` with:
    * Module placement (likely a new normalization pass in
      `src/docline/process/header_synthesis.py`)
    * API sketch

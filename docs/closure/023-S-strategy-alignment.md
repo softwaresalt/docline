@@ -7,7 +7,7 @@ status: verified
 merged_pr: 49
 merge_sha: 8eb9634
 branch: feat/023-S-strategy-alignment
-plan: docs/archive/plans/2026-06-09-023-s-strategy-alignment-plan.md
+plan: docs/plans/2026-06-09-023-s-strategy-alignment-plan.md
 parent_decisions:
   - docs/decisions/2026-06-08-extraction-strategy-study.md
   - docs/decisions/2026-06-08-source-md-ingestion-extension.md
