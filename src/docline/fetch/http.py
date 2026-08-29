@@ -5,6 +5,7 @@ import http.client
 import socket
 import ssl
 import threading
+import time
 from dataclasses import dataclass
 from typing import IO, Protocol
 from urllib import error, request
@@ -185,12 +186,15 @@ def _connect_validated_address(
     metadata addresses), then tries each validated address in order so a
     multi-address or dual-stack host is not defeated by a single unreachable —
     but validated — answer. No second, unvalidated DNS resolution occurs, so DNS
-    rebinding stays closed.
+    rebinding stays closed. All attempts share ONE overall deadline derived from
+    ``timeout`` so a host with many unreachable addresses cannot compound the
+    per-request timeout (the executor worker is abandoned, not cancelled, on
+    ``fetch_page``'s own timeout).
 
     Args:
         host: The DNS hostname to resolve and validate.
         port: The destination port.
-        timeout: The per-attempt connection timeout.
+        timeout: The overall connection timeout shared across all attempts.
         source_address: Optional bind source address.
 
     Returns:
@@ -202,14 +206,22 @@ def _connect_validated_address(
     """
     addresses = resolve_and_validate(host)
     last_error: OSError | None = None
+    deadline = None if timeout is None else time.monotonic() + timeout
     for address in addresses:
+        if deadline is None:
+            attempt_timeout = timeout
+        else:
+            attempt_timeout = deadline - time.monotonic()
+            if attempt_timeout <= 0:
+                break
         try:
-            return socket.create_connection((address, port), timeout, source_address)
+            return socket.create_connection((address, port), attempt_timeout, source_address)
         except OSError as err:
             last_error = err
-    # resolve_and_validate guarantees a non-empty list, so last_error is set.
-    assert last_error is not None
-    raise last_error
+    if last_error is not None:
+        raise last_error
+    # The overall deadline elapsed before any address could be attempted.
+    raise TimeoutError(f"Connection deadline exceeded resolving addresses for {host!r}")
 
 
 class _PinnedHTTPConnection(http.client.HTTPConnection):
