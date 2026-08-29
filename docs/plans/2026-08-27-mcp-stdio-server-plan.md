@@ -252,13 +252,19 @@ criterion, not an advisory item.
   - `serve(stdin, stdout, server: DoclineMcpServer | None = None) -> int` — read/dispatch/write
     loop; `server` defaults to the existing module singleton `SERVER` (single construction
     path); terminates cleanly on EOF. Reserves the real stdout exclusively for JSON-RPC frames.
-    **Interactive liveness (cycle-8):** frames are read with a NON-GREEDY primitive (`read1` /
-    `os.read`, returning as soon as any bytes are available and never blocking to fill a whole
+    **Interactive liveness (cycle-8; in-process red predecessor added cycle-16 round-2):** frames
+    are read with a NON-GREEDY primitive (`read1` on the injected stdin stream / `os.read`,
+    returning as soon as any bytes are available and never blocking to fill a whole
     `CHUNK_SIZE`) and stdout is FLUSHED after EVERY response frame, so an interactive client that
     sends one frame, awaits its response, then sends the next — with stdin still OPEN (the T2b
     [`064.008-T`] live subprocess smoke test) — never deadlocks. A greedy `read(CHUNK_SIZE)` that
     waits for the full chunk after a short frame, or a block-buffered stdout that withholds the
     response until the pipe closes, would live-lock that probe; an EOF-first test would mask it.
+    Because `serve()` takes injected `stdin`/`stdout` streams and uses their `read1`/`flush`, the
+    liveness property has an IN-PROCESS red predecessor in T1 [`064.001-T`] — an instrumented
+    non-greedy stdin + flush-recording stdout that withholds the second frame until the first
+    response is flushed — so the property is observed RED before it is implemented here (T2), not
+    only via the downstream `064.008-T` subprocess smoke.
   - `dispatch(message: dict, server: DoclineMcpServer) -> dict | None` — pure function mapping a
     single JSON-RPC request to a response dict (or `None` ONLY for a well-formed request that lacks
     an `id` — a genuine JSON-RPC notification; handled generically, no per-notification special case).
@@ -336,7 +342,8 @@ criterion, not an advisory item.
     the check provides no real bound. Instead read from the raw binary stream with a NON-GREEDY
     primitive (`read1` / `os.read`, which returns available bytes without blocking to fill the
     request) in fixed-size chunks
-    up to a hard `MAX_FRAME_BYTES` cap while scanning for the newline terminator: as soon as the
+    up to a hard `MAX_FRAME_BYTES` cap (pinned to `1 MiB` = `1_048_576` payload bytes; see the §H2
+    Selected numeric limit) while scanning for the newline terminator: as soon as the
     accumulated bytes exceed the cap before a newline arrives, stop buffering, emit an
     error envelope, and **drain** the rest of that oversized frame in bounded chunks (discarding up
     to the next newline or EOF) so the loop resynchronizes without ever holding the whole frame.
@@ -545,7 +552,33 @@ Security/reliability guardrails promoted to blocking design constraints after pl
   read after a frame's newline (a chunk read can straddle a frame boundary) and seeds the next
   frame from them, in both the normal and oversized-drain paths, so a following request in the same
   chunk is never dropped. `RecursionError`/`ValueError` both degrade
-  to an error envelope; the loop survives hostile input. Tests: (a) oversized single line; (b)
+  to an error envelope; the loop survives hostile input.
+  **Selected numeric limit (H2 transport, cycle-16 round-2 — review-mandated concrete value,
+  comment 3885888241): `MAX_FRAME_BYTES = 1 * 1024 * 1024 = 1_048_576`** (1 MiB). This is an
+  explicit OPERATIONAL / COMPATIBILITY bound for the untrusted stdio request channel, NOT a
+  protocol-derived maximum: docline MCP request frames carry control-plane data only — a URL +
+  crawl options (`fetch`), `staging_dir`/`output_dir`/`workspace_root` paths + `pdf_engine`/
+  `pdf_mode` enums + boolean flags (`process`), no arguments (`export_schema`), and the
+  `initialize`/`server/discover`/`tools/list`/`ping` handshakes — and NO tool accepts inline
+  document bytes (`ProcessRequest`/`FetchRequest` carry paths/URL, never content); JSON-RPC batch
+  arrays are unsupported (a non-object root is rejected `-32600`). 1 MiB therefore accommodates any
+  realistic docline request (including a large `initialize`/`clientCapabilities` `_meta` block)
+  while bounding per-frame memory on the untrusted boundary. **Boundary (exact — mirrors the
+  `MAX_RESPONSE_BYTES` crossing-byte pattern):** `MAX_FRAME_BYTES` counts the frame's payload bytes
+  BEFORE the `\n` terminator (the delimiter is excluded). A frame of up to and including exactly
+  `1_048_576` payload bytes followed by `\n` is accepted and dispatched (**exact-N acceptance**);
+  each boundary read requests at most `min(CHUNK_SIZE, MAX_FRAME_BYTES - buffered_payload + 1)` so
+  the reader observes at most the single crossing byte. The first non-`\n` byte beyond `1_048_576`
+  (payload byte **N+1**) trips overflow: the oversized accumulation is DISCARDED (not decoded), an
+  error envelope is emitted, and the remainder of the oversized frame is drained in bounded
+  `CHUNK_SIZE` chunks to the next `\n`/EOF, after which the loop **resynchronizes** on the next
+  valid frame (carry-over preserved). Bounded-**memory** only: per-read allocation and buffered
+  bytes are bounded (at most `MAX_FRAME_BYTES + 1` for an accepted-then-crossing frame; the
+  oversized remainder is never retained), but total drain bytes/time are NOT bounded for a client
+  that never sends `\n` (the same exposure as a client that opens stdin and never completes a
+  frame); resynchronization is guaranteed only once `\n`/EOF arrives. Revisit trigger: if a future
+  MCP tool accepts inline content or JSON-RPC batch arrays, re-evaluate this bound. Tests: (a)
+  oversized single line; (b)
   deeply nested array; (c) an **unterminated / chunked oversized** input (bytes exceeding the cap
   arrive with no newline) is rejected with bounded memory while waiting for the terminator, and
   the loop resynchronizes on the next valid frame; (d) **two complete frames in a single chunk**
@@ -1160,13 +1193,18 @@ Backlog IDs are shown in brackets. All MCP-transport harness tasks author into
    + 2 small classes + 1 additive field. Greens `064.016-T` scenarios (a), (b), (c)(i), (c)(ii).
    Existing fetch suite stays green. Depends on T-agg-h.
 10b. T-agg-aux [064.024-T] — Aggregate budget on the **ancillary** robots/TOC fetch vector (code
-   domain, ≤1 file: `fetch/crawl.py`). Extends the request-scoped budget seeded by T-agg-i into the
-   `_robots_allow` and `_discover_toc_links` `fetch_page` calls so ancillary `robots.txt`/mdBook-TOC
-   transfer decrements the SAME budget while bytes are read, and adds the two remaining
-   `except AggregateBudgetExceededError: raise` clauses (before the `_robots_allow` ~line 406 and
-   `_discover_toc_links` ~line 465 broad handlers; `_robots_allow` has no prior re-raise clause).
-   Takes over green-ownership of `064.016-T` scenario (c)(iii) (ancillary-fetch accrual; `crawl()`
-   RAISES). 2 functions touched, single file — within the 2-hour/<5-function envelope. Turns the
+   domain, ≤1 file: `fetch/crawl.py`). Extends the request-scoped budget seeded by T-agg-i by
+   threading it from `crawl()`'s two ancillary call sites into `_robots_allow` (which forwards it to
+   its DIRECT `fetch_page` call) and `_discover_toc_links` (which forwards it to its
+   `_fetch_with_retries` call — already budget-aware from T-agg-i, NOT a direct `fetch_page` call)
+   so ancillary `robots.txt`/mdBook-TOC transfer decrements the SAME budget while bytes are read,
+   and adds the two remaining `except AggregateBudgetExceededError: raise` clauses (before the
+   `_robots_allow` ~line 406 and `_discover_toc_links` ~line 465 broad handlers; `_robots_allow` has
+   no prior re-raise clause). Takes over green-ownership of `064.016-T` scenario (c)(iii) (ancillary
+   accrual with SEPARATE robots AND TOC variants; `crawl()` RAISES). **3 functions touched** —
+   `crawl` (the two ancillary call-site edits; the request-scoped budget is local to `crawl()`, so
+   threading it into the helpers necessarily changes `crawl()`), `_robots_allow`, and
+   `_discover_toc_links` — single file, within the 2-hour/<5-function envelope. Turns the
    ancillary sub-vector of T-agg-h green. Existing fetch suite stays green. Depends on T-agg-i.
 10c. T-amp-h [064.025-T] — Shared-fetch request-amplification harness (tests domain, 2 scenarios).
    Author the failing harness for the request-COUNT bound (§H7 item 4): (1) a fake transport drives
@@ -2737,6 +2775,75 @@ No new task; shipment `055-S` stays at **37 members**, order unchanged.
   drop the "network/real transfer" overclaim, qualify bare "raw" as undecoded, add the pre-init
   ancillary-`_meta` reject + modern-wins rows, correct green attribution, key on either modern member.
   NOT pushed; no PR actions; Ship not invoked; `055-S` queued/unclaimed. Production source unchanged.
+
+### Cycle-16 round cycle-2 — PR #166 review round (HEAD `30fad9b`): 5 findings reconciled (planning/backlog/docs only)
+
+Operator-directed Stage reconciliation on HEAD `30fad9b`, closing five Copilot review findings
+after a multi-persona adversarial review (security limits / valid MCP frame sizes / liveness
+testability / TDD ordering / IPv4-mapped normalization / scope accounting / shipment isolation / PR
+disclosure). No production/test source changed; no new task; shipment `055-S` stays at **37
+members**, `056-S` at **3 members**, order unchanged.
+
+- **IPv4-mapped normalization (comment 3885888208 on `065.002-T`).** The sitemap SSRF membership
+  test allowed the mapped IPv6 literal `::ffff:100.64.0.1`: an `IPv6Address` is not a member of the
+  IPv4 `_CGNAT_NETWORK`, and 3.12 patch levels do not classify mapped special-use addresses
+  consistently. **Resolution:** `065.002-T` normalizes `ip` to its embedded IPv4 BEFORE the six-flag
+  and CGNAT checks — **guarded for `IPv6Address` only** (`if isinstance(ip, ipaddress.IPv6Address)
+  and ip.ipv4_mapped is not None: ip = ip.ipv4_mapped`; an unguarded `ip.ipv4_mapped or ip` would
+  raise `AttributeError` on ordinary IPv4 input) — and membership is version-guarded
+  (`ip.version == 4 and ip in _CGNAT_NETWORK`). `065.001-T` gains in-place mapped-literal rows
+  (class-pin `::ffff:100.64.0.1`→reject; URL `http://[::ffff:100.64.0.1]/sitemap.xml`→`SitemapError`;
+  boundary-accept `::ffff:100.63.255.255`→accept). Only `::ffff:0:0/96` maps; the deprecated
+  IPv4-compatible `::/96` is not reinterpreted. Reconciled: CGNAT plan, `065-F`, `065.001-T`,
+  `065.002-T`.
+- **`MAX_FRAME_BYTES` concrete value (comment 3885888241 on `064.006-T`).** The constant was
+  referenced in §H2 but never pinned, so the red harness could not fix the accepted boundary.
+  **Resolution:** pinned `MAX_FRAME_BYTES = 1 MiB` (`1_048_576` payload bytes) as an explicit
+  operational/compatibility bound (NOT a protocol maximum): docline MCP request frames are
+  control-plane only (paths/URL/enums/flags; no inline document bytes; batch arrays unsupported →
+  `-32600`), so 1 MiB accommodates any realistic request (incl. a large `initialize`/
+  `clientCapabilities` `_meta`) while bounding per-frame memory. Boundary (mirrors the
+  `MAX_RESPONSE_BYTES` crossing-byte pattern; cap counts payload bytes before `\n`): exact-N accept
+  (a `1_048_576`-payload-byte frame + `\n` dispatched), N+1 reject → discard + bounded-memory drain
+  to next `\n`/EOF + resync; bounded memory only (total drain time/bytes unbounded for a client that
+  never sends `\n`). Revisit if a future tool accepts inline content or batch arrays. Reconciled:
+  plan §H2 (Selected numeric limit + design cross-ref), `064-F` DoD H2, `064.006-T` (red exact-N/N+1
+  + over-read guard), `064.002-T` (green).
+- **Liveness red predecessor (comment 3885888257 on `064.002-T`).** The non-greedy-read +
+  per-frame-flush liveness properties were only observable via the downstream `064.008-T` subprocess
+  smoke (red merely because the entry point is absent), so they were never observed red before
+  `064.002-T` implemented them. **Resolution:** `064.001-T` gains an IN-PLACE instrumented `serve()`
+  interactive-liveness assertion (injected non-greedy `read1` stdin + flush-recording stdout that
+  withholds the second frame until the first response is flushed; timeout-bounded, deadlock fails
+  deterministically), RED here (serve() absent) and green@`064.002-T`; scenario count stays 3.
+  `064.008-T` remains the live subprocess/packaging smoke. Reconciled: plan serve() design +
+  §H2 liveness note, `064-F` DoD, `064.001-T`, `064.002-T`, `064.008-T`.
+- **`064.024-T` scope = 3 functions (comment 3885888272 on `064.024-T`).** The count omitted the
+  `crawl()` call-site changes: the request-scoped budget is local to `crawl()`, so threading it into
+  the helpers necessarily edits `crawl()` plus `_robots_allow` and `_discover_toc_links`.
+  **Resolution:** scope corrected to 3 functions; the call chain is made accurate — `_robots_allow`
+  forwards to a DIRECT `fetch_page` call, while `_discover_toc_links` forwards to
+  `_fetch_with_retries` (already budget-aware from `064.017-T`, NOT a direct `fetch_page` call); and
+  `064.016-T`/`064.024-T` scenario (c)(iii) now requires SEPARATE robots AND TOC variants (not
+  either/or). Still <5-function / ≤1-file. Reconciled: `064.024-T`, `064.016-T`, plan decomposition
+  entry 10b.
+- **Two-shipment PR disclosure (comment 3885888283 on `056-S`).** The PR description discloses only
+  `055-S`, but the branch also stages the independently executable `056-S` (sitemap CGNAT SSRF).
+  Stage cannot perform PR actions. **Resolution:** the recommended PR title/body amendment (naming
+  BOTH `055-S` and `056-S`) is recorded in the cycle-16-round-2 Stage handoff memory, and this plan
+  set truthfully names both shipments. One STAGING PR may carry both manifests (planning/backlog/
+  memory only, no code); the shipments have no blocking dependency and MUST be claimed, implemented,
+  reviewed, and shipped INDEPENDENTLY by Ship on separate shipment-scoped branches/PRs (Ship records
+  one `shipment_id` per session) — this PR must never become the implementation PR for both.
+- **Adversarial outcome (multi-persona):** approaches sound after one P0 correction folded in — the
+  IPv4-mapped normalization MUST be guarded for `IPv6Address` (unguarded `ip.ipv4_mapped or ip`
+  crashes on IPv4). Additional refinements folded: honest `MAX_FRAME_BYTES` rationale (operational
+  limit, not protocol-derived, not a `MAX_RESPONSE_BYTES` hierarchy claim — different resource
+  dimensions); explicit exact-N/N+1 boundary with delimiter-excluded payload counting; liveness
+  fake pins `read1` + a synchronization/timeout contract so a greedy read cannot false-green and a
+  deadlock cannot hang the suite; accurate `_discover_toc_links`→`_fetch_with_retries` chain and
+  both-variant (c)(iii) coverage; bounded-MEMORY (not total-drain) framing. NOT pushed; no PR
+  actions; Ship not invoked; production source unchanged.
 
 ## Rollback
 

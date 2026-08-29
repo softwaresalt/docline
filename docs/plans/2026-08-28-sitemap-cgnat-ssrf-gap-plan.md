@@ -17,6 +17,29 @@ none of the six `ipaddress` flags (`is_private`, `is_loopback`, `is_link_local`,
 `is_reserved`, `is_unspecified`) catch that range on Python 3.12.x. This mirrors the §H6 fetch-path
 fix (`docline.fetch.url_policy`, feature `064-F`) so both SSRF surfaces reject the same class.
 
+**IPv4-mapped normalization (cycle-16 round-2, review-mandated — comment 3885888208).** The
+membership test and the six-flag classification MUST run against a **normalized** address: an
+IPv4-mapped IPv6 literal such as `::ffff:100.64.0.1` parses to an `IPv6Address`, which is NOT a
+member of the IPv4 `_CGNAT_NETWORK` and whose special-use flags the supported Python 3.12 patch
+range does not classify consistently — so the mapped form would slip past both checks. Before
+applying the six flags and the CGNAT check, normalize `ip` to its embedded IPv4 when present,
+**guarded for `IPv6Address` only** (an `IPv4Address` has no `.ipv4_mapped` attribute, so an
+unguarded `ip.ipv4_mapped or ip` would raise `AttributeError` on ordinary IPv4 input):
+
+```python
+ip = ipaddress.ip_address(addr)
+if isinstance(ip, ipaddress.IPv6Address) and ip.ipv4_mapped is not None:
+    ip = ip.ipv4_mapped
+# ...six flags on the normalized ip...
+if ip.version == 4 and ip in _CGNAT_NETWORK:
+    return True
+```
+
+Only `::ffff:0:0/96` maps (`IPv6Address.ipv4_mapped`); the deprecated IPv4-compatible `::/96` form
+is NOT reinterpreted (its `.ipv4_mapped` is `None`, and it is already rejected as IPv6 `is_reserved`
+on 3.12). Non-mapped IPv4/IPv6 inputs are unchanged. This mirrors the §H6 fetch-path requirement to
+"normalize IPv4-mapped IPv6 first."
+
 ## Constitution Check
 
 - **II. Test-First (NON-NEGOTIABLE):** red harness (`065.001-T`) authored and observed failing
@@ -32,14 +55,20 @@ fix (`docline.fetch.url_policy`, feature `064-F`) so both SSRF surfaces reject t
 
 **In scope**
 - Add module-level `_CGNAT_NETWORK = ipaddress.ip_network("100.64.0.0/10")` to `sitemap.py`.
-- In `_is_unsafe_address`, after the six-flag classification, reject when the parsed address is
-  contained in `_CGNAT_NETWORK`.
+- In `_is_unsafe_address`, **normalize an IPv4-mapped IPv6 literal to its embedded IPv4 first**
+  (guarded for `IPv6Address` only — see Objective), then apply the six-flag classification and the
+  explicit `_CGNAT_NETWORK` membership check to the normalized address, guarding membership by
+  `ip.version == 4`.
 - Red tests: CGNAT IP-literal rejection (`100.64.0.1`, `100.127.255.255`, boundary
-  `100.64.0.0`/`100.127.255.255`), a host that resolves into CGNAT (DNS-rebinding style), and a
-  direct class-pin `_is_unsafe_address("100.64.0.1") is True` (pin the class, not the flag table,
-  since special-purpose tables are Python-patch-dependent — CVE-2024-4032).
-- Regression rows proving public-unicast (e.g. `93.184.216.34`) and the just-below/above boundary
-  (`100.63.255.255` public, `100.128.0.0` public) stay ACCEPTED so the fix does not over-reject.
+  `100.64.0.0`/`100.127.255.255`), the **IPv4-mapped** literal forms
+  (`_is_unsafe_address("::ffff:100.64.0.1") is True`; `validate_sitemap_url` rejecting
+  `http://[::ffff:100.64.0.1]/sitemap.xml`), a host that resolves into CGNAT (DNS-rebinding style),
+  and a direct class-pin `_is_unsafe_address("100.64.0.1") is True` (pin the class, not the flag
+  table, since special-purpose tables are Python-patch-dependent — CVE-2024-4032).
+- Regression rows proving public-unicast (e.g. `93.184.216.34`), the just-below/above boundary
+  (`100.63.255.255` public, `100.128.0.0` public), and the **IPv4-mapped** just-below boundary
+  (`_is_unsafe_address("::ffff:100.63.255.255") is False`) stay ACCEPTED so the fix does not
+  over-reject.
 
 **Out of scope**
 - Consolidating the `sitemap` and `url_policy` SSRF predicates into one shared classifier
@@ -66,10 +95,13 @@ re-implements the reserved predicates AND adds its own explicit `100.64.0.0/10` 
 ## Implementation units
 
 1. **`065.001-T` (red, tests-only):** author failing CGNAT rejection rows in
-   `tests/fetch/test_sitemap.py` — IP-literal, resolved-host (rebinding), boundary, class-pin, and
-   public-unicast/boundary-accept regression rows. Observe RED before implementation.
-2. **`065.002-T` (green, code-only):** add `_CGNAT_NETWORK` and the explicit membership check to
-   `_is_unsafe_address`; greens `065.001-T`. Depends on `065.001-T`.
+   `tests/fetch/test_sitemap.py` — IP-literal, **IPv4-mapped literal**, resolved-host (rebinding),
+   boundary, class-pin, and public-unicast/boundary-accept regression rows (incl. the IPv4-mapped
+   just-below boundary). Observe RED before implementation.
+2. **`065.002-T` (green, code-only):** add `_CGNAT_NETWORK`, the **guarded IPv4-mapped
+   normalization** (normalize `ip.ipv4_mapped` for `IPv6Address` before the six-flag + CGNAT
+   checks), and the explicit membership check (guarded by `ip.version == 4`) to `_is_unsafe_address`;
+   greens `065.001-T`. Depends on `065.001-T`.
 
 ## Verification
 
