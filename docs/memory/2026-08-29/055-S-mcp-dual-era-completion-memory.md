@@ -69,3 +69,18 @@ This slice completed the remaining 13 manifest tasks in exact order.
 - Push branch, open feature PR, Copilot review cycles, CI, merge (merge commit only).
 - Runtime verification + post-merge closure (archival, closure PR, compound/compaction).
 - Preserve stash 0A56B201, 87F2C06D, 0A56B202 for Stage.
+
+## OUTCOME — MERGED + CLOSED (2026-08-29)
+
+- Adversarial pre-PR review (correctness/security/python): no P0–P2; P3 hardening applied.
+- **PR #169 MERGED** with merge commit **`29cf11715ed7b8d638aca6d739fb3a0177c7c20f`** (merge
+  commit strategy, P-009). Copilot review converged over 5 cycles (9→3→2→1→0), all valid findings
+  fixed + threads resolved; 1 pre-existing crawl-frontier item stashed (`173238FD`) for Stage.
+- Runtime verified: `docline-mcp` answered modern `server/discover` (resultType:complete,
+  supportedVersions both eras, cacheScope:private).
+- Backlog archived: shipment 055-S `shipped`; feature 064-F + 36 tasks moved done and archived
+  to `.backlogit/archive/` (P-007: 0 archive deletions). Commit `ae3f34e`.
+- Operational closure: `docs/closure/2026-08-29-055-s-mcp-stdio-closure.md`.
+- Compound learnings: CI-ruff-pin drift; stateful pre-init reject without breaking stateless tests.
+- Post-merge closure branch: `post-merge/055-s-mcp-stdio` (closure PR to follow).
+- Preserved stash `0A56B201`, `87F2C06D`, `0A56B202` untouched.
