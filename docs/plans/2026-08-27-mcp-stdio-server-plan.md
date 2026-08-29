@@ -2483,6 +2483,37 @@ security/design review, not an ordinary fix cycle.
   red-before-green, task size) clean. NOT pushed; no PR actions; Ship not invoked; `055-S`
   queued/unclaimed. Production source unchanged (planning artifacts only).
 
+### Cycle-15 — PR #166 post-decomposition cycle 1 (§H8 exact-token opt-in hardening)
+
+Operator-directed Stage pass (planning/backlog/plan/memory artifacts only) closing two unresolved
+Copilot findings on HEAD `36c4b15` against the §H8 startup opt-in RED/GREEN pair:
+
+- **`064.036-T` (thread `PRRT_kwDOSsAX4c6dXIsf`, comment 3885516661):** the impl acceptance criterion
+  specified `os.environ.get(name, "").strip() == "1"`. The `.strip()` enabled whitespace/newline-padded
+  tokens (`" 1 "`, `"1\n"`), contradicting the exact-token contract and opening paid external egress on
+  the untrusted MCP surface. Corrected to RAW exact-token equality
+  `os.environ.get("DOCLINE_MCP_ALLOW_EXTERNAL_PDF_ENGINES") == "1"` (no strip/trim, no case-fold, no
+  coercion; unset -> `None != "1"` -> DISABLED).
+- **`064.035-T` (thread `PRRT_kwDOSsAX4c6dXIsc`, comment 3885516655):** the RED harness scenario (a)
+  DISABLED rows (`"0"/"false"/"true"/"yes"/""`/whitespace-only) did not discriminate raw equality from a
+  `.strip()` impl. Added the padded-`"1"` discriminators (`" 1"`, `"1 "`, `" 1 "`, `"1\n"`) — GREEN only
+  under raw `== "1"`, RED under any trim impl — as the TDD guard for the exact-token contract. The two
+  edits land atomically (a strip fix without the guard leaves the contract untested; a guard without the
+  fix makes `064.036` self-contradictory).
+- **Plan §H8 statements unchanged** (already correct: "only the exact token `"1"` enables; any other
+  value stays disabled" — §H8 gate item 4 and the Verification harness bullet). Feature `064-F` DoD H8
+  ("fail-closed on any non-`"1"` value") unchanged — already exact-token-correct. No other H8 task
+  (`064.031`–`064.034`) carries a strip/trim predicate.
+- **Adversarial review (this cycle):** verdict — the corrected contract (raw `== "1"` + padded-`"1"`
+  DISABLED rows) is sufficient and fail-closed; raw equality is the tightest correct predicate and breaks
+  no sanctioned opt-in path (`export …=1`, `.vscode/mcp.json` `"1"`, `-e VAR=1`). Confirmed the CLI flag
+  and env token stay independent OR enablers, the module `SERVER` stays external-disabled (startup-only,
+  instance-local, never re-read from request data), and the **six-task decomposition + linear
+  dependency/shipment order are PRESERVED** — the fix is a text-level correction inside the existing
+  RED/GREEN pair's existing files and scenario (a); no new file surface, no new dependency edge, no
+  <4-scenario/<3-file budget breach, no split justified. NOT pushed; no PR actions; Ship not invoked;
+  `055-S` queued/unclaimed. Production source unchanged (planning artifacts only).
+
 ## Rollback
 
 **Not purely additive.** The release unit adds new modules (`src/docline/mcp/stdio.py`,
