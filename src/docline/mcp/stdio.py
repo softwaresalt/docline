@@ -21,11 +21,24 @@ from pydantic import ValidationError
 
 from docline.app_models import FetchResult, ProcessResult
 from docline.mcp.exceptions import UnknownToolError
-from docline.mcp.server import LEGACY_PROTOCOL_VERSION, SERVER, DoclineMcpServer
+from docline.mcp.server import (
+    LEGACY_PROTOCOL_VERSION,
+    SERVER,
+    SUPPORTED_PROTOCOL_VERSIONS,
+    DoclineMcpServer,
+)
 
 # Fixed-chunk non-greedy read size and the hard per-frame payload cap (§H2).
 CHUNK_SIZE: int = 64 * 1024
 MAX_FRAME_BYTES: int = 1 * 1024 * 1024
+
+# Modern-era (`2026-07-28`) per-request `_meta` negotiation members and result shape.
+_META_VERSION_KEY = "io.modelcontextprotocol/protocolVersion"
+_META_CAPS_KEY = "io.modelcontextprotocol/clientCapabilities"
+_SERVERINFO_META_KEY = "io.modelcontextprotocol/serverInfo"
+UNSUPPORTED_PROTOCOL_VERSION = -32022
+MODERN_CACHE_TTL_MS = 60_000
+MODERN_CACHE_SCOPE = "session"
 
 
 class _ByteReader(Protocol):
@@ -65,9 +78,12 @@ def _valid_id(value: object) -> bool:
     return False
 
 
-def _error(id_value: object, code: int, message: str) -> dict:
-    """Build a JSON-RPC error envelope."""
-    return {"jsonrpc": "2.0", "id": id_value, "error": {"code": code, "message": message}}
+def _error(id_value: object, code: int, message: str, data: object = None) -> dict:
+    """Build a JSON-RPC error envelope, including optional ``data`` when provided."""
+    err: dict[str, object] = {"code": code, "message": message}
+    if data is not None:
+        err["data"] = data
+    return {"jsonrpc": "2.0", "id": id_value, "error": err}
 
 
 def _result(id_value: object, result: object) -> dict:
@@ -119,6 +135,108 @@ def _dispatch_tools_call(message: dict, echo_id: object, server: DoclineMcpServe
     return _result(echo_id, _to_call_tool_result(name, result))
 
 
+def _request_meta(message: dict) -> object:
+    """Return the per-request ``_meta`` block from ``params`` (or ``None``)."""
+    params = message.get("params")
+    if isinstance(params, dict):
+        return params.get("_meta")
+    return None
+
+
+def _is_modern_request(message: dict, method: str) -> bool:
+    """Classify a request as modern by key membership of a namespaced negotiation member.
+
+    A ``server/discover`` (modern-only) is always modern; otherwise a request is
+    modern when its ``_meta`` carries ``io.modelcontextprotocol/protocolVersion``
+    or ``io.modelcontextprotocol/clientCapabilities`` — detected by KEY MEMBERSHIP,
+    not truthiness, so a present-but-malformed member still routes to the modern
+    validator rather than falling through to the legacy path. Ancillary ``_meta``
+    (e.g. ``progressToken``) with no modern member is NOT modern.
+    """
+    if method == "server/discover":
+        return True
+    meta = _request_meta(message)
+    if isinstance(meta, dict) and (_META_VERSION_KEY in meta or _META_CAPS_KEY in meta):
+        return True
+    return False
+
+
+def _validate_modern_meta(meta: object) -> tuple[int, str, object] | None:
+    """Validate a modern ``_meta`` block (version first, then clientCapabilities).
+
+    Returns an ``(code, message, data)`` tuple on rejection, or ``None`` when both
+    required members are present and well-typed. An unsupported protocol version
+    takes precedence (``-32022``); a missing/malformed member is ``-32602``.
+    """
+    if not isinstance(meta, dict) or _META_VERSION_KEY not in meta:
+        return (-32602, "Invalid params", None)
+    version = meta[_META_VERSION_KEY]
+    if not isinstance(version, str):
+        return (-32602, "Invalid params", None)
+    if version not in SUPPORTED_PROTOCOL_VERSIONS:
+        return (
+            UNSUPPORTED_PROTOCOL_VERSION,
+            "Unsupported protocol version",
+            {"supported": list(SUPPORTED_PROTOCOL_VERSIONS), "requested": version},
+        )
+    if _META_CAPS_KEY not in meta:
+        return (-32602, "Invalid params", None)
+    if not isinstance(meta[_META_CAPS_KEY], dict):
+        return (-32602, "Invalid params", None)
+    return None
+
+
+def _dispatch_modern(
+    message: dict, echo_id: object, method: str, server: DoclineMcpServer, meta: object
+) -> dict:
+    """Dispatch a modern-era request, wrapping results in the ``resultType`` envelope.
+
+    Validates the per-request ``_meta`` first (``-32022``/``-32602``), then serves
+    ``server/discover``/``tools/list``/``tools/call`` through the SAME hardened
+    dispatch as the legacy path and applies the modern envelope only as a
+    post-return wrapper (guards-by-construction).
+    """
+    err = _validate_modern_meta(meta)
+    if err is not None:
+        code, msg, data = err
+        return _error(echo_id, code, msg, data)
+    info = server.describe_server()
+    serverinfo_meta = {_SERVERINFO_META_KEY: info["serverInfo"]}
+    if method == "server/discover":
+        return _result(
+            echo_id,
+            {
+                "supportedVersions": info["supportedVersions"],
+                "capabilities": info["capabilities"],
+                "resultType": "complete",
+                "ttlMs": MODERN_CACHE_TTL_MS,
+                "cacheScope": MODERN_CACHE_SCOPE,
+                "_meta": serverinfo_meta,
+            },
+        )
+    if method == "tools/list":
+        tools = server.list_callable_tools().model_dump(by_alias=True)["tools"]
+        return _result(
+            echo_id,
+            {
+                "tools": tools,
+                "resultType": "complete",
+                "ttlMs": MODERN_CACHE_TTL_MS,
+                "cacheScope": MODERN_CACHE_SCOPE,
+                "_meta": serverinfo_meta,
+            },
+        )
+    if method == "tools/call":
+        resp = _dispatch_tools_call(message, echo_id, server)
+        if "result" in resp:
+            body = dict(resp["result"])
+            body["resultType"] = "complete"
+            body["_meta"] = serverinfo_meta
+            return _result(echo_id, body)
+        return resp
+    return _error(echo_id, -32601, "Method not found")
+
+
 def dispatch(message: object, server: DoclineMcpServer) -> dict | None:
     """Map a single JSON-RPC request to a response dict, or ``None`` for a notification.
 
@@ -146,6 +264,11 @@ def dispatch(message: object, server: DoclineMcpServer) -> dict | None:
     # Notification: an otherwise-valid request lacking an id is silent.
     if not has_id:
         return None
+
+    # Era classification (modern member / server/discover) — modern is stateless
+    # and its classification wins even after a legacy latch (064.023-T).
+    if _is_modern_request(message, method):
+        return _dispatch_modern(message, echo_id, method, server, _request_meta(message))
 
     if method == "initialize":
         info = server.describe_server()
