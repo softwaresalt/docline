@@ -35,6 +35,7 @@ import pytest
 from docline.fetch.sitemap import (
     SitemapEntry,
     SitemapError,
+    _is_unsafe_address,
     discover_sitemaps_from_robots,
     parse_sitemap_index,
     parse_sitemap_urlset,
@@ -311,3 +312,67 @@ def test_validate_sitemap_url_rejects_when_dns_resolution_fails(
     monkeypatch.setattr("socket.getaddrinfo", _raise)
     with pytest.raises(SitemapError):
         validate_sitemap_url("https://nonexistent.invalid/sitemap.xml")
+
+
+# ---------------------------------------------------------------------------
+# Behavioral: SSRF — CGNAT 100.64.0.0/10 (RFC 6598) shared address space
+#
+# None of the six ``ipaddress`` flags (is_private/is_loopback/is_link_local/
+# is_multicast/is_reserved/is_unspecified) catch CGNAT on Python 3.12.x, so
+# these rows expose the gap. Assertions pin the classifier RESULT directly
+# (the class), NOT the flag table, since special-purpose tables are
+# Python-patch-dependent (CVE-2024-4032). Greened by 065.002-T.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "addr",
+    [
+        "100.64.0.1",  # CGNAT interior
+        "100.100.100.100",  # CGNAT interior
+        "100.127.255.255",  # CGNAT upper boundary
+        "100.64.0.0",  # CGNAT lower boundary (network address)
+        "::ffff:100.64.0.1",  # IPv4-mapped IPv6 form of a CGNAT address
+    ],
+)
+def test_is_unsafe_address_rejects_cgnat_class(addr: str) -> None:
+    """CGNAT ``100.64.0.0/10`` addresses (incl. IPv4-mapped) are unsafe."""
+    assert _is_unsafe_address(addr) is True
+
+
+@pytest.mark.parametrize(
+    ("url", "resolver"),
+    [
+        ("http://100.64.0.1/sitemap.xml", None),  # IPv4 literal, no DNS
+        ("https://100.127.255.255/sitemap.xml", None),  # IPv4 literal upper boundary
+        ("http://[::ffff:100.64.0.1]/sitemap.xml", None),  # IPv4-mapped IPv6 literal
+        ("https://cgnat.example/sitemap.xml", ((2, "100.64.0.1"),)),  # resolves to CGNAT
+        (
+            "https://rebind-cgnat.example/sitemap.xml",  # rebinding: one of many is CGNAT
+            ((2, "93.184.216.34"), (2, "100.100.0.1")),
+        ),
+    ],
+)
+def test_validate_sitemap_url_rejects_cgnat(
+    url: str,
+    resolver: tuple[tuple[int, str], ...] | None,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """``validate_sitemap_url`` rejects CGNAT literals and CGNAT-resolving hosts."""
+    if resolver is not None:
+        monkeypatch.setattr("socket.getaddrinfo", _mock_resolver(*resolver))
+    with pytest.raises(SitemapError):
+        validate_sitemap_url(url)
+
+
+@pytest.mark.parametrize(
+    "addr",
+    [
+        "100.63.255.255",  # just below the /10 — public unicast
+        "100.128.0.0",  # just above the /10 — public unicast
+        "::ffff:100.63.255.255",  # IPv4-mapped just-below boundary
+    ],
+)
+def test_is_unsafe_address_accepts_cgnat_boundaries(addr: str) -> None:
+    """Addresses just outside ``100.64.0.0/10`` stay accepted — no over-rejection."""
+    assert _is_unsafe_address(addr) is False
