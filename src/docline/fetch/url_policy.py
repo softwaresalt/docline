@@ -106,9 +106,7 @@ def resolve_and_validate(host: str) -> list[str]:
         raise CrawlUrlRejectedError(f"DNS returned no addresses for host {host!r}.")
     for addr in addresses:
         if is_unsafe_resolved_address(addr):
-            raise CrawlUrlRejectedError(
-                f"Host {host!r} resolves to a reserved or private address."
-            )
+            raise CrawlUrlRejectedError(f"Host {host!r} resolves to a reserved or private address.")
     return addresses
 
 
