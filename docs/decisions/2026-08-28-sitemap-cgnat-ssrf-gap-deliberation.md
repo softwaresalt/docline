@@ -28,7 +28,7 @@ so the fix could be lost. This deliberation creates the durable, dependency-awar
    defense-in-depth** surface pinned by `tests/fetch/test_sitemap.py`; it is not on the live
    CLI or MCP fetch path today.
 2. **`055-S` §H6 uses an independent, complete classifier.** The MCP/CLI fetch-path SSRF guard
-   delivered by feature `064-F` (§H6, task `064.010-T`/`064.012-T`) re-implements the reserved
+   delivered by feature `064-F` (§H6, harness `064.010-T` / impl `064.011-T`) re-implements the reserved
    class predicates in `docline.fetch.url_policy` **and adds an explicit `100.64.0.0/10`
    membership check** (plan §H6 DoD: "adds the explicit CGNAT check those six flags miss"). It
    does not delegate to `sitemap._is_unsafe_address`, so it does not inherit this gap.
