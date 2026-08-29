@@ -10,13 +10,17 @@ identity live only in the adapter (:mod:`docline.mcp.server`).
 
 from __future__ import annotations
 
+import contextlib
 import json
 import math
+import re
+import sys
 from typing import Protocol
 
 from pydantic import ValidationError
 
 from docline.app_models import FetchResult, ProcessResult
+from docline.mcp.exceptions import UnknownToolError
 from docline.mcp.server import LEGACY_PROTOCOL_VERSION, SERVER, DoclineMcpServer
 
 # Fixed-chunk non-greedy read size and the hard per-frame payload cap (§H2).
@@ -36,6 +40,16 @@ class _ByteWriter(Protocol):
     def write(self, data: bytes, /) -> int: ...
 
     def flush(self) -> None: ...
+
+
+# Absolute filesystem paths (Windows drive form or POSIX) stripped from any
+# client-facing error text so no path is disclosed on the untrusted surface (§H3).
+_ABS_PATH_RE = re.compile(r"[A-Za-z]:\\[^\s\"']*|(?<![\w:/])/[^\s\"']+")
+
+
+def _sanitize(text: str) -> str:
+    """Genericize absolute filesystem paths in client-facing error text (§H3)."""
+    return _ABS_PATH_RE.sub("<path>", text)
 
 
 def _valid_id(value: object) -> bool:
@@ -65,7 +79,7 @@ def _to_call_tool_result(name: str, result: object) -> dict:
     """Shape a domain result into a standards-valid MCP CallToolResult body."""
     if isinstance(result, (FetchResult, ProcessResult)):
         is_error = not result.success
-        text = result.error if (is_error and result.error) else f"{name} completed."
+        text = _sanitize(result.error) if (is_error and result.error) else f"{name} completed."
         return {
             "content": [{"type": "text", "text": text}],
             "structuredContent": result.model_dump(),
@@ -77,7 +91,11 @@ def _to_call_tool_result(name: str, result: object) -> dict:
 
 
 def _dispatch_tools_call(message: dict, echo_id: object, server: DoclineMcpServer) -> dict:
-    """Dispatch a ``tools/call`` and shape the CallToolResult (legacy-era body)."""
+    """Dispatch a ``tools/call`` and shape the CallToolResult (legacy-era body).
+
+    Applies the §H1 ``workspace_root`` reject, §H4 fail-closed unknown-tool
+    mapping, §H5 child-stdout redirect, and §H3 error-text sanitization.
+    """
     params = message.get("params") or {}
     if not isinstance(params, dict):
         return _error(echo_id, -32602, "Invalid params")
@@ -85,8 +103,15 @@ def _dispatch_tools_call(message: dict, echo_id: object, server: DoclineMcpServe
     arguments = params.get("arguments") or {}
     if not isinstance(name, str) or not isinstance(arguments, dict):
         return _error(echo_id, -32602, "Invalid params")
+    # §H1: reject a client-supplied workspace_root (root is pinned to the server cwd).
+    if name == "process" and "workspace_root" in arguments:
+        return _error(echo_id, -32602, "Invalid params")
     try:
-        result = server.call_tool(name, arguments)
+        # §H5: reserve the protocol stdout — redirect child-library writes to stderr.
+        with contextlib.redirect_stdout(sys.stderr):
+            result = server.call_tool(name, arguments)
+    except UnknownToolError:
+        return _error(echo_id, -32602, "Invalid params")
     except ValidationError:
         return _error(echo_id, -32602, "Invalid params")
     except Exception:
