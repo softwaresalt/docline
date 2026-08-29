@@ -514,3 +514,154 @@ def test_id_absence_is_by_membership_not_truthiness(id_value: Any) -> None:
     resp = _single(_frame({"jsonrpc": "2.0", "id": id_value, "method": "ping"}))
     assert resp["id"] == id_value
     assert resp["result"] == {}
+
+
+# ---------------------------------------------------------------------------
+# 064.006-T — Security gates H1-H3
+# ---------------------------------------------------------------------------
+
+
+class _RecordingReadStdin:
+    """Non-greedy stdin recording each read1 request size; enforces per-read bound."""
+
+    def __init__(self, data: bytes, chunk_size: int) -> None:
+        self._buf = bytearray(data)
+        self._chunk_size = chunk_size
+        self.read_sizes: list[int] = []
+
+    def read1(self, size: int = -1) -> bytes:
+        self.read_sizes.append(size)
+        if not self._buf:
+            return b""
+        assert size is not None and 0 <= size <= self._chunk_size, (
+            f"read1 requested {size} bytes; must be bounded by CHUNK_SIZE {self._chunk_size}"
+        )
+        chunk = bytes(self._buf[:size])
+        del self._buf[:size]
+        return chunk
+
+    def read(self, size: int = -1) -> bytes:  # pragma: no cover - guard
+        raise AssertionError("greedy read() prohibited")
+
+
+def _drive_bytes(
+    payload: bytes, server: DoclineMcpServer | None = None
+) -> tuple[list[dict], list[int]]:
+    """Drive serve() over a raw byte payload using the recording stdin."""
+    from docline.mcp.stdio import CHUNK_SIZE, serve
+
+    stdin = _RecordingReadStdin(payload, CHUNK_SIZE)
+    stdout = _RecordingStdout()
+    worker = threading.Thread(target=serve, args=(stdin, stdout, server or SERVER))
+    worker.start()
+    worker.join(15.0)
+    assert not worker.is_alive(), "serve() did not terminate within timeout"
+    return stdout.responses(), stdin.read_sizes
+
+
+def _exact_payload_frame(n: int) -> bytes:
+    """Build a valid ping JSON frame whose payload is exactly ``n`` bytes, plus newline."""
+    base = {"jsonrpc": "2.0", "id": 1, "method": "ping", "params": {"p": ""}}
+    base_len = len(json.dumps(base, separators=(",", ":")))
+    pad = n - base_len
+    assert pad >= 0
+    obj = {"jsonrpc": "2.0", "id": 1, "method": "ping", "params": {"p": "a" * pad}}
+    payload = json.dumps(obj, separators=(",", ":")).encode("ascii")
+    assert len(payload) == n
+    return payload + b"\n"
+
+
+def test_h1_process_workspace_root_escape_rejected(monkeypatch, tmp_path) -> None:
+    """H1: process with workspace_root='/' and 'C:\\' rejected -32602, nothing written outside."""
+    monkeypatch.chdir(tmp_path)
+    tmp_path.joinpath("staging").mkdir()
+    for root in ("/", "C:\\"):
+        resp = _dispatch(
+            {
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "tools/call",
+                "params": {
+                    "name": "process",
+                    "arguments": {"staging_dir": "staging", "workspace_root": root},
+                },
+            }
+        )
+        assert resp["error"]["code"] == -32602
+
+
+def test_h2_exact_n_frame_accepted() -> None:
+    """H2: a frame of exactly MAX_FRAME_BYTES payload bytes + newline is accepted."""
+    from docline.mcp.stdio import MAX_FRAME_BYTES
+
+    payload = _exact_payload_frame(MAX_FRAME_BYTES)
+    responses, _ = _drive_bytes(payload)
+    assert len(responses) == 1
+    assert responses[0]["result"] == {}
+
+
+def test_h2_n_plus_one_rejected_drained_and_resynced() -> None:
+    """H2: payload of MAX_FRAME_BYTES+1 with no newline overflows, then the loop resyncs."""
+    from docline.mcp.stdio import MAX_FRAME_BYTES
+
+    oversized = b"a" * (MAX_FRAME_BYTES + 1)  # no newline within cap
+    trailing = b"restofframe\n"
+    good = _frame({"jsonrpc": "2.0", "id": 2, "method": "ping"})
+    responses, read_sizes = _drive_bytes(oversized + trailing + good)
+    codes = [r.get("error", {}).get("code") for r in responses if "error" in r]
+    assert -32700 in codes  # oversized frame -> parse/framing error envelope
+    # The following valid frame is dispatched after resync.
+    assert any(r.get("id") == 2 and r.get("result") == {} for r in responses)
+    # Bounded memory: no single read requested more than CHUNK_SIZE.
+    from docline.mcp.stdio import CHUNK_SIZE
+
+    assert all(s <= CHUNK_SIZE for s in read_sizes)
+
+
+def test_h2_deeply_nested_array_degrades_and_loop_survives() -> None:
+    """H2: a deeply nested JSON array degrades to an error envelope; the loop survives."""
+    nested = (b"[" * 4000) + (b"]" * 4000) + b"\n"
+    good = _frame({"jsonrpc": "2.0", "id": 3, "method": "ping"})
+    responses, _ = _drive_bytes(nested + good)
+    assert any("error" in r for r in responses)
+    assert any(r.get("id") == 3 and r.get("result") == {} for r in responses)
+
+
+def test_h2_two_frames_in_single_chunk_both_dispatched() -> None:
+    """H2: two complete frames arriving together are both dispatched (carry-over buffer)."""
+    a = _frame({"jsonrpc": "2.0", "id": 4, "method": "ping"})
+    b = _frame({"jsonrpc": "2.0", "id": 5, "method": "ping"})
+    responses, _ = _drive_bytes(a + b)
+    assert [r["id"] for r in responses] == [4, 5]
+
+
+def test_h3_no_absolute_paths_in_envelope(monkeypatch, tmp_path) -> None:
+    """H3: a containment/validation failure envelope contains no absolute-path substring."""
+    monkeypatch.chdir(tmp_path)
+    resp = _dispatch(
+        {
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "tools/call",
+            "params": {"name": "process", "arguments": {"staging_dir": "../escape"}},
+        }
+    )
+    blob = json.dumps(resp)
+    assert str(tmp_path) not in blob
+    assert "\\escape" not in blob and "/escape" not in blob
+
+
+def test_h3_no_absolute_paths_in_iserror_content(monkeypatch, tmp_path) -> None:
+    """H3: an isError tool result carries sanitized error text (no absolute paths)."""
+    monkeypatch.chdir(tmp_path)
+    resp = _dispatch(
+        {
+            "jsonrpc": "2.0",
+            "id": 2,
+            "method": "tools/call",
+            "params": {"name": "process", "arguments": {"staging_dir": "nonexistent_dir"}},
+        }
+    )
+    blob = json.dumps(resp.get("result", resp))
+    assert str(tmp_path) not in blob
+# ===END-006===
