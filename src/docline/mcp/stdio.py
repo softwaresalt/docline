@@ -105,7 +105,10 @@ def _to_call_tool_result(name: str, result: object) -> dict:
     """Shape a domain result into a standards-valid MCP CallToolResult body."""
     if isinstance(result, (FetchResult, ProcessResult)):
         is_error = not result.success
-        text = _sanitize(result.error) if (is_error and result.error) else f"{name} completed."
+        if is_error:
+            text = _sanitize(result.error) if result.error else f"{name} failed."
+        else:
+            text = f"{name} completed."
         return {
             "content": [{"type": "text", "text": text}],
             "structuredContent": result.model_dump(),
@@ -345,7 +348,12 @@ def _process_frame(
         return
     try:
         response = dispatch(message, server, session)
-    except RecursionError:
+    except Exception:
+        # Defense-in-depth: any unexpected fault on a non-tools/call path
+        # (discovery/handshake) degrades to a -32603 envelope rather than
+        # dropping the connection without a response. RecursionError (a
+        # RuntimeError subclass) is covered here too. BaseException
+        # (KeyboardInterrupt/SystemExit) intentionally propagates.
         _emit(stdout, _error(None, -32603, "Internal error"))
         return
     if response is not None:

@@ -1323,8 +1323,12 @@ def test_h8_transport_optin_accept_anchor(monkeypatch, tmp_path) -> None:
 # ---------------------------------------------------------------------------
 
 
-def _read_frame_bounded(pipe, timeout: float = 15.0) -> bytes:
-    """Read one line/frame from ``pipe`` bounded by ``timeout`` (deadlock -> fail)."""
+def _read_frame_bounded(pipe, timeout: float = 30.0) -> bytes:
+    """Read one line/frame from ``pipe`` bounded by ``timeout`` (deadlock -> fail).
+
+    The timeout is generous so a cold subprocess import (heavy optional deps) is
+    not mistaken for a stdio deadlock; a true deadlock still fails deterministically.
+    """
     holder: dict[str, bytes] = {}
 
     def _reader() -> None:
@@ -1341,35 +1345,41 @@ def _read_frame_bounded(pipe, timeout: float = 15.0) -> bytes:
 def test_docline_mcp_subprocess_interactive_smoke() -> None:
     """python -m docline.mcp answers each frame before EOF (no greedy-read/buffer deadlock)."""
     repo_root = Path(__file__).resolve().parents[2]
-    proc = subprocess.Popen(  # noqa: S603
+    with subprocess.Popen(  # noqa: S603
         [sys.executable, "-m", "docline.mcp"],
         stdin=subprocess.PIPE,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         cwd=repo_root,
-    )
-    try:
-        assert proc.stdin is not None and proc.stdout is not None
-        # Frame 1: legacy initialize latches the era; require its response first.
-        proc.stdin.write(_frame({"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {}}))
-        proc.stdin.flush()
-        line1 = _read_frame_bounded(proc.stdout)
-        assert line1.strip(), "no response to initialize while stdin is still open"
-        assert json.loads(line1)["id"] == 1
-        # Frame 2: tools/list, required BEFORE closing stdin.
-        proc.stdin.write(_frame({"jsonrpc": "2.0", "id": 2, "method": "tools/list"}))
-        proc.stdin.flush()
-        line2 = _read_frame_bounded(proc.stdout)
-        assert line2.strip(), "no response to tools/list while stdin is still open"
-        names = [t["name"] for t in json.loads(line2)["result"]["tools"]]
-        assert names == ["fetch", "process", "export_schema"]
-        assert "ingest_local_dir" not in names
-        proc.stdin.close()
-        assert proc.wait(timeout=15.0) == 0
-    finally:
-        if proc.poll() is None:
-            proc.kill()
-            proc.wait(timeout=5.0)
+    ) as proc:
+        assert proc.stdin is not None and proc.stdout is not None and proc.stderr is not None
+        # Drain stderr concurrently so a child that writes past the pipe buffer
+        # (H5 redirects library stdout to stderr) cannot block awaiting stdout.
+        stderr_drain = threading.Thread(target=proc.stderr.read, daemon=True)
+        stderr_drain.start()
+        try:
+            # Frame 1: legacy initialize latches the era; require its response first.
+            proc.stdin.write(
+                _frame({"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {}})
+            )
+            proc.stdin.flush()
+            line1 = _read_frame_bounded(proc.stdout)
+            assert line1.strip(), "no response to initialize while stdin is still open"
+            assert json.loads(line1)["id"] == 1
+            # Frame 2: tools/list, required BEFORE closing stdin.
+            proc.stdin.write(_frame({"jsonrpc": "2.0", "id": 2, "method": "tools/list"}))
+            proc.stdin.flush()
+            line2 = _read_frame_bounded(proc.stdout)
+            assert line2.strip(), "no response to tools/list while stdin is still open"
+            names = [t["name"] for t in json.loads(line2)["result"]["tools"]]
+            assert names == ["fetch", "process", "export_schema"]
+            assert "ingest_local_dir" not in names
+            proc.stdin.close()
+            assert proc.wait(timeout=15.0) == 0
+        finally:
+            if proc.poll() is None:
+                proc.kill()
+                proc.wait(timeout=5.0)
 
 
 # ---------------------------------------------------------------------------
