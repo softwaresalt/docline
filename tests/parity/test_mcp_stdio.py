@@ -10,7 +10,10 @@ import json
 import threading
 from typing import Any
 
-from docline.app import get_manifest
+import pytest
+
+from docline.app import execute_fetch, execute_process, get_manifest
+from docline.app_models import FetchRequest, ProcessRequest
 from docline.mcp.server import SERVER, DoclineMcpServer
 
 # ---------------------------------------------------------------------------
@@ -283,3 +286,231 @@ def test_every_advertised_tool_is_dispatchable(monkeypatch, tmp_path) -> None:
     for name in advertised:
         result = SERVER.call_tool(name, args_by_tool[name])
         assert result is not None
+
+
+def _drive_raw(*raw_frames: bytes) -> list[dict]:
+    """Drive serve() over raw frame bytes (real parse+dispatch path)."""
+    return _drive_serve(list(raw_frames))
+
+
+def _single(raw: bytes) -> dict:
+    """Drive one raw frame and return its single response."""
+    responses = _drive_raw(raw)
+    assert len(responses) == 1, f"expected one response, got {responses!r}"
+    return responses[0]
+
+
+# ---------------------------------------------------------------------------
+# 064.005-T — Scenario 1: tools/call parity + CallToolResult wire shape
+# ---------------------------------------------------------------------------
+
+
+def _is_content_block_list(content: Any) -> bool:
+    if not isinstance(content, list) or not content:
+        return False
+    for block in content:
+        if not isinstance(block, dict) or "type" not in block:
+            return False
+        if block["type"] == "text" and not isinstance(block.get("text"), str):
+            return False
+    return True
+
+
+def test_tools_call_export_schema_wire_shape() -> None:
+    """export_schema returns a CallToolResult with a text ContentBlock[], not a raw str."""
+    resp = _dispatch(
+        {
+            "jsonrpc": "2.0",
+            "id": 10,
+            "method": "tools/call",
+            "params": {"name": "export_schema", "arguments": {}},
+        }
+    )
+    result = resp["result"]
+    assert _is_content_block_list(result["content"])
+    assert result.get("isError", False) is False
+    # The schema text is carried in content, not as a bare string result.
+    assert (
+        "BaseFrontmatter" in result["content"][0]["text"]
+        or "$schema" in result["content"][0]["text"]
+    )
+
+
+def test_tools_call_process_success_wire_shape(monkeypatch, tmp_path) -> None:
+    """process success returns CallToolResult with structuredContent mirroring ProcessResult."""
+    monkeypatch.chdir(tmp_path)
+    tmp_path.joinpath("staging").mkdir()
+    resp = _dispatch(
+        {
+            "jsonrpc": "2.0",
+            "id": 11,
+            "method": "tools/call",
+            "params": {
+                "name": "process",
+                "arguments": {"staging_dir": "staging", "output_dir": "output"},
+            },
+        }
+    )
+    result = resp["result"]
+    assert _is_content_block_list(result["content"])
+    assert result.get("isError", False) is False
+    expected = execute_process(ProcessRequest(staging_dir="staging", output_dir="output"))
+    assert result["structuredContent"] == expected.model_dump()
+
+
+def test_tools_call_fetch_failure_maps_to_iserror() -> None:
+    """A validated-but-failed fetch (success=False) maps to isError=true with error in content."""
+    resp = _dispatch(
+        {
+            "jsonrpc": "2.0",
+            "id": 12,
+            "method": "tools/call",
+            "params": {"name": "fetch", "arguments": {"source": "ftp://example.com"}},
+        }
+    )
+    result = resp["result"]
+    assert result["isError"] is True
+    assert _is_content_block_list(result["content"])
+    expected = execute_fetch(FetchRequest(source="ftp://example.com"))
+    assert result["structuredContent"] == expected.model_dump()
+    # Parity with CLI/app layer.
+    assert expected.success is False
+
+
+# ---------------------------------------------------------------------------
+# 064.005-T — Scenario 2: error envelopes (parametrized)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "raw",
+    [
+        b'{"jsonrpc":"2.0","id":1,"method":"ping"\n',  # truncated / invalid JSON
+        b'{"jsonrpc":"2.0","id":NaN,"method":"ping"}\n',  # non-finite token NaN
+        b'{"jsonrpc":"2.0","id":Infinity,"method":"ping"}\n',  # Infinity token
+        b'{"jsonrpc":"2.0","id":-Infinity,"method":"ping"}\n',  # -Infinity token
+    ],
+)
+def test_parse_error_minus_32700(raw: bytes) -> None:
+    """Invalid JSON — including non-finite NaN/Infinity tokens — returns -32700 id:null."""
+    resp = _single(raw)
+    assert resp["error"]["code"] == -32700
+    assert resp["id"] is None
+
+
+@pytest.mark.parametrize(
+    "message,expected_id",
+    [
+        ([], None),  # non-object root (array)
+        (42, None),  # non-object root (number)
+        ("s", None),  # non-object root (string)
+        (True, None),  # non-object root (bool)
+        (None, None),  # non-object root (null)
+        ({"id": 5}, 5),  # missing jsonrpc, valid id echoed
+        ({"jsonrpc": "1.0", "id": 5, "method": "ping"}, 5),  # bad jsonrpc, id echoed
+        ({"jsonrpc": "2.0", "id": 5}, 5),  # missing method, id echoed
+        ({"jsonrpc": "2.0", "id": 5, "method": ""}, 5),  # empty method, id echoed
+        ({"jsonrpc": "2.0", "id": 5, "method": 7}, 5),  # non-string method, id echoed
+        ({"jsonrpc": "2.0", "id": {"x": 1}, "method": "ping"}, None),  # object id
+        ({"jsonrpc": "2.0", "id": [1], "method": "ping"}, None),  # array id
+        ({"jsonrpc": "2.0", "id": True, "method": "ping"}, None),  # bool id
+        ({"jsonrpc": "2.0", "id": None, "method": "ping"}, None),  # null id (present)
+        ({"jsonrpc": "2.0", "method": "ping"}, None),  # id-absent malformed? no: valid -> notif
+    ],
+)
+def test_invalid_request_minus_32600(message: Any, expected_id: Any) -> None:
+    """Request-shape validation returns -32600 with correct id echo/null semantics."""
+    if message == {"jsonrpc": "2.0", "method": "ping"}:
+        # Otherwise-valid no-id request is a notification (silent), not -32600.
+        responses = _drive_raw(_frame(message))
+        assert responses == []
+        return
+    responses = _drive_raw(_frame(message))
+    assert len(responses) == 1
+    resp = responses[0]
+    assert resp["error"]["code"] == -32600
+    assert resp["id"] == expected_id
+
+
+@pytest.mark.parametrize("literal", [b"1e400", b"-1e400"])
+def test_non_finite_numeric_id_minus_32600(literal: bytes) -> None:
+    """A finite-overflow numeric id (1e400 -> inf) is rejected -32600 id:null."""
+    frame = b'{"jsonrpc":"2.0","id":' + literal + b',"method":"ping"}\n'
+    resp = _single(frame)
+    assert resp["error"]["code"] == -32600
+    assert resp["id"] is None
+
+
+def test_id_absent_malformed_not_suppressed() -> None:
+    """A malformed payload lacking an id returns -32600 id:null (not silence)."""
+    resp = _single(b'{"jsonrpc":"2.0"}\n')  # no method, no id
+    assert resp["error"]["code"] == -32600
+    assert resp["id"] is None
+
+
+def test_method_not_found_minus_32601() -> None:
+    """A well-formed request with an unknown method returns -32601."""
+    resp = _single(_frame({"jsonrpc": "2.0", "id": 6, "method": "does/not/exist"}))
+    assert resp["error"]["code"] == -32601
+    assert resp["id"] == 6
+
+
+def test_whitespace_method_routes_to_32601() -> None:
+    """A whitespace-only method is a valid (present, non-empty) method -> -32601, not -32600."""
+    resp = _single(_frame({"jsonrpc": "2.0", "id": 7, "method": "   "}))
+    assert resp["error"]["code"] == -32601
+
+
+def test_invalid_params_minus_32602_export_schema_nonempty_args() -> None:
+    """export_schema with non-empty arguments is a -32602 invalid-params envelope."""
+    resp = _single(
+        _frame(
+            {
+                "jsonrpc": "2.0",
+                "id": 8,
+                "method": "tools/call",
+                "params": {"name": "export_schema", "arguments": {"unexpected": 1}},
+            }
+        )
+    )
+    assert resp["error"]["code"] == -32602
+
+
+def test_internal_error_minus_32603(monkeypatch) -> None:
+    """An unexpected adapter exception degrades to a -32603 internal-error envelope."""
+
+    def _boom(name: str, arguments: dict) -> object:
+        raise RuntimeError("unexpected /abs/path/leak")
+
+    monkeypatch.setattr(SERVER, "call_tool", _boom)
+    resp = _dispatch(
+        {
+            "jsonrpc": "2.0",
+            "id": 9,
+            "method": "tools/call",
+            "params": {"name": "fetch", "arguments": {"source": "ftp://x"}},
+        }
+    )
+    assert resp["error"]["code"] == -32603
+    # No absolute path / traceback leakage in the message.
+    assert "/abs/path/leak" not in json.dumps(resp)
+
+
+# ---------------------------------------------------------------------------
+# 064.005-T — Scenario 3: id-less notification silence + id membership
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("method", ["notifications/initialized", "some/unknown/notification"])
+def test_notification_is_silent(method: str) -> None:
+    """An otherwise-valid request lacking an id is silent (known AND unknown method)."""
+    responses = _drive_raw(_frame({"jsonrpc": "2.0", "method": method}))
+    assert responses == []
+
+
+@pytest.mark.parametrize("id_value", [0, ""])
+def test_id_absence_is_by_membership_not_truthiness(id_value: Any) -> None:
+    """A present falsy id (0 or "") receives a normal echoed response, never suppression."""
+    resp = _single(_frame({"jsonrpc": "2.0", "id": id_value, "method": "ping"}))
+    assert resp["id"] == id_value
+    assert resp["result"] == {}
