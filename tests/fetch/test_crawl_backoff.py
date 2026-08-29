@@ -157,6 +157,7 @@ def test_crawl_retries_transient_fetch_failure_and_succeeds(
         *,
         timeout_seconds: float = 30.0,
         max_redirects: int = 5,
+        **_kwargs,
     ) -> FetchResponse:
         nonlocal attempt_count
         attempt_count += 1
@@ -197,6 +198,7 @@ def test_crawl_returns_skipped_result_when_robots_txt_disallows(
         *,
         timeout_seconds: float = 30.0,
         max_redirects: int = 5,
+        **_kwargs,
     ) -> FetchResponse:
         if "robots.txt" in url:
             return FetchResponse(
