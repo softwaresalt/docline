@@ -123,7 +123,10 @@ In scope:
 3. Protocol + dual-interface parity tests (test-first).
 4. Operator/agent documentation: README run section + a self-contained client MCP configuration
    example in the documented GitHub Copilot / VS Code `.vscode/mcp.json` `servers` stdio format (a
-   verifiable shape; NOT the repo's git-ignored `.mcp.json`). (No separate
+   verifiable shape; NOT the repo's git-ignored `.mcp.json`), PLUS a concise top-level
+   `docs/ARCHITECTURE.md` domain/dependency map for the new stdio transport, the `docline-mcp`
+   executable bootstrap, and the adapter boundary (boundaries + direction only, no duplicated
+   rationale; per `.github/instructions/architecture-doc.instructions.md`). (No separate
    design-doc transport note — the transport surface is already documented in the deliberation;
    see the Scope trims in `## Plan Review Remediation`.)
 5. **Shared-fetch hardening for the untrusted surface (existing-file changes).** Exposing
@@ -1446,9 +1449,16 @@ Backlog IDs are shown in brackets. All MCP-transport harness tasks author into
     `args`; a verifiable shape, NOT the repo's git-ignored `.mcp.json`), noting dual-era support
     (modern `server/discover` probe + legacy `initialize` fallback) AND the §H8 external-engine
     default-deny + server-side opt-in (env/flag) with a paid-call + workspace-PDF-upload warning
-    (enable only for trusted clients). Do NOT add a separate
-    design-doc transport note — the deliberation already documents the transport surface (avoid
-    duplication). Depends on T-ext-cfg-i.
+    (enable only for trusted clients). PLUS a net-new `docs/ARCHITECTURE.md` top-level
+    domain/dependency map (two files total, still single docs domain, <3 files) covering the new
+    `src/docline/mcp/stdio.py` transport, the `__main__.py` + `docline-mcp` console-script
+    bootstrap, and the `DoclineMcpServer` adapter — showing BOTH the MCP and CLI interfaces
+    resolving through the shared `docline.app` façade to fetch/process/readers/schema, with the
+    dependency-direction invariant (core packages never import the `mcp`/`cli` interface packages),
+    cross-interface shared-fetch hardening, and MCP-only §H8 scope; boundaries + direction only, no
+    duplicated rationale (per `.github/instructions/architecture-doc.instructions.md`). Do NOT add a
+    separate design-doc transport note — the deliberation already documents the transport surface
+    (avoid duplication). Depends on T-ext-cfg-i.
 
 Dependency edges: T1b→T1, T1c→T1b, T1d→T1c, T-ssrf-h→T1d, T-ssrf-i→T-ssrf-h, T-cap-h→T-ssrf-i,
 T-cap-i→T-cap-h, T-agg-h→T-cap-i, T-agg-i→T-agg-h, T-agg-aux→T-agg-i, T-amp-h→T-agg-aux,
@@ -1535,6 +1545,14 @@ Execution order: 064.001 → 064.005 → 064.006 → 064.007 → 064.010 → 064
   `tools/list` frame with stdin still open, then EOF — so a live stdio deadlock is detected, tool
   names matching the advertised MCP tool set
   (`docline --manifest` minus the excluded `ingest_local_dir`).
+- Documentation (T4 [064.004-T]): the README gains the "Running the local stdio MCP server"
+  section + self-contained `.vscode/mcp.json` `servers` stdio example + §H8 opt-in posture, and
+  `docs/ARCHITECTURE.md` carries a top-level domain/dependency map covering the new stdio transport,
+  the `docline-mcp`/`__main__` bootstrap, and the adapter boundary — both interfaces resolving
+  through the shared `docline.app` façade, core packages never importing `mcp`/`cli`, shared-fetch
+  hardening cross-interface, and §H8 scoped to the MCP boundary. Both files satisfy the repo
+  markdown heading rules (README one H1; `ARCHITECTURE.md` one H1 or YAML frontmatter `title:`), and
+  the architecture doc carries boundaries + direction only (no duplicated protocol/design rationale).
 
 ## Plan Review Remediation
 
@@ -2775,6 +2793,29 @@ forward into build, review, runtime verification, and closure.
   re-review" subsection under `## Plan Review Remediation` for the item-by-item disposition.
 - **Gate decision (post-remediation): PASS.** The single P1 is closed; no P0/P1 remains. Hardening
   signals are present (`## Plan Hardening` §H1–§H7) and satisfied. The chain is a single linear,
-  acyclic, test-first sequence of 23 tasks within the 2-hour/width-isolation limits. Runtime
+  acyclic, test-first sequence of 23 tasks within the 2-hour/width-isolation limits at that Cycle-4
+  checkpoint (later cycles grew the chain to the current **36 tasks** — see the post-decomposition
+  cycle-2 reconciliation gate below). Runtime
   verification and rollback/blast-radius are covered in `## Verification` and `## Rollback`. Ready
   for the harvested backlog to proceed to Ship.
+
+### Post-decomposition cycle-2 reconciliation gate (current — supersedes the Cycle-4 count above)
+
+- **Trigger:** PR #166 H8 post-decomposition review cycle 2 — reconcile three unresolved review
+  threads: (1) stale task-count/next-steps in the darkfactory Stage memory, (2) the
+  `docs/ARCHITECTURE.md` domain/dependency-map gap on the docs task `064.004-T`, and (3) a stale
+  "current" 30-task order in `.backlogit/memories.json`. Planning/backlog/docs artifacts only — no
+  production source, no push, no PR actions.
+- **Current chain (authoritative):** a single strictly-linear acyclic test-first sequence of
+  **36 tasks**; shipment `055-S` = `064-F` + **36 tasks** (**37 members**). Execution order:
+  `064.001 → 005 → 006 → 007 → 010 → 011 → 012 → 013 → 016 → 017 → 024 → 025 → 026 → 027 → 028 →
+  029 → 030 → 014 → 015 → 018 → 019 → 002 → 009 → 020 → 021 → 022 → 023 → 031 → 032 → 033 → 034 →
+  008 → 003 → 035 → 036 → 004`. `064.004-T` remains terminal (depends on `064.036-T`).
+- **Change in this cycle:** the docs task `064.004-T` was augmented IN PLACE (no new task, no
+  dependency edge or shipment-membership change) to ALSO own a top-level `docs/ARCHITECTURE.md`
+  domain/dependency map (Scope item 4, Task T4, and Verification updated to match). Still
+  docs-domain, two files (README.md + `docs/ARCHITECTURE.md`), within the <3-file / 2-hour width
+  envelope. The dependency graph and shipment membership/order are unchanged.
+- **Gate decision: PASS.** The multi-persona adversarial review (traceability, architecture
+  progressive disclosure, task width, exact dependency/order consistency, stale-current-language)
+  closed all P1 findings in place; no P0/P1 remains. Ready for the backlog to proceed to Ship.

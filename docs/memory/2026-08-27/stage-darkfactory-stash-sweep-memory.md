@@ -4,6 +4,27 @@
 - Scope: full Stage pipeline (Steps 0.0–6) over all 8 active backlogit stash entries.
 - Starting state: no active/queued shipments; queue empty; 8 active stash entries.
 
+## Current handoff (final — supersedes all cycle snapshots below)
+
+The authoritative post-decomposition state of shipment `055-S` (queued, unclaimed, priority high):
+
+- Count: **36 tasks**; shipment `055-S` = `064-F` + **36 tasks** (**37 members**).
+- Execution order (single strictly-linear acyclic test-first chain; each task depends on its
+  predecessor):
+  `064.001 → 005 → 006 → 007 → 010 → 011 → 012 → 013 → 016 → 017 → 024 → 025 → 026 → 027 → 028 →
+  029 → 030 → 014 → 015 → 018 → 019 → 002 → 009 → 020 → 021 → 022 → 023 → 031 → 032 → 033 → 034 →
+  008 → 003 → 035 → 036 → 004`.
+- §H8 external-PDF-engine opt-in tasks `064.031–064.036` (added in the H8 post-decomposition
+  cycles) sit as `064.023 → 031 → 032 → 033 → 034 → 008 → 003 → 035 → 036 → 004` — the opt-in
+  pairs `031→032→033→034` land after `064.023` and `035→036` after `064.003`, so the runnable
+  entry point (`064.003`) ships only after the external-engine default-deny gate is green.
+- `064.004-T` is terminal (depends on `064.036-T`) and now owns BOTH the README run docs AND the
+  `docs/ARCHITECTURE.md` stdio-transport domain/dependency map.
+- Handoff token to Ship: shipment `055-S`.
+
+All lower task/member counts in the cycle chronology below (the 23/24/26/28/30-task chains and the
+"Next steps" list) are then-current historical snapshots, superseded by this handoff.
+
 ## Triage outcome
 
 | Stash | Kind | Priority | Disposition | Durable artifact |
@@ -154,7 +175,7 @@ traceability checks resolve against the real `harvested` reason.
   `.vscode/mcp.json` `servers` stdio format + self-contained inline README example; reconciled Scope
   item 4 + plan T4. Added plan `### Cycle-6 review remediation` subsection. Gate: PASS (focused
   multi-persona review, all P0/P1 closed).
-- Tasks (test-first, width-isolated, single linear/acyclic chain of **28** (cycle-8 grew 24 → 26; cycle-10 grew 26 → 28); execution order):
+- Tasks (test-first, width-isolated, single linear/acyclic chain) — **cycle-10 snapshot (28 tasks); superseded by the 36-task Current handoff at the top of this file** (cycle-8 grew 24 → 26; cycle-10 grew 26 → 28; later cycles grew 28 → 30 → 36). Execution order at that snapshot:
   064.001-T (protocol/parity harness) → 064.005-T (dispatch/error incl. -32600 harness) →
   064.006-T (H1-H3 harness) → 064.007-T (H4-H6 literal harness) → 064.010-T (shared-fetch SSRF
   harness) → 064.011-T (shared-fetch SSRF + address-pinned connect impl) → 064.012-T (per-dimension
@@ -172,7 +193,8 @@ traceability checks resolve against the real `harvested` reason.
   064.022-T (modern negotiation impl: server/discover + _meta + -32022) → 064.023-T (dual-era
   routing + legacy retention impl) → 064.008-T (subprocess smoke harness) → 064.003-T (docline-mcp
   entry point) → 064.004-T (README client MCP config docs).
-- Shipment 055-S = 064-F + **28 tasks** (queued, priority high). Handoff token to Ship.
+- Shipment 055-S = 064-F + **28 tasks** (queued, priority high) — cycle-10 snapshot; the current
+  count is 36 tasks (37 members), see the Current handoff at the top. Handoff token to Ship.
 
 ## Blocked/deferred backlog (durable, NOT shipped)
 
@@ -189,10 +211,11 @@ EVIDENCE / UNBLOCK requirements and `Do NOT fabricate` guardrails. Semantic link
   `.github/agents/_ship.agent.md`, `.gitignore`.
 - Role boundary honored: no push, no PR, no shipment claim, no build/test, no production code.
 
-## Next steps
+## Next steps (cycle-10 snapshot — superseded; see the Current handoff at the top of this file)
 
 - Ship claims shipment 055-S → harness-architect authors the linear red harness chain, then
-  build-feature turns it green in execution order (28-task chain above). Key make-green order:
+  build-feature turns it green in execution order (the then-current 28-task chain above; the
+  current chain is 36 tasks). Key make-green order:
   shared-fetch SSRF+pinned-connect+proxy-disable 064.011 → per-dimension caps 064.013 → threaded
     during-read aggregate budget 064.017 (core: main+retry) → 064.024 (ancillary robots/TOC) → request-amplification bound 064.026 (crawl.py fetch-attempt counter + app_models depth) → intermediate-redirect-body drain 064.028 (extends _ValidatingRedirectHandler; harness 064.027) → adapter 064.015 (call_tool + list_callable_tools) → fetch-desc correction 064.019 →
   core transport 064.002 (legacy-era base; greens the fetch boundary 064.014 via routing) → stdio
@@ -238,7 +261,7 @@ never staged; no push/PR/claim/build/production-code).
   `.backlogit/memories.json` (both keys). Do NOT fold the amplification counter into 064.013-T or
   drop the depth bound.
 
-## Cycle-10 reconcile (PR #166, HEAD 62df1b7, round 3 of 3 — final)
+## Cycle-10 reconcile (PR #166, HEAD 62df1b7, round 3 of 3 — final round of that review allowance)
 
 Fresh Copilot review raised two threads; both remediated (scope: planning/backlog/memory only; no
 source/test/config edits; operator's uncommitted config/agent/.gitignore edits preserved, never
@@ -259,6 +282,7 @@ staged; no push/PR/claim/build/production-code). This cycle grew the chain 26 �
   harness rows).
 - Updated: plan §H7 item 2 + Selected-numeric-limits + Cap-tasks + decomposition (10e/10f) +
   dep-edges + execution-order + Verification + Rollback + SA-1 + Risks + cycle-10 remediation
-  subsection + intro cycle list; feature 064-F DoD; the current-state Tasks list, shipment count,
-  and make-green order above; `.backlogit/memories.json`. Shipment 055-S = 064-F + **28 tasks**
-  (29 members). Chain acyclic; shipment membership parent-first in dependency/execution order.
+  subsection + intro cycle list; feature 064-F DoD; the then-current Cycle-10 snapshot Tasks list,
+  shipment count, and make-green order above; `.backlogit/memories.json`. Shipment 055-S = 064-F +
+  **28 tasks** (29 members) at that snapshot; the current count is 36 tasks (37 members). Chain
+  acyclic; shipment membership parent-first in dependency/execution order.
