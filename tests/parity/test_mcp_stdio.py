@@ -792,3 +792,110 @@ def test_e2e_over_limit_depth_rejected_32602(depth: int) -> None:
         }
     )
     assert resp["error"]["code"] == -32602
+
+
+# ---------------------------------------------------------------------------
+# 064.020-T — dual-era discovery + modern-negotiation harness (RED)
+# ---------------------------------------------------------------------------
+
+SERVERINFO_META_KEY = "io.modelcontextprotocol/serverInfo"
+MODERN_METHODS = ["server/discover", "tools/list", "tools/call"]
+
+_UNSET = object()
+
+
+def _meta_block(
+    version: Any = MODERN_PROTOCOL_VERSION,
+    caps: Any = _UNSET,
+    include_version: bool = True,
+    include_caps: bool = True,
+) -> dict:
+    """Build a per-request modern _meta block with selectable members."""
+    meta: dict[str, Any] = {}
+    if include_version:
+        meta[MODERN_VERSION_KEY] = version
+    if include_caps:
+        meta[MODERN_CAPS_KEY] = {} if caps is _UNSET else caps
+    return meta
+
+
+def _modern_msg(method: str, meta: dict, id_: int = 1) -> dict:
+    """Build a modern JSON-RPC request carrying _meta inside params."""
+    params: dict[str, Any] = {"_meta": meta}
+    if method == "tools/call":
+        params["name"] = "export_schema"
+        params["arguments"] = {}
+    return {"jsonrpc": "2.0", "id": id_, "method": method, "params": params}
+
+
+def test_server_discover_returns_cacheable_discover_result() -> None:
+    """server/discover with valid _meta returns a CacheableResult DiscoverResult."""
+    resp = _dispatch(_modern_msg("server/discover", _meta_block(caps={"tools": {}})))
+    assert resp is not None and "result" in resp, resp
+    r = resp["result"]
+    assert set(r["supportedVersions"]) == {MODERN_PROTOCOL_VERSION, LEGACY_PROTOCOL_VERSION}
+    assert r["supportedVersions"][0] == MODERN_PROTOCOL_VERSION  # modern first
+    assert "capabilities" in r
+    assert r["resultType"] == "complete"
+    assert isinstance(r["ttlMs"], int) and r["ttlMs"] > 0
+    assert isinstance(r["cacheScope"], str) and r["cacheScope"]
+    assert r["_meta"][SERVERINFO_META_KEY]["name"]
+
+
+def test_modern_tools_list_served_statelessly() -> None:
+    """A modern tools/list (both _meta members, no handshake) carries the modern envelope."""
+    resp = _dispatch(_modern_msg("tools/list", _meta_block()))
+    assert resp is not None and "result" in resp, resp
+    r = resp["result"]
+    assert [t["name"] for t in r["tools"]] == ["fetch", "process", "export_schema"]
+    assert r["resultType"] == "complete"
+    assert isinstance(r["ttlMs"], int) and r["ttlMs"] > 0
+    assert isinstance(r["cacheScope"], str) and r["cacheScope"]
+    assert r["_meta"][SERVERINFO_META_KEY]["name"]
+
+
+@pytest.mark.parametrize("method", MODERN_METHODS)
+def test_modern_unsupported_version_minus_32022(method: str) -> None:
+    """An unsupported modern _meta protocolVersion returns -32022 with supported+requested."""
+    resp = _dispatch(_modern_msg(method, _meta_block(version="1999-01-01")))
+    assert resp is not None and "error" in resp, resp
+    err = resp["error"]
+    assert err["code"] == -32022
+    assert LEGACY_PROTOCOL_VERSION in err["data"]["supported"]
+    assert MODERN_PROTOCOL_VERSION in err["data"]["supported"]
+    assert err["data"]["requested"] == "1999-01-01"
+
+
+@pytest.mark.parametrize("method", MODERN_METHODS)
+@pytest.mark.parametrize(
+    "kw",
+    [
+        {"include_caps": False},  # missing clientCapabilities member
+        {"caps": "not-an-object"},  # malformed type (str)
+        {"caps": 123},  # malformed type (int)
+        {"caps": ["x"]},  # malformed type (list)
+    ],
+)
+def test_modern_missing_or_malformed_caps_minus_32602(method: str, kw: dict) -> None:
+    """Missing/malformed clientCapabilities (after a valid version) returns -32602."""
+    resp = _dispatch(_modern_msg(method, _meta_block(**kw)))
+    assert resp is not None and "error" in resp, resp
+    assert resp["error"]["code"] == -32602
+
+
+@pytest.mark.parametrize("method", MODERN_METHODS)
+@pytest.mark.parametrize("bad_version", [123, None, 4.5, ["2026-07-28"], {"v": 1}])
+def test_modern_malformed_type_version_minus_32602(method: str, bad_version: Any) -> None:
+    """A present-but-malformed-type protocolVersion is modern-classified and -32602."""
+    resp = _dispatch(_modern_msg(method, _meta_block(version=bad_version)))
+    assert resp is not None and "error" in resp, resp
+    # Malformed member type -> -32602, never a legacy fallthrough result and never -32022.
+    assert resp["error"]["code"] == -32602
+
+
+@pytest.mark.parametrize("method", MODERN_METHODS)
+def test_modern_version_precedence_over_caps(method: str) -> None:
+    """An unsupported version wins over an also-absent clientCapabilities: -32022, not -32602."""
+    resp = _dispatch(_modern_msg(method, _meta_block(version="1999-01-01", include_caps=False)))
+    assert resp is not None and "error" in resp, resp
+    assert resp["error"]["code"] == -32022
