@@ -664,4 +664,70 @@ def test_h3_no_absolute_paths_in_iserror_content(monkeypatch, tmp_path) -> None:
     )
     blob = json.dumps(resp.get("result", resp))
     assert str(tmp_path) not in blob
-# ===END-006===
+
+
+# ---------------------------------------------------------------------------
+# 064.007-T — Security gates H4, H5, H6 (literal-IP smoke)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "tool_name",
+    ["ingest_local_dir", "unknown_tool", "__init__", "__class__", "list_tools"],
+)
+def test_h4_unknown_or_unrouted_tool_fails_closed(tool_name: str) -> None:
+    """H4: unknown/unrouted tool names (dunders, ingest_local_dir) -> -32602, not AttributeError."""
+    resp = _single(
+        _frame(
+            {
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "tools/call",
+                "params": {"name": tool_name, "arguments": {}},
+            }
+        )
+    )
+    assert resp["error"]["code"] == -32602
+
+
+def test_h5_stdout_carries_only_jsonrpc_frames(monkeypatch, tmp_path) -> None:
+    """H5: stdout carries only well-formed JSON-RPC frames across a process tool call."""
+    monkeypatch.chdir(tmp_path)
+    tmp_path.joinpath("staging").mkdir()
+    frame = _frame(
+        {
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "tools/call",
+            "params": {"name": "process", "arguments": {"staging_dir": "staging"}},
+        }
+    )
+    from docline.mcp.stdio import serve
+
+    stdin = _EofStdin(frame)
+    stdout = _RecordingStdout()
+    worker = threading.Thread(target=serve, args=(stdin, stdout, SERVER))
+    worker.start()
+    worker.join(15.0)
+    assert not worker.is_alive()
+    # Every non-empty line must be a well-formed JSON-RPC frame.
+    for line in bytes(stdout._buf).split(b"\n"):
+        if line.strip():
+            obj = json.loads(line)
+            assert obj["jsonrpc"] == "2.0"
+
+
+@pytest.mark.parametrize("url", ["http://127.0.0.1", "http://169.254.169.254"])
+def test_h6_literal_ip_fetch_rejected_end_to_end(url: str) -> None:
+    """H6 literal-IP smoke: tools/call fetch to loopback/metadata is rejected end-to-end."""
+    resp = _dispatch(
+        {
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "tools/call",
+            "params": {"name": "fetch", "arguments": {"source": url}},
+        }
+    )
+    result = resp["result"]
+    # Rejected: mapped to an isError tool result (validated-but-failed fetch).
+    assert result["isError"] is True
