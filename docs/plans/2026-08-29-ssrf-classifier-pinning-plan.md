@@ -125,15 +125,29 @@ consumers via explicit dependency edges.
   against hostname; `sitemap.__all__` exports `fetch_sitemap`. Depends on A.T5 and A.T4 (the
   full-suite green gate requires the metadata fix landed too).
 
+### A.T7 — Raise `requires-python` to `>=3.12.4` for CVE-2024-4032 (config)
+
+- Domain: config. Files: `pyproject.toml` (and CI test-matrix floor if it pins `3.12.0`-`3.12.3`).
+- Bump the project's minimum Python to `3.12.4` so the corrected CPython `ipaddress` classification
+  (with its documented allow-list exceptions) applies at runtime. This is the concrete CVE-2024-4032
+  mitigation — the predicate relies on `is_private`/`is_global` for the affected prefixes and must
+  run on the patched tables.
+- AC: `requires-python = ">=3.12.4"`; CI matrix floor consistent; build metadata valid;
+  `python -m build` succeeds. Width: config only. No code dependency, but the A.T1 over-block guard
+  and A.T2 consolidation only classify the CVE-affected exceptions correctly under this floor, so
+  A.T2 depends on A.T7.
+
 ## Dependency graph
 
 ```text
-A.T1 -> A.T2 -> A.T3 -> A.T4 ------\
-              \-> A.T5 -------------> A.T6
+A.T7 ---\
+A.T1 --> A.T2 -> A.T3 -> A.T4 ------\
+               \-> A.T5 ------------> A.T6
 ```
 
-Acyclic. Red harness precedes each green consumer. A.T3/A.T4 (metadata) and A.T5 (pinning) both
-branch off A.T2; A.T6 joins both (A.T4 and A.T5) so its full-suite green gate is attainable.
+Acyclic. Red harness precedes each green consumer. A.T2 depends on A.T1 (harness) and A.T7 (runtime
+floor, so the over-block guards classify correctly). A.T3/A.T4 (metadata) and A.T5 (pinning) branch
+off A.T2; A.T6 joins A.T4 and A.T5 so its full-suite green gate is attainable.
 
 ## Plan review outcome
 
@@ -141,8 +155,9 @@ Multi-persona adversarial plan review (Security Lens, Architecture Strategist, S
 Auditor; diverse models). Verdict: **PASS after fixes** — no P0/P1 remained unaddressed. Fixes
 folded in above:
 
-- Added IPv6 site-local `fec0::/10` and explicit CVE-2024-4032-affected-prefix membership to the
-  canonical predicate (Security P1 x2).
+- Added IPv6 site-local `fec0::/10` explicit membership; replaced hand-rolled CVE-2024-4032-prefix
+  rejection (which would block globally-reachable exceptions) with positive over-block guards plus a
+  concrete runtime-floor task A.T7 (`requires-python >= 3.12.4`) (Security P1 x2; cycle-2 review).
 - Redesigned the metadata gate as normalized parsed-object comparison with a routable sentinel to
   prevent a false-green harness (Security P2).
 - Bound the sitemap fix to the **public** `fetch_page`/`build_fetch_opener` sink (proxy
@@ -162,14 +177,14 @@ auditor's corrective.
 - **Risk class: high** (security boundary, fail-closed SSRF classifier). ProposedAction:
   consolidate + repin. Rollback: single-shipment revert; live-path behavior preserved.
 - **CVE-2024-4032 guard**: `is_private`/`is_global` tables changed in Python 3.12.4 and pyproject
-  currently permits 3.12.0-3.12.3. The mitigation is the runtime floor `requires-python >= 3.12.4`
-  (recommended in-shipment via a manifest bump, or tracked as the open question), because the
-  corrected CPython tables already encode the documented allow-list exceptions (e.g. `192.0.0.9`,
-  `192.0.0.10`, reachable `2001::/23` subranges). The predicate deliberately does **not** hand-roll
-  wholesale rejection of these prefixes, which would block those globally-reachable exceptions;
-  A.T1 adds positive over-block guards asserting they stay accepted. The security-critical SSRF
-  classes (private/loopback/link-local/CGNAT/ULA/site-local/metadata) are pinned by explicit
-  membership independent of the flag table.
+  currently permits 3.12.0-3.12.3. The mitigation ships in this unit as task **A.T7**
+  (`requires-python >= 3.12.4`), so the corrected CPython tables (which encode the allow-list
+  exceptions `192.0.0.9`, `192.0.0.10`, reachable `2001::/23` subranges) apply at runtime. The
+  predicate deliberately does **not** hand-roll wholesale rejection of these prefixes, which would
+  block those globally-reachable exceptions; A.T1 adds positive over-block guards asserting they
+  stay accepted (and those guards only classify correctly under the A.T7 floor). The
+  security-critical SSRF classes (private/loopback/link-local/CGNAT/ULA/site-local/metadata) are
+  pinned by explicit membership independent of the flag table.
 - **Regression guard**: A.T1 enumerates every class both predicates currently reject so
   consolidation cannot drop one; the union (adds ULA + site-local to sitemap) only tightens.
 - **HTTPS integrity guard**: A.T5 asserts SNI/cert target the hostname, never the pinned IP.

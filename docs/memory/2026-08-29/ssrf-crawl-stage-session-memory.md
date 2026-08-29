@@ -42,8 +42,13 @@ cut from origin/main @ 16970da (branch `stage/ssrf-pinning-crawl-frontier`).
 Reviewers: Security Lens (gpt-5.6-sol), Architecture Strategist (gpt-5.6-terra), Scope Auditor
 (claude-sonnet-4.6). No P0. Fixes folded into plans:
 
-- Added IPv6 site-local `fec0::/10` + CVE-2024-4032-prefix explicit checks to the canonical
-  predicate (Security P1 x2).
+- Added IPv6 site-local `fec0::/10` explicit membership; replaced hand-rolled CVE-2024-4032-prefix
+  rejection with positive over-block guards (192.0.0.9/10 stay accepted) plus a concrete
+  runtime-floor task **066.007-T** (`requires-python >= 3.12.4`) — the corrected CPython tables are
+  the CVE mitigation (Security P1 x2; cycle-2 review).
+- Concrete sitemap API contract: `validate_sitemap_url(url)->str` stays a sync preflight; new async
+  `fetch_sitemap(url,*,timeout_seconds,max_redirects)->FetchResponse` delegates to `http.fetch_page`
+  as the single pinned path (066.006-T).
 - Metadata gate redesigned as normalized parsed-object comparison with a routable sentinel to
   avoid a false-green harness (Security P2).
 - Sitemap fix bound to the public `fetch_page`/`build_fetch_opener` sink (proxy suppression +
