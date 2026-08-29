@@ -10,6 +10,7 @@ from urllib import error, request
 from urllib.parse import urlparse
 
 from docline.fetch.url_policy import (
+    CrawlUrlRejectedError,
     resolve_and_validate,
     validate_crawl_url,
 )
@@ -221,18 +222,43 @@ class _PinnedHTTPSHandler(request.HTTPSHandler):
         return self.do_open(_PinnedHTTPSConnection, req, context=self._context)  # type: ignore[attr-defined]
 
 
-class _ValidatingRedirectHandler(request.HTTPRedirectHandler):
-    """Redirect handler that validates every target through URL policy.
+class _BoundedFpProxy:
+    """Wraps an intermediate 3xx response fp so its body drain is bounded.
 
-    Enforces the caller-supplied ``max_redirects`` cap and rejects any redirect
-    target that fails scheme, literal, or resolution validation. Every target is
-    re-resolved at redirect time so a redirect to a name resolving to a private
-    address is rejected mid-chain.
+    ``read`` streams the wrapped fp through :func:`read_body_capped` (per-response
+    cap + aggregate budget), so an intermediate redirect body cannot bypass the
+    caps via urllib's in-handler unbounded ``fp.read()``.
     """
 
-    def __init__(self, max_redirects: int) -> None:
+    def __init__(self, fp: IO[bytes], max_bytes: int, budget: "RemainingByteBudget | None") -> None:
+        self._fp = fp
+        self._max_bytes = max_bytes
+        self._budget = budget
+
+    def read(self, amt: int | None = None) -> bytes:
+        return read_body_capped(self._fp, self._max_bytes, self._budget)
+
+    def close(self) -> None:
+        self._fp.close()
+
+    def __getattr__(self, name: str) -> object:
+        return getattr(self._fp, name)
+
+
+class _ValidatingRedirectHandler(request.HTTPRedirectHandler):
+    """Redirect handler that validates every target and bounds intermediate bodies.
+
+    Enforces the caller-supplied ``max_redirects`` cap, rejects any redirect
+    target that fails scheme/literal/resolution validation (re-resolved at
+    redirect time), AND bounded-drains every intermediate 3xx body through the
+    per-response + aggregate caps, closing the intermediate connection on every
+    cap-breach or ``redirect_request``-raised exit so no socket leaks.
+    """
+
+    def __init__(self, max_redirects: int, budget: "RemainingByteBudget | None" = None) -> None:
         super().__init__()
         self._max_redirects = max_redirects
+        self._budget = budget
         self.redirect_count = 0
 
     def redirect_request(
@@ -262,10 +288,44 @@ class _ValidatingRedirectHandler(request.HTTPRedirectHandler):
         resolve_and_validate(urlparse(newurl).hostname or "")
         return super().redirect_request(req, fp, code, msg, headers, newurl)
 
+    def http_error_302(
+        self,
+        req: request.Request,
+        fp: IO[bytes],
+        code: int,
+        msg: str,
+        headers: http.client.HTTPMessage,
+    ) -> object:
+        """Bounded-drain the intermediate body and close its fp on any breach.
+
+        Wraps ``fp`` in a bounded proxy and delegates to the stdlib handler so
+        the existing §H6 revalidation, ``max_redirects`` count, and Location/
+        loop/scheme logic are unchanged, while the intermediate body is read
+        through the per-response + aggregate caps. On any cap-breach or
+        ``redirect_request``-raised exit the real ``fp`` is closed before the
+        typed error propagates (stdlib closes it only after a completed read).
+        """
+        proxy = _BoundedFpProxy(fp, MAX_RESPONSE_BYTES, self._budget)
+        try:
+            return super().http_error_302(req, proxy, code, msg, headers)  # type: ignore[arg-type]
+        except (
+            ResponseByteLimitError,
+            AggregateBudgetExceededError,
+            FetchError,
+            CrawlUrlRejectedError,
+        ):
+            fp.close()
+            raise
+
+    http_error_301 = http_error_302
+    http_error_303 = http_error_302
+    http_error_307 = http_error_302
+    http_error_308 = http_error_302
+
 
 def build_fetch_opener(
     max_redirects: int,
-    budget: object | None = None,
+    budget: "RemainingByteBudget | None" = None,
     redirect_handler: "_ValidatingRedirectHandler | None" = None,
 ) -> request.OpenerDirector:
     """Build an SSRF-hardened opener with inherited proxies disabled.
@@ -284,7 +344,7 @@ def build_fetch_opener(
     Returns:
         A configured :class:`urllib.request.OpenerDirector`.
     """
-    handler = redirect_handler or _ValidatingRedirectHandler(max_redirects)
+    handler = redirect_handler or _ValidatingRedirectHandler(max_redirects, budget=budget)
     return request.build_opener(
         request.ProxyHandler({}),
         _PinnedHTTPHandler(),
@@ -329,7 +389,7 @@ async def fetch_page(
         budget.debit_attempt()
 
     def _fetch() -> FetchResponse:
-        handler = _ValidatingRedirectHandler(max_redirects)
+        handler = _ValidatingRedirectHandler(max_redirects, budget=budget)
         opener = build_fetch_opener(max_redirects, budget=budget, redirect_handler=handler)
         req = request.Request(validated_url, headers={"User-Agent": "docline-crawler/1.0"})
         with opener.open(req, timeout=timeout_seconds) as response:

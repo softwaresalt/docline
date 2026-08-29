@@ -135,6 +135,7 @@ def test_within_budget_redirect_still_follows(monkeypatch) -> None:
     handler = _make_handler(budget=budget)
     fp = _InstrumentedFp(1000)
     req = Request("http://start.example.com")
+    req.timeout = None  # type: ignore[attr-defined]  # opener.open sets this in the real flow
     result = handler.http_error_302(req, fp, 302, "Found", _headers("http://next.example.com/x"))
     assert result == "FINAL"
     assert fp.close_count >= 1
