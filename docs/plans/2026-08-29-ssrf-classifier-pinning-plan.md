@@ -56,10 +56,12 @@ consumers via explicit dependency edges.
   `sitemap` and `url_policy` (delegation identity), and that an unparseable address is
   `unsafe=True` (fail-closed).
 - Over-block guard (positive tests): assert the classifier does **not** reject any documented
-  globally-reachable exception inside the CVE-2024-4032-affected ranges — IPv4 `192.0.0.9`,
-  `192.0.0.10`, and all six IPv6 `2001::/23` exceptions (`2001:1::1`, `2001:1::2`, `2001:3::/32`,
-  `2001:4:112::/48`, `2001:20::/28`, `2001:30::/28`) — so the CVE mitigation never blocks valid
-  public-unicast destinations. These classify correctly only under the A.T7 runtime floor.
+  globally-reachable exception inside the CVE-2024-4032-affected ranges. Use concrete address
+  **literals** (the predicate takes a single address and fails closed on any `/` CIDR string):
+  IPv4 `192.0.0.9`, `192.0.0.10`, and one address from each of the six IPv6 `2001::/23` exception
+  ranges — `2001:1::1`, `2001:1::2`, `2001:3::1`, `2001:4:112::1`, `2001:20::1`, `2001:30::1` — so
+  the CVE mitigation never blocks valid public-unicast destinations. These classify correctly only
+  under the A.T7 runtime floor.
 - AC: harness compiles; new tests fail (red) against current divergence (sitemap misses ULA and
   site-local). Depends on: none.
 
