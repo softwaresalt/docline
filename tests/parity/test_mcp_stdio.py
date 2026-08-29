@@ -870,7 +870,7 @@ def test_server_discover_returns_cacheable_discover_result() -> None:
     assert "capabilities" in r
     assert r["resultType"] == "complete"
     assert isinstance(r["ttlMs"], int) and r["ttlMs"] > 0
-    assert isinstance(r["cacheScope"], str) and r["cacheScope"]
+    assert r["cacheScope"] in {"public", "private"}
     assert r["_meta"][SERVERINFO_META_KEY]["name"]
 
 
@@ -882,7 +882,7 @@ def test_modern_tools_list_served_statelessly() -> None:
     assert [t["name"] for t in r["tools"]] == ["fetch", "process", "export_schema"]
     assert r["resultType"] == "complete"
     assert isinstance(r["ttlMs"], int) and r["ttlMs"] > 0
-    assert isinstance(r["cacheScope"], str) and r["cacheScope"]
+    assert r["cacheScope"] in {"public", "private"}
     assert r["_meta"][SERVERINFO_META_KEY]["name"]
 
 
@@ -1458,3 +1458,46 @@ def test_h8_startup_fresh_instance_not_module_server(monkeypatch, capsys) -> Non
     for secret in ("AZURE_AI_FOUNDRY_KEY", "AZURE_AI_FOUNDRY_ENDPOINT", "MISTRAL_API_KEY"):
         assert secret not in captured.out
         assert secret not in captured.err
+
+
+# ---------------------------------------------------------------------------
+# Review remediation — untrusted-input validation + §H3 structured sanitization
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("bad_arguments", [[], "x", 3, 0, "", False])
+def test_tools_call_non_object_arguments_rejected_32602(bad_arguments) -> None:
+    """A falsy/non-object `arguments` is rejected -32602, never coerced to empty {}."""
+    resp = _dispatch(
+        {
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "tools/call",
+            "params": {"name": "process", "arguments": bad_arguments},
+        }
+    )
+    assert resp["error"]["code"] == -32602
+
+
+def test_tools_call_null_arguments_rejected_32602() -> None:
+    """An explicit null `arguments` is rejected -32602 (not defaulted to {})."""
+    resp = _single(
+        b'{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"process","arguments":null}}\n'
+    )
+    assert resp["error"]["code"] == -32602
+
+
+def test_structured_content_error_is_sanitized(monkeypatch, tmp_path) -> None:
+    """§H3: an isError structuredContent.error carries no absolute path."""
+    monkeypatch.chdir(tmp_path)
+    resp = _dispatch(
+        {
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "tools/call",
+            "params": {"name": "process", "arguments": {"staging_dir": "nonexistent_dir"}},
+        }
+    )
+    structured = resp["result"].get("structuredContent", {})
+    blob = json.dumps(structured)
+    assert str(tmp_path) not in blob

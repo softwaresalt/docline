@@ -1,11 +1,14 @@
-"""Core stdio JSON-RPC 2.0 transport loop for the docline MCP server (legacy era).
+"""Core stdio JSON-RPC 2.0 transport loop for the docline MCP server (dual-era).
 
 Provides a pure :func:`dispatch` (single JSON-RPC request -> response dict or
 ``None`` for a notification) and a :func:`serve` read/dispatch/write loop that
 reserves the real stdout for JSON-RPC frames, reads non-greedily with a bounded
 binary framing reader, and flushes after every response so an interactive client
-never deadlocks. The transport is a pure translator: tool identity and server
-identity live only in the adapter (:mod:`docline.mcp.server`).
+never deadlocks. Serves both the legacy ``initialize`` handshake (``2025-11-25``)
+and the modern ``2026-07-28`` ``server/discover`` + per-request ``_meta``
+negotiation through one hardened dispatch. The transport is a pure translator:
+tool identity and server identity live only in the adapter
+(:mod:`docline.mcp.server`).
 """
 
 from __future__ import annotations
@@ -38,7 +41,9 @@ _META_CAPS_KEY = "io.modelcontextprotocol/clientCapabilities"
 _SERVERINFO_META_KEY = "io.modelcontextprotocol/serverInfo"
 UNSUPPORTED_PROTOCOL_VERSION = -32022
 MODERN_CACHE_TTL_MS = 60_000
-MODERN_CACHE_SCOPE = "session"
+# CacheableResult.cacheScope is constrained by the MCP 2026-07-28 schema to
+# "public" | "private". This instance-configured local server scopes to "private".
+MODERN_CACHE_SCOPE = "private"
 
 
 class _SessionState:
@@ -65,9 +70,10 @@ class _ByteWriter(Protocol):
     def flush(self) -> None: ...
 
 
-# Absolute filesystem paths (Windows drive form or POSIX) stripped from any
-# client-facing error text so no path is disclosed on the untrusted surface (§H3).
-_ABS_PATH_RE = re.compile(r"[A-Za-z]:\\[^\s\"']*|(?<![\w:/])/[^\s\"']+")
+# Absolute filesystem paths stripped from any client-facing error text so no
+# path is disclosed on the untrusted surface (§H3). Covers UNC (``\\host\share``),
+# Windows drive form with either slash (``C:\...`` / ``C:/...``), and POSIX.
+_ABS_PATH_RE = re.compile(r"\\\\[^\s\"']+|[A-Za-z]:[\\/][^\s\"']*|(?<![\w:/])/[^\s\"']+")
 
 
 def _sanitize(text: str) -> str:
@@ -109,9 +115,15 @@ def _to_call_tool_result(name: str, result: object) -> dict:
             text = _sanitize(result.error) if result.error else f"{name} failed."
         else:
             text = f"{name} completed."
+        structured = result.model_dump()
+        # §H3: sanitize the structured error too — model_dump carries the raw
+        # error string, which can contain an absolute path on a containment breach.
+        error_field = structured.get("error")
+        if is_error and isinstance(error_field, str) and error_field:
+            structured["error"] = _sanitize(error_field)
         return {
             "content": [{"type": "text", "text": text}],
-            "structuredContent": result.model_dump(),
+            "structuredContent": structured,
             "isError": is_error,
         }
     if isinstance(result, str):
@@ -125,11 +137,14 @@ def _dispatch_tools_call(message: dict, echo_id: object, server: DoclineMcpServe
     Applies the §H1 ``workspace_root`` reject, §H4 fail-closed unknown-tool
     mapping, §H5 child-stdout redirect, and §H3 error-text sanitization.
     """
-    params = message.get("params") or {}
+    params = message.get("params")
     if not isinstance(params, dict):
         return _error(echo_id, -32602, "Invalid params")
     name = params.get("name")
-    arguments = params.get("arguments") or {}
+    # Default only when ``arguments`` is absent; an explicit falsy non-object
+    # (``[]``/``null``/``""``/number) must be rejected by the type check below,
+    # never coerced into empty valid arguments that cross the validation boundary.
+    arguments = params.get("arguments", {})
     if not isinstance(name, str) or not isinstance(arguments, dict):
         return _error(echo_id, -32602, "Invalid params")
     # §H1: reject a client-supplied workspace_root (root is pinned to the server cwd).

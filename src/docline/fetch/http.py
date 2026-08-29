@@ -10,7 +10,6 @@ from urllib import error, request
 from urllib.parse import urlparse
 
 from docline.fetch.url_policy import (
-    CrawlUrlRejectedError,
     resolve_and_validate,
     validate_crawl_url,
 )
@@ -169,6 +168,42 @@ class FetchResponse:
     body_byte_count: int = 0
 
 
+def _connect_validated_address(
+    host: str, port: int, timeout: float | None, source_address: tuple[str, int] | None
+) -> socket.socket:
+    """Connect to the first reachable validated address for ``host``.
+
+    Resolves and validates ``host`` once (rejecting private/loopback/CGNAT/
+    metadata addresses), then tries each validated address in order so a
+    multi-address or dual-stack host is not defeated by a single unreachable —
+    but validated — answer. No second, unvalidated DNS resolution occurs, so DNS
+    rebinding stays closed.
+
+    Args:
+        host: The DNS hostname to resolve and validate.
+        port: The destination port.
+        timeout: The per-attempt connection timeout.
+        source_address: Optional bind source address.
+
+    Returns:
+        A connected socket to a validated address.
+
+    Raises:
+        OSError: If every validated address is unreachable (last error re-raised).
+        CrawlUrlRejectedError: If resolution/validation rejects the host.
+    """
+    addresses = resolve_and_validate(host)
+    last_error: OSError | None = None
+    for address in addresses:
+        try:
+            return socket.create_connection((address, port), timeout, source_address)
+        except OSError as err:
+            last_error = err
+    # resolve_and_validate guarantees a non-empty list, so last_error is set.
+    assert last_error is not None
+    raise last_error
+
+
 class _PinnedHTTPConnection(http.client.HTTPConnection):
     """HTTP connection that resolves + validates the host and pins the socket.
 
@@ -179,11 +214,8 @@ class _PinnedHTTPConnection(http.client.HTTPConnection):
     """
 
     def connect(self) -> None:
-        addresses = resolve_and_validate(self.host)
         source_address = getattr(self, "source_address", None)
-        self.sock = socket.create_connection(
-            (addresses[0], self.port), self.timeout, source_address
-        )
+        self.sock = _connect_validated_address(self.host, self.port, self.timeout, source_address)
         if getattr(self, "_tunnel_host", None):
             self._tunnel()  # type: ignore[attr-defined]
 
@@ -197,9 +229,8 @@ class _PinnedHTTPSConnection(http.client.HTTPSConnection):
     """
 
     def connect(self) -> None:
-        addresses = resolve_and_validate(self.host)
         source_address = getattr(self, "source_address", None)
-        sock = socket.create_connection((addresses[0], self.port), self.timeout, source_address)
+        sock = _connect_validated_address(self.host, self.port, self.timeout, source_address)
         if getattr(self, "_tunnel_host", None):
             self.sock = sock
             self._tunnel()  # type: ignore[attr-defined]
@@ -313,12 +344,11 @@ class _ValidatingRedirectHandler(request.HTTPRedirectHandler):
         proxy = _BoundedFpProxy(fp, MAX_RESPONSE_BYTES, self._budget)
         try:
             return super().http_error_302(req, proxy, code, msg, headers)  # type: ignore[arg-type]
-        except (
-            ResponseByteLimitError,
-            AggregateBudgetExceededError,
-            FetchError,
-            CrawlUrlRejectedError,
-        ):
+        except Exception:
+            # Close the real fp on ANY failure path (cap breach, revalidation
+            # reject, redirect-loop/malformed-Location HTTPError/ValueError) so no
+            # intermediate socket leaks; the stdlib closes it only after a
+            # completed read. fp.close() is idempotent.
             fp.close()
             raise
 
@@ -341,8 +371,9 @@ def build_fetch_opener(
 
     Args:
         max_redirects: Redirect cap for the request.
-        budget: Reserved for the request-scoped byte/attempt budget (threaded in
-            by later hardening tasks); accepted here for a stable signature.
+        budget: The request-scoped remaining byte/attempt budget threaded into the
+            redirect handler, which enforces the aggregate-byte and redirect-attempt
+            limits (§H7). ``None`` disables aggregate budgeting for this opener.
         redirect_handler: Optional pre-constructed redirect handler so callers
             can read ``redirect_count`` after the request completes.
 

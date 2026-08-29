@@ -205,10 +205,14 @@ class DoclineMcpServer:
     def list_callable_tools(self) -> McpManifestResponse:
         """Return the callable allow-list manifest for the untrusted MCP surface.
 
-        Excludes ``ingest_local_dir`` and removes the ``workspace_root`` property
-        from the advertised ``process`` schema (the two sanctioned MCP-only
-        parity divergences). This — not :meth:`list_tools` — is the sole tool
-        advertise source for the stdio transport.
+        Applies the sanctioned MCP-only divergences from the shared manifest:
+        excludes ``ingest_local_dir``; removes the ``workspace_root`` property
+        from the advertised ``process`` schema (§H1); and, unless this server was
+        started with the external-engine opt-in, filters the ``process``
+        ``pdf_engine`` enum to the local allow-list (§H8), omitting external,
+        credential/network-bearing engines. This — not :meth:`list_tools` — is the
+        sole tool advertise source for the stdio transport, so callers must read
+        the callable contract here rather than from the full manifest.
         """
         tools: list[ManifestTool] = []
         for tool in get_manifest().tools:
