@@ -89,17 +89,22 @@ def test_unclassifiable_resolution_fails_closed(monkeypatch: pytest.MonkeyPatch)
 
 
 def test_fetch_opener_disables_inherited_proxies(monkeypatch: pytest.MonkeyPatch) -> None:
-    """The fetch opener installs an empty ProxyHandler so HTTP(S)_PROXY is not honored."""
+    """The fetch opener honors no HTTP(S)_PROXY: no active proxying handler is installed.
+
+    Passing an empty ``ProxyHandler({})`` to ``build_opener`` prevents urllib from
+    installing its default environment-reading ``ProxyHandler``; urllib does not
+    register a method-less empty proxy handler, so the invariant is that NO
+    ``ProxyHandler`` with any configured proxy is present.
+    """
     monkeypatch.setenv("HTTP_PROXY", "http://proxy.invalid:8080")
     monkeypatch.setenv("HTTPS_PROXY", "http://proxy.invalid:8080")
     from docline.fetch.http import build_fetch_opener
 
     opener = build_fetch_opener(max_redirects=5, budget=None)
-    proxy_handlers = [h for h in opener.handlers if isinstance(h, urllib.request.ProxyHandler)]
-    assert proxy_handlers, "a ProxyHandler must be installed"
-    assert all(h.proxies == {} for h in proxy_handlers), (
-        "proxies must be empty (no inherited proxy)"
-    )
+    active_proxies = [
+        h for h in opener.handlers if isinstance(h, urllib.request.ProxyHandler) and h.proxies
+    ]
+    assert not active_proxies, "no environment/system proxy handler must be honored"
 
 
 def test_resolved_addresses_are_validated_and_pinned(monkeypatch: pytest.MonkeyPatch) -> None:
