@@ -57,11 +57,17 @@ valid findings fixed and threads resolved:
 
 - **Monitoring**: the server writes only JSON-RPC frames to stdout; operational diagnostics go
   to stderr. Malformed/oversized input degrades to typed error envelopes without crashing the loop.
-- **Rollback**: revert merge commit `29cf117`. The MCP surface is additive — no CLI or shared
-  contract behavior changed, so rollback is isolated to the `docline.mcp` package + `pyproject`
-  `[project.scripts]` entry.
-- **Blast radius**: MCP-boundary only. §H8 is MCP-scoped; `docline process --pdf-engine mistral_ocr`
-  (CLI) is unchanged. Shared-fetch hardening applies to both interfaces.
+- **Rollback**: revert merge commit `29cf117`. Note this reverts the **entire two-slice shipment**,
+  not just the MCP package: the first slice also landed cross-interface shared-fetch hardening in
+  `fetch/*` (SSRF-by-resolution, address-pinned connect, per-response + aggregate byte budgets,
+  redirect revalidation) and `app_models` request limits (`max_pages` ≤ 1000, `depth` ≤ 64), plus a
+  corrected shared `fetch` tool description in `app.py`. Reverting therefore also **weakens CLI fetch
+  validation and DoS bounds**, so a rollback must be a deliberate whole-shipment decision, not a
+  local MCP-only change.
+- **Blast radius**: the **MCP interface surface** (`docline.mcp.*`, the `docline-mcp` script) and the
+  **§H8 external-engine gate** are MCP-boundary-only — `docline process --pdf-engine mistral_ocr`
+  (CLI) is unchanged. The **shared-fetch hardening and request-limit changes are cross-interface**
+  and affect both the CLI and MCP fetch paths, so they are not isolated to `docline.mcp`.
 
 ## Follow-ups (stashed for Stage)
 
