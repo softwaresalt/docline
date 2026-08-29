@@ -464,7 +464,7 @@ def get_manifest() -> Manifest:
             ManifestTool(
                 name="fetch",
                 description=(
-                    "Fetch a document from a URL or file path and stage it for processing."
+                    "Fetch a document from an HTTP(S) URL and stage it for processing."
                 ),
                 parameters=fetch_schema,
             ),
