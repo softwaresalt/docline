@@ -731,3 +731,63 @@ def test_h6_literal_ip_fetch_rejected_end_to_end(url: str) -> None:
     result = resp["result"]
     # Rejected: mapped to an isError tool result (validated-but-failed fetch).
     assert result["isError"] is True
+
+
+# ---------------------------------------------------------------------------
+# 064.014-T - MCP untrusted-fetch end-to-end boundary harness
+# ---------------------------------------------------------------------------
+
+
+def test_e2e_ssrf_hostname_resolution_rejected(monkeypatch, tmp_path) -> None:
+    """A tools/call fetch whose public hostname resolves to loopback is rejected e2e."""
+    import socket
+
+    monkeypatch.chdir(tmp_path)
+
+    def _resolver(host, *args, **kwargs):
+        return [(socket.AF_INET, socket.SOCK_STREAM, 6, "", ("127.0.0.1", 0))]
+
+    monkeypatch.setattr(socket, "getaddrinfo", _resolver)
+    resp = _dispatch(
+        {
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "tools/call",
+            "params": {"name": "fetch", "arguments": {"source": "http://internal.example.com"}},
+        }
+    )
+    assert resp["result"]["isError"] is True
+
+
+@pytest.mark.parametrize("max_pages", [1001, 5000])
+def test_e2e_over_limit_max_pages_rejected_32602(max_pages: int) -> None:
+    """An over-limit max_pages is rejected -32602 end-to-end (§H7 item 1)."""
+    resp = _dispatch(
+        {
+            "jsonrpc": "2.0",
+            "id": 2,
+            "method": "tools/call",
+            "params": {
+                "name": "fetch",
+                "arguments": {"source": "http://example.com", "max_pages": max_pages},
+            },
+        }
+    )
+    assert resp["error"]["code"] == -32602
+
+
+@pytest.mark.parametrize("depth", [65, 100])
+def test_e2e_over_limit_depth_rejected_32602(depth: int) -> None:
+    """An over-limit depth is rejected -32602 end-to-end (§H7 item 4b)."""
+    resp = _dispatch(
+        {
+            "jsonrpc": "2.0",
+            "id": 3,
+            "method": "tools/call",
+            "params": {
+                "name": "fetch",
+                "arguments": {"source": "http://example.com", "depth": depth},
+            },
+        }
+    )
+    assert resp["error"]["code"] == -32602
