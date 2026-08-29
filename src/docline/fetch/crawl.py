@@ -163,6 +163,7 @@ async def crawl(
             current_url,
             crawl_config,
             robots_cache,
+            budget,
         ):
             results.append(
                 CrawlResult(
@@ -261,6 +262,7 @@ async def crawl(
                     crawl_config,
                     start_host=start_host,
                     section_scope=section_scope,
+                    budget=budget,
                 )
             )
 
@@ -408,6 +410,7 @@ async def _robots_allow(
     url: str,
     crawl_config: CrawlConfig,
     robots_cache: dict[str, str | None],
+    budget: "RemainingByteBudget | None" = None,
 ) -> bool:
     """Return whether ``robots.txt`` permits crawling *url*."""
     parsed = urlparse(url)
@@ -419,8 +422,11 @@ async def _robots_allow(
                 robots_url,
                 timeout_seconds=crawl_config.page_timeout_seconds,
                 max_redirects=crawl_config.max_redirects,
+                budget=budget,
             )
             robots_cache[origin] = robots_resp.body
+        except AggregateBudgetExceededError:
+            raise
         except DoclineError:
             robots_cache[origin] = None
         except OSError:
@@ -467,6 +473,7 @@ async def _discover_toc_links(
     *,
     start_host: str,
     section_scope: str | None,
+    budget: "RemainingByteBudget | None" = None,
 ) -> list[str]:
     """Fetch mdBook TOC assets referenced by the root page and extract page links."""
     links: list[str] = []
@@ -477,8 +484,10 @@ async def _discover_toc_links(
         if crawl_config.domain_lock and not _url_within_section_scope(script_url, section_scope):
             continue
         try:
-            response = await _fetch_with_retries(script_url, crawl_config)
+            response = await _fetch_with_retries(script_url, crawl_config, budget)
         except CrawlUrlRejectedError:
+            raise
+        except AggregateBudgetExceededError:
             raise
         except (DoclineError, OSError):
             continue
