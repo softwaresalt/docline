@@ -20,7 +20,7 @@ from typing import Protocol
 from pydantic import ValidationError
 
 from docline.app_models import FetchResult, ProcessResult
-from docline.mcp.exceptions import UnknownToolError
+from docline.mcp.exceptions import ExternalEngineNotAllowedError, UnknownToolError
 from docline.mcp.server import (
     LEGACY_PROTOCOL_VERSION,
     SERVER,
@@ -137,6 +137,9 @@ def _dispatch_tools_call(message: dict, echo_id: object, server: DoclineMcpServe
         with contextlib.redirect_stdout(sys.stderr):
             result = server.call_tool(name, arguments)
     except UnknownToolError:
+        return _error(echo_id, -32602, "Invalid params")
+    except ExternalEngineNotAllowedError:
+        # §H8: a non-allow-list PDF engine on a default server -> invalid params.
         return _error(echo_id, -32602, "Invalid params")
     except ValidationError:
         return _error(echo_id, -32602, "Invalid params")
