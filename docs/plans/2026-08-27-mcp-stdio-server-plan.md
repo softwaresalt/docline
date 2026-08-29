@@ -117,8 +117,11 @@ In scope:
      `clientCapabilities` returns `-32602` (checked after version); results carry
      `resultType:"complete"` and `_meta.io.modelcontextprotocol/serverInfo`; list results AND the
      `DiscoverResult` (a `CacheableResult`) carry `ttlMs`/`cacheScope`.
-   - **Era routing:** a request carrying modern `_meta` is served under modern semantics; an
-     `initialize` request selects legacy semantics. Authoritative basis: MCP spec
+   - **Era routing:** a request whose `_meta` carries a namespaced modern negotiation member
+     (`io.modelcontextprotocol/protocolVersion`, equivalently `io.modelcontextprotocol/clientCapabilities`),
+     or a `server/discover` (modern-only), is served under modern semantics; an
+     `initialize` request latches legacy semantics, and a subsequent request lacking a modern
+     negotiation member (including one carrying only ancillary `_meta`) stays legacy. Authoritative basis: MCP spec
      `2026-07-28` (`server/discover.mdx`, `basic/versioning.mdx`, `basic/transports/stdio.mdx`)
      — verified against the official spec repository, see `## Protocol Era Model`.
 2. A `docline-mcp` console-script entry point and `python -m docline.mcp` bootstrap.
@@ -381,9 +384,9 @@ criterion, not an advisory item.
     response AND every redirect hop — replacing the unbounded `response.read()` — and a
     byte-accurate aggregate crawl budget (`MAX_TOTAL_FETCH_BYTES`) enforced by a request-scoped
     remaining-byte budget threaded into `fetch_page`/the bounded reader and decremented per chunk as
-    the **raw** wire bytes are read (aborting mid-read; counting retried failures and ancillary
-    robots/TOC fetches), with the raw `body_byte_count` also retained on `FetchResponse` for
-    per-response accounting. These live in shared fetch code (see §H7 and the shared-fetch tasks),
+    the **entity-body** bytes are read (aborting mid-read; counting retried failures and ancillary
+    robots/TOC fetches), with the `body_byte_count` (undecoded entity-body bytes) also retained on
+    `FetchResponse` for completed-terminal-response accounting. These live in shared fetch code (see §H7 and the shared-fetch tasks),
     not in the transport module.
   - `fetch` advertising (cycle-3): the shared manifest's `fetch` tool description MUST state
     HTTP(S)-only, matching `execute_fetch`'s rejection of every non-HTTP(S) source
@@ -440,26 +443,39 @@ opens").
 | Result shape | plain result | `resultType:"complete"` + serverInfo in result `_meta`; list results AND the `DiscoverResult` carry `ttlMs`/`cacheScope` |
 | `ping` | supported | removed |
 
-- **Era routing (server-selected):** a request carrying modern per-request `_meta` is served
-  statelessly under `2026-07-28` (the modern branch is **request-stateless** — it never consults
-  prior session state); an `initialize` request selects **legacy semantics for the stdio process**
-  by latching a per-process legacy-era selection that governs subsequent metadata-free operations. A
+- **Era routing (server-selected — discriminator: namespaced modern negotiation member, cycle-16
+  round-1).** The era is NOT selected by the mere presence of per-request `_meta`: a retained
+  `2025-11-25` legacy client legitimately carries **ancillary** `_meta` (e.g. `_meta.progressToken`)
+  that has nothing to do with 2026 negotiation, so keying on any `_meta` would misroute it to the
+  modern validator and reject it. A request is **modern** when its `_meta` carries a namespaced modern
+  negotiation member — canonically `io.modelcontextprotocol/protocolVersion` (equivalently
+  `io.modelcontextprotocol/clientCapabilities`), detected by **key membership, not truthiness** so a
+  present-but-malformed member still routes to the modern validator (→ `-32602`/`-32022`), never
+  falls through to legacy — or when it is a `server/discover` (a **modern-only** method). The modern
+  branch is **request-stateless** (it never consults prior session state). An `initialize` request
+  selects **legacy semantics for the stdio process** by latching a per-process legacy-era selection
+  that governs subsequent requests lacking a modern negotiation member. A
   `server/discover` call is answerable before any `initialize` (stdio probe), but — as a **modern,
   modern-only method** — it is routed through the SAME per-request `_meta` validator as every modern
   request and MUST carry BOTH `io.modelcontextprotocol/protocolVersion` AND
   `io.modelcontextprotocol/clientCapabilities` (unsupported version → `-32022`; then missing/malformed
   `clientCapabilities` → `-32602`); pre-handshake availability does **not** waive required `_meta`
-  (cycle-11). The request-shape classifier resolves the era in this precedence: modern `_meta` (or a
-  `server/discover`, which is modern-only) → modern (stateless, `_meta`-validated — a modern method
-  arriving without valid `_meta` is rejected `-32602`/`-32022`, never dispatched); `initialize` → set
-  the per-process legacy latch and serve legacy; an otherwise metadata-free operation
-  (`tools/call`/`tools/list` with no `_meta`) is served legacy **only when the legacy latch is already
-  set**, and is **rejected** (an error result, never dispatched) when it arrives **before** that
-  `initialize` selection. A metadata-free operation is therefore never silently classified as legacy
-  before initialization, so a malformed modern request (one missing its `_meta`) cannot bypass the
-  required `_meta` validation by falling through to the legacy path. A dedicated **pre-initialize
-  operation test** asserts this reject. The legacy handshake selects the process era; it is not the
-  request shape that opens legacy.
+  (cycle-11). The request-shape classifier resolves the era in this precedence: (1) a namespaced
+  modern negotiation member present (`io.modelcontextprotocol/protocolVersion` or
+  `io.modelcontextprotocol/clientCapabilities`), or a `server/discover` (modern-only) → **modern**
+  (stateless, `_meta`-validated — a modern method arriving without valid `_meta` is rejected
+  `-32602`/`-32022`, never dispatched) — this precedence holds **even after** a legacy latch is set, so
+  a `protocolVersion`-bearing request following an `initialize` is still served modern; (2) otherwise,
+  `initialize` → set the per-process legacy latch and serve legacy; (3) any other operation lacking a
+  modern negotiation member (whether it carries only ancillary `_meta` such as `_meta.progressToken`,
+  or no `_meta` at all) is served **legacy only when the legacy latch is already set** — a retained
+  legacy client's ancillary `_meta` stays on the legacy path, never routed to modern validation — and
+  is **rejected** (an error result, never dispatched) when it arrives **before** that `initialize`
+  selection. An operation lacking a modern negotiation member is therefore never silently classified as
+  legacy before initialization, and a malformed modern request cannot bypass the required `_meta`
+  validation by falling through to the legacy path. Dedicated **pre-initialize operation tests** assert
+  the reject for both a metadata-free operation AND an ancillary-`_meta`-only operation. The legacy
+  handshake selects the process era; ancillary `_meta` presence never opens either era.
 - **Advertised versions:** `server/discover.supportedVersions` and `-32022 data.supported`
   enumerate both eras (`["2026-07-28", "2025-11-25"]`); the legacy `initialize` response pins
   `2025-11-25`.
@@ -654,7 +670,7 @@ Security/reliability guardrails promoted to blocking design constraints after pl
   3. **Aggregate crawl-byte budget (byte-accurate, enforceable).** Per-response and per-page caps
     do not bound their product: a single small `tools/call` `fetch` at the `max_pages` cap
     against an attacker-controlled server returning maximum-under-cap responses drives
-    `max_pages × MAX_RESPONSE_BYTES` of network transfer and disk staging (each page is written
+    `max_pages × MAX_RESPONSE_BYTES` of entity-body buffering and disk staging (each page is written
     under `output_dir` by `execute_fetch`). The crawl loop (`fetch/crawl.py`) MUST enforce a hard
     **aggregate** `MAX_TOTAL_FETCH_BYTES` budget across all pages and abort once the running total
     is exceeded (bound the product, not each dimension).
@@ -662,14 +678,23 @@ Security/reliability guardrails promoted to blocking design constraints after pl
     but `crawl.py` today receives only `FetchResponse.body: str` — the raw byte count is discarded
     when `fetch_page` decodes the response (`fetch/http.py:123-125`, `body_bytes.decode(charset,
     errors="replace")`). Summing `len(body)` (characters) or `len(body.encode())` (a *re-encode*,
-    not the wire bytes) **under-counts** the actual transfer: non-ASCII bodies have more bytes than
-    characters, and `errors="replace"` collapses each invalid byte to a single `U+FFFD`, so a
-    hostile server can drive far more than `MAX_TOTAL_FETCH_BYTES` of real transfer while the
-    character/re-encode total stays under budget — the bound is not enforceable as written.
-    Therefore two coupled requirements: (1) the bounded reader MUST **retain the actual raw body
-    byte count** (the length of the bytes read from the network, captured *before* decoding) on
+    not the undecoded body bytes) **under-counts** the entity-body bytes actually buffered: non-ASCII
+    bodies have more bytes than characters, and `errors="replace"` collapses each invalid byte to a
+    single `U+FFFD`, so a hostile server can buffer and stage far more than `MAX_TOTAL_FETCH_BYTES` of
+    entity-body content while the character/re-encode total stays under budget — the bound is not
+    enforceable as written. **Scope of the bound (cycle-16 round-1, review-mandated).** `len(body_bytes)`
+    is NOT a raw-wire count: `urllib`/`http.client` strips HTTP transfer framing (chunk-size lines,
+    trailers) and response headers before `HTTPResponse.read()` returns, and it does not content-decode
+    (a `gzip` body stays compressed). The budget therefore bounds the **entity-body bytes** — the
+    undecoded response-content bytes returned by `HTTPResponse.read()` that docline buffers, decodes,
+    and stages under `output_dir` (the memory + disk blast radius) — NOT raw socket bytes.
+    Therefore two coupled requirements: (1) the bounded reader MUST **retain the actual entity-body
+    byte count** (the length of the undecoded response-content bytes returned by `HTTPResponse.read()`,
+    transfer framing and headers already removed, captured *before* charset decoding) on
     `FetchResponse` (a new `body_byte_count: int` field set from the bounded read in
-    `fetch/http.py`) for accurate per-response accounting; and (2) the aggregate MUST be enforced by
+    `fetch/http.py`) for completed-terminal-response accounting/observability ONLY — it is NOT the
+    aggregate enforcement source and does NOT record failed, retried, or intermediate-redirect
+    responses; and (2) the aggregate MUST be enforced by
     a **request-scoped remaining-byte budget threaded into `fetch_page` and its bounded reader and
     decremented WHILE CHUNKS ARE READ** — not by a post-hoc `crawl.py` accumulator that sums
     `body_byte_count` only after `fetch_page` returns a *successful* `FetchResponse`. A post-return
@@ -680,13 +705,18 @@ Security/reliability guardrails promoted to blocking design constraints after pl
     `fetch_page` call (main pages, retries, and the ancillary fetches below); the bounded reader
     decrements that shared budget per chunk and aborts the read **mid-stream** the instant the
     remaining aggregate allowance would be exceeded (the crossing response is never fully buffered).
-    The budget accumulates the exact raw wire bytes — never a character count or a re-encode. The
-    budget defaults to unbounded for a standalone single fetch so existing CLI single-fetch callers
-    are unaffected. Tests MUST include a **non-ASCII multibyte** payload and an **invalid-byte**
-    payload (where `errors="replace"` would otherwise under-count) proving the aggregate uses raw
-    wire bytes, PLUS a **repeated-failure** case (a retried over-cap attempt still decrements the
-    shared budget) and a **mid-read abort** case (the crossing response aborts before full
-    buffering).
+    The budget accumulates the exact **entity-body bytes** — the undecoded response-content bytes
+    returned by `HTTPResponse.read()` (transfer framing and headers excluded; still content-encoded,
+    e.g. `gzip` stays compressed), never a character count or a re-encode. This bounds the buffered
+    and `output_dir`-staged content (the memory + disk blast radius); it does **not** bound response
+    headers, transfer framing, raw socket bandwidth, or parser CPU (accepted residual — see
+    `## Risks`). The budget defaults to unbounded for a standalone single fetch so existing CLI
+    single-fetch callers are unaffected. Tests MUST include a **non-ASCII multibyte** payload and an
+    **invalid-byte** payload (where `errors="replace"` would otherwise under-count) proving the
+    aggregate counts undecoded entity-body bytes (guarding against the decode/re-encode **undercount**),
+    NOT that it accounts for transfer framing or header overhead, PLUS a **repeated-failure** case (a
+    retried over-cap attempt still decrements the shared budget) and a **mid-read abort** case (the
+    crossing response aborts before full buffering).
     **Propagation requirement (cycle-4, review-mandated).** The mid-read abort raises a typed
     `AggregateBudgetExceededError` (a `DoclineError` subclass, per the typed-error convention). Because
     `crawl.py` catches `DoclineError` broadly at FOUR sites — the `crawl()` main loop, `_fetch_with_retries`,
@@ -812,28 +842,31 @@ Security/reliability guardrails promoted to blocking design constraints after pl
     initial response body, the terminal post-redirect response body, AND every intermediate 3xx
     redirect body (the last bounded-drained by the extended `_ValidatingRedirectHandler` of
     `064.028-T`, using this SAME cap — no new constant). Boundary: a response up to and
-    including exactly `10_485_760` raw wire bytes is allowed; the bounded reader caps each
+    including exactly `10_485_760` entity-body bytes (the undecoded response-content bytes returned by
+    `HTTPResponse.read()`, transfer framing and headers excluded) is allowed; the bounded reader caps each
     individual read size at `min(CHUNK_SIZE, MAX_RESPONSE_BYTES - bytes_read + 1)`, so at the
-    boundary only the single crossing byte can be pulled from the socket — never a full extra
-    `CHUNK_SIZE` chunk. It aborts mid-stream (typed error) the instant a read returns a byte beyond
-    `10_485_760` (the over-cap response is never fully buffered; the over-cap transfer is at most
+    boundary `HTTPResponse.read()` returns at most the single crossing entity-body byte beyond the
+    allowance — never a full extra
+    `CHUNK_SIZE` chunk of body. It aborts mid-stream (typed error) the instant a read returns a byte beyond
+    `10_485_760` (the over-cap response is never fully buffered; the over-cap buffered content is at most
     `MAX_RESPONSE_BYTES + 1`, not `MAX_RESPONSE_BYTES + CHUNK_SIZE`).
   - **`MAX_TOTAL_FETCH_BYTES = 512 * 1024 * 1024 = 536_870_912`** (512 MiB) aggregate per-request
     crawl budget. Rationale: bounds the *product* of the page and per-response caps — the naive
     product `MAX_PAGES_LIMIT × MAX_RESPONSE_BYTES` (1000 × 10 MiB ≈ 10 GiB) is the amplification
-    vector; 512 MiB caps total transfer / disk staging at ~20× below that product while still
+    vector; 512 MiB caps total entity-body buffering / disk staging at ~20× below that product while still
     covering a large legitimate crawl (e.g. ~500 pages averaging ~1 MiB, or 50 pages of ~10 MiB).
-    The aggregate is the effective transfer bound for the "many large pages" attack (it trips after
+    The aggregate is the effective entity-body-staging bound for the "many large pages" attack (it trips after
     at most ⌊512 MiB / 10 MiB⌋ = 51 full-size responses, well inside the 1000-page count cap).
     Boundary: the request-scoped remaining-byte budget starts at `536_870_912` and is decremented
     by the actual bytes read across **every** `fetch_page` call for the request (main pages, retried
     over-cap attempts, and ancillary `robots.txt`/TOC fetches). The bounded reader caps each read
     size at `min(CHUNK_SIZE, per_response_remainder + 1, aggregate_remainder + 1)` and counts the
-    actual bytes returned, so at either boundary only the single crossing byte can be pulled from
-    the socket — never a full extra `CHUNK_SIZE` chunk. A total of exactly `536_870_912` raw bytes
+    actual bytes returned, so at either boundary `HTTPResponse.read()` returns at most the single
+    crossing entity-body byte beyond the allowance — never a full extra `CHUNK_SIZE` chunk of body.
+    A total of exactly `536_870_912` entity-body bytes
     is allowed; the read aborts mid-stream (raising `AggregateBudgetExceededError`, re-raised out of
     `crawl()`) the instant a read returns a byte beyond the aggregate allowance (the over-budget
-    transfer is at most `budget + 1`, not `budget + CHUNK_SIZE`). Defaults to unbounded (`None`) for
+    buffered content is at most `budget + 1`, not `budget + CHUNK_SIZE`). Defaults to unbounded (`None`) for
     a standalone single fetch so existing CLI single-fetch callers are unaffected.
   - **`MAX_FETCH_ATTEMPTS = 4 * MAX_PAGES_LIMIT = 4000`** (per-request outbound-fetch-attempt budget,
     enforced at the common `fetch_page` boundary in `fetch/http.py`; §H7 item 4a). Rationale: `MAX_PAGES_LIMIT`
@@ -1085,20 +1118,22 @@ Backlog IDs are shown in brackets. All MCP-transport harness tasks author into
    separate width-isolated pair (T-agg-h/T-agg-i). Existing fetch suite stays green (caps sized
    above legitimate use). Depends on T-cap-h.
 9. T-agg-h [064.016-T] — Shared-fetch aggregate byte-accounting harness (tests domain,
-   3 scenarios). Unit tests in `tests/fetch/` proving the aggregate cap counts **raw wire bytes**,
-   not decoded characters or a re-encode: (a) a **non-ASCII multibyte** body (byte length >
-   character length) accrues its raw byte length toward `MAX_TOTAL_FETCH_BYTES`; (b) an
+   3 scenarios). Unit tests in `tests/fetch/` proving the aggregate cap counts **entity-body bytes**
+   (the undecoded response-content bytes returned by `HTTPResponse.read()`, transfer framing and
+   headers excluded), not decoded characters or a re-encode: (a) a **non-ASCII multibyte** body (byte length >
+   character length) accrues its undecoded entity-body byte length toward `MAX_TOTAL_FETCH_BYTES`; (b) an
    **invalid-byte** body (where `errors="replace"` collapses bytes to `U+FFFD`) accrues its
-   original raw byte length, not the replaced-character length; (c) **parametrized during-read
-   enforcement** — a request whose cumulative **raw** bytes exceed the budget is aborted even
+   original undecoded entity-body byte length, not the replaced-character length; (c) **parametrized during-read
+   enforcement** — a request whose cumulative **entity-body** bytes exceed the budget is aborted even
    though the decoded character total stays under budget (undercount-bypass), covering a main-page
    response that aborts **mid-read** before full buffering, a retried over-cap attempt whose bytes
    still decrement the shared request budget, and an ancillary robots/TOC fetch decrementing the
-   same budget. Verify red [green@T-agg-i]. Depends on T-cap-i.
-10. T-agg-i [064.017-T] — Raw-byte retention + byte-accurate aggregate accounting impl, **core**
+   same budget. These prove enforcement is below charset decoding (resisting a decode/re-encode
+   undercount), NOT wire-framing/header coverage. Verify red [green@T-agg-i]. Depends on T-cap-i.
+10. T-agg-i [064.017-T] — Entity-body-count retention + byte-accurate aggregate accounting impl, **core**
    (code domain, ≤2 files: `fetch/http.py`, `fetch/crawl.py`). Add `FetchResponse.body_byte_count: int`
    set from the length of the bytes read by the bounded reader **before decoding** (the
-   `body_bytes` already materialized at the streamed read) for per-response accounting; and enforce
+   `body_bytes` already materialized at the streamed read) for completed-terminal-response accounting; and enforce
    `MAX_TOTAL_FETCH_BYTES` (512 MiB / `536_870_912` bytes, see §H7 Selected numeric limits) via a
    **request-scoped remaining-byte budget threaded into `fetch_page`
    and its bounded reader, decremented per chunk while bytes are read** and aborting the read
@@ -1349,12 +1384,21 @@ Backlog IDs are shown in brackets. All MCP-transport harness tasks author into
     legacy handshake surface (no cross-era comparison), so it cannot be "already green" while
     depending on an unbuilt `server/discover`; the initialize-vs-discover no-drift check is NOT
     part of it and lives in (b); (b) **era routing + no-drift (genuinely red** until T-era-i1
-    discovery + T-era-i2 legacy branch) — a `tools/call` carrying modern `_meta` is served under
-    modern semantics with no prior `initialize`, while the same method after `initialize` is served
-    under legacy semantics, AND a metadata-free operation (`tools/call`/`tools/list` with no
-    `_meta`) received **before** any `initialize` is **rejected** — never served as legacy — proving
-    the process era is latched by `initialize`, not selected by an unadorned request shape (the
-    **pre-initialize operation test**), AND `initialize` and `server/discover` report the **same**
+    discovery + T-era-i2 legacy branch) — a `tools/call` whose `_meta` carries the namespaced
+    `io.modelcontextprotocol/protocolVersion` member is served under
+    modern semantics with no prior `initialize`, while the same method with no modern negotiation
+    member after `initialize` is served under legacy semantics; a **retained-legacy compatibility**
+    row asserts that a post-`initialize` request carrying only ancillary `_meta` (e.g.
+    `_meta.progressToken`) with NO `protocolVersion` member stays on the **legacy** path (never
+    routed to modern validation and rejected), and a **modern-wins-after-latch** row asserts that a
+    `protocolVersion`-bearing request following an `initialize` latch is still served **modern**,
+    AND a metadata-free operation (`tools/call`/`tools/list` with no
+    `_meta`) received **before** any `initialize` is **rejected** — never served as legacy — as is a
+    pre-`initialize` operation carrying only ancillary `_meta` (no `protocolVersion` member) —
+    proving
+    the process era is latched by `initialize` and keyed on the namespaced modern negotiation member,
+    not selected by an unadorned request shape or by ancillary `_meta` presence (the
+    **pre-initialize operation tests**), AND `initialize` and `server/discover` report the **same**
     identity/capabilities from the single `describe_server()` source, with `initialize.protocolVersion`
     (legacy singular) **contained in** `server/discover.supportedVersions` (modern plural) — a
     containment check, not singular-vs-plural field equality; (c)
@@ -1510,7 +1554,8 @@ Execution order: 064.001 → 064.005 → 064.006 → 064.007 → 064.010 → 064
 - `pytest tests/fetch` green: the shared-fetch SSRF-by-resolution, per-dimension resource-cap,
   **byte-accurate aggregate accounting**, and **intermediate-redirect-body drain** unit harnesses
   pass — including the non-ASCII multibyte
-  and invalid-byte payloads proving the aggregate cap counts raw wire bytes via the request-scoped
+  and invalid-byte payloads proving the aggregate cap counts undecoded entity-body bytes (guarding
+  against the decode/re-encode undercount) via the request-scoped
   during-read remaining-byte budget
   (not decoded characters, and not a post-return `body_byte_count` sum), and the redirect-body
   harness proving each intermediate 3xx body is bounded-read/counted against the same per-response
@@ -2632,7 +2677,69 @@ than an ordinary fourth fix.
   actions; Ship not invoked; `055-S` queued/unclaimed. Production source unchanged (planning artifacts
   only).
 
+### Cycle-16 round cycle-1 — PR #166 review round (HEAD `845686a`): H7 byte-semantics re-scope + era-routing discriminator
+
+Operator-directed Stage reconciliation (planning/backlog/docs artifacts only) on HEAD `845686a`,
+closing four unresolved Copilot findings in two clusters after a two-model adversarial multi-persona
+review (Correctness/Security/Scope/Protocol-Compat, Claude Opus 4.8 + GPT-5.6 Sol). Both approaches
+returned sound with no blocking defects; the truthfulness/coverage refinements below were folded in.
+No new task; shipment `055-S` stays at **37 members**, order unchanged.
+
+- **H7 byte semantics (comments 3885775394 / 3885775424 on `064.017-T` / `064.016-T`) — the aggregate
+  budget counts entity-body bytes, not raw wire bytes.** `len(body_bytes)` is NOT a raw-wire count:
+  `urllib`/`http.client` removes HTTP transfer framing (chunk-size lines, trailers) and headers before
+  `HTTPResponse.read()` returns, and does not content-decode (`gzip` stays compressed). The
+  repeatedly-claimed "exact network-transfer / raw-wire budget" overstated the bound and the
+  non-ASCII/invalid-byte tests could not prove it. **Resolution (chosen the simpler, reliable
+  re-scope, not lower-level wire accounting — the DoS surface is memory + `output_dir` staging, which
+  entity-body bytes DO bound):** the invariant is re-scoped consistently to **entity-body bytes** (the
+  undecoded response-content bytes returned by `HTTPResponse.read()`, transfer framing and headers
+  excluded, before charset decoding) across §H7 item 3, the design summary, Selected numeric limits
+  (`MAX_RESPONSE_BYTES` + `MAX_TOTAL_FETCH_BYTES` boundaries), Verification, Rollback, feature `064-F`
+  DoD, tasks `064.016-T`/`064.017-T`/`064.024-T`, and the session memories. `body_byte_count` is
+  narrowed to completed-terminal-`FetchResponse` observability only (not the enforcement source, not a
+  record of failed/retried/intermediate responses). "at most one crossing byte pulled from the socket"
+  is corrected to "`HTTPResponse.read()` returns at most one entity-body byte beyond the allowance"
+  (docline cannot constrain socket-level pulls). The non-ASCII multibyte / invalid-byte tests are
+  retained and reframed to prove ONLY that enforcement happens below charset decoding (resisting a
+  decode/re-encode **undercount**); they explicitly do NOT claim chunk-framing or header-overhead
+  coverage. A new accepted-residual `## Risks` bullet records what the entity-body budget does NOT
+  bound (headers, transfer framing, raw socket bandwidth, parser CPU, exact post-decode memory/disk).
+- **Era routing (comments 3885775403 / 3885775415 on `064.022-T` / `064.021-T`) — ancillary legacy
+  `_meta` must not trigger modern validation.** Using per-request `_meta` presence as the era
+  discriminator broke retained `2025-11-25` clients: a legacy request may legitimately carry ancillary
+  `_meta` (e.g. `_meta.progressToken`) with no 2026 negotiation member, so it would be misrouted to the
+  modern validator and rejected. **Resolution:** the discriminator is re-keyed to the **presence** (key
+  membership, not truthiness) of a namespaced modern negotiation member — canonically
+  `io.modelcontextprotocol/protocolVersion`, equivalently `io.modelcontextprotocol/clientCapabilities`
+  (keying on either avoids misrouting a version-less-but-capabilities-bearing modern request to legacy;
+  both members are modern-namespaced and absent from legacy clients, so there is no legacy
+  false-positive) — plus the explicit `server/discover` (modern-only) rule; otherwise honor the
+  established per-process legacy latch, and reject pre-`initialize`. Precedence is explicit: a modern
+  member wins **even after** a legacy latch (a `protocolVersion`-bearing request following `initialize`
+  is still modern). The Protocol Era Model routing bullet, the Design method-map era-routing note, the
+  `064.020-T`/`064.021-T`/`064.022-T`/`064.023-T` tasks, feature `064-F`, the deliberation, and the
+  memories are reconciled to this discriminator. `064.021-T` scenario (b) gains three parametrized rows
+  (scenario count stays 3): (i) post-`initialize` ancillary-`_meta`-only request stays legacy; (ii)
+  pre-`initialize` ancillary-`_meta`-only request is rejected (not the modern `-32602` path); (iii)
+  modern-wins-after-latch. `064.020-T` scenario (c) gains a present-but-malformed-`protocolVersion`
+  parametrized axis (member present → modern validator → `-32602`/`-32022`, never legacy fallthrough).
+  Green attribution: the protocolVersion-keyed discriminator (so ancillary `_meta` is not misclassified
+  modern) is delivered by `064.022-T`; the new latch-dependent rows are RED at authoring and green at
+  `064.023-T` (they require the per-process legacy latch it owns).
+- **Adversarial outcome (2 models × multi-persona):** Both models — VERDICT: approaches sound, no
+  blocking defects. Correctness/Protocol-Compat — "entity-body bytes" is the correct term for
+  `HTTPResponse.read()` output; the re-scope leaves no memory/disk DoS hole; `protocolVersion`(-or-
+  `clientCapabilities`)-keyed precedence is the required fix and modern-wins-after-latch is correct.
+  Security — no guard bypass (both eras still funnel through one hardened dispatch); the entity-body
+  residual (headers/framing/bandwidth/CPU unbounded) is acceptable and now recorded. Scope — no new
+  task warranted; parametrized rows are the correct width; `055-S` unchanged. Refinements folded in:
+  drop the "network/real transfer" overclaim, qualify bare "raw" as undecoded, add the pre-init
+  ancillary-`_meta` reject + modern-wins rows, correct green attribution, key on either modern member.
+  NOT pushed; no PR actions; Ship not invoked; `055-S` queued/unclaimed. Production source unchanged.
+
 ## Rollback
+
 
 **Not purely additive.** The release unit adds new modules (`src/docline/mcp/stdio.py`,
 `src/docline/mcp/__main__.py`) and one `[project.scripts]` entry-point line, but it ALSO modifies
@@ -2657,8 +2764,8 @@ existing files whose behavior changes for both interfaces:
   `max_pages` upper bound and streamed `MAX_RESPONSE_BYTES` read (064.012/064.013). Also affects
   CLI fetch.
 - `src/docline/fetch/http.py` + `src/docline/fetch/crawl.py` — byte-accurate aggregate accounting
-  (§H7 item 3, cycle-3): `FetchResponse` gains a `body_byte_count` field carrying the raw wire byte
-  count, and the crawl enforces `MAX_TOTAL_FETCH_BYTES` via a request-scoped remaining-byte budget
+  (§H7 item 3, cycle-3): `FetchResponse` gains a `body_byte_count` field carrying the undecoded
+  entity-body byte count, and the crawl enforces `MAX_TOTAL_FETCH_BYTES` via a request-scoped remaining-byte budget
   threaded into `fetch_page`/the bounded reader and decremented per chunk while bytes are read
   (main pages, retries via 064.016/064.017; ancillary robots/TOC via split successor 064.024),
   aborting mid-read. Additive field +
@@ -2816,6 +2923,20 @@ forward into build, review, runtime verification, and closure.
 - Low: adding `FetchResponse.body_byte_count` touches a widely-referenced shared dataclass; the
   field is additive with a value derived from bytes the bounded reader already materializes, so
   existing `response.body` consumers are unaffected.
+- Low (residual, cycle-16 round-1): the `MAX_RESPONSE_BYTES`/`MAX_TOTAL_FETCH_BYTES` byte budgets
+  count **entity-body bytes** — the undecoded response-content bytes returned by `HTTPResponse.read()`
+  after `urllib`/`http.client` removes transfer framing (chunk-size lines, trailers) and headers, and
+  before docline's charset decoding (a `gzip` body stays content-encoded). They therefore bound the
+  memory the reader buffers and the content staged under `output_dir` (the DoS surface that matters),
+  but they do **not** bound response headers, transfer framing, raw socket bandwidth, or HTTP-parser
+  CPU, and they are not an exact post-charset-decode memory/disk ceiling (`errors="replace"` and
+  Python `str` overhead expand staged text above the counted byte total). Header/framing overhead is
+  bounded only by a constant factor of the per-response cap plus `http.client`'s own line/header limits
+  (`_MAXLINE` 64 KiB × `_MAXHEADERS` 100) × `MAX_FETCH_ATTEMPTS`, i.e. finite bandwidth with no
+  retained memory/disk footprint. Accepted as out of scope: docline cannot count raw wire bytes
+  without a bespoke transport, and the memory/disk blast radius is what the budget must (and does)
+  bound. The non-ASCII multibyte / invalid-byte tests prove only that enforcement happens below
+  charset decoding (resisting a decode/re-encode undercount), not any wire-framing bound.
 - Low: address-pinned connect (§H6) connects to a validated IP while preserving the `Host` header /
   SNI; verify TLS certificate validation still targets the hostname (not the IP) so pinning does not
   weaken cert checks. Covered by the SSRF harness (064.010-T).

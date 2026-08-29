@@ -138,9 +138,15 @@ Initialization-Based Versions"):
   carry `ttlMs`/`cacheScope`.
 - **Legacy era (`2025-11-25` and earlier):** retain the existing `initialize` /
   `notifications/initialized` handshake and `ping`.
-- **Era routing (server-selected from how the client opens):** a request carrying modern
-  per-request `_meta` is served under modern semantics; an `initialize` request selects legacy
-  semantics. `server/discover` is answerable before any `initialize` so the stdio probe works.
+- **Era routing (server-selected from how the client opens):** a request whose per-request
+  `_meta` carries a namespaced modern negotiation member (`io.modelcontextprotocol/protocolVersion`,
+  equivalently `io.modelcontextprotocol/clientCapabilities`), or a `server/discover` (modern-only),
+  is served under modern semantics; an `initialize` request latches legacy semantics, under which a
+  subsequent request lacking a modern negotiation member — including one carrying only ancillary
+  `_meta` (e.g. `_meta.progressToken`) — stays legacy (a modern member wins even after the latch).
+  Routing keys on the modern member's key membership, not on mere `_meta` presence, so a retained
+  `2025-11-25` client's ancillary `_meta` is not misrouted to the modern validator (cycle-16 round-1).
+  `server/discover` is answerable before any `initialize` so the stdio probe works.
 - **Advertised versions:** `server/discover.supportedVersions` and `-32022 data.supported`
   enumerate both eras' versions (`["2026-07-28", "2025-11-25"]`); the legacy `initialize`
   response pins `2025-11-25`.
