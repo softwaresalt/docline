@@ -886,6 +886,65 @@ Security/reliability guardrails promoted to blocking design constraints after pl
   per-hop debit placement proven in `064.029-T`) are proven at the unit level (keeping `064.014-T` within its 3-scenario budget).
   Caps are set high enough not to break legitimate CLI crawls; the existing
   fetch suite must remain green (or be deliberately updated for the new bound).
+- **H8 — External PDF-engine opt-in gate on the untrusted MCP surface (P0-class, blocking).**
+  The MCP-specific `process` schema is derived from `ProcessRequest.model_json_schema()`, whose
+  `pdf_engine` field is `Literal["auto","docling","mistral_ocr","heuristic"]`
+  (`src/docline/app_models.py:106`). `"mistral_ocr"` selects the Mistral OCR reader
+  (`src/docline/readers/mistral.py`), which reads AMBIENT server credentials
+  (`AZURE_AI_FOUNDRY_KEY`/`AZURE_AI_FOUNDRY_ENDPOINT`, else `MISTRAL_API_KEY`) and base64-uploads the
+  workspace PDF to an external PAID OCR endpoint (Foundry MaaS or `api.mistral.ai`). On the untrusted
+  stdio surface an unauthenticated local client passing `pdf_engine:"mistral_ocr"` in a `tools/call`
+  `process` therefore consumes the operator's ambient credentials, egresses workspace bytes to a
+  third party, and incurs uncapped paid-call cost — purely from a request field. `request.pdf_engine`
+  is the **sole** client-controllable selector of that reader: `_resolve_layout_engine("auto")` never
+  resolves to `mistral_ocr` (`readers/pdf.py:106-108`), `docling` is a local model, `pdf_mode=triage`
+  ignores `layout_engine` (`process/output_contract.py`), and `MISTRAL_OCR_MODEL` only renames an
+  already-selected engine. Required behavior (MCP-surface-only, mirroring §H1's omit-and-reject):
+  1. **Local-engine ALLOW-LIST (fail-closed).** Define
+     `_MCP_LOCAL_PDF_ENGINES = frozenset({"auto","docling","heuristic"})` in `src/docline/mcp/server.py`
+     — the engines permitted on the untrusted MCP surface WITHOUT opt-in. An allow-list (not a
+     `mistral_ocr` deny-list) is used so any FUTURE external engine added to the shared enum is denied
+     by default.
+  2. **Advertise omission (build time).** `DoclineMcpServer.list_callable_tools()` filters the
+     advertised `process` `inputSchema` `pdf_engine` enum to `_MCP_LOCAL_PDF_ENGINES` when the server
+     is NOT opted in — the SAME schema-construction site that already removes `workspace_root` (§H1).
+     This is the **third sanctioned MCP-only parity divergence** (after the §H1 `workspace_root`
+     omission and the `ingest_local_dir` exclusion); the T1 semantic-parity normalization
+     (`064.001-T`, extended by `064.031-T`) strips exactly this delta so `tools/list` stays in
+     semantic parity with the callable-filtered manifest. `list_tools()`, `get_manifest()`, and
+     `docline --manifest` are UNCHANGED (CLI retains all four engines).
+  3. **Dispatch reject (runtime, both eras).** A guard consulted by BOTH the `call_tool` `process`
+     adapter AND the public `DoclineMcpServer.process()` method (the last hop before `execute_process`,
+     so no adapter path bypasses it — the shared `ProcessRequest` stays permissive for CLI parity, so
+     the guard, not the model, enforces the gate) raises a typed `ExternalEngineNotAllowedError`
+     (`DoclineError` subclass) when the resolved `pdf_engine` is not in `_MCP_LOCAL_PDF_ENGINES` and the
+     server is not opted in. The stdio transport maps that typed error to a `-32602` invalid-params
+     envelope, ordered BEFORE the generic `-32603` (mirroring the §H4 `UnknownToolError`→`-32602`
+     mapping), engine name only (no arguments/credential disclosure — §H3). Because both protocol eras
+     funnel through the ONE hardened dispatch (§H1/§H3-parity invariant), the modern (`_meta`,
+     pre-handshake) path rejects identically to legacy. `ingest_local_dir` (the second
+     `pdf_engine`-bearing tool) is already excluded from `list_callable_tools()` and the `call_tool`
+     allow-list (§H4), so it presents no egress bypass; §H8 adds an explicit negative assertion.
+  4. **Server-side startup opt-in (only enabler).** External engines become available ONLY when the
+     operator starts `docline-mcp` with `DOCLINE_MCP_ALLOW_EXTERNAL_PDF_ENGINES=1` (fail-closed: only
+     the exact token `"1"` enables; any other value stays disabled) OR the
+     `--allow-external-pdf-engine` flag. `main()` resolves this EXACTLY ONCE at startup into a FRESH
+     `DoclineMcpServer(external_pdf_engines_enabled=<resolved>)` passed to `serve(server=...)`; it does
+     NOT mutate the import-time module `SERVER` default, and the flag is INSTANCE-local — never derived
+     from request `arguments` or `_meta` (a client cannot spoof it; a client-supplied
+     `external_pdf_engines_enabled`/`allow_external` field is ignored and still rejected). No ambient
+     credential value is logged on the reject or startup paths.
+  Blocking tests: default server omits `mistral_ocr` from the advertised `process` enum and rejects
+  `pdf_engine:"mistral_ocr"` with `-32602` in BOTH eras (egress sentinel never called); an opt-in
+  server advertises and accepts it (egress stubbed); env/flag resolution is fail-closed and
+  instance-local. Delivered by the width-isolated pairs `064.031-T`/`064.032-T` (adapter policy),
+  `064.033-T`/`064.034-T` (transport `-32602` mapping), and `064.035-T`/`064.036-T` (startup opt-in).
+  - **§H8 residual (documented, accepted).** Once the operator opts in, the still-untrusted client can
+    drive paid Mistral OCR calls and workspace-PDF upload bounded only by the reader's 120 s
+    per-request timeout (no page/byte/call budget). Enabling the flag is an explicit operator
+    delegation of paid external egress to the connected client; operators SHOULD enable it only for
+    trusted local clients. A per-surface cost/egress budget for the enabled state is a potential
+    follow-up, out of scope for closing this default-enabled finding (see `## Risks`).
 
 ## Tasks (decomposition)
 
@@ -1314,7 +1373,40 @@ Backlog IDs are shown in brackets. All MCP-transport harness tasks author into
     not regress it (the era classifier changes only negotiation + envelope shape, never which guards
     run). Greens the T-era-h2 legacy-retention + era-routing scenarios; the modern-path guard-parity
     scenario already greened at T-era-i1 and must stay green. Depends on T-era-i1.
-21. T2b [064.008-T] — Subprocess smoke-test harness for the entry point (tests domain, 1 scenario).
+21. T-ext-h [064.031-T] — §H8 external-engine adapter-policy harness (tests domain, 3 scenarios).
+    Author failing tests in `tests/parity/test_mcp_stdio.py` proving the adapter enforces the
+    external-PDF-engine gate at the INSTANCE level (no transport): (a) a DEFAULT server's
+    `list_callable_tools()` `process` `pdf_engine` enum == the local allow-list
+    `{auto,docling,heuristic}` (`mistral_ocr` omitted), an opt-in server advertises the full enum;
+    (b) DEFAULT-server `call_tool("process",{pdf_engine:"mistral_ocr"})` AND `process(...)` RAISE the
+    typed `ExternalEngineNotAllowedError` before egress (sentinel never called), a client-supplied
+    `external_pdf_engines_enabled`/`allow_external` field is ignored (still denied), and
+    `ingest_local_dir` stays unrouted (§H4); (c) opt-in server dispatches (egress STUBBED) + the exact
+    sanctioned CLI/MCP parity delta (manifest/`--manifest`/`list_tools()` keep all four engines).
+    Verify red [green@T-ext-i]. Depends on T-era-i2.
+22. T-ext-i [064.032-T] — §H8 adapter external-engine gate impl (code domain, ≤2 files:
+    `src/docline/mcp/server.py` + `src/docline/mcp/exceptions.py`). Define
+    `_MCP_LOCAL_PDF_ENGINES = frozenset({"auto","docling","heuristic"})` (allow-list),
+    `ExternalEngineNotAllowedError` (`DoclineError` subclass, engine-name-only message), and
+    `DoclineMcpServer(external_pdf_engines_enabled: bool = False)`; filter the advertised `process`
+    enum in `list_callable_tools()` (same site as the §H1 `workspace_root` omission) and add a guard
+    consulted by BOTH the `call_tool` `process` adapter and the public `process()` chokepoint that
+    raises the typed error for a non-allow-list engine without opt-in. No change to `app.py`,
+    `app_models.py`, `readers/pdf.py`, or `list_tools()` (CLI unchanged). Turns T-ext-h green.
+    Depends on T-ext-h.
+23. T-ext-map-h [064.033-T] — §H8 transport-mapping harness (tests domain, 3 scenarios). Author
+    failing tests proving the stdio transport maps `ExternalEngineNotAllowedError` to `-32602` in
+    BOTH eras: (a) legacy `tools/call` `process {pdf_engine:"mistral_ocr"}` on a default server →
+    `-32602`, engine-name-only, no credential/arguments disclosure (§H3), egress sentinel un-called;
+    (b) modern (`_meta`, no `initialize`) → `-32602` IDENTICALLY (one hardened dispatch, no
+    pre-handshake bypass); (c) opt-in server → not `-32602` (dispatches, egress stubbed; green anchor
+    once T-ext-i lands). Verify red on (a)/(b) [green@T-ext-map-i]. Depends on T-ext-i.
+24. T-ext-map-i [064.034-T] — §H8 transport `-32602` mapping impl (code domain, ≤1 file:
+    `src/docline/mcp/stdio.py`). Add an `except ExternalEngineNotAllowedError` branch mapping to a
+    `-32602` invalid-params envelope, ordered BEFORE the generic `-32603` (mirroring the §H4
+    `UnknownToolError`→`-32602` mapping), engine-name-only, no second allow-list in the transport.
+    Both eras inherit via the shared dispatch. Turns T-ext-map-h green. Depends on T-ext-map-h.
+25. T2b [064.008-T] — Subprocess smoke-test harness for the entry point (tests domain, 1 scenario).
     Author the failing automated subprocess test (matching `test_manifest_parity.py::`
     `test_python_m_docline_cli_runs_main`) that launches `python -m docline.mcp` / `docline-mcp` via
     `subprocess.Popen` with stdin AND stdout as pipes and keeps stdin OPEN across frames: it sends
@@ -1328,29 +1420,47 @@ Backlog IDs are shown in brackets. All MCP-transport harness tasks author into
     matching the advertised MCP tool set (`docline --manifest` minus the excluded `ingest_local_dir`).
     Its PASS depends on serve() (T2) reading non-greedily (`read1`/`os.read`) and flushing stdout
     after every response (cycle-8). Red until
-    the entry point exists [green@T3]. Depends on T-era-i2 (the fully hardened dual-era server ships
-    in the executable).
-22. T3 [064.003-T] — `docline-mcp` entry point + module bootstrap (packaging surface only —
+    the entry point exists [green@T3]. Depends on T-ext-map-i (the fully hardened dual-era server,
+    with the §H8 gate green, ships in the executable).
+26. T3 [064.003-T] — `docline-mcp` entry point + module bootstrap (packaging surface only —
     width-isolated). Add `src/docline/mcp/__main__.py` (`main()` reusing `DoclineMcpServer` + `serve`)
     and the `[project.scripts]` `docline-mcp` entry (materializes `docline-mcp.exe` on Windows),
-    turning the T2b subprocess harness green. No test-infra authoring in this task. Depends on T2b.
-23. T4 [064.004-T] — Documentation (docs domain). README "Running the local stdio MCP server"
+    turning the T2b subprocess harness green. Constructs the server at its secure default
+    (`external_pdf_engines_enabled=False`); the §H8 opt-in wiring is layered by T-ext-cfg-i. No
+    test-infra authoring in this task. Depends on T2b.
+27. T-ext-cfg-h [064.035-T] — §H8 startup opt-in config harness (tests domain, 3 scenarios). Author
+    failing tests on the REAL `main()` wiring: (a) fail-closed env resolution —
+    `DOCLINE_MCP_ALLOW_EXTERNAL_PDF_ENGINES` enables ONLY for exact `"1"`, every other value / unset
+    disables (unset row is a green anchor); (b) `--allow-external-pdf-engine` flag enables; (c) `main()`
+    builds a FRESH `DoclineMcpServer(external_pdf_engines_enabled=<resolved>)` passed to
+    `serve(server=...)` without mutating the module `SERVER`, and no opt-in/credential value is logged.
+    Verify red [green@T-ext-cfg-i]. Depends on T3.
+28. T-ext-cfg-i [064.036-T] — §H8 startup opt-in config impl (code domain, ≤1 file:
+    `src/docline/mcp/__main__.py`). Resolve the opt-in once at startup (exact-`"1"` env token OR the
+    `--allow-external-pdf-engine` flag, fail-closed), construct a fresh opt-in server instance passed
+    to `serve(server=...)`, never mutate `SERVER`, never read the flag from request data, no-secret
+    logging. Turns T-ext-cfg-h green. Depends on T-ext-cfg-h.
+29. T4 [064.004-T] — Documentation (docs domain). README "Running the local stdio MCP server"
     section and a SELF-CONTAINED client MCP configuration example for `docline-mcp` in the
     documented GitHub Copilot / VS Code `.vscode/mcp.json` `servers` stdio format (`type`/`command`/
     `args`; a verifiable shape, NOT the repo's git-ignored `.mcp.json`), noting dual-era support
-    (modern `server/discover` probe + legacy `initialize` fallback). Do NOT add a separate
+    (modern `server/discover` probe + legacy `initialize` fallback) AND the §H8 external-engine
+    default-deny + server-side opt-in (env/flag) with a paid-call + workspace-PDF-upload warning
+    (enable only for trusted clients). Do NOT add a separate
     design-doc transport note — the deliberation already documents the transport surface (avoid
-    duplication). Depends on T3.
+    duplication). Depends on T-ext-cfg-i.
 
 Dependency edges: T1b→T1, T1c→T1b, T1d→T1c, T-ssrf-h→T1d, T-ssrf-i→T-ssrf-h, T-cap-h→T-ssrf-i,
 T-cap-i→T-cap-h, T-agg-h→T-cap-i, T-agg-i→T-agg-h, T-agg-aux→T-agg-i, T-amp-h→T-agg-aux,
 T-amp-i→T-amp-h, T-redir-h→T-amp-i, T-redir-i→T-redir-h, T-redir-attr-h→T-redir-i,
 T-redir-attr-i→T-redir-attr-h, T-e2e→T-redir-attr-i, T-adapter→T-e2e,
 T-desc-h→T-adapter, T-desc-i→T-desc-h, T2→T-desc-i, T2s→T2, T-era-h1→T2s, T-era-h2→T-era-h1,
-T-era-i1→T-era-h2, T-era-i2→T-era-i1, T2b→T-era-i2, T3→T2b, T4→T3.
+T-era-i1→T-era-h2, T-era-i2→T-era-i1, T-ext-h→T-era-i2, T-ext-i→T-ext-h, T-ext-map-h→T-ext-i,
+T-ext-map-i→T-ext-map-h, T2b→T-ext-map-i, T3→T2b, T-ext-cfg-h→T3, T-ext-cfg-i→T-ext-cfg-h,
+T4→T-ext-cfg-i.
 Execution order: 064.001 → 064.005 → 064.006 → 064.007 → 064.010 → 064.011 → 064.012 → 064.013 →
 064.016 → 064.017 → 064.024 → 064.025 → 064.026 → 064.027 → 064.028 → 064.029 → 064.030 → 064.014 → 064.015 → 064.018 → 064.019 → 064.002 → 064.009 → 064.020 →
-064.021 → 064.022 → 064.023 → 064.008 → 064.003 → 064.004.
+064.021 → 064.022 → 064.023 → 064.031 → 064.032 → 064.033 → 064.034 → 064.008 → 064.003 → 064.035 → 064.036 → 064.004.
 
 ## Verification
 
@@ -1387,6 +1497,15 @@ Execution order: 064.001 → 064.005 → 064.006 → 064.007 → 064.010 → 064
   content sanitizes absolute paths (§H3), and modern-path stdout stays clean (§H5) — identically to
   the legacy path — proving both eras funnel through ONE hardened dispatch and the modern
   pre-handshake surface cannot bypass a guard.
+- **§H8 external-engine opt-in gate (T-ext-h/T-ext-i → T-ext-map-h/T-ext-map-i → T-ext-cfg-h/T-ext-cfg-i):**
+  on a DEFAULT server the advertised `process` `pdf_engine` enum omits `mistral_ocr` (allow-list
+  `{auto,docling,heuristic}`) and a `tools/call` `process {pdf_engine:"mistral_ocr"}` is rejected
+  `-32602` in BOTH eras with the egress sentinel never called and no credential/arguments disclosure;
+  `ingest_local_dir` stays unrouted (no second egress tool); a client-supplied opt-in field cannot
+  flip the gate. On an OPT-IN server (`DOCLINE_MCP_ALLOW_EXTERNAL_PDF_ENGINES=1` or
+  `--allow-external-pdf-engine`, resolved fail-closed once at startup into a fresh instance) the engine
+  is advertised and accepted (egress stubbed in tests). `docline process --pdf-engine mistral_ocr` and
+  `docline --manifest` are UNCHANGED (CLI parity retained on all other axes).
 - `fetch` advertising parity (T-desc-h → T-desc-i): the advertised `fetch` description states
   HTTP(S)-only across `tools/list` and `docline --manifest` (located by name, not by subscript),
   and matches `execute_fetch`'s rejection of non-HTTP(S) sources (no "file path" advertisement).
@@ -2313,6 +2432,57 @@ artifacts only). Multi-persona adversarial review run first (verdict ADVISORY �
   (`064.026 → 064.027 → 064.028 → 064.029 → 064.030 → 064.014`), shipment `055-S` (31 members), and red-before-green
   ordering are UNCHANGED.
 
+### Cycle-14 — PR #166 post-decomposition cycle 3 (§H8 external-PDF-engine opt-in gate)
+
+Operator-directed FULL Stage pass (planning/backlog/plan/memory artifacts only) closing the one
+remaining unresolved HIGH-RISK Copilot finding on HEAD `872989e` (thread `PRRT_kwDOSsAX4c6dWm-8`,
+comment 3885302527, `.backlogit/queue/064.015-T.md:26`): the MCP-specific `process` schema inherits
+`pdf_engine="mistral_ocr"`, letting an untrusted local MCP caller consume ambient
+Foundry/Mistral credentials and base64-upload workspace PDFs to an external PAID OCR endpoint. Per
+operator direction this was routed through further decomposition + a multi-persona adversarial
+security/design review, not an ordinary fix cycle.
+
+- **New §H8 hardening item** (external-PDF-engine opt-in gate) added to `## Plan Hardening`, mirroring
+  §H1's omit-and-reject: a local-engine ALLOW-LIST `{auto,docling,heuristic}` (fail-closed for future
+  external engines), build-time advertise omission in `list_callable_tools()` (the THIRD sanctioned
+  MCP-only parity divergence), a runtime dispatch reject (`-32602`) at a single adapter chokepoint
+  consulted by both `call_tool` and the public `process()` (so no transport path bypasses it, since
+  the shared `ProcessRequest` stays permissive for CLI parity), dual-era parity through the one
+  hardened dispatch, and a fail-closed, instance-local, startup-only server-side opt-in
+  (`DOCLINE_MCP_ALLOW_EXTERNAL_PDF_ENGINES=1` / `--allow-external-pdf-engine`) that a client can never
+  spoof from request data. Grounded read-only: `request.pdf_engine` is the SOLE client-controllable
+  selector of the external reader (`readers/pdf.py` auto-policy never resolves to `mistral_ocr`,
+  `docling` is local, `pdf_mode=triage` ignores `layout_engine`, `MISTRAL_OCR_MODEL` only renames an
+  already-selected engine), so gating that field is complete.
+- **Decomposition:** six new width-isolated red/green tasks — `064.031-T`/`064.032-T` (adapter policy:
+  advertise omit + dispatch chokepoint raising `ExternalEngineNotAllowedError`, `server.py` +
+  `exceptions.py`), `064.033-T`/`064.034-T` (transport `-32602` mapping, dual-era, `stdio.py`), and
+  `064.035-T`/`064.036-T` (fail-closed instance-local startup opt-in, `__main__.py`). Inserted into
+  the single linear chain after `064.023`: `… → 064.023 → 064.031 → 064.032 → 064.033 → 064.034 →
+  064.008 → 064.003 → 064.035 → 064.036 → 064.004` (re-thread `064.008`'s dependency `064.023 →
+  064.034` and `064.004`'s `064.003 → 064.036`). Chain stays strictly linear and acyclic; the
+  runnable executable (`064.003`) lands AFTER the omit+reject gate is green, so no runnable artifact
+  ever exposes the engine without opt-in; shipment `055-S` grows to 37 members (`064-F` + 36 tasks).
+- **Adversarial review remediations folded in.** Security review: (P1) `ingest_local_dir` — the
+  SECOND `pdf_engine`-bearing tool running the same `execute_process` egress — is already excluded
+  from the MCP advertise set + `call_tool` allow-list (§H1 Design + §H4/`064.007-T`); §H8 adds an
+  explicit negative assertion so it is provably no egress bypass. (P2) belt-and-suspenders — the
+  reject lives at the adapter `process()` chokepoint (not `call_tool` alone) so no adapter path
+  regains egress. (P2) residual paid-egress once enabled — recorded as an accepted documented risk
+  (Risks/SA-2), out of scope to cost-bound here. (P3) spoofed opt-in field + no-secret reject/startup
+  logging — added as negative rows/assertions in `064.031`/`064.033`/`064.035`. Design review:
+  re-partitioned into adapter-policy (`031/032`) vs transport-mapping (`033/034`) to keep each impl
+  within the <3-file/<5-function budget; adopted an ALLOW-LIST over a `mistral_ocr` deny-list; made
+  the startup opt-in fail-closed (exact `"1"`) and instance-local (fresh server to `serve(server=…)`,
+  no `SERVER` mutation); `064.035` tests the real `main()` wiring.
+- **Reconciled artifacts:** feature `064-F` DoD (H1–H7 → H1–H8 + CLI-parity qualification), this plan
+  (§H8, decomposition tasks 21–29 renumbered, dependency edges, execution order, Verification,
+  Rollback, SA-2, Risks), shipment `055-S` (37 members), affected-task cross-references
+  (`064.001`/`064.003`/`064.009`/`064.015`/`064.021`/`064.023`), `memories.json`, and a new Stage
+  checkpoint. Validation (YAML/JSON/Markdown, backlog index, acyclic deps, shipment order,
+  red-before-green, task size) clean. NOT pushed; no PR actions; Ship not invoked; `055-S`
+  queued/unclaimed. Production source unchanged (planning artifacts only).
+
 ## Rollback
 
 **Not purely additive.** The release unit adds new modules (`src/docline/mcp/stdio.py`,
@@ -2322,6 +2492,15 @@ existing files whose behavior changes for both interfaces:
 - `src/docline/mcp/server.py` — adapter `DoclineMcpServer` gains `call_tool` (static allow-list
   dispatch) and the new `list_callable_tools()` method (delivered by task 064.015-T), changing the
   adapter's callable surface. `list_tools()` is unchanged.
+- `src/docline/mcp/server.py` + `src/docline/mcp/exceptions.py` + `src/docline/mcp/stdio.py` +
+  `src/docline/mcp/__main__.py` — §H8 external-PDF-engine opt-in gate (cycle-3): the adapter gains the
+  `_MCP_LOCAL_PDF_ENGINES` allow-list, an `external_pdf_engines_enabled` instance flag, a filtered
+  advertise enum, and a dispatch chokepoint raising the new `ExternalEngineNotAllowedError`; the stdio
+  transport maps it to `-32602`; `__main__.py` resolves the server-side opt-in (env `"1"` /
+  `--allow-external-pdf-engine`) into a fresh server instance. MCP-surface-only — the shared
+  `ProcessRequest` model, `readers/pdf.py`, `app.py`, and the CLI are UNCHANGED (tasks
+  064.031–064.036). Additive to the MCP transport; reverting restores the prior (unsafe) default where
+  an untrusted client could select `mistral_ocr`.
 - `src/docline/fetch/url_policy.py` + `src/docline/fetch/http.py` — SSRF-by-resolution hardening
   (§H6): host resolution + address-pinned connect-time validation on the initial URL and every
   redirect. Affects **CLI `docline fetch` too**, not just MCP.
@@ -2432,17 +2611,27 @@ forward into build, review, runtime verification, and closure.
   (dual-era: legacy `initialize` + modern `server/discover`/`_meta`) and change the
   `DoclineMcpServer` adapter's callable surface (`call_tool` allow-list, `list_callable_tools()`,
   `describe_server()`), promoting previously CLI-only assumptions to a security boundary guarded by
-  H1–H7.
+  H1–H8. §H8 (cycle-3) adds an external-PDF-engine opt-in gate: credential/network-bearing engines
+  (`mistral_ocr`) are omitted from the advertised `process` schema AND rejected `-32602` at dispatch
+  by default (both eras), available only via a server-side startup opt-in — closing an
+  ambient-credential-consumption + external-paid-egress path an untrusted client could otherwise
+  trigger with a request field.
 - **targets:** new `src/docline/mcp/stdio.py`, `src/docline/mcp/__main__.py`, `[project.scripts]` in
-  `pyproject.toml`; modified `src/docline/mcp/server.py`. Delivered by tasks 064.001–064.009,
-  064.015, 064.018–064.023, 064.002–064.004, 064.008.
+  `pyproject.toml`; modified `src/docline/mcp/server.py` + `src/docline/mcp/exceptions.py`. Delivered
+  by tasks 064.001–064.009, 064.015, 064.018–064.023, 064.031–064.036, 064.002–064.004, 064.008.
 - **change_kind:** new external contract + adapter callable-surface change (interface/config change);
   introduces an untrusted-input boundary.
 - **rollback / containment:** the MCP-only additions (stdio loop, dual-era surface, adapter callable
   surface, entry point) revert independently of the shared-fetch hardening (see `## Rollback`).
   The boundary is contained by fail-closed guardrails: H1 `workspace_root` reject (`-32602`), H3
-  error non-disclosure, H4 closed allow-list, H5 stdout hygiene, applied through ONE hardened
-  dispatch across both protocol eras. Revert = drop the feature branch.
+  error non-disclosure, H4 closed allow-list, H5 stdout hygiene, and H8 external-engine reject
+  (`-32602`, default-deny allow-list), applied through ONE hardened dispatch across both protocol
+  eras. Revert = drop the feature branch.
+- **§H8 residual (accepted, documented):** once the operator opts in, the still-untrusted client can
+  drive paid Mistral OCR calls + workspace-PDF upload bounded only by the reader's 120 s per-request
+  timeout; enabling the flag is an explicit operator delegation of paid egress to the connected
+  client (enable only for trusted local clients). A per-surface cost/egress budget is a potential
+  follow-up, out of scope for closing this default-enabled finding.
 - **approval_required:** covered by the standing dark-factory authorization for autonomous
   implementation + PR merge; NOT destructive, so no separate destructive-action approval is required.
 - **ActionRisk:** `high` — new untrusted attack surface / exposed contract.
@@ -2462,6 +2651,16 @@ forward into build, review, runtime verification, and closure.
   `describe_server()` accessor (no drift), keeping the legacy path unchanged, and gating both eras
   with explicit negotiation/version tests (064.020–064.023). Modern-era features beyond
   discovery + negotiation + tools are explicitly out of scope to bound the surface.
+- Medium: §H8 external-engine gate is MCP-surface-only — it intentionally does NOT change the shared
+  `ProcessRequest` model or the CLI, so CLI `docline process --pdf-engine mistral_ocr` still works.
+  Mitigated by an allow-list (fail-closed for future external engines), a build-time advertise
+  omission AND a runtime dispatch reject at a single adapter chokepoint that no transport path
+  bypasses, dual-era parity through one hardened dispatch, and a fail-closed instance-local startup
+  opt-in that a client cannot spoof. Residual (accepted): once opted in, the still-untrusted client
+  can drive paid Mistral OCR calls + workspace-PDF upload bounded only by the reader's 120 s
+  per-request timeout (no page/byte/call budget) — operators enable only for trusted clients; a
+  per-surface cost/egress budget is a potential follow-up, out of scope for closing this
+  default-enabled finding.
 - Low: correcting the shared `fetch` description also changes the CLI `--manifest` output text; this
   is intentional (the CLI advertising was equally wrong) and is a text-only change with a parity
   test — no behavior change.
