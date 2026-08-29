@@ -162,7 +162,7 @@ it don't carry the weights.
 
 ## Follow-on
 
-See `docs/plans/2026-06-04-h1-synthesis-implementation-stub.md` for the
+See `docs/archive/plans/2026-06-04-h1-synthesis-implementation-stub.md` for the
 plan stub the next Stage cycle picks up.
 
 ## References

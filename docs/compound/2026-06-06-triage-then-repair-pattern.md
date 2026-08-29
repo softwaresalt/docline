@@ -4,7 +4,7 @@ shipment: 021-S
 category: pipeline-architecture
 keywords: [triage, selective-ml, splice-back, docline, pdf, fidelity-scoring, hybrid-pipeline]
 confidence: high
-evidence: src/docline/process/pdf_triage.py, src/docline/process/fidelity_scorer.py, src/docline/process/page_range.py, docs/decisions/2026-06-06-triage-then-repair-pdf-pipeline.md, docs/memory/2026-06-05/rca-2026-06-04-load-test-system-oom.md
+evidence: src/docline/process/pdf_triage.py, src/docline/process/fidelity_scorer.py, src/docline/process/page_range.py, docs/decisions/2026-06-06-triage-then-repair-pdf-pipeline.md, docs/archive/memory/2026-06-05/rca-2026-06-04-load-test-system-oom.md
 ---
 
 # Triage-then-repair pattern for selective ML invocation in document pipelines

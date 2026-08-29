@@ -6,7 +6,7 @@ feature: 019-F
 branch: feat/021-S-triage-then-repair
 status: PASS
 gate_decision: PASS
-plan: docs/plans/2026-06-06-triage-then-repair-plan.md
+plan: docs/archive/plans/2026-06-06-triage-then-repair-plan.md
 decision: docs/decisions/2026-06-06-triage-then-repair-pdf-pipeline.md
 findings_summary: 0 P0, 0 P1, 2 P2, 5 P3
 follow_up_stashes: 5CFE4481, 24920EFF, DE3E7346

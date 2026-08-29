@@ -7,7 +7,7 @@ decision_status: "decided"
 promoted_to: "plan"
 linked_artifacts:
   - "docs/scratch/2026-06-02-docline-graphtor-alignment-gap-analysis.md"
-  - "docs/plans/2026-06-02-docline-graphtor-alignment-plan.md"
+  - "docs/archive/plans/2026-06-02-docline-graphtor-alignment-plan.md"
 source_stash:
   - "C9DCDF9A"
 tags:

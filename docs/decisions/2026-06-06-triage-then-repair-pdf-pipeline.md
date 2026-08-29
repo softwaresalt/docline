@@ -4,7 +4,7 @@ date: 2026-06-06
 kind: deliberation
 status: decided
 stash: 1301B14E
-related_rca: docs/memory/2026-06-05/rca-2026-06-04-load-test-system-oom.md
+related_rca: docs/archive/memory/2026-06-05/rca-2026-06-04-load-test-system-oom.md
 related_shipments: 018-S (runtime safety primitives), 019-S (chunking + batch)
 poc_script: docs/scratch/2026-06-06-fidelity-scorer-poc.py
 ---

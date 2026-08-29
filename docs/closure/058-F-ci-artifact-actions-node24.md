@@ -45,7 +45,7 @@ proof is a clean **next release tag** with no Node 20 annotations.
 
 ## Notes
 
-* Plan `docs/plans/2026-07-17-ci-artifact-actions-node24-plan.md` cleared the
+* Plan `docs/archive/plans/2026-07-17-ci-artifact-actions-node24-plan.md` cleared the
   plan-review gate (PASS) after a multi-round Copilot review on the staging PR
   (#160) that corrected an initial over-dismissal of the v8 digest change and
   added the required Constitution Check.

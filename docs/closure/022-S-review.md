@@ -6,7 +6,7 @@ feature: 020-F
 branch: feat/022-S-pa4-closure
 status: PASS
 gate_decision: PASS
-plan: docs/plans/2026-06-07-pa4-calibration-closure-plan.md
+plan: docs/archive/plans/2026-06-07-pa4-calibration-closure-plan.md
 decision: docs/decisions/2026-06-07-pa4-calibration-closure.md
 related_closure: docs/closure/021-S-triage-then-repair.md
 findings_summary: 0 P0, 0 P1, 1 P2, 7 P3

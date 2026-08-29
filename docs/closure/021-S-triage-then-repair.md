@@ -8,9 +8,9 @@ merged_pr: 42
 merge_sha: 4071549
 branch: feat/021-S-triage-then-repair
 decision: docs/decisions/2026-06-06-triage-then-repair-pdf-pipeline.md
-plan: docs/plans/2026-06-06-triage-then-repair-plan.md
+plan: docs/archive/plans/2026-06-06-triage-then-repair-plan.md
 review: docs/closure/021-S-review.md
-related_rca: docs/memory/2026-06-05/rca-2026-06-04-load-test-system-oom.md
+related_rca: docs/archive/memory/2026-06-05/rca-2026-06-04-load-test-system-oom.md
 compound_learnings: docs/compound/2026-06-06-triage-then-repair-pattern.md
 follow_up_stashes: 5CFE4481, 24920EFF, DE3E7346
 ---

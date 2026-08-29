@@ -100,6 +100,6 @@ shipment:
 ## References
 
 * Plan: `docs/plans/2026-06-05-shipment-a-runtime-safety-primitives.md`
-* RCA: `docs/memory/2026-06-05/rca-2026-06-04-load-test-system-oom.md`
+* RCA: `docs/archive/memory/2026-06-05/rca-2026-06-04-load-test-system-oom.md`
 * Decision: `docs/decisions/2026-06-04-spike-h1-header-synthesis.md`
   (the spike whose corpus generation triggered the OOM)
