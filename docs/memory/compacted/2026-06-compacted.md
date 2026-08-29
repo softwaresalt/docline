@@ -118,21 +118,21 @@ June 2026 memory spans CLI/MCP parity, packaging and quarantine tooling, ELT mul
 
 | Original | Archive path |
 |---|---|
-| `docs/archive/memory/2026-06-01/ship-005-s-final-memory.md` | `docs/archive/memory/2026-06-01/ship-005-s-final-memory.md` |
-| `docs/archive/memory/2026-06-01/ship-006-s-final-memory.md` | `docs/archive/memory/2026-06-01/ship-006-s-final-memory.md` |
-| `docs/archive/memory/2026-06-01/ship-006-s-memory.md` | `docs/archive/memory/2026-06-01/ship-006-s-memory.md` |
-| `docs/archive/memory/2026-06-01/ship-008-s-pre-pr-checkpoint.md` | `docs/archive/memory/2026-06-01/ship-008-s-pre-pr-checkpoint.md` |
-| `docs/archive/memory/2026-06-01/stage-elt-multi-source-memory.md` | `docs/archive/memory/2026-06-01/stage-elt-multi-source-memory.md` |
-| `docs/archive/memory/2026-06-03/010-S-ship-session-6-final.md` | `docs/archive/memory/2026-06-03/010-S-ship-session-6-final.md` |
-| `docs/archive/memory/2026-06-03/011-S-ship-session-final.md` | `docs/archive/memory/2026-06-03/011-S-ship-session-final.md` |
-| `docs/archive/memory/2026-06-03/g2-multi-source-ingestion-stage-memory.md` | `docs/archive/memory/2026-06-03/g2-multi-source-ingestion-stage-memory.md` |
-| `docs/archive/memory/2026-06-03/ship-012-S-session-memory.md` | `docs/archive/memory/2026-06-03/ship-012-S-session-memory.md` |
-| `docs/archive/memory/2026-06-03/stage-012-S-segmentation-memory.md` | `docs/archive/memory/2026-06-03/stage-012-S-segmentation-memory.md` |
-| `docs/archive/memory/2026-06-04/stage-ship-013-S-session-memory.md` | `docs/archive/memory/2026-06-04/stage-ship-013-S-session-memory.md` |
-| `docs/archive/memory/2026-06-04/stage-ship-014-S-session-memory.md` | `docs/archive/memory/2026-06-04/stage-ship-014-S-session-memory.md` |
-| `docs/archive/memory/2026-06-05/rca-2026-06-04-load-test-system-oom.md` | `docs/archive/memory/2026-06-05/rca-2026-06-04-load-test-system-oom.md` |
-| `docs/archive/memory/2026-06-07/compaction-report.md` | `docs/archive/memory/2026-06-07/compaction-report.md` |
-| `docs/archive/memory/2026-06-08/extraction-study-memory.md` | `docs/archive/memory/2026-06-08/extraction-study-memory.md` |
-| `docs/archive/memory/2026-06-08/pa3-pa4-cosmos-rerun-evidence-memory.md` | `docs/archive/memory/2026-06-08/pa3-pa4-cosmos-rerun-evidence-memory.md` |
-| `docs/archive/memory/2026-06-09/overnight-shipment-session-memory.md` | `docs/archive/memory/2026-06-09/overnight-shipment-session-memory.md` |
-| `docs/archive/memory/2026-06-29/038-F-ocr-oom-ship-memory.md` | `docs/archive/memory/2026-06-29/038-F-ocr-oom-ship-memory.md` |
+| `docs/memory/2026-06-01/ship-005-s-final-memory.md` | `docs/archive/memory/2026-06-01/ship-005-s-final-memory.md` |
+| `docs/memory/2026-06-01/ship-006-s-final-memory.md` | `docs/archive/memory/2026-06-01/ship-006-s-final-memory.md` |
+| `docs/memory/2026-06-01/ship-006-s-memory.md` | `docs/archive/memory/2026-06-01/ship-006-s-memory.md` |
+| `docs/memory/2026-06-01/ship-008-s-pre-pr-checkpoint.md` | `docs/archive/memory/2026-06-01/ship-008-s-pre-pr-checkpoint.md` |
+| `docs/memory/2026-06-01/stage-elt-multi-source-memory.md` | `docs/archive/memory/2026-06-01/stage-elt-multi-source-memory.md` |
+| `docs/memory/2026-06-03/010-S-ship-session-6-final.md` | `docs/archive/memory/2026-06-03/010-S-ship-session-6-final.md` |
+| `docs/memory/2026-06-03/011-S-ship-session-final.md` | `docs/archive/memory/2026-06-03/011-S-ship-session-final.md` |
+| `docs/memory/2026-06-03/g2-multi-source-ingestion-stage-memory.md` | `docs/archive/memory/2026-06-03/g2-multi-source-ingestion-stage-memory.md` |
+| `docs/memory/2026-06-03/ship-012-S-session-memory.md` | `docs/archive/memory/2026-06-03/ship-012-S-session-memory.md` |
+| `docs/memory/2026-06-03/stage-012-S-segmentation-memory.md` | `docs/archive/memory/2026-06-03/stage-012-S-segmentation-memory.md` |
+| `docs/memory/2026-06-04/stage-ship-013-S-session-memory.md` | `docs/archive/memory/2026-06-04/stage-ship-013-S-session-memory.md` |
+| `docs/memory/2026-06-04/stage-ship-014-S-session-memory.md` | `docs/archive/memory/2026-06-04/stage-ship-014-S-session-memory.md` |
+| `docs/memory/2026-06-05/rca-2026-06-04-load-test-system-oom.md` | `docs/archive/memory/2026-06-05/rca-2026-06-04-load-test-system-oom.md` |
+| `docs/memory/2026-06-07/compaction-report.md` | `docs/archive/memory/2026-06-07/compaction-report.md` |
+| `docs/memory/2026-06-08/extraction-study-memory.md` | `docs/archive/memory/2026-06-08/extraction-study-memory.md` |
+| `docs/memory/2026-06-08/pa3-pa4-cosmos-rerun-evidence-memory.md` | `docs/archive/memory/2026-06-08/pa3-pa4-cosmos-rerun-evidence-memory.md` |
+| `docs/memory/2026-06-09/overnight-shipment-session-memory.md` | `docs/archive/memory/2026-06-09/overnight-shipment-session-memory.md` |
+| `docs/memory/2026-06-29/038-F-ocr-oom-ship-memory.md` | `docs/archive/memory/2026-06-29/038-F-ocr-oom-ship-memory.md` |

@@ -86,18 +86,18 @@ May 2026 memory covered initial backlog durability setup and the first document-
 
 | Original | Archive path |
 |---|---|
-| `docs/archive/memory/2026-05-30/ship-001-s-final-memory.md` | `docs/archive/memory/2026-05-30/ship-001-s-final-memory.md` |
-| `docs/archive/memory/2026-05-30/ship-001-s-resume-memory.md` | `docs/archive/memory/2026-05-30/ship-001-s-resume-memory.md` |
-| `docs/archive/memory/2026-05-30/ship-002-s-ingestion-foundations.md` | `docs/archive/memory/2026-05-30/ship-002-s-ingestion-foundations.md` |
-| `docs/archive/memory/2026-05-30/stage-document-ingestion-classification-checkpoint.md` | `docs/archive/memory/2026-05-30/stage-document-ingestion-classification-checkpoint.md` |
-| `docs/archive/memory/2026-05-30/stage-document-ingestion-final-memory.md` | `docs/archive/memory/2026-05-30/stage-document-ingestion-final-memory.md` |
-| `docs/archive/memory/2026-05-30/stage-document-ingestion-harvest-checkpoint.md` | `docs/archive/memory/2026-05-30/stage-document-ingestion-harvest-checkpoint.md` |
-| `docs/archive/memory/2026-05-31/003-F-harness-architect-memory.md` | `docs/archive/memory/2026-05-31/003-F-harness-architect-memory.md` |
-| `docs/archive/memory/2026-05-31/007-S-build-complete-memory.md` | `docs/archive/memory/2026-05-31/007-S-build-complete-memory.md` |
-| `docs/archive/memory/2026-05-31/ship-002-s-final-memory.md` | `docs/archive/memory/2026-05-31/ship-002-s-final-memory.md` |
-| `docs/archive/memory/2026-05-31/ship-003-s-build-checkpoint.md` | `docs/archive/memory/2026-05-31/ship-003-s-build-checkpoint.md` |
-| `docs/archive/memory/2026-05-31/ship-003-s-final-memory.md` | `docs/archive/memory/2026-05-31/ship-003-s-final-memory.md` |
-| `docs/archive/memory/2026-05-31/ship-004-s-build-checkpoint.md` | `docs/archive/memory/2026-05-31/ship-004-s-build-checkpoint.md` |
-| `docs/archive/memory/2026-05-31/ship-004-s-final-memory.md` | `docs/archive/memory/2026-05-31/ship-004-s-final-memory.md` |
-| `docs/archive/memory/2026-05-31/ship-004-s-review-gate-halt.md` | `docs/archive/memory/2026-05-31/ship-004-s-review-gate-halt.md` |
-| `docs/archive/memory/2026-05-31/ship-007-s-final-memory.md` | `docs/archive/memory/2026-05-31/ship-007-s-final-memory.md` |
+| `docs/memory/2026-05-30/ship-001-s-final-memory.md` | `docs/archive/memory/2026-05-30/ship-001-s-final-memory.md` |
+| `docs/memory/2026-05-30/ship-001-s-resume-memory.md` | `docs/archive/memory/2026-05-30/ship-001-s-resume-memory.md` |
+| `docs/memory/2026-05-30/ship-002-s-ingestion-foundations.md` | `docs/archive/memory/2026-05-30/ship-002-s-ingestion-foundations.md` |
+| `docs/memory/2026-05-30/stage-document-ingestion-classification-checkpoint.md` | `docs/archive/memory/2026-05-30/stage-document-ingestion-classification-checkpoint.md` |
+| `docs/memory/2026-05-30/stage-document-ingestion-final-memory.md` | `docs/archive/memory/2026-05-30/stage-document-ingestion-final-memory.md` |
+| `docs/memory/2026-05-30/stage-document-ingestion-harvest-checkpoint.md` | `docs/archive/memory/2026-05-30/stage-document-ingestion-harvest-checkpoint.md` |
+| `docs/memory/2026-05-31/003-F-harness-architect-memory.md` | `docs/archive/memory/2026-05-31/003-F-harness-architect-memory.md` |
+| `docs/memory/2026-05-31/007-S-build-complete-memory.md` | `docs/archive/memory/2026-05-31/007-S-build-complete-memory.md` |
+| `docs/memory/2026-05-31/ship-002-s-final-memory.md` | `docs/archive/memory/2026-05-31/ship-002-s-final-memory.md` |
+| `docs/memory/2026-05-31/ship-003-s-build-checkpoint.md` | `docs/archive/memory/2026-05-31/ship-003-s-build-checkpoint.md` |
+| `docs/memory/2026-05-31/ship-003-s-final-memory.md` | `docs/archive/memory/2026-05-31/ship-003-s-final-memory.md` |
+| `docs/memory/2026-05-31/ship-004-s-build-checkpoint.md` | `docs/archive/memory/2026-05-31/ship-004-s-build-checkpoint.md` |
+| `docs/memory/2026-05-31/ship-004-s-final-memory.md` | `docs/archive/memory/2026-05-31/ship-004-s-final-memory.md` |
+| `docs/memory/2026-05-31/ship-004-s-review-gate-halt.md` | `docs/archive/memory/2026-05-31/ship-004-s-review-gate-halt.md` |
+| `docs/memory/2026-05-31/ship-007-s-final-memory.md` | `docs/archive/memory/2026-05-31/ship-007-s-final-memory.md` |

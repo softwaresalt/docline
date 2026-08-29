@@ -106,13 +106,13 @@ July 2026 memory captured a rapid sequence of Stage/Ship work focused on graphto
 
 | Original | Archive path |
 |---|---|
-| `docs/archive/memory/2026-07-03/045-S-ship-session-memory.md` | `docs/archive/memory/2026-07-03/045-S-ship-session-memory.md` |
-| `docs/archive/memory/2026-07-03/046-S-ship-session-memory.md` | `docs/archive/memory/2026-07-03/046-S-ship-session-memory.md` |
-| `docs/archive/memory/2026-07-04/047-S-ship-session-memory.md` | `docs/archive/memory/2026-07-04/047-S-ship-session-memory.md` |
-| `docs/archive/memory/2026-07-04/048-S-ship-session-memory.md` | `docs/archive/memory/2026-07-04/048-S-ship-session-memory.md` |
-| `docs/archive/memory/2026-07-04/049-S-ship-session-memory.md` | `docs/archive/memory/2026-07-04/049-S-ship-session-memory.md` |
-| `docs/archive/memory/2026-07-04/050-S-ship-session-memory.md` | `docs/archive/memory/2026-07-04/050-S-ship-session-memory.md` |
-| `docs/archive/memory/2026-07-04/051-S-ship-session-memory.md` | `docs/archive/memory/2026-07-04/051-S-ship-session-memory.md` |
-| `docs/archive/memory/2026-07-05/050-F-openapi-ingestion-memory.md` | `docs/archive/memory/2026-07-05/050-F-openapi-ingestion-memory.md` |
-| `docs/archive/memory/2026-07-05/051-052-openapi-swagger-bom-memory.md` | `docs/archive/memory/2026-07-05/051-052-openapi-swagger-bom-memory.md` |
-| `docs/archive/memory/2026-07-05/053-F-external-ref-resolution-memory.md` | `docs/archive/memory/2026-07-05/053-F-external-ref-resolution-memory.md` |
+| `docs/memory/2026-07-03/045-S-ship-session-memory.md` | `docs/archive/memory/2026-07-03/045-S-ship-session-memory.md` |
+| `docs/memory/2026-07-03/046-S-ship-session-memory.md` | `docs/archive/memory/2026-07-03/046-S-ship-session-memory.md` |
+| `docs/memory/2026-07-04/047-S-ship-session-memory.md` | `docs/archive/memory/2026-07-04/047-S-ship-session-memory.md` |
+| `docs/memory/2026-07-04/048-S-ship-session-memory.md` | `docs/archive/memory/2026-07-04/048-S-ship-session-memory.md` |
+| `docs/memory/2026-07-04/049-S-ship-session-memory.md` | `docs/archive/memory/2026-07-04/049-S-ship-session-memory.md` |
+| `docs/memory/2026-07-04/050-S-ship-session-memory.md` | `docs/archive/memory/2026-07-04/050-S-ship-session-memory.md` |
+| `docs/memory/2026-07-04/051-S-ship-session-memory.md` | `docs/archive/memory/2026-07-04/051-S-ship-session-memory.md` |
+| `docs/memory/2026-07-05/050-F-openapi-ingestion-memory.md` | `docs/archive/memory/2026-07-05/050-F-openapi-ingestion-memory.md` |
+| `docs/memory/2026-07-05/051-052-openapi-swagger-bom-memory.md` | `docs/archive/memory/2026-07-05/051-052-openapi-swagger-bom-memory.md` |
+| `docs/memory/2026-07-05/053-F-external-ref-resolution-memory.md` | `docs/archive/memory/2026-07-05/053-F-external-ref-resolution-memory.md` |
