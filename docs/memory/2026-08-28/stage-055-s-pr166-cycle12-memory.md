@@ -186,7 +186,9 @@ consistent.
   in `redirect_request` after validation, before outbound I/O.
 - Do NOT skip closing the intermediate `fp` on a cap breach — the `http_error_302`
   closure guard must release it on both breach paths.
-- Do NOT charge an attempt for a redirect rejected by scheme/loop/§H6 validation.
+- Do NOT charge an attempt for a redirect rejected by the scheme check or §H6 revalidation (a
+  loop-rejected hop still incurs the documented one-attempt CONSERVATIVE over-count — stdlib loop
+  detection runs AFTER `redirect_request`, so the debit has already occurred).
 
 ## Next steps
 
