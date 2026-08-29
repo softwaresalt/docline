@@ -1236,3 +1236,80 @@ def test_h8_manifest_parity_delta_is_exact() -> None:
     lproc = next(t for t in listed if t["name"] == "process")
     assert "mistral_ocr" in lproc["inputSchema"]["properties"]["pdf_engine"]["enum"]
     assert "mistral_ocr" not in _process_enum(default)
+
+
+# ---------------------------------------------------------------------------
+# 064.033-T — §H8 external-engine transport-mapping harness (dual-era -32602)
+# ---------------------------------------------------------------------------
+
+
+def test_h8_transport_legacy_reject_minus_32602(monkeypatch, tmp_path) -> None:
+    """Scenario (a): a legacy tools/call external engine maps to -32602, no egress/secret."""
+    import docline.readers.mistral as mistral_mod
+
+    called = {"n": 0}
+
+    def _sentinel(*_a, **_k):
+        called["n"] += 1
+        return ""
+
+    monkeypatch.setattr(mistral_mod, "read_pdf_mistral", _sentinel)
+    monkeypatch.chdir(tmp_path)
+    tmp_path.joinpath("staging").mkdir()
+    resp = _dispatch(
+        {
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "tools/call",
+            "params": {
+                "name": "process",
+                "arguments": {"staging_dir": "staging", "pdf_engine": "mistral_ocr"},
+            },
+        }
+    )
+    assert resp["error"]["code"] == -32602
+    assert called["n"] == 0
+    blob = json.dumps(resp)
+    assert str(tmp_path) not in blob
+    for secret in ("AZURE_AI_FOUNDRY_KEY", "AZURE_AI_FOUNDRY_ENDPOINT", "MISTRAL_API_KEY"):
+        assert secret not in blob
+
+
+def test_h8_transport_modern_reject_minus_32602(monkeypatch, tmp_path) -> None:
+    """Scenario (b): a modern tools/call with an external engine maps to -32602 identically."""
+    import docline.readers.mistral as mistral_mod
+
+    monkeypatch.setattr(mistral_mod, "read_pdf_mistral", lambda *_a, **_k: "")
+    monkeypatch.chdir(tmp_path)
+    tmp_path.joinpath("staging").mkdir()
+    resp = _dispatch(
+        _modern_tools_call("process", {"staging_dir": "staging", "pdf_engine": "mistral_ocr"})
+    )
+    assert resp["error"]["code"] == -32602
+
+
+def test_h8_transport_optin_accept_anchor(monkeypatch, tmp_path) -> None:
+    """Scenario (c) anchor: an opt-in server is NOT -32602-rejected over the transport."""
+    import docline.readers.mistral as mistral_mod
+
+    monkeypatch.setattr(mistral_mod, "read_pdf_mistral", lambda *_a, **_k: "")
+    monkeypatch.chdir(tmp_path)
+    tmp_path.joinpath("staging").mkdir()
+    optin = DoclineMcpServer(external_pdf_engines_enabled=True)
+    resp = _dispatch(
+        {
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "tools/call",
+            "params": {
+                "name": "process",
+                "arguments": {
+                    "staging_dir": "staging",
+                    "output_dir": "output",
+                    "pdf_engine": "mistral_ocr",
+                },
+            },
+        },
+        server=optin,
+    )
+    assert not (resp.get("error") and resp["error"]["code"] == -32602)
