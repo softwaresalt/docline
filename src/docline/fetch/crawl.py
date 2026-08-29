@@ -10,6 +10,7 @@ from urllib.parse import parse_qsl, urldefrag, urljoin, urlparse
 from urllib.robotparser import RobotFileParser
 
 from docline.fetch.http import (
+    MAX_FETCH_ATTEMPTS,
     MAX_TOTAL_FETCH_BYTES,
     AggregateBudgetExceededError,
     FetchResponse,
@@ -154,7 +155,7 @@ async def crawl(
     page_count = 0
     # Request-scoped aggregate byte + fetch-attempt budget threaded through every
     # fetch_page call so no auxiliary/retry/redirect traffic bypasses the bound.
-    budget = RemainingByteBudget(MAX_TOTAL_FETCH_BYTES)
+    budget = RemainingByteBudget(MAX_TOTAL_FETCH_BYTES, max_attempts=MAX_FETCH_ATTEMPTS)
 
     while frontier and page_count < crawl_config.max_pages:
         current_url, depth = frontier.popleft()

@@ -11,13 +11,19 @@ from docline.paths import PathContainmentError, validate_workspace_relative_path
 # boundary. Sized far above any legitimate crawl (20x the crawler default of 50).
 MAX_PAGES_LIMIT: int = 1000
 
+# Hard upper bound on ``FetchRequest.depth`` (§H7 item 4b). Bounds the crawl
+# frontier-expansion vector at the untrusted input; ``default=0`` is preserved
+# so ``depth`` stays optional.
+MAX_DEPTH_LIMIT: int = 64
+
 
 class FetchRequest(BaseModel):
     """Parameters for a document fetch operation.
 
     Attributes:
         source: URL or file path to fetch.
-        depth: Crawl depth for web sources. 0 means single page only.
+        depth: Crawl depth for web sources. 0 means single page only. Bounded
+            above by :data:`MAX_DEPTH_LIMIT` (§H7 item 4b).
         max_pages: Optional page budget for web crawls. ``None`` uses the
             bounded crawler default; a value raises or lowers that cap, bounded
             above by :data:`MAX_PAGES_LIMIT` (§H7 item 1).
@@ -27,7 +33,7 @@ class FetchRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     source: str = Field(min_length=1)
-    depth: int = Field(default=0, ge=0)
+    depth: int = Field(default=0, ge=0, le=MAX_DEPTH_LIMIT)
     max_pages: int | None = Field(default=None, ge=1, le=MAX_PAGES_LIMIT)
     output_dir: str = ".cache/staging"
 

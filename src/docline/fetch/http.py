@@ -323,6 +323,10 @@ async def fetch_page(
         AggregateBudgetExceededError: If the request-scoped budget is exhausted.
     """
     validated_url = validate_crawl_url(url)
+    if budget is not None:
+        # Debit one outbound attempt at the common boundary BEFORE any I/O so
+        # main-page, robots, TOC, and retry traffic all count (§H7 item 4a).
+        budget.debit_attempt()
 
     def _fetch() -> FetchResponse:
         handler = _ValidatingRedirectHandler(max_redirects)
