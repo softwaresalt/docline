@@ -366,10 +366,10 @@ def _process_frame(
     except Exception:
         # Defense-in-depth: any unexpected fault on a non-tools/call path
         # (discovery/handshake) degrades to a -32603 envelope rather than
-        # dropping the connection without a response. RecursionError (a
-        # RuntimeError subclass) is covered here too. BaseException
-        # (KeyboardInterrupt/SystemExit) intentionally propagates.
-        _emit(stdout, _error(None, -32603, "Internal error"))
+        # dropping the connection without a response. Echo the request id when
+        # the parsed message carried a valid one so clients can correlate.
+        echo = message.get("id") if isinstance(message, dict) else None
+        _emit(stdout, _error(echo if _valid_id(echo) else None, -32603, "Internal error"))
         return
     if response is not None:
         _emit(stdout, response)

@@ -4,6 +4,7 @@ import asyncio
 import http.client
 import socket
 import ssl
+import threading
 from dataclasses import dataclass
 from typing import IO, Protocol
 from urllib import error, request
@@ -66,6 +67,10 @@ class RemainingByteBudget:
     def __init__(self, total_bytes: int | None, max_attempts: int | None = None) -> None:
         self.remaining = total_bytes
         self.attempts_remaining = max_attempts
+        # A timed-out fetch runs in an abandoned executor thread that asyncio
+        # cannot cancel; a retry may briefly share this budget, so guard the
+        # read-modify-write debits against concurrent mutation.
+        self._lock = threading.Lock()
 
     def read_cap(self, base_cap: int) -> int:
         """Return the per-read cap, bounded by the remaining aggregate allowance."""
@@ -77,8 +82,10 @@ class RemainingByteBudget:
         """Debit ``count`` entity-body bytes, aborting if the allowance is crossed."""
         if self.remaining is None:
             return
-        self.remaining -= count
-        if self.remaining < 0:
+        with self._lock:
+            self.remaining -= count
+            crossed = self.remaining < 0
+        if crossed:
             raise AggregateBudgetExceededError(
                 "Aggregate crawl byte budget exceeded during response read."
             )
@@ -87,11 +94,12 @@ class RemainingByteBudget:
         """Debit one outbound fetch attempt, aborting if the attempt cap is crossed."""
         if self.attempts_remaining is None:
             return
-        if self.attempts_remaining <= 0:
-            raise FetchAttemptBudgetExceededError(
-                "Aggregate outbound fetch-attempt budget exceeded."
-            )
-        self.attempts_remaining -= 1
+        with self._lock:
+            if self.attempts_remaining <= 0:
+                raise FetchAttemptBudgetExceededError(
+                    "Aggregate outbound fetch-attempt budget exceeded."
+                )
+            self.attempts_remaining -= 1
 
 
 class _Readable(Protocol):
