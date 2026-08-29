@@ -525,13 +525,28 @@ Security/reliability guardrails promoted to blocking design constraints after pl
   loopback/private/link-local space (`internal.example.com` → `127.0.0.1`, or a DNS-rebinding
   A-record) bypasses the guard entirely and gives the new untrusted surface SSRF access to
   local/metadata services. Required behavior (shared-code hardening, both interfaces):
-  1. **Resolution/connect-time validation.** Before connecting, resolve the host and reject if
-     **any** resolved address (all A/AAAA records) is loopback, private (RFC 1918 / RFC 4193),
-     link-local, or a metadata address (`169.254.169.254`). Normalize IPv4-mapped IPv6
-     (`::ffff:a.b.c.d`) to its IPv4 form before classification, and include ULA (`fc00::/7`),
-     CGNAT (`100.64.0.0/10`), and `0.0.0.0` so alternate-encoding SSRF bypasses are covered.
-     Literal-IP hosts keep their existing fast-path rejection. This closes the name→private gap
-     `is_private_host` leaves open.
+  1. **Resolution/connect-time validation (fail-closed public-unicast allow policy).** Before
+     connecting, resolve the host and reject if **any** resolved address (all A/AAAA records) is
+     **not** a global public-unicast address — i.e. loopback, private (RFC 1918 / RFC 4193),
+     link-local, **multicast**, **reserved**, **unspecified** (`0.0.0.0` / `::`), or a metadata
+     address (`169.254.169.254`) — **failing closed** on any address that cannot be classified.
+     **Normalize IPv4-mapped IPv6 (`::ffff:a.b.c.d`) to its embedded IPv4 form BEFORE applying any
+     class predicate** — mapped multicast/CGNAT/reserved forms (`::ffff:224.0.0.1`,
+     `::ffff:100.64.0.1`) do not trigger the IPv6-form predicates. Enumerate **all** `getaddrinfo`
+     answers, reject the whole target if **any** is unsafe, then pin the connection to one member of
+     the fully validated set (see item 3). This rejected set is **normative and self-contained** —
+     it mirrors the class predicates of the shared classifier `_is_unsafe_address`
+     (`src/docline/fetch/sitemap.py:173-189`: metadata IPs, then `is_private` / `is_loopback` /
+     `is_link_local` / `is_multicast` / `is_reserved` / `is_unspecified`, unclassifiable → unsafe)
+     **and additionally rejects CGNAT (`100.64.0.0/10`) via an explicit network-membership check
+     and ULA (`fc00::/7`)**, because CGNAT is caught by none of those six flags on any Python
+     3.12.x (`is_private` / `is_reserved` / `is_global` all `False`). H6 therefore MUST be at least
+     as strict as — and is deliberately broader than — `_is_unsafe_address` (whose own CGNAT gap is
+     a separate tracked code follow-up in `## Risks`, out of scope for this planning
+     reconciliation). Because `ipaddress` flag tables are Python-patch-dependent (CVE-2024-4032
+     hardened `is_private` in 3.12.4), the `064.010-T` harness MUST **test-pin each security-critical
+     class** rather than trust the installed flag table. Literal-IP hosts keep their existing
+     fast-path rejection. This closes the name→private gap `is_private_host` leaves open.
   2. **Redirects revalidated.** Every redirect target is re-resolved and re-validated at
      connect time, not just compared by `netloc`, so a redirect to a name that resolves to a
      private address is rejected mid-chain.
@@ -540,8 +555,9 @@ Security/reliability guardrails promoted to blocking design constraints after pl
      so a resolve-then-let-`urllib`-re-resolve design is a *deterministic* rebinding bypass (the
      validation lookup returns a public IP; `urllib`'s own connect lookup, TTL 0, returns
      `127.0.0.1`). The connection MUST be pinned to the specific validated IP (connect to the
-     resolved address while preserving the `Host` header / SNI) so no second, unvalidated
-     resolution occurs. **Inherited proxies MUST be disabled for this fetcher.**
+     resolved address while sending the ORIGINAL hostname as the `Host` header and the TLS
+     `server_hostname`/SNI, so the certificate chain + hostname verification still target the DNS
+     name — never the pinned IP) so no second, unvalidated resolution occurs. **Inherited proxies MUST be disabled for this fetcher.**
      `request.build_opener(handler)` installs urllib's default `ProxyHandler`, which honors
      `HTTP(S)_PROXY` environment variables and would hand the ORIGINAL hostname to a proxy that
      performs its own second, unvalidated DNS resolution — reopening rebinding whenever proxy vars
@@ -955,7 +971,10 @@ Backlog IDs are shown in brackets. All MCP-transport harness tasks author into
    [green@T-ssrf-i]. Depends on T1d.
 6. T-ssrf-i [064.011-T] — Shared-fetch SSRF connect-time resolution impl (code domain,
    ≤2 files: `fetch/url_policy.py`, `fetch/http.py`). Resolve the host and reject if ANY resolved
-   address is loopback/private/link-local/metadata; revalidate every redirect target at connect
+   address is non-public-unicast (loopback/private/link-local/multicast/reserved/unspecified/metadata,
+   fail-closed on unclassifiable — the class predicates of `_is_unsafe_address` in
+   `sitemap.py:173-189` **plus an explicit CGNAT `100.64.0.0/10` membership check and ULA**, which
+   the six flags miss); revalidate every redirect target at connect
    time (not by `netloc` compare); **connect to the specific validated IP (address-pinned),
    preserving the `Host` header / SNI, so `urllib` performs no second unvalidated resolution**, and
    **disable inherited/environment proxies** on this fetcher's opener (install `ProxyHandler({})`
@@ -1487,7 +1506,9 @@ no production/test code touched by Stage):
   resolve names (`fetch/url_policy.py:50-56`) before `urllib` connects (`fetch/http.py:116-123`), so
   a public hostname resolving to loopback/private bypassed it on the new untrusted surface. §H6 now
   **requires resolution/connect-time validation for the initial URL and every redirect** (reject if
-  any resolved A/AAAA address is loopback/private/link-local/metadata) plus an end-to-end
+  any resolved A/AAAA address is non-public-unicast — loopback/private/link-local/multicast/reserved/unspecified/metadata,
+  fail-closed on unclassifiable, mirroring the class predicates of `_is_unsafe_address` in `sitemap.py:173-189`
+  plus an explicit CGNAT `100.64.0.0/10` check) plus an end-to-end
   hostname-to-private MCP fetch test. Decomposed into width-isolated shared-fetch tasks
   064.010-T (harness) + 064.011-T (impl), with the boundary proof in 064.014-T.
 - **§H7 fetch resource exhaustion (P1)** — `max_pages` had no upper bound (`app_models.py:25`) and
@@ -1738,7 +1759,11 @@ commit; findings remediated in-place:
   064.022-T and scenario-budget attestations to 064.020-T/064.021-T; retitled 064.017-T off the
   superseded "sum in crawl" phrasing.
 - **Security P3s (hardening) — SSRF address classification + system proxies + per-request disk.**
-  §H6 now normalizes IPv4-mapped IPv6 and rejects ULA/CGNAT/`0.0.0.0`; the proxy disable pins an
+  §H6 now normalizes IPv4-mapped IPv6 and rejects the complete non-public-unicast set — multicast,
+  reserved, and unspecified in addition to loopback/private/link-local/metadata and ULA/CGNAT/`0.0.0.0`,
+  fail-closed on unclassifiable — mirroring the class predicates of the shared classifier
+  `_is_unsafe_address` (`sitemap.py:173-189`) and adding an explicit CGNAT `100.64.0.0/10` check the
+  six flags miss (sitemap's own CGNAT gap tracked in `## Risks`); the proxy disable pins an
   empty `ProxyHandler({})` (never `getproxies()`) to suppress system/registry proxies; a per-request
   disk/transfer residual is named in `## Risks`.
 
@@ -2446,6 +2471,17 @@ forward into build, review, runtime verification, and closure.
 - Low: address-pinned connect (§H6) connects to a validated IP while preserving the `Host` header /
   SNI; verify TLS certificate validation still targets the hostname (not the IP) so pinning does not
   weaken cert checks. Covered by the SSRF harness (064.010-T).
+- Medium (tracked follow-up — production code out of scope for this planning reconciliation): the
+  shared classifier `_is_unsafe_address` (`src/docline/fetch/sitemap.py:173-189`) does **not** reject
+  CGNAT `100.64.0.0/10` — on every Python 3.12.x that range reports `is_private` / `is_reserved` /
+  `is_global` all `False`, so the six-flag reject-list lets it through. §H6 closes this on the
+  MCP/CLI fetch path via an explicit `100.64.0.0/10` membership check, but
+  `sitemap.validate_sitemap_url` still carries the gap; a separate code chore should extend
+  `_is_unsafe_address` with the same explicit CGNAT check. Relatedly, `ipaddress` special-purpose
+  tables are Python-patch-dependent (CVE-2024-4032 hardened `is_private` in 3.12.4) while
+  `pyproject.toml` pins `requires-python>=3.12`; the §H6 harness (`064.010-T`) therefore test-pins
+  each security-critical class instead of trusting the installed flag table, and raising the floor
+  to `>=3.12.4` should be evaluated as a follow-up (manifest not changed here).
 - Low: extending the existing `_ValidatingRedirectHandler` to bounded-drain intermediate 3xx bodies
   (§H7 item 2, 064.028-T) overrides stdlib redirect body draining; mitigated by wrapping the
   intermediate `fp` in a bounded proxy and delegating to `super().http_error_302(...)` so the
