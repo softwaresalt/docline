@@ -718,8 +718,9 @@ def test_h5_stdout_carries_only_jsonrpc_frames(monkeypatch, tmp_path) -> None:
 
 
 @pytest.mark.parametrize("url", ["http://127.0.0.1", "http://169.254.169.254"])
-def test_h6_literal_ip_fetch_rejected_end_to_end(url: str) -> None:
+def test_h6_literal_ip_fetch_rejected_end_to_end(url: str, monkeypatch, tmp_path) -> None:
     """H6 literal-IP smoke: tools/call fetch to loopback/metadata is rejected end-to-end."""
+    monkeypatch.chdir(tmp_path)
     resp = _dispatch(
         {
             "jsonrpc": "2.0",
