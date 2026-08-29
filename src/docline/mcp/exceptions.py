@@ -9,3 +9,7 @@ class McpTransportError(DoclineError):
 
 class UnknownToolError(DoclineError):
     """Raised when a tools/call names a tool absent from the callable allow-list."""
+
+
+class ExternalEngineNotAllowedError(DoclineError):
+    """Raised when a client requests a non-allow-list PDF engine without the server opt-in."""

@@ -14,7 +14,11 @@ from docline.app_models import (
     ProcessRequest,
     ProcessResult,
 )
-from docline.mcp.exceptions import McpTransportError, UnknownToolError
+from docline.mcp.exceptions import (
+    ExternalEngineNotAllowedError,
+    McpTransportError,
+    UnknownToolError,
+)
 from docline.schema.export import export_base_frontmatter_schema_json
 
 # Protocol versions advertised by both eras (modern first, legacy pinned).
@@ -30,6 +34,11 @@ SERVER_VERSION = "0.1.0"
 # manifest; ``ingest_local_dir`` is excluded — its ``source_path`` has no
 # workspace-containment validator).
 _CALLABLE_TOOL_NAMES = ("fetch", "process", "export_schema")
+
+# §H8 allow-list of PDF engines permitted on the untrusted MCP surface WITHOUT the
+# server opt-in — local engines with no external credential/network egress. Any
+# engine absent from this list (present or future) is denied by default (fail-closed).
+_MCP_LOCAL_PDF_ENGINES: frozenset[str] = frozenset({"auto", "docling", "heuristic"})
 
 
 class _ExportSchemaArgs(BaseModel):
@@ -50,6 +59,25 @@ def _omit_workspace_root(schema: dict[str, object]) -> dict[str, object]:
     return result
 
 
+def _filter_pdf_engine_enum(
+    schema: dict[str, object], allowed: frozenset[str]
+) -> dict[str, object]:
+    """Return a deep copy of ``schema`` with the ``pdf_engine`` enum filtered to ``allowed``.
+
+    Preserves the shared enum ordering. §H8 advertise gate for the untrusted MCP
+    surface when external engines are not opted in.
+    """
+    result = copy.deepcopy(schema)
+    props = result.get("properties")
+    if isinstance(props, dict):
+        engine = props.get("pdf_engine")
+        if isinstance(engine, dict):
+            enum = engine.get("enum")
+            if isinstance(enum, list):
+                engine["enum"] = [value for value in enum if value in allowed]
+    return result
+
+
 class TransportMode(Enum):
     """Approved MCP transport modes.
 
@@ -62,7 +90,11 @@ class TransportMode(Enum):
 class DoclineMcpServer:
     """Expose manifest discovery plus fetch/process adapters over approved stdio transport."""
 
-    def __init__(self, transport_mode: "TransportMode | str" = TransportMode.STDIO) -> None:
+    def __init__(
+        self,
+        transport_mode: "TransportMode | str" = TransportMode.STDIO,
+        external_pdf_engines_enabled: bool = False,
+    ) -> None:
         """Initialize the MCP server with the approved transport mode.
 
         Accepts either a :class:`TransportMode` enum member or the string
@@ -72,6 +104,11 @@ class DoclineMcpServer:
         Args:
             transport_mode: Requested MCP transport configuration. Must resolve
                 to :attr:`TransportMode.STDIO` after coercion.
+            external_pdf_engines_enabled: §H8 server-side opt-in. When ``False``
+                (default / fail-safe) external, credential/network-bearing PDF
+                engines are omitted from the advertised schema and rejected at
+                dispatch. This is the SOLE toggle; it is never derived from
+                request data.
 
         Raises:
             McpTransportError: If any transport other than stdio is requested.
@@ -88,6 +125,30 @@ class DoclineMcpServer:
                 f"Unsupported MCP transport: {transport_mode!r}. Only stdio is approved."
             )
         self._transport_mode = transport_mode
+        self._external_pdf_engines_enabled = external_pdf_engines_enabled
+
+    @property
+    def external_pdf_engines_enabled(self) -> bool:
+        """Return whether external PDF engines are opted in on this instance."""
+        return self._external_pdf_engines_enabled
+
+    def _ensure_pdf_engine_allowed(self, pdf_engine: object) -> None:
+        """Reject a non-allow-list PDF engine unless the server opt-in is enabled (§H8).
+
+        Args:
+            pdf_engine: The requested engine selector (raw or resolved).
+
+        Raises:
+            ExternalEngineNotAllowedError: When ``pdf_engine`` is outside the local
+                allow-list and the server was not started with the external opt-in.
+        """
+        if self._external_pdf_engines_enabled:
+            return
+        if isinstance(pdf_engine, str) and pdf_engine not in _MCP_LOCAL_PDF_ENGINES:
+            raise ExternalEngineNotAllowedError(
+                f"PDF engine {pdf_engine!r} is not permitted on the MCP surface "
+                "without the server-side external-engine opt-in."
+            )
 
     def list_tools(self) -> McpManifestResponse:
         """Return the shared manifest in the MCP ``tools/list`` envelope."""
@@ -129,6 +190,7 @@ class DoclineMcpServer:
         """
         if isinstance(request, dict):
             request = ProcessRequest.model_validate(request)
+        self._ensure_pdf_engine_allowed(request.pdf_engine)
         return execute_process(request)
 
     def export_schema(self) -> str:
@@ -155,6 +217,8 @@ class DoclineMcpServer:
             params = tool.parameters
             if tool.name == "process":
                 params = _omit_workspace_root(params)
+                if not self._external_pdf_engines_enabled:
+                    params = _filter_pdf_engine_enum(params, _MCP_LOCAL_PDF_ENGINES)
             tools.append(
                 ManifestTool(name=tool.name, description=tool.description, parameters=params)
             )
@@ -181,6 +245,9 @@ class DoclineMcpServer:
         if name == "fetch":
             return self.fetch(arguments)
         if name == "process":
+            # §H8 chokepoint: deny a non-allow-list engine (from raw args) before
+            # model validation so a spoofed enable flag can never preempt the gate.
+            self._ensure_pdf_engine_allowed(arguments.get("pdf_engine"))
             return self.process(arguments)
         if name == "export_schema":
             _ExportSchemaArgs.model_validate(arguments or {})
