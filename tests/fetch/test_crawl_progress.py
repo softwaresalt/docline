@@ -18,7 +18,7 @@ from docline.fetch.http import FetchResponse
 
 def _run(pages: dict[str, FetchResponse], monkeypatch, start: str, **cfg):
     async def fake_fetch_page(
-        url: str, *, timeout_seconds: float = 30.0, max_redirects: int = 5
+        url: str, *, timeout_seconds: float = 30.0, max_redirects: int = 5, **_kwargs
     ) -> FetchResponse:
         del timeout_seconds, max_redirects
         return pages[url]
@@ -108,7 +108,7 @@ def test_progress_none_default_leaves_results_unchanged(monkeypatch: pytest.Monk
     }
 
     async def fake_fetch_page(
-        url: str, *, timeout_seconds: float = 30.0, max_redirects: int = 5
+        url: str, *, timeout_seconds: float = 30.0, max_redirects: int = 5, **_kwargs
     ) -> FetchResponse:
         del timeout_seconds, max_redirects
         return pages[url]
@@ -129,7 +129,7 @@ def test_progress_fires_for_robots_denied_page(monkeypatch: pytest.MonkeyPatch) 
 
     monkeypatch.setattr("docline.fetch.crawl._robots_allow", _deny)
 
-    async def fake_fetch_page(url, *, timeout_seconds=30.0, max_redirects=5):
+    async def fake_fetch_page(url, *, timeout_seconds=30.0, max_redirects=5, **_kwargs):
         raise AssertionError("fetch_page must not run when robots denies the URL")
 
     monkeypatch.setattr("docline.fetch.crawl.fetch_page", fake_fetch_page)
@@ -146,7 +146,7 @@ def test_progress_fires_for_robots_denied_page(monkeypatch: pytest.MonkeyPatch) 
 
 
 def test_progress_fires_for_fetch_failure(monkeypatch: pytest.MonkeyPatch) -> None:
-    async def failing_fetch_page(url, *, timeout_seconds=30.0, max_redirects=5):
+    async def failing_fetch_page(url, *, timeout_seconds=30.0, max_redirects=5, **_kwargs):
         raise OSError("connection reset")
 
     monkeypatch.setattr("docline.fetch.crawl.fetch_page", failing_fetch_page)
@@ -163,7 +163,7 @@ def test_progress_fires_for_fetch_failure(monkeypatch: pytest.MonkeyPatch) -> No
 
 
 def test_progress_fires_for_domain_rejected_redirect(monkeypatch: pytest.MonkeyPatch) -> None:
-    async def redirecting_fetch_page(url, *, timeout_seconds=30.0, max_redirects=5):
+    async def redirecting_fetch_page(url, *, timeout_seconds=30.0, max_redirects=5, **_kwargs):
         # redirect resolves to a different host than the (locked) start host
         return FetchResponse(
             url="https://evil.org/a.html",

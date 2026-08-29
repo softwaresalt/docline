@@ -143,6 +143,7 @@ def test_crawl_follows_links_within_depth_and_page_budget(
         *,
         timeout_seconds: float = 30.0,
         max_redirects: int = 5,
+        **_kwargs,
     ) -> FetchResponse:
         del timeout_seconds, max_redirects
         return pages[url]
@@ -197,6 +198,7 @@ def test_crawl_domain_lock_skips_cross_domain_links(monkeypatch: pytest.MonkeyPa
         *,
         timeout_seconds: float = 30.0,
         max_redirects: int = 5,
+        **_kwargs,
     ) -> FetchResponse:
         del timeout_seconds, max_redirects
         fetched_urls.append(url)
@@ -253,6 +255,7 @@ def test_crawl_domain_lock_limits_links_to_inferred_site_section(
         *,
         timeout_seconds: float = 30.0,
         max_redirects: int = 5,
+        **_kwargs,
     ) -> FetchResponse:
         del timeout_seconds, max_redirects
         fetched_urls.append(url)
@@ -329,6 +332,7 @@ def test_crawl_discovers_mdbook_toc_links_from_root_page(
         *,
         timeout_seconds: float = 30.0,
         max_redirects: int = 5,
+        **_kwargs,
     ) -> FetchResponse:
         del timeout_seconds, max_redirects
         fetched_urls.append(url)
@@ -380,6 +384,7 @@ def test_crawl_deduplicates_pages_when_alias_redirects_to_an_emitted_url(
         *,
         timeout_seconds: float = 30.0,
         max_redirects: int = 5,
+        **_kwargs,
     ) -> FetchResponse:
         del timeout_seconds, max_redirects
         return pages[url]
@@ -435,6 +440,7 @@ def test_crawl_skips_discovered_print_pages(monkeypatch: pytest.MonkeyPatch) -> 
         *,
         timeout_seconds: float = 30.0,
         max_redirects: int = 5,
+        **_kwargs,
     ) -> FetchResponse:
         del timeout_seconds, max_redirects
         fetched_urls.append(url)
@@ -496,6 +502,7 @@ def test_crawl_skips_nonliteral_print_pages_with_window_and_noindex_markers(
         *,
         timeout_seconds: float = 30.0,
         max_redirects: int = 5,
+        **_kwargs,
     ) -> FetchResponse:
         del timeout_seconds, max_redirects
         return pages[url]
@@ -542,6 +549,7 @@ def test_crawl_skips_nonliteral_print_pages_with_render_mode_marker(
         *,
         timeout_seconds: float = 30.0,
         max_redirects: int = 5,
+        **_kwargs,
     ) -> FetchResponse:
         del timeout_seconds, max_redirects
         return pages[url]
@@ -599,6 +607,7 @@ def test_crawl_deduplicates_by_canonical_key(monkeypatch: pytest.MonkeyPatch) ->
         *,
         timeout_seconds: float = 30.0,
         max_redirects: int = 5,
+        **_kwargs,
     ) -> FetchResponse:
         del timeout_seconds, max_redirects
         fetch_count[url] = fetch_count.get(url, 0) + 1

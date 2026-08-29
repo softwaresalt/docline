@@ -36,6 +36,64 @@ class ResponseByteLimitError(DoclineError):
     """Raised when a single response body exceeds ``MAX_RESPONSE_BYTES``."""
 
 
+class AggregateBudgetExceededError(DoclineError):
+    """Raised when a request-scoped aggregate fetch budget is exhausted."""
+
+
+# Byte-accurate aggregate per-request crawl budget (§H7 item 3, 512 MiB) over
+# undecoded entity-body bytes; and the per-request outbound fetch-attempt cap
+# (§H7 item 4, request COUNT not byte VOLUME).
+MAX_TOTAL_FETCH_BYTES: int = 512 * 1024 * 1024
+MAX_FETCH_ATTEMPTS: int = 4 * 1000
+
+
+class FetchAttemptBudgetExceededError(AggregateBudgetExceededError):
+    """Raised when the per-request outbound fetch-attempt budget is exhausted.
+
+    Subclasses :class:`AggregateBudgetExceededError` so the existing
+    ``crawl.py`` re-raise clauses propagate it out of ``crawl()``.
+    """
+
+
+class RemainingByteBudget:
+    """A request-scoped remaining byte + fetch-attempt allowance.
+
+    Threaded through every ``fetch_page`` call for a crawl request and
+    decremented while entity-body bytes are read, so a crossing response aborts
+    mid-read. ``None`` allowances mean unbounded (standalone single fetch).
+    """
+
+    def __init__(self, total_bytes: int | None, max_attempts: int | None = None) -> None:
+        self.remaining = total_bytes
+        self.attempts_remaining = max_attempts
+
+    def read_cap(self, base_cap: int) -> int:
+        """Return the per-read cap, bounded by the remaining aggregate allowance."""
+        if self.remaining is None:
+            return base_cap
+        return min(base_cap, self.remaining + 1)
+
+    def debit_bytes(self, count: int) -> None:
+        """Debit ``count`` entity-body bytes, aborting if the allowance is crossed."""
+        if self.remaining is None:
+            return
+        self.remaining -= count
+        if self.remaining < 0:
+            raise AggregateBudgetExceededError(
+                "Aggregate crawl byte budget exceeded during response read."
+            )
+
+    def debit_attempt(self) -> None:
+        """Debit one outbound fetch attempt, aborting if the attempt cap is crossed."""
+        if self.attempts_remaining is None:
+            return
+        if self.attempts_remaining <= 0:
+            raise FetchAttemptBudgetExceededError(
+                "Aggregate outbound fetch-attempt budget exceeded."
+            )
+        self.attempts_remaining -= 1
+
+
 class _Readable(Protocol):
     """A minimal readable stream: ``read(size) -> bytes``."""
 
@@ -45,31 +103,34 @@ class _Readable(Protocol):
 def read_body_capped(
     response: _Readable,
     max_bytes: int,
-    budget: object | None = None,
+    budget: "RemainingByteBudget | None" = None,
 ) -> bytes:
-    """Read a response body in bounded chunks, aborting once ``max_bytes`` is crossed.
+    """Read a response body in bounded chunks, aborting once a cap is crossed.
 
-    Each read requests at most ``min(CHUNK_SIZE, max_bytes - read + 1)`` bytes so
-    at the boundary the reader observes at most the single crossing byte and the
-    over-cap response is never fully buffered (buffered content <=
-    ``max_bytes + 1``).
+    Each read requests at most
+    ``min(CHUNK_SIZE, max_bytes - read + 1, aggregate_remaining + 1)`` bytes so at
+    either boundary the reader observes at most the single crossing byte and the
+    over-cap response is never fully buffered.
 
     Args:
         response: A readable stream exposing ``read(size) -> bytes``.
         max_bytes: The hard per-response byte allowance.
-        budget: Reserved for the request-scoped aggregate budget (threaded in by
-            later hardening tasks); unused here.
+        budget: Optional request-scoped aggregate byte budget, decremented per
+            chunk while bytes are read.
 
     Returns:
-        The full response body bytes when within the cap.
+        The full response body bytes when within both caps.
 
     Raises:
         ResponseByteLimitError: When the body exceeds ``max_bytes``.
+        AggregateBudgetExceededError: When the request-scoped budget is crossed.
     """
     chunks: list[bytes] = []
     total = 0
     while True:
         to_read = min(CHUNK_SIZE, max_bytes - total + 1)
+        if budget is not None:
+            to_read = min(to_read, budget.read_cap(CHUNK_SIZE))
         if to_read <= 0:
             to_read = 1
         chunk = response.read(to_read)
@@ -77,6 +138,8 @@ def read_body_capped(
             break
         total += len(chunk)
         chunks.append(chunk)
+        if budget is not None:
+            budget.debit_bytes(len(chunk))
         if total > max_bytes:
             raise ResponseByteLimitError(
                 f"Response body exceeded the {max_bytes}-byte per-response cap."
@@ -94,6 +157,7 @@ class FetchResponse:
         content_type: Value of the Content-Type header, or ``None``.
         body: Decoded response body text.
         redirect_count: Number of redirects followed to reach this response.
+        body_byte_count: Undecoded entity-body byte length (observability only).
     """
 
     url: str
@@ -101,6 +165,7 @@ class FetchResponse:
     content_type: str | None
     body: str
     redirect_count: int = 0
+    body_byte_count: int = 0
 
 
 class _PinnedHTTPConnection(http.client.HTTPConnection):
@@ -233,6 +298,7 @@ async def fetch_page(
     *,
     timeout_seconds: float = 30.0,
     max_redirects: int = 5,
+    budget: "RemainingByteBudget | None" = None,
 ) -> FetchResponse:
     """Fetch a single URL with timeout, SSRF, and redirect controls.
 
@@ -244,6 +310,8 @@ async def fetch_page(
         url: The URL to fetch.
         timeout_seconds: Per-request timeout in seconds.
         max_redirects: Maximum number of HTTP redirects to follow.
+        budget: Optional request-scoped byte/attempt budget decremented while
+            entity-body bytes are read and once per outbound attempt.
 
     Returns:
         A :class:`FetchResponse` with the final URL, status, and body.
@@ -252,15 +320,16 @@ async def fetch_page(
         FetchTimeoutError: If the request exceeds ``timeout_seconds``.
         FetchError: For non-timeout fetch failures or redirect-cap violations.
         CrawlUrlRejectedError: If ``url`` or any redirect target fails policy.
+        AggregateBudgetExceededError: If the request-scoped budget is exhausted.
     """
     validated_url = validate_crawl_url(url)
 
     def _fetch() -> FetchResponse:
         handler = _ValidatingRedirectHandler(max_redirects)
-        opener = build_fetch_opener(max_redirects, redirect_handler=handler)
+        opener = build_fetch_opener(max_redirects, budget=budget, redirect_handler=handler)
         req = request.Request(validated_url, headers={"User-Agent": "docline-crawler/1.0"})
         with opener.open(req, timeout=timeout_seconds) as response:
-            body_bytes = read_body_capped(response, MAX_RESPONSE_BYTES)
+            body_bytes = read_body_capped(response, MAX_RESPONSE_BYTES, budget=budget)
             charset = response.headers.get_content_charset() or "utf-8"
             body = body_bytes.decode(charset, errors="replace")
             final_url = response.geturl()
@@ -273,6 +342,7 @@ async def fetch_page(
                 content_type=response.headers.get("Content-Type"),
                 body=body,
                 redirect_count=handler.redirect_count,
+                body_byte_count=len(body_bytes),
             )
 
     loop = asyncio.get_running_loop()
@@ -294,9 +364,14 @@ async def fetch_page(
 __all__ = [
     "CHUNK_SIZE",
     "MAX_RESPONSE_BYTES",
+    "MAX_TOTAL_FETCH_BYTES",
+    "MAX_FETCH_ATTEMPTS",
+    "AggregateBudgetExceededError",
+    "FetchAttemptBudgetExceededError",
     "FetchError",
     "FetchResponse",
     "FetchTimeoutError",
+    "RemainingByteBudget",
     "ResponseByteLimitError",
     "build_fetch_opener",
     "fetch_page",

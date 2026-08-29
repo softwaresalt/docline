@@ -87,7 +87,7 @@ def test_crawl_from_subsection_does_not_follow_sibling_version_links(
     }
 
     async def fake_fetch_page(
-        url: str, *, timeout_seconds: float = 30.0, max_redirects: int = 5
+        url: str, *, timeout_seconds: float = 30.0, max_redirects: int = 5, **_kwargs
     ) -> FetchResponse:
         del timeout_seconds, max_redirects
         return pages[url]

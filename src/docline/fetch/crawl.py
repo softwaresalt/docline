@@ -9,7 +9,13 @@ from html.parser import HTMLParser
 from urllib.parse import parse_qsl, urldefrag, urljoin, urlparse
 from urllib.robotparser import RobotFileParser
 
-from docline.fetch.http import FetchResponse, fetch_page
+from docline.fetch.http import (
+    MAX_TOTAL_FETCH_BYTES,
+    AggregateBudgetExceededError,
+    FetchResponse,
+    RemainingByteBudget,
+    fetch_page,
+)
 from docline.fetch.url_canonical import UrlCanonicalizationError, canonicalize_url
 from docline.fetch.url_policy import CrawlUrlRejectedError, validate_crawl_url
 from docline.schema.models import DoclineError
@@ -146,6 +152,9 @@ async def crawl(
     robots_cache: dict[str, str | None] = {}
     results: list[CrawlResult] = []
     page_count = 0
+    # Request-scoped aggregate byte + fetch-attempt budget threaded through every
+    # fetch_page call so no auxiliary/retry/redirect traffic bypasses the bound.
+    budget = RemainingByteBudget(MAX_TOTAL_FETCH_BYTES)
 
     while frontier and page_count < crawl_config.max_pages:
         current_url, depth = frontier.popleft()
@@ -172,8 +181,10 @@ async def crawl(
             await asyncio.sleep(crawl_config.rate_limit_ms / 1000.0)
 
         try:
-            response = await _fetch_with_retries(current_url, crawl_config)
+            response = await _fetch_with_retries(current_url, crawl_config, budget)
         except CrawlUrlRejectedError:
+            raise
+        except AggregateBudgetExceededError:
             raise
         except (DoclineError, OSError) as err:
             results.append(
@@ -364,7 +375,11 @@ def extract_toc_links(script_text: str, page_url: str) -> list[str]:
     return links
 
 
-async def _fetch_with_retries(url: str, crawl_config: CrawlConfig) -> FetchResponse:
+async def _fetch_with_retries(
+    url: str,
+    crawl_config: CrawlConfig,
+    budget: "RemainingByteBudget | None" = None,
+) -> FetchResponse:
     """Fetch one page with the configured retry/backoff policy."""
     last_err: Exception | None = None
     for attempt in range(crawl_config.max_retries + 1):
@@ -376,8 +391,11 @@ async def _fetch_with_retries(url: str, crawl_config: CrawlConfig) -> FetchRespo
                 url,
                 timeout_seconds=crawl_config.page_timeout_seconds,
                 max_redirects=crawl_config.max_redirects,
+                budget=budget,
             )
         except CrawlUrlRejectedError:
+            raise
+        except AggregateBudgetExceededError:
             raise
         except (DoclineError, OSError) as err:
             last_err = err
