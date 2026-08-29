@@ -13,9 +13,11 @@ Implements the contract pinned by ``tests/fetch/test_sitemap.py``
     3. reject explicit cloud-metadata hostnames before resolution
     4. resolve hostname with :func:`socket.getaddrinfo` to enumerate
        **all** addresses (defense against DNS rebinding)
-    5. classify every resolved address with :mod:`ipaddress`; reject if
-       any address is private, loopback, link-local, multicast, or
-       reserved
+    5. normalize IPv4-mapped IPv6 addresses (``::ffff:a.b.c.d``) to their
+       embedded IPv4 form, then classify every resolved address with
+       :mod:`ipaddress`; reject if any address is private, loopback,
+       link-local, multicast, reserved, unspecified, or in the CGNAT
+       shared address space ``100.64.0.0/10`` (RFC 6598)
     6. reject explicit cloud-metadata IPs even if classification would
        otherwise allow them
 """
@@ -52,6 +54,12 @@ _METADATA_IPS: frozenset[str] = frozenset(
         "fd00:ec2::254",  # AWS IPv6 IMDS
     }
 )
+
+
+# Carrier-grade NAT (CGNAT) shared address space, RFC 6598. Not flagged by
+# any ``ipaddress`` special-use property on Python 3.12.x, so it must be
+# rejected via an explicit network-membership check.
+_CGNAT_NETWORK: ipaddress.IPv4Network = ipaddress.IPv4Network("100.64.0.0/10")
 
 
 class SitemapError(DoclineError):
@@ -179,14 +187,26 @@ def _is_unsafe_address(addr: str) -> bool:
     except ValueError:
         # If we can't classify it, treat as unsafe — fail closed.
         return True
-    return (
+    # Normalize an IPv4-mapped IPv6 literal (``::ffff:a.b.c.d``) to its
+    # embedded IPv4 address BEFORE classification, so the six-flag checks and
+    # the CGNAT membership test see the real address. Guarded for IPv6 only:
+    # ``IPv4Address`` has no ``.ipv4_mapped`` attribute.
+    if isinstance(ip, ipaddress.IPv6Address) and ip.ipv4_mapped is not None:
+        ip = ip.ipv4_mapped
+    if (
         ip.is_private
         or ip.is_loopback
         or ip.is_link_local
         or ip.is_multicast
         or ip.is_reserved
         or ip.is_unspecified
-    )
+    ):
+        return True
+    # CGNAT / RFC 6598 shared address space (100.64.0.0/10) is not caught by
+    # any ``ipaddress`` special-use flag on Python 3.12.x; reject explicitly.
+    # The ``isinstance`` guard both narrows to IPv4 for the membership test and
+    # ensures a still-IPv6 address never mis-tests against the IPv4 network.
+    return isinstance(ip, ipaddress.IPv4Address) and ip in _CGNAT_NETWORK
 
 
 def _resolve_all_addresses(host: str) -> tuple[str, ...]:
