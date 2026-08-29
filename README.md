@@ -228,8 +228,71 @@ Progress metrics:
   ceiling, the crawl may finish early — so completion reports the authoritative
   count of pages actually staged rather than a forced 100%.
 
+## Running the local stdio MCP server
+
+docline ships an MCP (Model Context Protocol) server over stdio so an MCP client
+(GitHub Copilot, VS Code, or any stdio MCP host) can call the shared `fetch`,
+`process`, and `export_schema` tools. Start it either way:
+
+```bash
+# console script (installed with the package)
+docline-mcp
+
+# or as a module
+python -m docline.mcp
+```
+
+The server speaks newline-delimited JSON-RPC 2.0 on stdout and reads requests on
+stdin. It supports both the legacy `initialize` handshake (`2025-11-25`) and the
+modern `2026-07-28` `server/discover` + per-request `_meta` negotiation.
+
+### Client configuration (`.vscode/mcp.json`)
+
+Configure a stdio MCP server in your client using the documented GitHub Copilot /
+VS Code shape — a top-level `servers` map whose entries declare a stdio transport.
+This example is self-contained; copy it as-is:
+
+```json
+{
+  "servers": {
+    "docline": {
+      "type": "stdio",
+      "command": "docline-mcp",
+      "args": []
+    }
+  }
+}
+```
+
+To launch via the module instead of the console script, use
+`"command": "python"` with `"args": ["-m", "docline.mcp"]`.
+
+### External PDF engine posture (§H8)
+
+By **default the MCP server denies external, credential/network-bearing PDF
+engines** (`mistral_ocr`): the engine is omitted from the advertised `process`
+tool schema and a dispatch that requests it is rejected with JSON-RPC `-32602`. A
+connected client can **never** enable it through request fields — the control is
+server-side and startup-only.
+
+Enable external engines only when you trust the connected client by starting the
+server with either:
+
+```bash
+docline-mcp --allow-external-pdf-engine
+# or
+DOCLINE_MCP_ALLOW_EXTERNAL_PDF_ENGINES=1 docline-mcp
+```
+
+> **Warning:** enabling external PDF engines delegates **paid external OCR calls**
+> and the **upload of workspace PDFs** to the (still-untrusted) connected client.
+> Enable it only for trusted local clients. The `docline process --pdf-engine
+> mistral_ocr` CLI path is unaffected by this MCP-only gate.
+
 ## Documentation
 
+* [Architecture — top-level domain map and dependency direction](docs/ARCHITECTURE.md) —
+  how the CLI and MCP interfaces resolve through the shared application façade.
 * [docline → graphtor-docs ingestion contract](docs/design-docs/graphtor-docs-ingestion-contract.md) —
   the stable v1 contract surface that downstream consumers ingest.
 * [BaseFrontmatter JSON Schema export workflow](docs/design-docs/schema-export-workflow.md) —
