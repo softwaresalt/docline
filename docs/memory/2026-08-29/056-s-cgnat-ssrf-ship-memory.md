@@ -59,3 +59,20 @@ Shipment 056-S: close CGNAT `100.64.0.0/10` (RFC 6598) SSRF gap in
 - Adversarial review (in progress) → fix valid findings.
 - PR + Copilot review loop → merge commit → runtime verification →
   operational closure → backlog archival (056-S ship) → post-merge closure PR.
+
+## Closure outcome (appended post-merge)
+
+- Adversarial review: **SHIP**, 0 consensus/majority findings; lone CRITICAL
+  was a verified false positive. 2 LOW advisory items stashed for Stage
+  (0A56B201 TOCTOU/rebinding, 0A56B202 metadata pre-parse).
+- PR **#167** MERGED 2026-08-29T09:09:48Z, merge commit
+  `9560d48dbd44c2e0ce0c30c593a7352ea966ef88` (merge-commit strategy, P-009 OK).
+  All CI green; §1.9 gate passed (fresh Copilot review on HEAD, 0 unresolved
+  threads, no pending request).
+- Runtime verification: classifier exercised live — CGNAT + IPv4-mapped
+  rejected, boundaries/public accepted, literal + mapped-literal URL rejection.
+- Backlog archived manually (no backlogit CLI/MCP): 056-S/065-F/065.001-T/
+  065.002-T → `.backlogit/archive/` with `status: archived` + merge SHA.
+- Artifacts: `docs/closure/2026-08-29-056-s-cgnat-ssrf-closure.md`,
+  `docs/compound/2026-08-29-cgnat-100-64-needs-explicit-membership-check.md`.
+- Closure delivered on branch `post-merge/065-sitemap-cgnat-ssrf` via closure PR.
