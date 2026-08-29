@@ -1,3 +1,12 @@
+---
+title: "Operational Closure — 056-S sitemap CGNAT (100.64.0.0/10) SSRF gap"
+status: verified
+items: [056-S, 065-F, 065.001-T, 065.002-T]
+merged_prs: [167]
+merge_shas: [9560d48]
+date: 2026-08-29
+---
+
 # Operational Closure — 056-S: sitemap CGNAT (100.64.0.0/10) SSRF gap
 
 - **Shipment:** 056-S

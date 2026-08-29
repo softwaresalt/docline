@@ -1,3 +1,11 @@
+---
+date: 2026-08-29
+category: cgnat-explicit-membership-check-and-ipv4-mapped-normalization
+keywords: [ssrf, cgnat, rfc6598, ipaddress, ip_network, ipv4_mapped, pyright, isinstance, sitemap, fetch, cve-2024-4032]
+confidence: high
+evidence: 056-S / 065-F Ship session 2026-08-29 — sitemap _is_unsafe_address accepted 100.64.0.0/10 (six ipaddress flags miss CGNAT on Python 3.12.10); fixed with explicit IPv4Network membership + guarded IPv4-mapped normalization; pyright rejected ip_network union typing; merged PR #167 (9560d48)
+---
+
 # CGNAT 100.64.0.0/10 needs an explicit membership check — no ipaddress flag catches it
 
 **Date:** 2026-08-29
