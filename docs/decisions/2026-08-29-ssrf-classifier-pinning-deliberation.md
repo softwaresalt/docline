@@ -144,11 +144,10 @@ Linked `related_to` `064-F`/`065-F` (same address classes, prior surfaces).
 
 ## Open questions
 
-- Whether to raise `requires-python` to `>=3.12.4` for CVE-2024-4032. The prior deliberation
-  treated this as an out-of-scope manifest decision; this shipment now treats the runtime floor as
-  the **recommended** CVE mitigation (the corrected CPython tables encode the allow-list exceptions
-  the predicate must not block), so the plan carries it as an in-shipment manifest bump or a tracked
-  follow-up rather than hand-rolled prefix rejection.
+- Whether to raise `requires-python` to `>=3.12.4` for CVE-2024-4032 is **resolved, not open**:
+  this shipment makes the runtime floor a required in-shipment change via task A.T7 (`066.007-T`),
+  because the corrected CPython tables encode the allow-list exceptions the predicate must not
+  block. Hand-rolled prefix rejection is rejected.
 - Broader live-crawl sitemap **discovery orchestration** (which module drives sitemap enumeration
   into the crawl frontier) remains out of scope for a future activation shipment. Note: the pinning
   mechanism is NOT deferred — this shipment routes all sitemap retrieval through the pinned

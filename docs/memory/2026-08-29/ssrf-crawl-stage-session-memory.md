@@ -29,12 +29,12 @@ cut from origin/main @ 16970da (branch `stage/ssrf-pinning-crawl-frontier`).
 
 ## Backlog created
 
-- Feature A **066-F** (from 87F2C06D): tasks 066.001-T..066.006-T (harness/impl pairs; 0A56B202
-  → 066.004-T, 0A56B201 → 066.006-T). Deps: .002<-.001, .003<-.002, .004<-.003, .005<-.002,
-  .006<-.005, .006<-.004.
+- Feature A **066-F** (from 87F2C06D): tasks 066.001-T..066.007-T (harness/impl pairs; 0A56B202
+  → 066.004-T, 0A56B201 → 066.006-T; 066.007-T = CVE-2024-4032 runtime floor, config). Deps:
+  .002<-.001, .002<-.007, .003<-.002, .004<-.003, .005<-.002, .006<-.005, .006<-.004.
 - Feature B **067-F** (from 173238FD): tasks 067.001-T (harness), 067.002-T (impl, <-067.001-T).
 - Semantic links: 066-F related_to 064-F, 065-F; 067-F related_to 055-S.
-- Shipments: **057-S** (066-F + 6 tasks, high), **058-S** (067-F + 2 tasks, medium), both queued.
+- Shipments: **057-S** (066-F + 7 tasks, high), **058-S** (067-F + 2 tasks, medium), both queued.
 - All 4 stash entries harvested (state=harvested) with durable stash_links.
 
 ## Plan review (multi-persona adversarial) — PASS after fixes
@@ -71,8 +71,8 @@ Reviewers: Security Lens (gpt-5.6-sol), Architecture Strategist (gpt-5.6-terra),
 ## Validation
 
 Hierarchy consistent (paths `066/066.00X`, `067/067.00X`); no orphans; doctor flagged nothing on
-066/067 (168 pre-existing archive warnings unrelated); 7 acyclic dependency edges, red-before-green;
-frontmatter valid; index synced (419 artifacts).
+066/067 (168 pre-existing archive warnings unrelated); 8 acyclic dependency edges, red-before-green
+(incl. 066.002-T <- 066.007-T runtime floor); frontmatter valid; index synced.
 
 ## Next
 

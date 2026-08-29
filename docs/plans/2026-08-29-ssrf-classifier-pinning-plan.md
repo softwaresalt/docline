@@ -44,7 +44,7 @@ address class the fail-closed classifier currently rejects.
 
 ## Task decomposition (harness-first, <=2h each, width-isolated)
 
-Each task targets a single domain (tests XOR src). Red harness tasks precede their green
+Each task targets a single domain (tests, src, XOR config). Red harness tasks precede their green
 consumers via explicit dependency edges.
 
 ### A.T1 — Harness: canonical unsafe-address predicate class-parity (red)
