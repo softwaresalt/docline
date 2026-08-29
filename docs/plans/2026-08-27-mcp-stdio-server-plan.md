@@ -77,7 +77,21 @@
   `-32022`, version-first), while still requiring NO prior `initialize` (pre-handshake availability
   does not waive required `_meta`) — reconciled across 064.020-T/064.022-T, the Protocol Era Model,
   method map, feature DoD, and memory (no new task).
-  See `## Plan Review Remediation` (cycle-3, cycle-4, cycle-5, cycle-6, cycle-7, cycle-8, cycle-9, cycle-10, and cycle-11 subsections).
+  Cycle-12 (PR #166, fresh Copilot review on HEAD `13b14b7`, Copilot round 3) routes two redirect
+  residuals through a full Stage decomposition rather than an in-place fix: (A) the cycle-10 bounded
+  redirect-body proxy delegated to `super().http_error_302` can LEAK the intermediate 3xx response
+  `fp` when a per-response or aggregate cap error interrupts the drain before stdlib reaches its own
+  `fp.close()` — the override MUST now CLOSE the intermediate `fp` on BOTH cap-breach paths (delivered
+  by re-scoped 064.027-T/064.028-T); and (B) the cycle-11 redirect-hop `MAX_FETCH_ATTEMPTS` debit was
+  placed in `http_error_302` BEFORE `super()`, charging an attempt even for redirects that
+  scheme/loop/§H6 validation REJECTS before `parent.open()` — the debit MOVES into `redirect_request`
+  on the successful non-None-return path (after validation, before outbound I/O), decomposed into a
+  NEW width-isolated pair 064.029-T (harness) / 064.030-T (impl). The redirect responsibilities are now
+  two width-isolated test-first pairs: body-drain + closure (064.027/028) and hop-attempt placement
+  (064.029/030). The chain grows 28 → 30 tasks (`064.026 → 064.027 → 064.028 → 064.029 → 064.030 →
+  064.014`, with `064.014-T` re-pointed from `064.028-T` to `064.030-T`); shipment `055-S` = 064-F + 30
+  tasks (31 members).
+  See `## Plan Review Remediation` (cycle-3, cycle-4, cycle-5, cycle-6, cycle-7, cycle-8, cycle-9, cycle-10, cycle-11, and cycle-12 subsections).
 - Cross-interface blast radius: this release unit is NOT purely additive. It hardens the
   **shared** fetch code (`fetch/url_policy.py`, `fetch/http.py`, `app_models.py`) that both
   the CLI and the MCP surface call, and it changes the existing `DoclineMcpServer` adapter's
@@ -574,10 +588,22 @@ Security/reliability guardrails promoted to blocking design constraints after pl
      http_error_308 = http_error_302`) — a subclass overriding only `http_error_302` leaves the other
      four codes bound to the BASE unbounded handler; (2) do NOT install a SECOND redirect handler —
      `OpenerDirector` dispatches a given `http_error_NNN` to handlers in order and stops at the first
-     returning a response, so two redirect handlers cannot both run; the drain MUST be folded into the
-     existing handler as ONE composite handler. Delivered by the width-isolated pair `064.027-T`
-     (harness) / `064.028-T` (`fetch/http.py`), split out because the drain must also decrement the
-     request-scoped aggregate budget that only exists after `064.017-T`/`064.024-T`.
+     returning a response, so two      redirect handlers cannot both run; the drain MUST be folded into the existing handler as ONE
+     composite handler. **Intermediate-response closure (cycle-12, Copilot round-3 Finding A).** The
+     bounded proxy delegates to `super().http_error_302(...)`, which reads the wrapped `fp` and only
+     calls `fp.close()` AFTER a completed read; when the proxy raises a per-response OR aggregate cap
+     error MID-STREAM, that `fp.close()` is never reached, so the underlying intermediate 3xx response
+     `fp` (a live socket/connection) LEAKS. The override MUST therefore CLOSE the real intermediate `fp`
+     before the typed cap error propagates, on BOTH breach paths — e.g. wrap the `super()` delegation in
+     a guard `except AggregateBudgetExceededError: fp.close(); raise` plus the per-response cap error
+     (since `FetchAttemptBudgetExceededError` subclasses `AggregateBudgetExceededError`, this same guard
+     also releases `fp` on the redirect-hop attempt breach raised from `redirect_request` per §H7 item
+     4a). `fp.close()` is idempotent, so a redundant close is a no-op. Delivered by the width-isolated
+     pair `064.027-T` (harness — per-response + aggregate cap, redirect-still-follows, AND fp-closure on
+     both breach paths) / `064.028-T` (`fetch/http.py` — bounded drain + closure guard), split out
+     because the drain must also decrement the request-scoped aggregate budget that only exists after
+     `064.017-T`/`064.024-T`. The redirect-HOP attempt debit (§H7 item 4a) is a SEPARATE width-isolated
+     concern, decomposed into `064.029-T`/`064.030-T` (cycle-12).
   3. **Aggregate crawl-byte budget (byte-accurate, enforceable).** Per-response and per-page caps
     do not bound their product: a single small `tools/call` `fetch` at the `max_pages` cap
     against an attacker-controlled server returning maximum-under-cap responses drives
@@ -665,16 +691,34 @@ Security/reliability guardrails promoted to blocking design constraints after pl
     `FetchAttemptBudgetExceededError` (a `DoclineError` subclass of `AggregateBudgetExceededError`) the
     instant a debit would exceed the cap; the crawl RAISES, it does not silently return the accumulated
     skipped results. **Redirect hops** — which urllib follows INSIDE a single `fetch_page`'s
-    `opener.open()`, not at the boundary — are debited the SAME way the aggregate byte budget already
-    counts intermediate 3xx bodies: one attempt per hop debited INSIDE the shared
-    `_ValidatingRedirectHandler` **before** the next hop is followed (pre-I/O), from the same
-    request-scoped budget object, raising `FetchAttemptBudgetExceededError` on breach — so a
-    post-`open()` `handler.redirect_count` tally (which would let urllib follow up to `max_redirects`
-    hops beyond the cap before raising) is NOT used for enforcement (`handler.redirect_count` is
-    retained for observability only). This per-hop redirect-attempt debit is delivered by the
-    redirect-drain impl `064.028-T` (harness `064.027-T`), co-located with the intermediate-body byte
-    decrement in the same composite handler; the boundary debit for direct outbound calls is delivered
-    by `064.026-T` (harness `064.025-T`). The allowance rides the SAME request-scoped
+    `opener.open()`, not at the boundary — are debited one attempt per FOLLOWED hop INSIDE the shared
+    `_ValidatingRedirectHandler`, placed in **`redirect_request`** immediately before it returns a
+    non-None `Request` — i.e. AFTER the stdlib scheme check (raised in `http_error_302` before
+    `redirect_request`) and the §H6 address-pinned per-redirect revalidation, and BEFORE the hop's
+    outbound I/O (`parent.open()`) — from the same
+    request-scoped budget object, raising `FetchAttemptBudgetExceededError` on breach. Placing the
+    debit here (not in `http_error_302` before `super()`, the REJECTED cycle-11 placement) means an
+    attempt is charged if-and-only-if the redirect will actually be FOLLOWED: a redirect the SCHEME
+    check rejects (before `redirect_request`) or that §H6/stdlib `redirect_request` rejects (`None`
+    return or raise) consumes NO attempt (cycle-12 Copilot round-3 Finding B). **Bounded conservative
+    residual** (verified against the CPython `http_error_302` source): two paths debit before their
+    `parent.open()` runs — the stdlib LOOP-detection check (`max_repeats`/`max_redirections`) fires AFTER
+    `redirect_request` returns (hence after the debit) but before `parent.open()`, and a
+    per-response/aggregate body-drain breach fires after `redirect_request` but before `parent.open()`;
+    each over-counts by exactly one attempt on a terminating (or retried) hop. This is CONSERVATIVE: the
+    `redirect_request` placement NEVER UNDER-counts a followed hop, so the over-count can only make
+    `MAX_FETCH_ATTEMPTS` trip earlier, never allow more outbound work than the cap — the DoS upper-bound
+    invariant holds. It is bounded (at most one per such hop; retries add at most one phantom debit per
+    retried pop) and unavoidable without reimplementing the stdlib method body (forbidden); same residual
+    class as the loop-detection/disallowed-scheme unread-`fp` note in `## Risks`. `redirect_request` is
+    chosen over a body-proxy-`close()` placement (which would be exact/residual-free) to keep the attempt
+    concern WIDTH-ISOLATED from the `064.028-T` body-drain proxy per the cycle-12 decomposition. A post-`open()`
+    `handler.redirect_count` tally (which would let urllib follow up to `max_redirects` hops beyond the
+    cap before raising) is NOT used for enforcement (`handler.redirect_count` is retained for
+    observability only). This per-hop redirect-attempt debit is delivered by the NEW width-isolated
+    pair `064.030-T` (impl — moves the debit into `redirect_request`) / `064.029-T` (harness — proves
+    debit-on-follow placement, no-debit-on-reject, and attempt-breach-before-I/O); the boundary debit
+    for direct outbound calls is delivered by `064.026-T` (harness `064.025-T`). The allowance rides the SAME request-scoped
     budget object (`RemainingByteBudget`) that `064.017-T`/`064.024-T` already thread through every
     `fetch_page` call, and because the abort subclasses `AggregateBudgetExceededError` the four existing
     `except AggregateBudgetExceededError: raise` clauses in `crawl.py` propagate it out of `crawl()` —
@@ -696,9 +740,10 @@ Security/reliability guardrails promoted to blocking design constraints after pl
     discovery issues `_discover_toc_links` `fetch_page` calls that each debit the budget; (iii)
     **retries** — transient failures make `_fetch_with_retries` issue multiple `fetch_page` calls per
     pop, each debiting at the boundary (robots/TOC/retries proven by `064.025-T`); (iv) **redirects** —
-    responses that redirect make the shared `_ValidatingRedirectHandler` debit one attempt per hop
-    BEFORE following it (pre-I/O), from the same request-scoped budget (proven by the redirect-drain
-    harness `064.027-T`, alongside the intermediate-body byte decrement). Assert that a crawl whose
+    responses that redirect make the shared `_ValidatingRedirectHandler` debit one attempt per FOLLOWED
+    hop in `redirect_request` (after validation, before outbound I/O), from the same request-scoped
+    budget, while a rejected redirect consumes no attempt (proven by the redirect-hop attempt-debit
+    placement harness `064.029-T`). Assert that a crawl whose
     emitted `page_count` stays below `max_pages` but whose robots/TOC/retry/redirect outbound traffic
     is high still trips `MAX_FETCH_ATTEMPTS` and RAISES; plus an over-limit `depth` (`>= MAX_DEPTH_LIMIT + 1`) rejected at
     model validation AND a request OMITTING `depth` still validating (depth defaults to 0).
@@ -792,24 +837,26 @@ Security/reliability guardrails promoted to blocking design constraints after pl
   The **request-amplification bound** (§H7 item 4 — the request-scoped fetch-attempt budget
   `MAX_FETCH_ATTEMPTS = 4000` on the shared `RemainingByteBudget`, debited pre-I/O at the common
   `fetch_page` boundary in `fetch/http.py` for every DIRECT outbound request (main pages, robots, TOC,
-  retries) and per redirect hop inside the shared `_ValidatingRedirectHandler` before each hop is
-  followed, plus the `FetchRequest.depth` upper bound `MAX_DEPTH_LIMIT = 64` in `app_models.py`) is a
+  retries) and per redirect hop inside the shared `_ValidatingRedirectHandler` in `redirect_request`
+  after validation (before each hop is followed), plus the `FetchRequest.depth` upper bound
+  `MAX_DEPTH_LIMIT = 64` in `app_models.py`) is a
   distinct request-COUNT dimension (not byte VOLUME): the boundary debit is delivered by harness
-  `064.025-T` + impl `064.026-T`, and the redirect-hop debit is delivered alongside the
-  intermediate-body byte decrement by harness `064.027-T` + impl `064.028-T`
-  (`fetch/http.py` / `app_models.py`, cycle-8 split, mechanism reworked cycle-11 — see
-  `## Plan Review Remediation` cycle-8 and cycle-11). The attempt allowance rides the SAME
+  `064.025-T` + impl `064.026-T`, and the redirect-hop debit is delivered by harness `064.029-T` +
+  impl `064.030-T` (`fetch/http.py`, cycle-8 split, mechanism reworked cycle-11, redirect-hop
+  placement decomposed cycle-12 — see
+  `## Plan Review Remediation` cycle-8, cycle-11, and cycle-12). The attempt allowance rides the SAME
   request-scoped budget object (`RemainingByteBudget`) that `064.017-T`/`064.024-T` already thread
   through every `fetch_page` call, and the abort (`FetchAttemptBudgetExceededError`) subclasses
   `AggregateBudgetExceededError`, so the four existing `crawl.py` re-raise clauses propagate it with
   NO new `fetch/crawl.py` edit — keeping `064.026-T` at 2 files (`fetch/http.py` + `app_models.py`).
-  The **intermediate-redirect-body drain** (§H7 item 2, cycle-10 — extend the EXISTING single
+  The **intermediate-redirect-body drain + closure** (§H7 item 2, cycle-10 + cycle-12 — extend the EXISTING single
   `_ValidatingRedirectHandler` (with all `http_error_301/302/303/307/308` aliases rebound) so its
   bounded proxy reads/counts each intermediate 3xx body against the SAME per-response
   `MAX_RESPONSE_BYTES` cap AND the request-scoped `MAX_TOTAL_FETCH_BYTES` budget, closing urllib's
-  in-handler unbounded `fp.read()` bypass — ONE composite handler, not a second) is
-  delivered by harness `064.027-T` + impl `064.028-T` (`fetch/http.py`, cycle-10 split — see
-  `## Plan Review Remediation` cycle-10). It reuses the existing `MAX_RESPONSE_BYTES` cap
+  in-handler unbounded `fp.read()` bypass, AND closes the intermediate `fp` on both cap-breach paths —
+  ONE composite handler, not a second) is
+  delivered by harness `064.027-T` + impl `064.028-T` (`fetch/http.py`, cycle-10 split, closure added
+  cycle-12 — see `## Plan Review Remediation` cycle-10 and cycle-12). It reuses the existing `MAX_RESPONSE_BYTES` cap
   (`064.013-T`) and the request-scoped budget (`064.017-T`/`064.024-T`) — no new numeric constant —
   and is split from `064.013-T`/`064.017-T` because a custom redirect handler + opener wiring is
   additional width and the intermediate drain must decrement the aggregate budget that only exists
@@ -820,7 +867,7 @@ Security/reliability guardrails promoted to blocking design constraints after pl
   crawl exceeding the aggregate budget (aborted) are asserted in the MCP boundary
   harness `064.014-T`; the request-amplification depth over-limit (`-32602`) and outbound-attempt
   budget (direct-request debits at the `fetch_page` boundary proven in `064.025-T`; the redirect-hop
-  per-hop debit proven in `064.027-T`) are proven at the unit level (keeping `064.014-T` within its 3-scenario budget).
+  per-hop debit placement proven in `064.029-T`) are proven at the unit level (keeping `064.014-T` within its 3-scenario budget).
   Caps are set high enough not to break legitimate CLI crawls; the existing
   fetch suite must remain green (or be deliberately updated for the new bound).
 
@@ -986,8 +1033,9 @@ Backlog IDs are shown in brackets. All MCP-transport harness tasks author into
    (`_discover_toc_links` `fetch_page` calls debit the budget at the boundary), and **retries**
    (`_fetch_with_retries` issues multiple `fetch_page` calls per pop, each debiting one at the
    boundary) — a crawl whose emitted `page_count` stays low but whose robots/TOC/retry traffic is high
-   still trips the cap and RAISES (the **redirect-hop** attempt debit — one per hop inside the shared
-   redirect handler, pre-next-hop — is proven by `064.027-T`, not here); (2)
+   still trips the cap and RAISES (the **redirect-hop** attempt debit — one per followed hop inside the
+   shared redirect handler's `redirect_request`, after validation — is proven by `064.029-T`, not
+   here); (2)
    `FetchRequest.depth >= MAX_DEPTH_LIMIT + 1` (`>= 65`) is rejected at model validation (`-32602`),
    AND a request OMITTING `depth` still validates (defaults to 0). This is a distinct dimension from
    the byte caps (T-cap/T-agg), so it stays
@@ -1001,9 +1049,9 @@ Backlog IDs are shown in brackets. All MCP-transport harness tasks author into
    subclass of `AggregateBudgetExceededError`, so the four existing `crawl.py` re-raise clauses
    propagate it — no `fetch/crawl.py` edit) when a debit would cross the cap (the first 4000 debits
    succeed; the crossing debit is refused before its outbound I/O). Redirect-hop attempt debits are NOT owned here:
-   they live inside the shared `_ValidatingRedirectHandler` (one per hop, pre-next-hop) and are
-   delivered by `064.028-T`, which already threads the same budget into that handler for its byte
-   decrement; (b) `app_models.py` bounds `FetchRequest.depth` with
+   they live inside the shared `_ValidatingRedirectHandler.redirect_request` (one per followed hop, after
+   validation, before outbound I/O) and are delivered by `064.030-T` (harness `064.029-T`), which reuses the
+   same budget `064.028-T` threads into that handler for its byte decrement; (b) `app_models.py` bounds `FetchRequest.depth` with
    `Field(default=0, ge=0, le=64)` (`MAX_DEPTH_LIMIT`; the `default=0` is preserved so `depth` stays
    optional). The mechanism moved from a `fetch/crawl.py` frontier-pop counter (cycle-8, REJECTED) to
    the `fetch_page` boundary (cycle-11) so robots/TOC/retries/redirects — all real outbound requests —
@@ -1011,27 +1059,29 @@ Backlog IDs are shown in brackets. All MCP-transport harness tasks author into
    `app_models.py` while staying at 2 files (threading + abort-propagation reused from 064.017-T/064.024-T).
    Turns T-amp-h green. Existing fetch suite stays green (bounds sized 4× the page cap / 64-deep;
    attempt allowance unbounded for a standalone single fetch). Depends on T-amp-h.
-10e. T-redir-h [064.027-T] — Intermediate-redirect-body drain harness (tests domain, 3 scenarios).
-   Author the failing harness for the redirect-body vector (§H7 item 2, cycle-10): via a fake
-   transport returning a controllable chain of 3xx responses with intermediate bodies of known raw
-   byte lengths, assert (a) an intermediate 3xx body exceeding `MAX_RESPONSE_BYTES` (10 MiB) is
+10e. T-redir-h [064.027-T] — Intermediate-redirect-body drain + closure harness (tests domain, 3 scenarios).
+   Author the failing harness for the redirect-body vector (§H7 item 2, cycle-10 + cycle-12 closure):
+   via a fake transport returning a controllable chain of 3xx responses with intermediate bodies of
+   known raw byte lengths (and an instrumented `fp` recording read sizes AND `.close()` calls), assert
+   (a) an intermediate 3xx body exceeding `MAX_RESPONSE_BYTES` (10 MiB) is
    aborted without full buffering (over-read ≤ `MAX_RESPONSE_BYTES + 1`, each read
    `min(CHUNK_SIZE, remaining + 1)`), **parametrized over all five redirect codes
-   301/302/303/307/308** (rows, not new scenarios — proving the alias rebind); (b) with the
+   301/302/303/307/308** (rows, not new scenarios — proving the alias rebind), AND the intermediate
+   `fp` is CLOSED when the per-response cap error propagates (cycle-12 Finding A: the mid-read raise
+   must not leak the intermediate connection); (b) with the
    request-scoped budget seeded low / pre-consumed (urllib's default `max_redirects = 5` makes a
    single under-cap chain unable to reach 512 MiB, so the harness proves the decrement/cross-remaining
    behavior hermetically), an intermediate 3xx body crossing the remaining `MAX_TOTAL_FETCH_BYTES`
    allowance is aborted mid-drain (each intermediate body decrements the SAME budget while
-   redirecting; `crawl()` RAISES `AggregateBudgetExceededError`) — AND, on the SAME request-scoped
-   budget, each redirect hop also debits ONE `MAX_FETCH_ATTEMPTS` fetch-attempt before the next hop is
-   followed (pre-I/O), so a chain that would cross `MAX_FETCH_ATTEMPTS` is refused with
-   `FetchAttemptBudgetExceededError` before the crossing hop's I/O (the redirect-hop half of §H7
-   item 4a — added as an assertion on this scenario, not a new scenario; `handler.redirect_count` is
-   observability-only); (c) a redirect chain within both
-   allowances still follows to its final response AND the §H6 revalidation + count still run. Verify
-   red (urllib currently drains intermediate bodies with an unbounded `fp.read()`) [green@T-redir-i].
+   redirecting; `crawl()` RAISES `AggregateBudgetExceededError`), AND the intermediate `fp` is CLOSED
+   when the aggregate cap error propagates (cycle-12 Finding A — the aggregate-breach path must not
+   leak either); (c) a redirect chain within both
+   allowances still follows to its final response AND the §H6 revalidation + count still run. The
+   redirect-HOP `MAX_FETCH_ATTEMPTS` debit is NO LONGER asserted here — it is decomposed into T-redir-attr-h
+   [064.029-T]. Verify red (urllib currently drains intermediate bodies with an unbounded `fp.read()`
+   and never closes on a mid-read raise) [green@T-redir-i].
    Depends on T-amp-i.
-10f. T-redir-i [064.028-T] — Bounded-draining redirect handler impl (code domain, ≤1 file:
+10f. T-redir-i [064.028-T] — Bounded-draining + closing redirect handler impl (code domain, ≤1 file:
    `fetch/http.py`). EXTEND the EXISTING single `_ValidatingRedirectHandler` (not a second handler —
    `OpenerDirector` would run only the first redirect handler that returns a response) with an
    `http_error_302` override, and rebind all aliases
@@ -1040,19 +1090,53 @@ Backlog IDs are shown in brackets. All MCP-transport harness tasks author into
    `min(CHUNK_SIZE, per_response_remainder + 1, aggregate_remainder + 1)`), counting actual bytes and
    decrementing BOTH a fresh per-response `MAX_RESPONSE_BYTES` allowance (reset per hop) AND the
    request-scoped `RemainingByteBudget` (passed into `_ValidatingRedirectHandler.__init__` at
-   `http.py:119`; when threaded), raising the typed cap error mid-drain on breach, AND debiting ONE
-   fetch-attempt from that same `RemainingByteBudget` `MAX_FETCH_ATTEMPTS` allowance (seeded by
-   `064.026-T`) per hop BEFORE delegating to `super()` — i.e. before the next hop is followed — raising
-   `FetchAttemptBudgetExceededError` on breach (the redirect-hop half of §H7 item-4a, co-located with
-   the byte decrement; `handler.redirect_count` observability-only), while preserving
+   `http.py:119`; when threaded), raising the typed cap error mid-drain on breach, AND — cycle-12
+   Finding A — CLOSING the real intermediate `fp` before that error propagates on BOTH breach paths
+   (wrap the `super()` delegation in `except (per-response cap error, AggregateBudgetExceededError): fp.close(); raise`;
+   because `FetchAttemptBudgetExceededError` subclasses `AggregateBudgetExceededError`, this same guard
+   also releases `fp` when T-redir-attr-i's `redirect_request` attempt debit raises), while preserving
    the redirect (wrap the intermediate `fp` in a bounded proxy and delegate to
    `super().http_error_302(...)` so the existing `redirect_request` §H6 revalidation + `max_redirects`
-   count and the stdlib Location/loop/scheme logic are unchanged).
+   count and the stdlib Location/loop/scheme logic are unchanged). The redirect-HOP attempt debit is
+   NO LONGER placed here — it moves to T-redir-attr-i [064.030-T]'s `redirect_request`.
    Reuses `MAX_RESPONSE_BYTES` (T-cap-i) + `RemainingByteBudget`/`AggregateBudgetExceededError`
    (T-agg-i/T-agg-aux) — no new constant, no `app_models.py`/`crawl.py` change. Because the single
    validating handler is on the shared opener, main + retry + ancillary fetches are all covered. Turns
    T-redir-h green. Existing fetch suite stays green (small/empty legitimate 3xx bodies drain and
    follow normally). Depends on T-redir-h.
+10g. T-redir-attr-h [064.029-T] — Redirect-hop fetch-attempt-debit placement harness (tests domain, 2 scenarios).
+   Author the failing harness for the redirect-hop attempt-accounting PLACEMENT (§H7 item 4a, cycle-12
+   Finding B): via a fake transport driving a controllable redirect chain whose newurl targets can be
+   selectively made policy/scheme/loop-INVALID or VALID, and an instrumented `RemainingByteBudget`
+   recording each attempt debit with ordering, assert (1) each FOLLOWED hop debits EXACTLY ONE
+   `MAX_FETCH_ATTEMPTS` attempt INSIDE `redirect_request` on the non-None-return path — after stdlib
+   scheme/loop validation AND §H6 revalidation, before the hop's outbound I/O (`parent.open()`) — AND
+   a redirect REJECTED by validation (`redirect_request` returns `None` or raises) debits NOTHING (the
+   core Finding-B assertion: the correct `redirect_request` placement vs the rejected
+   `http_error_302`-before-`super()` placement under which a rejected redirect would wrongly consume an
+   attempt); (2) a chain whose followed hops would cross `MAX_FETCH_ATTEMPTS` is refused with
+   `FetchAttemptBudgetExceededError` (subclass of `AggregateBudgetExceededError`, propagated out of
+   `crawl()` by the existing re-raise clauses) BEFORE the crossing hop's outbound I/O, and the
+   intermediate `fp` is closed (via T-redir-i's closure guard); `handler.redirect_count` stays
+   observability-only. Verify red (the debit is currently in `http_error_302` before `super()`, so
+   rejected redirects still debit and the placement/ordering assertions fail) [green@T-redir-attr-i].
+   Depends on T-redir-i.
+10h. T-redir-attr-i [064.030-T] — Redirect-hop fetch-attempt debit in `redirect_request` impl (code domain, ≤1 file:
+   `fetch/http.py`). MOVE the per-hop `MAX_FETCH_ATTEMPTS` attempt debit OUT of the `http_error_302`
+   override (the rejected cycle-11 placement, which debited before `super()` and charged an attempt
+   even for redirects that scheme/loop/§H6 validation REJECTS before `parent.open()`) and INTO
+   `_ValidatingRedirectHandler.redirect_request`, debiting exactly ONCE immediately before returning a
+   non-None `Request` — after the stdlib `super().redirect_request` build AND the §H6 address-pinned
+   revalidation, before the hop's outbound I/O. A redirect that `redirect_request` rejects (`None`
+   return) or that §H6 revalidation rejects (raises) consumes NO attempt. Raises
+   `FetchAttemptBudgetExceededError` from inside `redirect_request` on breach (before returning the
+   `Request`); the existing `crawl.py` re-raise clauses propagate it (no `crawl.py` edit). The
+   intermediate-`fp` closure on this attempt-breach path is provided by T-redir-i's `http_error_302`
+   closure guard (no duplicate close logic). Reuses the `MAX_FETCH_ATTEMPTS` allowance seeded by
+   `064.026-T` and threaded into the handler by `064.028-T` — no new constant, no new file, no
+   `app_models.py`/`crawl.py` change. `handler.redirect_count` observability-only. Turns T-redir-attr-h
+   green. Existing fetch suite stays green (attempt allowance unbounded for a standalone single fetch).
+   Depends on T-redir-attr-h.
 11. T-e2e [064.014-T] — MCP untrusted-fetch end-to-end boundary harness (tests domain,
     3 scenarios). Through `tools/call` fetch (stdin JSON → dispatch → `server.fetch` →
     `execute_fetch`): (a) a public hostname resolving to loopback/private is rejected end-to-end
@@ -1061,12 +1145,12 @@ Backlog IDs are shown in brackets. All MCP-transport harness tasks author into
     post-redirect response AND every intermediate 3xx redirect body) OR a crawl
     exceeding the aggregate `MAX_TOTAL_FETCH_BYTES` = 512 MiB budget is aborted
     end-to-end (§H7). Authored red (no dispatch loop yet). The shared-fetch guards (T-ssrf-i,
-    T-cap-i, T-agg-i, T-agg-aux, T-amp-i, T-redir-i) already enforce in `execute_fetch`, so once the dispatch loop routes
+    T-cap-i, T-agg-i, T-agg-aux, T-amp-i, T-redir-i, T-redir-attr-i) already enforce in `execute_fetch`, so once the dispatch loop routes
     `server.fetch` these all go green at **T2** — no separate boundary wiring is required. The
-    request-amplification bound (§H7 item 4) is proven at the unit level in T-amp-h, keeping this
+    request-amplification bound (§H7 item 4) is proven at the unit level in T-amp-h and T-redir-attr-h, keeping this
     harness within its 3-scenario budget. Depends
-    on T-redir-i (the full aggregate budget, the request-amplification bound, and the
-    intermediate-redirect-body drain are in place).
+    on T-redir-attr-i (the full aggregate budget, the request-amplification bound across direct calls AND
+    redirect hops, the intermediate-redirect-body drain, and intermediate-response closure are all in place).
 12. T-adapter [064.015-T] — Adapter callable surface + identity accessor (code domain, ≤2 files:
     `src/docline/mcp/server.py` + optionally a versions constant).
     Implement `DoclineMcpServer.call_tool(name, arguments)` (static `{name: adapter_callable}`
@@ -1230,11 +1314,12 @@ Backlog IDs are shown in brackets. All MCP-transport harness tasks author into
 
 Dependency edges: T1b→T1, T1c→T1b, T1d→T1c, T-ssrf-h→T1d, T-ssrf-i→T-ssrf-h, T-cap-h→T-ssrf-i,
 T-cap-i→T-cap-h, T-agg-h→T-cap-i, T-agg-i→T-agg-h, T-agg-aux→T-agg-i, T-amp-h→T-agg-aux,
-T-amp-i→T-amp-h, T-redir-h→T-amp-i, T-redir-i→T-redir-h, T-e2e→T-redir-i, T-adapter→T-e2e,
+T-amp-i→T-amp-h, T-redir-h→T-amp-i, T-redir-i→T-redir-h, T-redir-attr-h→T-redir-i,
+T-redir-attr-i→T-redir-attr-h, T-e2e→T-redir-attr-i, T-adapter→T-e2e,
 T-desc-h→T-adapter, T-desc-i→T-desc-h, T2→T-desc-i, T2s→T2, T-era-h1→T2s, T-era-h2→T-era-h1,
 T-era-i1→T-era-h2, T-era-i2→T-era-i1, T2b→T-era-i2, T3→T2b, T4→T3.
 Execution order: 064.001 → 064.005 → 064.006 → 064.007 → 064.010 → 064.011 → 064.012 → 064.013 →
-064.016 → 064.017 → 064.024 → 064.025 → 064.026 → 064.027 → 064.028 → 064.014 → 064.015 → 064.018 → 064.019 → 064.002 → 064.009 → 064.020 →
+064.016 → 064.017 → 064.024 → 064.025 → 064.026 → 064.027 → 064.028 → 064.029 → 064.030 → 064.014 → 064.015 → 064.018 → 064.019 → 064.002 → 064.009 → 064.020 →
 064.021 → 064.022 → 064.023 → 064.008 → 064.003 → 064.004.
 
 ## Verification
@@ -2069,7 +2154,90 @@ clauses (`064.025-T`/`064.026-T` re-scoped in place, still 2 files, chain/member
 `server/discover` is no longer exempt from `_meta` validation and is validated identically to every
 modern request while remaining answerable pre-`initialize`. Both fixes are in-place (no new task,
 manifest stays 28), the chain stays a single linear acyclic test-first chain, and no
-2-hour/width/scenario/function budget is breached. All P1 findings closed.
+2-hour/width/scenario/function budget is breached. All P1 findings closed. (Superseded in part by
+cycle-12: the cycle-11 redirect-hop debit placement "inside `http_error_302` before `super()`" is
+corrected below to `redirect_request` after validation; the ownership moves from `064.028-T`/`064.027-T`
+to the new pair `064.030-T`/`064.029-T`.)
+
+### Cycle-12 review remediation (PR #166, fresh Copilot review on HEAD `13b14b7`, Copilot round 3)
+
+Cycle-12 routes two redirect residuals from the Copilot round-3 review through a **full Stage
+decomposition** — not an in-place fix — per operator directive. The redirect hardening previously
+entangled TWO responsibilities in the `064.027-T`/`064.028-T` pair (intermediate-body byte drain AND
+redirect-hop attempt accounting); cycle-12 splits them into TWO width-isolated test-first pairs and
+adds the missing resource-closure guarantee. The manifest grows **28 → 30 tasks** (a NEW pair
+`064.029-T`/`064.030-T`); the chain gains `064.026 → 064.027 → 064.028 → 064.029 → 064.030 → 064.014`,
+with `064.014-T` re-pointed from `064.028-T` to `064.030-T`; shipment `055-S` = 064-F + 30 tasks (31
+members). Reconciled across plan (intro cycle list, §H7 item 2, §H7 item 4a, "Cap tasks",
+decomposition 10e/10f/10g/10h, dependency edges, execution order, Verification, Rollback, SA-1, Risks),
+feature DoD, tasks `064.014-T`/`064.025-T`/`064.026-T`/`064.027-T`/`064.028-T`/`064.029-T`/`064.030-T`,
+shipment `055-S`, and continuity memory, preserving dependency acyclicity and every
+2-hour/width/scenario/function budget.
+
+- **Bounded redirect-body proxy leaks the intermediate response `fp` on a cap-breach mid-read
+  (Finding A, `064.028-T`).** The cycle-10 override wraps the intermediate `fp` in a bounded proxy and
+  delegates to `super().http_error_302(...)`. CPython's `HTTPRedirectHandler.http_error_302` reads the
+  `fp` and only calls `fp.close()` AFTER a completed `fp.read()`; when the proxy raises a per-response
+  OR aggregate cap error MID-STREAM, that `fp.close()` is never reached, so the underlying intermediate
+  3xx response `fp` — a live socket/connection — LEAKS (a slow-drip resource-exhaustion residual under
+  a hostile redirect chain that repeatedly trips the cap). **Resolution:** the override MUST CLOSE the
+  real intermediate `fp` before the typed cap error propagates, on BOTH breach paths — wrap the
+  `super()` delegation in `except (per-response cap error, AggregateBudgetExceededError): fp.close(); raise`.
+  Because `FetchAttemptBudgetExceededError` subclasses `AggregateBudgetExceededError`, this SAME guard
+  also releases `fp` when the redirect-hop attempt debit (Finding B) raises from `redirect_request`, so
+  closure holds across all typed budget/cap breaches without duplicate close logic (`fp.close()` is
+  idempotent). Delivered by re-scoped `064.027-T` (harness — adds fp-closure assertions on the
+  per-response and aggregate breach scenarios via an instrumented `fp` recording `.close()`) /
+  `064.028-T` (impl — adds the closure guard; the attempt debit is removed from `http_error_302`).
+  Scenario budgets unchanged (closure folded as assertions on the existing two cap scenarios).
+- **Redirect-hop attempt debit is placed too early — in `http_error_302` before `super()` (Finding B,
+  plan §H7 item 4a redirect-hop clause).** The cycle-11 mechanism debited one `MAX_FETCH_ATTEMPTS`
+  attempt inside the `http_error_302` override BEFORE delegating to `super()`. But `super()` performs
+  Location resolution, the scheme check, loop detection, and calls `redirect_request` (which also runs
+  the §H6 address-pinned revalidation) — ANY of which can REJECT the redirect before `parent.open()`
+  (the outbound I/O). Debiting before `super()` therefore charges a fetch-attempt even for redirects
+  that policy/scheme/loop validation REJECTS (no outbound request occurs), corrupting the request-COUNT
+  accounting and prematurely exhausting the budget on rejected hops. **Resolution:** the debit MOVES
+  into `_ValidatingRedirectHandler.redirect_request`, debiting exactly once immediately BEFORE it
+  returns a non-None `Request` — after the stdlib `super().redirect_request` build AND the §H6
+  revalidation, before the hop's outbound I/O. Because `redirect_request` returns a non-None `Request`
+  if-and-only-if the redirect will actually be followed, an attempt is charged only for a FOLLOWED hop;
+  a redirect rejected by stdlib (`None` return) or §H6 revalidation (raises) consumes NO attempt.
+  `FetchAttemptBudgetExceededError` is raised from inside `redirect_request` on breach (before
+  returning the `Request`, so pre-I/O) and propagated by the existing `crawl.py` re-raise clauses (no
+  `crawl.py` edit); `handler.redirect_count` stays observability-only. Delivered by a NEW
+  width-isolated pair — harness **`064.029-T`** (T-redir-attr-h, tests domain, 2 scenarios:
+  debit-on-follow placement incl. no-debit-on-reject; attempt-breach-refused-before-outbound-I/O) and
+  impl **`064.030-T`** (T-redir-attr-i, code domain, ≤1 file `fetch/http.py` — moves the debit, reuses
+  the `MAX_FETCH_ATTEMPTS` allowance seeded by `064.026-T` and threaded into the handler by
+  `064.028-T`, no new constant). Depends on `064.028-T` (the handler already receives the budget and
+  the closure guard is in place); `064.014-T` is re-pointed onto `064.030-T`.
+
+Internal multi-persona adversarial re-review (Python urllib lifecycle / resource ownership; precise
+attempt accounting; testability; task sizing; dependency order; rollback; dual CLI/MCP impact), run
+against the CPython `urllib.request` source, returned an initial FAIL that surfaced six corrections,
+ALL folded into the artifacts above before commit: (i) the debit cannot be "after loop validation"
+(loop detection runs AFTER `redirect_request`) — reworded to "after the scheme check and §H6
+revalidation" everywhere; (ii) the `064.029-T` red baseline was self-contradictory — after `064.028-T`
+there is NO redirect-hop debit, so debit-on-follow + attempt-breach are the red-first scenarios and
+no-debit-on-reject rows are regression anchors; (iii) the closure guard is scoped to Finding A's two
+cap failures (+ the subclassed attempt breach), not over-claimed for every exit (stdlib scheme/loop
+`HTTPError` carries its own `fp` per contract — the documented residual); (iv) the loop-detection AND
+body-drain-breach over-counts are re-characterized as CONSERVATIVE (never UNDER-count a followed hop,
+so the DoS upper bound holds), with the deliberate `redirect_request`-over-proxy-`close()` choice made
+explicit for width-isolation; (v) the `064.029-T` attempt-breach scenario now seeds the allowance near
+`MAX_FETCH_ATTEMPTS - 1`; (vi) rollback within the redirect cluster is reverse-topological / atomic.
+Post-reconciliation the review confirmed: (1) stdlib `http_error_302` orders `redirect_request`
+(→ attempt debit) BEFORE `fp.read()`/`fp.close()` (→ body drain) BEFORE `parent.open()` (→ outbound
+I/O), so the Finding-B debit is correctly "after validation, before outbound I/O", and the Finding-A
+closure guard in `http_error_302` wraps the whole delegation and thus also covers the attempt-breach
+raise; (2) `fp.close()` is idempotent on `http.client` responses, so the guard cannot double-free; (3)
+a redirect rejected by the scheme check or by §H6/stdlib `redirect_request` reaches no debit
+(debit at the end, before `return new_request`), satisfying no-debit-on-reject; (4) both new tasks are
+single-domain (tests `064.029`, code `064.030`), <2h, and the chain stays a single linear acyclic
+test-first chain (`… → 064.028 → 064.029 → 064.030 → 064.014 → …`, 30 tasks); (5) rollback is
+reverse-topological within the shared `fetch/http.py` cluster with cross-interface (CLI + MCP) blast
+radius unchanged. All P1 findings closed; no budget breached.
 
 ## Rollback
 
@@ -2094,20 +2262,25 @@ existing files whose behavior changes for both interfaces:
   aborting mid-read. Additive field +
   threaded budget; also affects CLI crawls.
 - `src/docline/fetch/http.py` + `src/docline/app_models.py` — request-amplification bound (§H7
-  item 4, cycle-8; mechanism reworked cycle-11): `fetch_page` seeds a per-request fetch-attempt
-  allowance on the shared request-scoped budget and debits it on every outbound request AND every
-  redirect hop — so main pages, robots, TOC, retries, and redirects all count — RAISING
+  item 4, cycle-8; mechanism reworked cycle-11; redirect-hop placement decomposed cycle-12):
+  `fetch_page` seeds a per-request fetch-attempt
+  allowance on the shared request-scoped budget and debits it on every direct outbound request (main
+  pages, robots, TOC, retries; 064.025/064.026) AND on every FOLLOWED redirect hop in
+  `_ValidatingRedirectHandler.redirect_request` after validation (064.029/064.030) — RAISING
   `FetchAttemptBudgetExceededError` (a `DoclineError` subclass of `AggregateBudgetExceededError`)
   once attempts would exceed `MAX_FETCH_ATTEMPTS = 4000`, and `FetchRequest.depth`
     gains a hard `Field(default=0, ge=0, le=64)` upper bound (`MAX_DEPTH_LIMIT`; default preserved),
     rejecting over-limit depth `-32602`
     (064.025/064.026). Tightens accepted request COUNT on the shared path; also affects CLI crawls.
-- `src/docline/fetch/http.py` — intermediate-redirect-body drain (§H7 item 2, cycle-10): the
+- `src/docline/fetch/http.py` — intermediate-redirect-body drain + closure (§H7 item 2, cycle-10 +
+  cycle-12): the
   existing single `_ValidatingRedirectHandler` is extended (with all redirect-code aliases rebound)
   so its bounded proxy reads/counts each intermediate 3xx redirect body against the per-response
   `MAX_RESPONSE_BYTES` cap and the request-scoped aggregate budget, replacing urllib's in-handler
-  unbounded `fp.read()` (064.027/064.028). ONE composite handler; reuses existing caps (no new
-  constant); closes the redirect bypass of both byte budgets. Also affects CLI fetch (a hostile
+  unbounded `fp.read()`, AND closes the intermediate `fp` on both cap-breach paths
+  (064.027/064.028). ONE composite handler; reuses existing caps (no new
+  constant); closes the redirect bypass of both byte budgets and the intermediate-connection leak.
+  Also affects CLI fetch (a hostile
   redirect chain that previously drained now aborts).
 - `src/docline/app.py` — `get_manifest()` `fetch` description literal corrected to HTTP(S)-only
   (re-exposed unchanged by `get_mcp_manifest()`) (064.019, cycle-3). Text-only advertising change;
@@ -2126,8 +2299,13 @@ prior (weaker) SSRF/resource behavior on BOTH interfaces — reviewers must trea
 cross-interface change, not an isolated new transport. The MCP-only additions (stdio loop, dual-era
 protocol surface, adapter callable surface, entry point) can be reverted independently of the
 shared-fetch hardening if only the transport needs backing out; the shared-fetch tasks
-(064.010–064.013, 064.016–064.017, 064.024, 064.025–064.026, 064.027–064.028) and the `fetch`-advertising correction (064.019) are
-self-contained and revertible on their own.
+(064.010–064.013, 064.016–064.017, 064.024, 064.025–064.026, 064.027–064.028, 064.029–064.030) and the `fetch`-advertising correction (064.019) are
+self-contained and revertible on their own. Within the shared-fetch cluster, reverts must proceed in
+reverse-dependency (reverse-topological) order — e.g. `064.030-T` (redirect-hop attempt debit) reverts
+independently, but `064.028-T` (which threads the budget into the handler and provides the closure
+guard) and `064.026-T` (which seeds the `MAX_FETCH_ATTEMPTS` allowance) must NOT be reverted while
+`064.030-T` remains; treat the redirect cluster (`064.027`–`064.030`) as an atomic rollback unit when
+in doubt.
 
 ## Strict-Safety Action Records
 
@@ -2152,12 +2330,14 @@ forward into build, review, runtime verification, and closure.
   (`MAX_FETCH_ATTEMPTS` = 4000 outbound-fetch-attempt budget at the `fetch_page` boundary +
   `MAX_DEPTH_LIMIT` = 64 depth upper bound, §H7 item 4), and an extension of the existing
   `_ValidatingRedirectHandler` (all redirect-code aliases rebound) that bounded-reads/counts every
-  intermediate 3xx redirect body against the same per-response and aggregate allowances (§H7 item 2,
-  closing urllib's in-handler unbounded `fp.read()` bypass). This tightens accepted inputs on an existing runtime path shared by CLI `docline fetch`
+  intermediate 3xx redirect body against the same per-response and aggregate allowances AND closes the
+  intermediate `fp` on cap breach (§H7 item 2 + cycle-12 closure,
+  closing urllib's in-handler unbounded `fp.read()` bypass and its connection leak), plus a redirect-hop
+  fetch-attempt debit placed in `redirect_request` after validation (§H7 item 4a, cycle-12). This tightens accepted inputs on an existing runtime path shared by CLI `docline fetch`
   and the MCP `fetch` tool.
 - **targets:** `src/docline/fetch/url_policy.py`, `src/docline/fetch/http.py`,
   `src/docline/fetch/crawl.py`, `src/docline/app_models.py`. Delivered by tasks 064.010–064.013,
-  064.016–064.017, 064.024, 064.025–064.026, 064.027–064.028.
+  064.016–064.017, 064.024, 064.025–064.026, 064.027–064.028, 064.029–064.030.
 - **change_kind:** shared-code security / behavior change (NOT purely additive) — cross-interface
   blast radius.
 - **rollback / containment:** self-contained and revertible per shared-fetch task (see `## Rollback`);
@@ -2223,10 +2403,25 @@ forward into build, review, runtime verification, and closure.
   existing `redirect_request` (§H6 revalidation + `max_redirects` count) and the stdlib
   Location/loop/scheme logic are preserved, by rebinding all `http_error_301/302/303/307/308` aliases
   to the bounded override, and by a redirect-still-follows scenario (064.027-T) proving legitimate
-  redirects are not broken. Residual (out of scope, cycle-10):
+  redirects are not broken. Resource-ownership (cycle-12, Finding A): because the bounded proxy raises
+  a cap error MID-READ inside stdlib `http_error_302`, stdlib's own `fp.close()` (which runs only after
+  a completed read) is skipped and the intermediate response `fp` would leak; mitigated by a closure
+  guard in the override that closes the real `fp` on both cap-breach paths before re-raising
+  (064.028-T; asserted by 064.027-T's fp-closure assertions). Residual (out of scope, cycle-10):
   the stdlib loop-detection/disallowed-scheme paths raise `HTTPError` holding an unread `fp`; those
   are bounded by `max_redirects` (default 5) and terminate the fetch, so they are not a new
   amplification vector — noted for monitoring, not a blocker.
+- Low: redirect-hop fetch-attempt accounting (§H7 item 4a, cycle-12 Finding B) must debit only for
+  FOLLOWED hops; mitigated by placing the debit in `redirect_request` immediately before returning a
+  non-None `Request` (after the stdlib scheme check and §H6 revalidation, before outbound I/O),
+  so a redirect rejected by the scheme check or by §H6/stdlib `redirect_request` consumes no attempt —
+  proven by the no-debit-on-reject and placement/ordering assertions in 064.029-T (impl 064.030-T).
+  `handler.redirect_count` stays observability-only, never post-hoc enforcement. Bounded residual
+  (verified against the CPython source, not a blocker): the stdlib loop-detection check fires AFTER
+  `redirect_request` returns, so a loop-terminated hop over-counts by exactly one attempt before the
+  fetch ends via `HTTPError` — harmless (bounded by `max_redirects`, fetch terminating) and
+  unavoidable without reimplementing the stdlib method body; same residual class as the unread-`fp`
+  loop-detection note above.
 - Low: stdout contamination would corrupt the JSON-RPC stream — mitigated by routing all logs
   to stderr and asserting clean stdout framing in tests.
 - Low: manifest drift between CLI and MCP — mitigated by the T1 parity assertion against the
