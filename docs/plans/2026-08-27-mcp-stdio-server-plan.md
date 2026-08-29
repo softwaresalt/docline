@@ -43,7 +43,9 @@
   Cycle-9 (PR #166, fresh review on HEAD 546a256, round 3 of the second three-cycle allowance)
   reconciles two further threads: the JSON-RPC request-shape contract now validates the `id` type per
   MCP 2026-07-28 `RequestId` (a present `id` that is an object/array/bool/null → `-32600`, never
-  echoed, `id:null` frame; an absent id stays a notification), specified once in the shared
+  echoed, `id:null` frame; an absent id on an OTHERWISE-VALID request stays a notification, but an
+  absent id on a MALFORMED payload — non-object root, bad/missing `jsonrpc`, or missing/non-string
+  `method` — is a `-32600`/`id:null` error, NOT suppression), specified once in the shared
   pre-routing `dispatch()` guard and inherited by both eras (asserted for the legacy/shared path in
   064.005-T and for the modern path in 064.021-T scenario (c), implemented in 064.002-T with a
   shape-before-`_meta`/era ordering criterion in 064.022-T, + feature DoD),   and the two intended `informs`
@@ -91,7 +93,7 @@
   (064.029/030). The chain grows 28 → 30 tasks (`064.026 → 064.027 → 064.028 → 064.029 → 064.030 →
   064.014`, with `064.014-T` re-pointed from `064.028-T` to `064.030-T`); shipment `055-S` = 064-F + 30
   tasks (31 members).
-  See `## Plan Review Remediation` (cycle-3, cycle-4, cycle-5, cycle-6, cycle-7, cycle-8, cycle-9, cycle-10, cycle-11, and cycle-12 subsections).
+  See `## Plan Review Remediation` (cycle-3, cycle-4, cycle-5, cycle-6, cycle-7, cycle-8, cycle-9, cycle-10, cycle-11, and cycle-12 subsections), and the later `### Cycle-13`–`### Cycle-16` sections (post-decomposition cycles: §H8 gate, exact-token hardening, and the cycle-16 id-less-notification reconciliation + sitemap-CGNAT work item).
 - Cross-interface blast radius: this release unit is NOT purely additive. It hardens the
   **shared** fetch code (`fetch/url_policy.py`, `fetch/http.py`, `app_models.py`) that both
   the CLI and the MCP surface call, and it changes the existing `DoclineMcpServer` adapter's
@@ -255,26 +257,52 @@ criterion, not an advisory item.
     waits for the full chunk after a short frame, or a block-buffered stdout that withholds the
     response until the pipe closes, would live-lock that probe; an EOF-first test would mask it.
   - `dispatch(message: dict, server: DoclineMcpServer) -> dict | None` — pure function mapping a
-    single JSON-RPC request to a response dict (or `None` for any id-less notification —
-    handled generically, no per-notification special case). Unit-testable without stdio.
+    single JSON-RPC request to a response dict (or `None` ONLY for a well-formed request that lacks
+    an `id` — a genuine JSON-RPC notification; handled generically, no per-notification special case).
+    A malformed id-less payload — a non-object root, a bad/missing `jsonrpc`, or a missing/non-string/empty
+    `method` (e.g. `{"jsonrpc":"2.0"}` with no `method` and no `id`) — is NOT a notification: it
+    returns a `-32600` (`id:null`) envelope, never `None`. Unit-testable without stdio.
   - Request-shape validation (`-32600`): after a frame parses as JSON, the decoded value MUST be
     validated as a JSON-RPC 2.0 request object BEFORE method routing. A syntactically valid JSON
     payload that is not a valid request — a non-object root (array, string, number, bool, null),
-    a missing or non-`"2.0"` `jsonrpc` member, a missing/non-string `method`, or a present `id`
+    a missing or non-`"2.0"` `jsonrpc` member, a `method` that is not a present, non-empty string
+    (absent, non-string, or empty-string `""` — the SINGLE `method` predicate applied identically
+    by both the shape guard and the notification precondition below; a whitespace-only string is a
+    valid `method` and routes to `-32601`, not `-32600`), or a present `id`
     whose JSON type is not a string or number — returns an
     **Invalid Request** `-32600` envelope, distinct from the `-32700` parse error (invalid JSON)
     and `-32601` method-not-found (well-formed request, unknown method). Restoring `-32600` keeps
-    the advertised JSON-RPC 2.0 surface spec-compliant.
+    the advertised JSON-RPC 2.0 surface spec-compliant. The pre-suppression shape guard inspects ONLY
+    `{root, jsonrpc, method, id-type}`; `params` structural validation is POST-suppression and applies
+    only to id-bearing requests (mapped to `-32602`), so a no-id notification with malformed `params`
+    stays silent (JSON-RPC 2.0: "the Server MUST NOT reply to a Notification, including errors"), never
+    a spurious `-32600`. An ARRAY root is `-32600` (not a batch): MCP 2026-07-28 does NOT support
+    JSON-RPC batching (removed in the 2025-06-18 revision), so the transport reads one frame → one
+    Request object and a non-object array is an invalid single request → a single `-32600` (`id:null`),
+    never a per-element batch response.
     Per the MCP 2026-07-28 `RequestId` definition, a request `id`, when present, MUST be a JSON
     string or number; an `id` that is an object, array, boolean, or `null` is an invalid request
     (`-32600`) and MUST NOT be echoed back into the response — the error frame carries `id: null`.
-    An ABSENT `id` remains an id-less notification (silent, handled generically), distinct from a
+    Response-`id` rule (JSON-RPC 2.0): a `-32600` carries `id: null` ONLY when the id is undetectable —
+    absent, or itself malformed/non-finite; when a VALID present `id` (string or finite number)
+    accompanies a NON-id defect (missing/empty `method`, bad/missing `jsonrpc`), that valid id is
+    ECHOED in the `-32600` frame so strict clients can still correlate the response (a non-object root
+    cannot carry an id, so it remains `id: null`).
+    Notification suppression is evaluated ONLY AFTER request-shape validation passes: an ABSENT `id`
+    makes an OTHERWISE-VALID request (object root, `jsonrpc` `"2.0"`, non-empty string `method`) an
+    id-less notification (silent, handled generically). Id-absence is decided by KEY MEMBERSHIP
+    (`"id" not in message`), NOT truthiness — a present `id: 0` or `id: ""` is a valid RequestId and
+    gets a normal echoed response, never silent suppression. An absent `id` on a MALFORMED payload — a
+    non-object root (`[]`/`42`/`"s"`/`true`/`null`), a bad/missing `jsonrpc`, or a missing/non-string/empty
+    `method` (e.g. `{"jsonrpc":"2.0"}`) — does NOT suppress the response: it returns `-32600` with
+    `id:null`. This is distinct from a
     present `null` id (which is a `-32600` invalid request, never a notification). A present *numeric*
     `id` that is not finite (an overflow literal such as `1e400`, which `json.loads` parses to
     `float('inf')` WITHOUT invoking `parse_constant`) is likewise an invalid `RequestId` → `-32600`
     with `id:null`, via a `math.isfinite()` clause in the same request-shape guard. Because this
     request-shape validation runs in the single shared `dispatch()` BEFORE `_meta` extraction, era
-    classification, and method routing, both the legacy and modern eras inherit the id-type guard
+    classification, method routing, AND the id-absent notification-suppression branch, both the
+    legacy and modern eras inherit the id-type guard
     identically and cannot echo a malformed id: a malformed id short-circuits to `-32600` (`id:null`)
     and never surfaces as `-32022`/`-32602`/`-32601` or a wrapped modern result (this pre-routing
     ordering is test-bound for the modern path in `064.021-T` scenario (c) and made an explicit
@@ -2127,9 +2155,14 @@ manifest stays at 26 tasks.
   still passed its stated `-32600` checks (which covered only root / `jsonrpc` / `method`).
   **Resolution:** the shared `dispatch()` request-shape guard now ALSO rejects a present `id` whose
   JSON type is not string or number (object/array/bool/null → `-32600`), and the malformed id is
-  NEVER echoed — the `-32600` frame carries `id: null`. An ABSENT `id` remains an id-less
-  notification (silent), distinct from a present `null` id (a `-32600` invalid request, not a
-  notification). Because request-shape validation runs BEFORE era classification in the single
+  NEVER echoed — the `-32600` frame carries `id: null`. An ABSENT `id` on an OTHERWISE-VALID request
+  (object root, `jsonrpc` `"2.0"`, non-empty string `method`) remains an id-less notification
+  (silent); an absent `id` on a MALFORMED payload (non-object root, bad/missing `jsonrpc`, or
+  missing/non-string `method` — e.g. `{"jsonrpc":"2.0"}` with no `method` and no `id`) is NOT
+  suppressed but returns `-32600` with `id:null`. Both are distinct from a present `null` id (a
+  `-32600` invalid request, not a
+  notification). Because request-shape validation (root/`jsonrpc`/`method`/id-type) runs BEFORE the
+  id-absent notification-suppression branch AND before era classification in the single
   hardened `dispatch()`, both the legacy and modern eras inherit the id-type guard identically and
   cannot echo a malformed id. The new cases are added as extra parametrized rows to the EXISTING
   `-32600` request-shape case set in `064.005-T` (no new scenario — the parametrization widens
@@ -2532,6 +2565,73 @@ Copilot findings on HEAD `36c4b15` against the §H8 startup opt-in RED/GREEN pai
   <4-scenario/<3-file budget breach, no split justified. NOT pushed; no PR actions; Ship not invoked;
   `055-S` queued/unclaimed. Production source unchanged (planning artifacts only).
 
+### Cycle-16 — PR #166 H8 round cycle-3 (Finding A id-less-notification reconciliation + Finding B sitemap-CGNAT work item)
+
+Operator-directed FULL Stage pass (planning/backlog/docs artifacts only) on HEAD `d402b10`,
+routing two unresolved Copilot findings through further decomposition + a four-persona adversarial
+review (Correctness, Security, Scope Boundary, Architecture — cross-model where available) rather
+than an ordinary fourth fix.
+
+- **Finding A (thread `PRRT_kwDOSsAX4c6dXgJo`, comment 3885656380; plan line ~259) — id-less ≠
+  automatically a notification.** The prior prose ("`None` for any id-less notification"; "an absent
+  id stays a notification") could be read to SUPPRESS a malformed id-less payload
+  (`{"jsonrpc":"2.0"}`, non-object root) that JSON-RPC 2.0 requires to answer with `-32600` /
+  `id:null`. **Resolution:** an ORDERING INVARIANT is made explicit and test-bound — request-shape
+  validation over `{root, jsonrpc, method, id-type}` runs BEFORE the id-absent notification-suppression
+  branch in the single shared `dispatch()`. An absent id makes a payload silent ONLY when the payload
+  is OTHERWISE VALID (object root, `jsonrpc` `"2.0"`, present non-empty-string `method`) — a true
+  notification, silent even for an unknown method or malformed `params`; an absent id on a MALFORMED
+  payload returns `-32600` with `id:null`, never suppression. Reconciled across the plan
+  (dispatch docstring, request-shape section, cycle-9 record), feature `064-F` DoD, and tasks
+  `064.002-T` (impl ordering clause), `064.005-T` (legacy/shared red rows), `064.021-T` scenario (c)
+  (modern red row). Correctness-review closure folded in: the `method` predicate is unified as
+  present+string+**non-empty** in BOTH the shape guard and the notification precondition (empty-string
+  `""` → `-32600`; whitespace-only → `-32601`); id-absence is decided by KEY MEMBERSHIP not truthiness
+  (a present `id:0`/`id:""` gets a normal echoed response, never suppression); the `-32600` response
+  echoes a VALID present id on a non-id defect and uses `id:null` only for an absent/malformed/non-finite
+  id; the pre-suppression guard field-set is locked to `{root, jsonrpc, method, id-type}` (`params`
+  validation is post-suppression, id-bearing only); and the array-root → single `-32600` (no batching)
+  basis is recorded.
+- **No new 064 task (Finding A).** Assessed and confirmed by the Scope Boundary + Correctness personas:
+  the id-absent-malformed, empty-method, valid-id-echo, and `id:0`/`id:""`-membership cases are added as
+  extra PARAMETRIZED ROWS to the EXISTING `-32600` request-shape / notification / dispatch-parity
+  scenarios in `064.005-T` (and the modern row in `064.021-T` scenario (c)); scenario count stays 3 (one
+  bounded parametrized matrix), the impl is a clause-ORDERING guarantee inside the existing `dispatch()`
+  guard (no new function, `≤4`-function / `<3`-file transport budget intact), width stays isolated
+  (tests-only vs code-only). Adding a task would be over-decomposition. Shipment `055-S` stays at
+  **37 members**, order unchanged.
+- **Finding B (thread `PRRT_kwDOSsAX4c6dXgJs`, comment 3885656388; plan line ~2722) — sitemap CGNAT
+  gap had no backlog item.** Created a REAL queued high-priority security work item OUTSIDE `055-S`:
+  feature `065-F` (chore/security) with red `065.001-T` → green `065.002-T`, in NEW shipment `056-S`,
+  grounded in `src/docline/fetch/sitemap.py:173-189` (`_is_unsafe_address`), linked `related_to` `064-F`
+  (same address class, different surface) with NO blocking dependency. Plan
+  (`docs/plans/2026-08-28-sitemap-cgnat-ssrf-gap-plan.md`) + deliberation
+  (`docs/decisions/2026-08-28-sitemap-cgnat-ssrf-gap-deliberation.md`) authored; the `## Risks`
+  tracked-follow-up bullet now points at the item.
+- **`055-S` proceeds — it does NOT block on the sitemap fix (Security verdict, independently traced).**
+  `validate_sitemap_url`/`_is_unsafe_address` has ZERO production callers (the live CLI+MCP crawl path
+  routes `mcp/server.py`→`app.execute_fetch`→`elt.execute`→`fetch.crawl`→`fetch.http`→
+  `url_policy.validate_crawl_url`; robots handling uses `RobotFileParser.can_fetch`, never
+  `discover_sitemaps_from_robots`) — the CGNAT gap is DORMANT defense-in-depth. §H6 (part of `055-S`,
+  touching `url_policy.py`/`http.py`) re-implements the classifier with an INDEPENDENT explicit
+  `100.64.0.0/10` check, so the SSRF guard `055-S` ships is CGNAT-complete on the live path without
+  the sitemap helper. `055-S` scope is NOT expanded. An activation-condition edge is recorded on
+  `065-F`: any FUTURE shipment that wires sitemap discovery into the crawl MUST depend on `065-F`.
+- **SSRF classifier drift (Security P3 + Architecture P2) tracked.** Post-`064-F`/`065-F` the CGNAT
+  literal exists as two independent copies (`url_policy` vs `sitemap`). A per-surface coverage matrix is
+  recorded in the deliberation, and the Option-B consolidation onto one canonical classifier is filed as
+  stash entry `87F2C06D` (kind=feature, priority=medium) so it cannot be lost.
+- **Adversarial outcome (4 personas):** Correctness — reconciliation substantially correct; two P2
+  precision fixes (empty-method predicate unification, id-membership-not-truthiness) folded in, plus
+  spec advisories. Security — VERDICT `055-S` MUST NOT block (dormant + independent H6 classifier);
+  create the separate item (done). Scope — no new 064 task necessary (9/10); Finding B red+green +
+  separate shipment correct (8/10); `055-S` isolation verified (10/10). Architecture — `065-F`
+  independent of `064-F` (9/10, disjoint files, no merge conflict); separate shipment `056-S` justified
+  (8/10); `related_to` (non-blocking) correct (8/10); DAG acyclic; `056-S` is the correct next shipment
+  id (the review-prompt's hypothetical `066-S` was NOT materialized — no phantom). NOT pushed; no PR
+  actions; Ship not invoked; `055-S` queued/unclaimed. Production source unchanged (planning artifacts
+  only).
+
 ## Rollback
 
 **Not purely additive.** The release unit adds new modules (`src/docline/mcp/stdio.py`,
@@ -2724,8 +2824,14 @@ forward into build, review, runtime verification, and closure.
   CGNAT `100.64.0.0/10` — on every Python 3.12.x that range reports `is_private` / `is_reserved` /
   `is_global` all `False`, so the six-flag reject-list lets it through. §H6 closes this on the
   MCP/CLI fetch path via an explicit `100.64.0.0/10` membership check, but
-  `sitemap.validate_sitemap_url` still carries the gap; a separate code chore should extend
-  `_is_unsafe_address` with the same explicit CGNAT check. Relatedly, `ipaddress` special-purpose
+  `sitemap.validate_sitemap_url` still carries the gap. This is now tracked as a REAL queued
+  high-priority backlog item — feature `065-F` (tasks `065.001-T` red → `065.002-T` green) in
+  shipment `056-S`, OUTSIDE `055-S` — which extends `_is_unsafe_address` with the same explicit
+  CGNAT check (`docs/plans/2026-08-28-sitemap-cgnat-ssrf-gap-plan.md`; deliberation
+  `docs/decisions/2026-08-28-sitemap-cgnat-ssrf-gap-deliberation.md`). Because
+  `validate_sitemap_url` has NO live callers (dormant defense-in-depth) and §H6 uses an
+  INDEPENDENT complete public-unicast classifier (re-implemented in `url_policy`, not delegated to
+  `_is_unsafe_address`), this gap does NOT block `055-S` MCP safety (see Cycle-16). Relatedly, `ipaddress` special-purpose
   tables are Python-patch-dependent (CVE-2024-4032 hardened `is_private` in 3.12.4) while
   `pyproject.toml` pins `requires-python>=3.12`; the §H6 harness (`064.010-T`) therefore test-pins
   each security-critical class instead of trusting the installed flag table, and raising the floor
