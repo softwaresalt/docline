@@ -8,7 +8,7 @@ merged_pr: 44
 merge_sha: f4ef7f1
 branch: feat/022-S-pa4-closure
 decision: docs/decisions/2026-06-07-pa4-calibration-closure.md
-plan: docs/plans/2026-06-07-pa4-calibration-closure-plan.md
+plan: docs/archive/plans/2026-06-07-pa4-calibration-closure-plan.md
 review: docs/closure/022-S-review.md
 parent_closure: docs/closure/021-S-triage-then-repair.md
 compound_learnings: docs/compound/2026-06-06-triage-then-repair-pattern.md
@@ -70,7 +70,7 @@ to `production-ready`.
 | `tests/process/test_fidelity_scorer_layout.py` | ADD — X-cluster signal tests |
 | `tests/test_pa3_script_flags.py` | ADD — script argparse contract |
 | `docs/decisions/2026-06-07-pa4-calibration-closure.md` | ADD — decision artifact |
-| `docs/plans/2026-06-07-pa4-calibration-closure-plan.md` | ADD — plan with hardening + review |
+| `docs/archive/plans/2026-06-07-pa4-calibration-closure-plan.md` | ADD — plan with hardening + review |
 | `docs/closure/022-S-review.md` | ADD — code review record |
 
 ## Invariants to preserve

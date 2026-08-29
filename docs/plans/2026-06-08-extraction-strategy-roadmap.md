@@ -188,7 +188,7 @@ Research spike (per-corpus generalization, ~1 day each)
 | `scripts/study/analyze_study.py` | committed to study branch |
 | `.elt/output/cosmos-triage-022/study/` | gitignored — local evidence only |
 | `.backlogit/stash.jsonl` | 7 new high/medium/low stashes added |
-| `docs/memory/2026-06-08/extraction-study-memory.md` | committed to study branch |
+| `docs/archive/memory/2026-06-08/extraction-study-memory.md` | committed to study branch |
 
 ## Recommended morning sequence
 

@@ -142,4 +142,4 @@ suppress JSON" question entirely and needs no separate `--json` flag.
 
 Promotes stash `079BBFE3` (kind: feature, medium). This deliberation is the
 source document for the implementation plan
-(`docs/plans/2026-07-16-console-verbosity-progress-plan.md`).
+(`docs/archive/plans/2026-07-16-console-verbosity-progress-plan.md`).

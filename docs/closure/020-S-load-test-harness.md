@@ -125,7 +125,7 @@ To be populated after the cross-OS matrix runs through this PR.
 ## RCA-driven plan: SHIPPED
 
 This closes the original 3-shipment plan in
-`docs/memory/2026-06-05/rca-2026-06-04-load-test-system-oom.md`:
+`docs/archive/memory/2026-06-05/rca-2026-06-04-load-test-system-oom.md`:
 
 | Shipment | Status |
 |---|---|
@@ -140,7 +140,7 @@ That run cannot happen inside this agent session.
 
 ## References
 
-* RCA: `docs/memory/2026-06-05/rca-2026-06-04-load-test-system-oom.md`
+* RCA: `docs/archive/memory/2026-06-05/rca-2026-06-04-load-test-system-oom.md`
 * 018-S closure: `docs/closure/018-S-runtime-safety-primitives.md`
 * 019-S closure: `docs/closure/019-S-pdf-splitter-batch.md`
 * Plan: `docs/plans/2026-06-05-shipment-a-runtime-safety-primitives.md` (covers the foundation)

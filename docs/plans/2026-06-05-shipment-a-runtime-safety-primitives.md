@@ -3,7 +3,7 @@ title: Plan — Shipment A runtime safety primitives
 date: 2026-06-05
 shipment: 018-S
 feature: 019-F
-rca: docs/memory/2026-06-05/rca-2026-06-04-load-test-system-oom.md
+rca: docs/archive/memory/2026-06-05/rca-2026-06-04-load-test-system-oom.md
 stashes: 1D945AB5, 4B913619, 15ADD215, C1EB2C6A, CB89952B
 ---
 

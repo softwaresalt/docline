@@ -76,7 +76,7 @@ the stash store must reflect consumption.
 
 ## Evidence base
 
-* Session: `docs/memory/2026-06-03/g2-multi-source-ingestion-stage-memory.md`
+* Session: `docs/archive/memory/2026-06-03/g2-multi-source-ingestion-stage-memory.md`
 * Shipped feature: `008-F` (archived), shipment `008-S` (archived), PR #16
 * Stash entries left dangling: `D37D8AF7`, `5F0C557E` (archived 2026-06-03 by Stage)
 * Plan artifact: `docs/plans/2026-06-01-elt-multi-source-ingestion-plan.md`

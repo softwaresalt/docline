@@ -114,7 +114,7 @@ partly closed by 018-S; this is the measurement-run completion).
 
 ## References
 
-* RCA: `docs/memory/2026-06-05/rca-2026-06-04-load-test-system-oom.md`
+* RCA: `docs/archive/memory/2026-06-05/rca-2026-06-04-load-test-system-oom.md`
   (remediations 3 and 6)
 * Plan: `docs/plans/2026-06-05-shipment-a-runtime-safety-primitives.md`
   (the foundation that this builds on)

@@ -120,5 +120,5 @@ source of truth.
 * `src/docline/schema/export.py` — export helpers
 * `src/docline/cli.py` — `export-schema` subcommand
 * `src/docline/mcp/server.py` — `export_schema()` MCP method
-* `docs/plans/2026-06-02-docline-graphtor-alignment-plan.md` — shipment plan
+* `docs/archive/plans/2026-06-02-docline-graphtor-alignment-plan.md` — shipment plan
 * `docs/decisions/2026-06-02-docline-graphtor-alignment-deliberation.md` — contract decision

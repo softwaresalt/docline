@@ -115,7 +115,7 @@ reboot that occurred during the spike's load-test corpus generation
 * A 2026-06-05 GPU evaluation addendum documenting why the host's
   GTX 770M (sm_30, 3 GB VRAM) cannot accelerate docling
 
-RCA path: `docs/memory/2026-06-05/rca-2026-06-04-load-test-system-oom.md`.
+RCA path: `docs/archive/memory/2026-06-05/rca-2026-06-04-load-test-system-oom.md`.
 The RCA is informational — it does not change `src/` and does not
 gate this spike's merge. Shipment A/B/C in the RCA's open-items table
 captures the implementation work for the next Stage cycle.

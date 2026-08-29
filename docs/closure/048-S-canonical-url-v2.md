@@ -22,7 +22,7 @@ The 045-F spike measured v1 (044-F) at **~0% coverage** on real repos (none set
 
 - Spike: `docs/decisions/2026-07-04-canonical-url-coverage-spike.md`
 - Learning: `docs/compound/2026-07-04-ms-learn-canonical-url-from-breadcrumb.md`
-- Plan (adversarial plan-review, gate PASS): `docs/plans/2026-07-04-canonical-url-v2-breadcrumb-derivation-plan.md`
+- Plan (adversarial plan-review, gate PASS): `docs/archive/plans/2026-07-04-canonical-url-v2-breadcrumb-derivation-plan.md`
 
 Per operator direction, no intermediate PRs were created before the ship phase.
 
