@@ -147,7 +147,7 @@ Both are independent — no cross-shipment dependency edge. The only shared file
 
 ### Copilot review cycles
 
-Six rounds, **35 findings**, all valid, all fixed. Rounds 1-4 produced 26 review threads, each
+Six rounds, **34 findings** (10 + 10 + 4 + 2 + 7 + 1), all valid, all fixed. Rounds 1-4 produced 26 review threads, each
 replied to with the fix SHA and resolved. Round 5 produced **no threads** but its review body
 carried **7 suppressed "previously missed" findings** — these were real and are fixed in PR #178.
 Round 6 caught that I had recorded round 5 as clean.
@@ -161,9 +161,9 @@ Round 6 caught that I had recorded round 5 as clean.
 | 5 | `4558b0f` | **7 suppressed** | *not* clean — review `5060076290` surfaced 7 previously-missed findings as suppressed comments rather than threads |
 | 6 | `63ab0a1` (PR #178) | 1 | caught my own inaccurate "clean" claim about round 5 |
 
-Three findings changed the design rather than the wording:
+Four findings, producing three design changes rather than wording changes:
 
-1. **The truncation signal was wrong twice.** Round 1: if the cap was filled by an earlier page,
+1. **The truncation signal was wrong twice — two separate findings, one design change.** Round 1: if the cap was filled by an earlier page,
    the short-circuits `continue` before extracting links, so later pages' links vanished with no
    refusal recorded. Fix: short-circuits must still parse and filter links (pure in-memory work)
    and set `refused_any`. Round 2: that still missed a depth-zero page with **no anchors but an
@@ -182,7 +182,10 @@ Three findings changed the design rather than the wording:
 ### Lesson for the next session
 
 My caller-inventory searches repeatedly matched `await crawl(` and missed **monkeypatch/stub
-sites**. Four callers were found by reviewers across three rounds. `A.T6`'s mandatory pre-flight
+sites**. Reviewers found **four existing caller modules I had missed** (rounds 1 and 3) and,
+separately, **one future caller my own plan created** — `test_crawl_control_flow.py`, introduced
+by A.T2b and owned by no migration task (round 5). Those are two distinct failure modes: an
+incomplete search of the current tree, and no re-check of callers the plan itself adds. `A.T6`'s mandatory pre-flight
 re-search now requires matching stub sites, and exact-field contract assertions must be searched
 before **any** model change.
 
