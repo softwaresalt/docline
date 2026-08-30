@@ -75,7 +75,7 @@ counters (`admitted`, `ceiling_reported`, and a refusal marker), exposing `admit
 > dedup, a separate responsibility (plan decision D2); (2) the split is `crawl_models.py` +
 > `crawl_links.py` rather than a link/discovery pair, because a discovery module would need
 > `CrawlConfig` and the models module is what makes that acyclic (plan decision D5). See
-> `docs/plans/2026-08-29-crawl-frontier-observability-plan.md`.
+> `docs/archive/plans/2026-08-29-crawl-frontier-observability-plan.md`.
 
 1. promote the truncation record from DEBUG to WARNING and add a `frontier_truncated` marker that
    reaches `crawl-manifest.json`;
