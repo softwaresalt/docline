@@ -406,6 +406,83 @@ def test_print_page_discovery_branch_is_also_capped(monkeypatch: pytest.MonkeyPa
     ]
 
 
+def test_zero_cap_suppresses_toc_asset_requests(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A zero ceiling issues no mdBook TOC-asset requests at depth zero.
+
+    The depth-zero discovery path fetches ``toc-*.js`` assets before any link is
+    admitted, so an exhausted ceiling must short-circuit discovery rather than
+    issuing network requests for links that would all be refused.
+    """
+    toc_url = "https://example.com/docs/toc-1.js"
+    root_body = (
+        "<html><body>"
+        '<script src="/docs/toc-1.js"></script>'
+        '<a href="/docs/intro">Intro</a>'
+        "</body></html>"
+    )
+    pages = {
+        SITE: _html(SITE, root_body),
+        toc_url: FetchResponse(
+            url=toc_url,
+            status=200,
+            content_type="application/javascript",
+            body='<a href="/docs/from-toc">From TOC</a>',
+        ),
+    }
+    requested: list[str] = []
+    _install_fetch(monkeypatch, pages, requested)
+
+    results = asyncio.run(
+        crawl(
+            SITE,
+            CrawlConfig(
+                max_pages=500,
+                max_depth=3,
+                max_frontier=0,
+                respect_robots=False,
+            ),
+        )
+    )
+
+    assert requested == [SITE]
+    assert toc_url not in requested
+    assert [result.url for result in results] == [SITE]
+
+
+def test_toc_assets_are_fetched_when_the_ceiling_allows_admissions(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The zero-cap short-circuit does not suppress TOC discovery under a live cap."""
+    toc_url = "https://example.com/docs/toc-1.js"
+    root_body = '<html><body><script src="/docs/toc-1.js"></script></body></html>'
+    pages = {
+        SITE: _html(SITE, root_body),
+        toc_url: FetchResponse(
+            url=toc_url,
+            status=200,
+            content_type="application/javascript",
+            body='<a href="/docs/from-toc">From TOC</a>',
+        ),
+    }
+    requested: list[str] = []
+    _install_fetch(monkeypatch, pages, requested)
+
+    results = asyncio.run(
+        crawl(
+            SITE,
+            CrawlConfig(
+                max_pages=500,
+                max_depth=2,
+                max_frontier=5,
+                respect_robots=False,
+            ),
+        )
+    )
+
+    assert toc_url in requested
+    assert [result.url for result in results] == [SITE, "https://example.com/docs/from-toc"]
+
+
 def test_ceiling_hit_emits_exactly_one_debug_record(
     monkeypatch: pytest.MonkeyPatch,
     caplog: pytest.LogCaptureFixture,

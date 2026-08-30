@@ -187,6 +187,19 @@ async def crawl(
     admitted = 0
     ceiling_reported = False
 
+    def _report_ceiling() -> None:
+        """Log the frontier ceiling hit once per crawl."""
+        nonlocal ceiling_reported
+        if ceiling_reported:
+            return
+        ceiling_reported = True
+        logger.debug(
+            "Frontier admission ceiling of %d reached for crawl of %s; "
+            "dropping further discovered links.",
+            crawl_config.max_frontier,
+            start,
+        )
+
     def _admit(link: str, link_key: str, next_depth: int) -> bool:
         """Admit a discovered link to the frontier unless the ceiling is reached.
 
@@ -199,16 +212,9 @@ async def crawl(
             ``True`` when the link was admitted, ``False`` when the whole-crawl
             frontier ceiling refused it.
         """
-        nonlocal admitted, ceiling_reported
+        nonlocal admitted
         if admitted >= crawl_config.max_frontier:
-            if not ceiling_reported:
-                ceiling_reported = True
-                logger.debug(
-                    "Frontier admission ceiling of %d reached for crawl of %s; "
-                    "dropping further discovered links.",
-                    crawl_config.max_frontier,
-                    start,
-                )
+            _report_ceiling()
             return False
         admitted += 1
         visited.add(link_key)
@@ -279,7 +285,11 @@ async def crawl(
 
         if _is_print_page(final_url, response.body):
             visited.add(_dedup_key(final_url))
-            if depth < crawl_config.max_depth and _is_html_response(response):
+            if (
+                depth < crawl_config.max_depth
+                and admitted < crawl_config.max_frontier
+                and _is_html_response(response)
+            ):
                 for link in extract_links(response.body, final_url):
                     if crawl_config.domain_lock and urlparse(link).netloc != start_host:
                         continue
@@ -310,6 +320,12 @@ async def crawl(
         if depth >= crawl_config.max_depth:
             continue
         if not _is_html_response(response):
+            continue
+        if admitted >= crawl_config.max_frontier:
+            # The ceiling is exhausted, so every discovered link would be refused.
+            # Skip discovery entirely rather than issuing TOC-asset requests and
+            # building link lists that cannot be admitted.
+            _report_ceiling()
             continue
 
         discovered_links = extract_links(response.body, final_url)
