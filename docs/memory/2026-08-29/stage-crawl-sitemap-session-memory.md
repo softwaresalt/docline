@@ -174,6 +174,7 @@ review *body*; PR #178's rounds produced a mix of both.
 | 10 | `fcfb88f` (PR #178) | 2 + 1 suppressed | redrawn ASCII graph implied a false `A.T4 → A.T10` edge; `059-S` `updated_at` stale after the direct reorder; a heading missed its preceding blank line |
 | 11 | `d59e513` (PR #178) | 2 | this table omitted round 10; PR description claimed every artifact landed in #177, which is untrue of the newly created `068.019-T` |
 | 12 | `87c2536` (PR #178) | 1 + 2 suppressed | round-11 note described a cutoff rule that was never actually added; `068.007-T` said `lazy %% args` (an escaped literal percent) instead of `lazy % args`; A.T8c and `068.011-T` still claimed suite recovery without A.T7b |
+| 13 | `7d80b1b` (PR #178) | 1 | PR description stale again: round range and artifact list duplicated volatile facts, so it was fixed by **removing** them and pointing at this file instead |
 
 Four findings, producing three design changes rather than wording changes:
 
@@ -328,3 +329,17 @@ touched: the task list, the dependency graph, `A.T10`'s prerequisites, R2, R7, t
 manifest and its ordering, `068.013-T`'s prose, and a suite-recovery acceptance criterion two
 tasks away. **Late additions to a reviewed plan are expensive and each one needs a full
 propagation sweep.**
+
+### Round 13 findings (PR #178)
+
+The PR description went stale for the **third** time — it stated a round range and an
+affected-artifact list, and both drifted as reviews continued.
+
+Fixed by **deletion rather than correction**: the description no longer enumerates rounds or
+artifacts. It now names this file as the single source of truth for the review history and points
+at the diff for the artifact list, with an explicit note saying why the duplication was removed.
+
+This closes the pattern that produced findings in rounds 8, 10, 11 and 13 — the running finding
+total, the ASCII dependency graph, the missing table row, and this description. Every one was the
+same defect: **a second copy of a fact that keeps changing.** The durable rule is to keep one
+authoritative location per volatile fact and reference it everywhere else.
