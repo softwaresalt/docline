@@ -57,3 +57,17 @@ where candidate generation begins, not where insertion happens — the gap betwe
 the cap silently fails to bind. When a knob's extreme value is documented as "disables X", write
 the test that proves X performs no I/O at that value; the docstring is not the contract, the test
 is.
+
+## Refinement (059-S, 2026-08-30)
+
+059-S added an observability signal (`frontier_truncated`) on top of this cap, and that reversed
+part of resolution point 1. The short-circuit no longer skips **all** candidate generation — it
+still runs the **pure in-memory parse** (`extract_links`, and at depth zero `extract_toc_script_urls`)
+to decide whether the cap actually *cost* the crawl an eligible link, while still skipping
+`_discover_toc_links` (the **network** fetch). The distinction that matters is I/O versus parse: a
+cap must not issue network requests for links it will refuse, but a truncation signal needs the
+cheap in-memory parse to tell "cap reached, nothing lost" from "cap reached, a link was dropped."
+So the sharper rule is: **short-circuit the I/O at the cap, but keep the pure parse when an
+observability signal depends on knowing whether the cap bound.** The `max_frontier=0` no-network
+invariant from the original lesson still holds and is still asserted.
+
