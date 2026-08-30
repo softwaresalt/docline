@@ -140,3 +140,53 @@ Active stash is now empty.
 Ship claims **`059-S`** first (medium, reliability/composability), then **`060-S`** (low).
 Both are independent — no cross-shipment dependency edge. The only shared file is
 `docs/ARCHITECTURE.md`; whichever merges second rebases a trivial doc hunk (risk R8 in both plans).
+
+## Step 6 — staging gate complete
+
+**PR #177 merged as `9edbb91`** (true merge commit; repo has squash and rebase disabled).
+
+### Copilot review cycles
+
+Four rounds, **26 findings**, all valid, all fixed / replied with fix SHA / thread resolved.
+
+| Round | HEAD | Findings | Substance |
+|---|---|---|---|
+| 1 | `417b8e9` | 10 | `refused_any` blind to a cap filled by an earlier page; `D8` hard-coded `true`; CLI seam was a no-op edit; stale deliberation option; stale rollback list; stale frontmatter |
+| 2 | `b6f3700` | 10 | TOC-only false negative; `job` not constructed until after the `except` block; `max_frontier` remedy not reachable by operators; missing `A.T12→A.T4` edge; archive forward refs; stale memory counts |
+| 3 | `cecbddb` | 4 | `tests/parity/test_equivalence.py` asserts the **exact** `FetchResult` field set — a hard blocker; a 10th caller module (`test_execute_fetch_progress.py`) |
+| 4 | `f1f85e8` | 2 | two internal count inconsistencies introduced by my own round-3 edits |
+| 5 | `4558b0f` | **0** | clean review on current HEAD |
+
+Three findings changed the design rather than the wording:
+
+1. **The truncation signal was wrong twice.** Round 1: if the cap was filled by an earlier page,
+   the short-circuits `continue` before extracting links, so later pages' links vanished with no
+   refusal recorded. Fix: short-circuits must still parse and filter links (pure in-memory work)
+   and set `refused_any`. Round 2: that still missed a depth-zero page with **no anchors but an
+   eligible `toc-*.js`**. Fix: also parse `extract_toc_script_urls()` and set the flag
+   conservatively — accepting over-reporting, because a false "may have truncated" is an operator
+   prompt while a false "complete" is silent data loss. `_discover_toc_links()` (the network part)
+   still stays skipped.
+2. **`D8` was unimplementable as written.** `_fetch_url` raises before returning its tuple, and
+   `_execute_source` builds the `StagingJob` *after* the `try`/`except` — so neither the tuple nor
+   `job` could carry the flag. Fix: `CrawlStagedNothingError(OSError, DoclineError)` carries it,
+   and a local threads it into the later `StagingJob(...)` construction.
+3. **`FetchResult` has a contract test.** `tests/parity/test_equivalence.py` asserts the exact
+   field set, so `A.T11b` would have failed a gate the plan claimed green. It now owns that
+   assertion update.
+
+### Lesson for the next session
+
+My caller-inventory searches repeatedly matched `await crawl(` and missed **monkeypatch/stub
+sites**. Four callers were found by reviewers across three rounds. `A.T6`'s mandatory pre-flight
+re-search now requires matching stub sites, and exact-field contract assertions must be searched
+before **any** model change.
+
+### Final state on `origin/main`
+
+- 29 artifacts, all `queued`: 2 features, 2 shipments, 25 tasks.
+- Active stash empty; all four entries archived with `harvested_artifact_id` forward references.
+- Operator-owned files (`.autoharness/config.yaml`, `.github/agents/_orchestrator.agent.md`,
+  `.github/agents/_ship.agent.md`, `.gitignore`) never staged and left modified in the worktree.
+
+**Ship claims `059-S` first, then `060-S`.**
