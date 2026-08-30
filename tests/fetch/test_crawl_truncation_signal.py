@@ -228,6 +228,71 @@ def test_malformed_port_start_url_raises_typed_rejection() -> None:
         asyncio.run(crawl("https://example.com:not-a-port", CrawlConfig(respect_robots=False)))
 
 
+def test_toc_only_exhausted_root_flags_truncation_without_fetching_toc(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    """A depth-zero exhausted root with only a TOC script flags conservatively.
+
+    With ``max_frontier=0`` the root admits nothing, has no in-page anchors, but
+    references an eligible ``toc-*.js``. The main-branch short-circuit's
+    depth-zero ``_has_eligible_toc_script`` clause must set ``frontier_truncated``
+    (a pure parse) **without** issuing the TOC network fetch. Deleting that clause
+    would leave the flag ``False``, so this locks the branch that the unit-level
+    ``_Frontier`` test and the ``admit()``-driven TOC-priority test do not reach.
+    """
+    start = f"{ORIGIN}/docs/"
+    toc_asset = f"{ORIGIN}/docs/toc-1.js"
+    root_body = (
+        "<html><head><script src='/docs/toc-1.js'></script></head><body><h1>root</h1></body></html>"
+    )
+    requested: list[str] = []
+    _install_fetch(monkeypatch, {start: _html(start, root_body)}, requested)
+
+    with caplog.at_level(logging.WARNING, logger=CRAWL_LOGGER):
+        outcome = asyncio.run(
+            crawl(
+                start, CrawlConfig(max_pages=500, max_depth=1, max_frontier=0, respect_robots=False)
+            )
+        )
+
+    assert outcome.frontier_truncated is True
+    assert len(_ceiling_records(caplog)) == 1
+    # The conservative signal is a pure parse: the TOC asset is never fetched.
+    assert toc_asset not in requested
+    assert requested == [start]
+
+
+def test_print_page_exhausted_branch_flags_truncation(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    """The print-page exhausted short-circuit records truncation on a real drop.
+
+    The root admits the print page (filling ``max_frontier=1``); the print page
+    then carries eligible anchors that the exhausted frontier must drop. This
+    asserts the ``CrawlOutcome`` flag for the print-page branch, which the
+    warning-only print-page test does not check.
+    """
+    start = f"{ORIGIN}/docs/"
+    print_url = f"{ORIGIN}/docs/print.html"
+    pages = {
+        start: _html(start, '<html><body><a href="/docs/print.html">Print</a></body></html>'),
+        print_url: _html(print_url, _fan_out_body(20, prefix="printed")),
+    }
+    requested: list[str] = []
+    _install_fetch(monkeypatch, pages, requested)
+
+    with caplog.at_level(logging.WARNING, logger=CRAWL_LOGGER):
+        outcome = asyncio.run(
+            crawl(
+                start, CrawlConfig(max_pages=500, max_depth=3, max_frontier=1, respect_robots=False)
+            )
+        )
+
+    assert outcome.frontier_truncated is True
+    assert len(_ceiling_records(caplog)) == 1
+    assert requested == [start, print_url]
+
+
 # ---------------------------------------------------------------------------
 # WARNING payload: sanitized origin + count, never the URL tail (D4)
 # ---------------------------------------------------------------------------
