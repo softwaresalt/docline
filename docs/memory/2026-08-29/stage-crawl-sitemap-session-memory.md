@@ -174,7 +174,8 @@ review *body*; PR #178's rounds produced a mix of both.
 | 10 | `fcfb88f` (PR #178) | 2 + 1 suppressed | redrawn ASCII graph implied a false `A.T4 → A.T10` edge; `059-S` `updated_at` stale after the direct reorder; a heading missed its preceding blank line |
 | 11 | `d59e513` (PR #178) | 2 | this table omitted round 10; PR description claimed every artifact landed in #177, which is untrue of the newly created `068.019-T` |
 | 12 | `87c2536` (PR #178) | 1 + 2 suppressed | round-11 note described a cutoff rule that was never actually added; `068.007-T` said `lazy %% args` (an escaped literal percent) instead of `lazy % args`; A.T8c and `068.011-T` still claimed suite recovery without A.T7b |
-| 13 | `7d80b1b` (PR #178) | 1 | PR description stale again: round range and artifact list duplicated volatile facts, so it was fixed by **removing** them and pointing at this file instead |
+| 13 | `7d80b1b` (PR #178) | 1 | PR description stale again: round range and artifact list duplicated volatile facts, so it was fixed by **removing** them and pointing elsewhere |
+| 14 | `2f9715b` (PR #178) | 1 + 1 suppressed | D8 prose still said to set `job.frontier_truncated` in the handler, contradicting the corrected A.T9; PR description named this file as authoritative for the artifact list, which it is not |
 
 Four findings, producing three design changes rather than wording changes:
 
@@ -336,10 +337,29 @@ The PR description went stale for the **third** time — it stated a round range
 affected-artifact list, and both drifted as reviews continued.
 
 Fixed by **deletion rather than correction**: the description no longer enumerates rounds or
-artifacts. It now names this file as the single source of truth for the review history and points
-at the diff for the artifact list, with an explicit note saying why the duplication was removed.
+artifacts. It names this file as the single source of truth for the **review history**, and the
+**diff** as the single source of truth for the affected-artifact list — this file deliberately
+carries no authoritative file list, and round 14 caught the first attempt at this wording
+conflating the two.
 
 This closes the pattern that produced findings in rounds 8, 10, 11 and 13 — the running finding
 total, the ASCII dependency graph, the missing table row, and this description. Every one was the
 same defect: **a second copy of a fact that keeps changing.** The durable rule is to keep one
 authoritative location per volatile fact and reference it everywhere else.
+
+### Round 14 findings (PR #178)
+
+1. **D8 still contradicted A.T9.** I corrected the task but left the decision prose telling the
+   implementer to set `job.frontier_truncated` inside the exception handler — impossible, since
+   `StagingJob` is constructed after the `try`/`except`. D8 now carries the local-variable
+   mechanism explicitly. This is the *second* time a D8/A.T9 correction failed to propagate to
+   both places, which is precisely the "grep every reference after correcting a contract" lesson
+   from round 8 not being applied thoroughly enough.
+2. **The de-duplication fix mis-attributed authority.** Round 13's wording named this closure
+   record as the source of truth for the *affected-artifact list*, but this file has no such list
+   — the diff is authoritative for that, and only the review history lives here. Corrected in both
+   the PR description and the round-13 note.
+
+Finding 2 is a fitting close: even the fix for duplicated facts introduced its own inaccuracy by
+being imprecise about **which** fact lives **where**. Naming one authoritative location per fact
+only works if the naming itself is exact.

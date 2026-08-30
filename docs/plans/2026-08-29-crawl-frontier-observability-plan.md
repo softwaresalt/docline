@@ -292,9 +292,13 @@ class CrawlStagedNothingError(OSError, DoclineError):
 
 It subclasses `OSError` so every existing caller and test that catches `OSError` keeps working,
 and `DoclineError` so it joins the typed hierarchy. `_fetch_url` raises it in place of the bare
-`OSError` with the same message; `_execute_source` catches it explicitly, sets
-`job.frontier_truncated` from it, and still marks the job incomplete. All other error paths are
-unchanged.
+`OSError` with the same message.
+
+**`_execute_source` cannot set the flag on `job` inside the handler** — `StagingJob` is not
+constructed until *after* the `try`/`except` block (`execute.py:227`). Instead: initialise a local
+`frontier_truncated = False` before the `try`, assign it from the success tuple **or** from
+`CrawlStagedNothingError` in the handler, and pass that local into the later `StagingJob(...)`
+construction. The job is still marked incomplete. All other error paths are unchanged.
 
 ### D9 — Out of scope
 
