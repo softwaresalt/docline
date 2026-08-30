@@ -99,7 +99,7 @@ exact failure mode 7F34A0D5 reports; `list` subclass carrying an attribute — t
 lost through any `list(...)` copy; per-`CrawlResult` flag — wrong granularity.
 
 This is a **breaking change to an internal API**. Every caller is in this repository (1 in
-`src/`, 9 test modules) and is updated in-plan. No compatibility shim: a shim returning the old
+`src/`, **10** test modules) and is updated in-plan. No compatibility shim: a shim returning the old
 shape would let a caller keep ignoring truncation.
 
 ### D2 — `_Frontier` owns admission state only; `visited` stays in the crawl loop
@@ -416,7 +416,7 @@ admission policies).
   `test_execute_fetch_progress.py` has three such fakes, including a zero-page case that is
   directly relevant to D8. Also update any assertion on `_fetch_url`'s return value, which becomes
   a `(count, truncated)` pair in A.T9.
-- **Acceptance:** these two modules green in isolation.
+- **Acceptance:** these **three** modules green in isolation.
 - **Depends on:** A.T6.
 
 ### A.T8b — Migrate budget and backoff test callers to `CrawlOutcome`
