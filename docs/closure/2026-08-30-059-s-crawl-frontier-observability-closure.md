@@ -13,8 +13,8 @@ status: closed
 | Item | Type | Commit |
 |---|---|---|
 | `068-F` | feature | `58ba5c5` (merge) |
-| `068.001-T` | task — A.T1/A.T2 `_Frontier` admission + truncated harness | `0eedd8f` |
-| `068.002-T` | task — A.T2 truncated predicate | `0eedd8f` |
+| `068.001-T` | task — A.T1 `_Frontier` admission harness (red) | `0eedd8f` |
+| `068.002-T` | task — A.T2 truncated-predicate harness (red) | `0eedd8f` |
 | `068.003-T` | task — A.T2b control-flow characterization | `5f5cdec` |
 | `068.004-T` | task — A.T3 extract `_Frontier` | `f25dfab` |
 | `068.005-T` | task — A.T4 split `crawl.py` | `d037221` |
@@ -160,3 +160,20 @@ and MCP JSON results and in `crawl-manifest.json`. The ceiling is not operator-c
 fetch paths, so the documented remedy is to narrow the crawl. Rollback is a single revert of merge
 commit `58ba5c5` — changes are confined to the fetch/ELT/app modules and are additive on the
 persisted artifacts.
+
+## Operational readiness
+
+| Field | Value |
+|---|---|
+| Invariants | Refused links never enter `visited` (058-S memory bound holds); the ceiling value and semantics are unchanged; `crawl()` still yields `list[CrawlResult]`-shaped iteration via `outcome.results`; CLI and MCP report the same `frontier_truncated` for an equivalent request; `max_frontier=0` issues no TOC network I/O |
+| Pre-deploy audit | `ruff check`, `pyright src/`, `pytest` (2049 passed), `ruff format --check` all green on `31f4954`; CI green on the same head; five-persona + seven Copilot review cycles clean |
+| Rollout path | Merged to `main` via merge commit `58ba5c5`. No staged rollout, feature flag, or migration — the change is a library-level behavior addition on the fetch path; effective immediately for all `docline fetch` / MCP `fetch` callers |
+| Post-deploy checks | Runtime verification (18/18) executed against the merged tree; no separate production environment to smoke-test (CLI/MCP library) |
+| Healthy signal | Crawls under the ceiling emit no WARNING and report `frontier_truncated=false`; normal uncapped crawls admit all eligible links |
+| Failure signal | A `ValueError` or other untyped exception escaping `crawl()` on a valid URL; a `frontier_truncated` value diverging between the manifest, CLI, and MCP for the same request; a WARNING payload containing a URL path/query/userinfo |
+| Rollback trigger | Any failure signal above that is traced to this change, or a regression in crawl completeness on the fetch path |
+| Rollback command | `git revert -m 1 58ba5c5b67abf5c73457d11e5af76c60bdd483b1` — single-commit, additive on persisted artifacts |
+| Validation window | Covered by the post-merge runtime verification and CI; no extended soak required for a deterministic library change |
+| Readiness verdict | Ready — merged, verified, and closed |
+| Owner | Ship agent (session 059-S); follow-up `D6E758F5` owned by the next Stage/Ship cycle |
+

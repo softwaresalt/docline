@@ -54,6 +54,52 @@ Nineteen tasks (068.001-T … 068.019-T) executed harness-first in manifest depe
 * Ordering + docs (A.T12–A.T14): TOC-first ordering harness and implementation, and the
   architecture/README documentation.
 
+## Binding Constraints (survive compaction)
+
+* **`CrawlOutcome` is `@dataclass(slots=True)`, not frozen.** `frozen=True` with the default
+  `eq=True` synthesizes `__hash__`, which raises `TypeError` at runtime for a `list` field placed in
+  a set/dict — a shallow-immutability trap. Frozenness buys nothing for a return value.
+* **`_Frontier` owns admission state only; `visited` stays in the crawl loop.** `visited` is mutated
+  at three non-admission sites and serves emitted-page dedup — a separate responsibility. `admit()`
+  takes `visited` as an argument and records a key on success only; a refused link never enters
+  `visited` (the 058-S memory-bound invariant). Container fields use `field(default_factory=...)`.
+* **`frontier_truncated` means the ceiling cost the crawl an eligible link** (`refused_any`), not
+  that the cap was reached or that `ceiling_reported` fired. It is deliberately conservative at the
+  depth-zero TOC short-circuit (D3): a pure `toc-*.js` parse can set it even when the script would
+  yield no admissible links — it over-reports, never under-reports.
+* **The WARNING payload is origin-only** (scheme + host + admission count), never the URL path,
+  query, fragment, or userinfo, because promoting the record from DEBUG to a default-visible WARNING
+  would otherwise widen credential exposure that `sanitize_source` does not fully close.
+* **The CLI/MCP seams differ.** The CLI serializes `StagingJob` wholesale (`model_dump`), so the
+  additive `StagingJob.frontier_truncated` field appears with no `cli.py` edit. MCP builds a fresh
+  `FetchResult` in `execute_fetch`, so the field is added there and populated at the success and
+  zero-staged returns; `mcp/server.py` performs no transformation and is not edited.
+* **Field placement on `StagingJob`, not `SourceMetadata`.** `SourceMetadata` is constructed before
+  the fetch runs; `StagingJob` is constructed after it completes — the only point where the
+  truncation outcome is known. The cost is a permanently-`False` field for non-web sources.
+* **Zero-staged exception transport.** `CrawlStagedNothingError(OSError, DoclineError)` carries the
+  real flag across the zero-staged boundary because `_execute_source` builds the `StagingJob` only
+  after the `try/except`; a local `frontier_truncated = False` is initialised before the `try` so
+  non-URL sources never hit an unbound local. The manifest is written before the zero-staged guard.
+
+## Rejected Alternatives
+
+* **Out-parameter (`crawl(..., stats=...)`) or a `list` subclass carrying an attribute** for the
+  truncation signal — the out-parameter makes truncation optional at the call site (the exact
+  failure mode being fixed); the attribute is lost through any `list(...)` copy. `CrawlOutcome` is
+  the explicit return shape instead. A per-`CrawlResult` flag is the wrong granularity.
+* **A compatibility shim returning the old `list` shape** — rejected; it would let a caller keep
+  ignoring truncation. All 1 `src/` and 10 test callers were migrated in-shipment.
+* **Per-link drop logging** — rejected (058-S): unbounded log volume under the adversarial
+  fan-out. The record stays once-per-crawl.
+* **D9 out of scope:** changing `MAX_FRONTIER` or the ceiling semantics; a `crawl-manifest.json`
+  schema-version field; a `max_frontier` passthrough on `_crawl_config_from_source`; any general
+  crawl redesign (priority queues, pluggable admission policies).
+* **D5 literal contingency** (moving the fetch-calling helpers to `crawl_discovery.py`) — adapted,
+  not applied: relocating them would rebind the `docline.fetch.crawl.fetch_page` monkeypatch seam
+  used by five test modules and force forbidden test edits. Only the stateless fetch-free helpers
+  moved; `crawl.py` still landed under 400 lines.
+
 ## Verification
 
 Quality gates on PR #179's final head `31f4954`: `ruff check` pass, `pyright src/` 0 errors,

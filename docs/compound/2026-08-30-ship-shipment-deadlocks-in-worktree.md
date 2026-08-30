@@ -4,8 +4,8 @@ date: 2026-08-30
 agent: ship
 shipment: 059-S
 context: ship-shipment-lifecycle
-confidence: high
-evidence: "059-S post-merge closure — `backlogit shipment ship 059-S --sha ...` hung after `workspace initialized` and never progressed; repeated across three attempts with and without --no-update-check"
+confidence: medium
+evidence: "059-S post-merge closure — `backlogit shipment ship 059-S --sha ...` hung after the `workspace initialized` log line and never progressed; reproduced across three attempts with and without --no-update-check and --log-level debug. Root cause is suspected, not proven: no lock-owner, stack trace, or phase-level diagnostic was captured beyond the last log line."
 tags:
   - backlogit
   - ship_shipment
@@ -29,19 +29,36 @@ left a full set of per-artifact `.backlogit/.*.lock` files (one per manifest ite
 and its `.jsonl` logs). Lighter CLI mutations against the same worktree DB — `update`, `archive`,
 `move`, `sync`, `query` — all completed in well under a second.
 
-## Root cause
+## Suspected cause
 
-Several long-lived `backlogit` daemon processes were resident (the MCP server instances bound to
-the **primary** workspace, running for days). `shipment ship` is the heaviest lifecycle operation:
-it acquires a lock on **every** manifest artifact at once to archive the released scope as a single
-transaction. That broad multi-lock acquisition is where it wedges in this environment, whereas the
-single-artifact mutations never contend. The stale lock files are a *symptom* of the interrupted
-broad acquisition, not the cause — clearing them and retrying reproduces the same hang.
+This is a **suspected** cause, not a proven one: the only diagnostic captured was that all output
+stopped after the `workspace initialized` log line, with no lock-owner identification, stack trace,
+or phase-level trace. What is established by evidence is narrow — the hang is repeatable and
+specific to `shipment ship`, while every single-artifact mutation (`update`, `archive`, `move`,
+`sync`, `query`) against the same worktree DB completes in well under a second.
+
+The plausible explanation: several long-lived `backlogit` daemon processes were resident (MCP
+server instances, running for days). `shipment ship` is the heaviest lifecycle operation — it
+archives the entire released scope as one transaction, touching every manifest artifact at once —
+so it is the operation most likely to contend for a lock or DB handle that a single-artifact
+mutation never reaches. Whether those primary-workspace daemons actually share this worktree's lock
+paths was not confirmed. The stale `.backlogit/.*.lock` files are a *symptom* of the interrupted
+broad operation; clearing them and retrying reproduces the same hang, so they are not the cause.
+
+## Circuit breaker
+
+The three consecutive hangs on the same operation reached the universal retry threshold
+(`circuit-breaker.instructions.md`). The breaker was honored: retrying `shipment ship` was stopped,
+a failure-chain checkpoint was written to
+`docs/memory/2026-08-30/circuit-break-shipment-ship-deadlock.md`, and the operation was routed to
+the single-artifact fallback below rather than attempted a fourth time.
 
 ## Resolution
 
-Complete the shipment lifecycle with the single-artifact CLIs that do not deadlock, preserving the
-same end state (`ship_shipment`'s outputs are: all manifest items archived + merge SHA recorded):
+Complete the shipment lifecycle with the single-artifact CLIs that do not deadlock. This preserves
+the **archive placement and commit traceability** that matter for closure — every manifest item
+archived with the merge SHA recorded — but **not** full lifecycle equivalence: see the caveat on
+`archived_status` below. The steps:
 
 1. `backlogit move <feature> --status done` — clear the feature's non-terminal state.
 2. `backlogit update <id> --commit <merge_sha>` for the **shipment and the feature** — record merge
