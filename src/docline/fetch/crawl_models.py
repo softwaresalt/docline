@@ -130,10 +130,16 @@ class CrawlOutcome:
     Attributes:
         results: The per-page :class:`CrawlResult` values in breadth-first
             discovery order, up to ``config.max_pages`` items.
-        frontier_truncated: ``True`` when the whole-crawl admission ceiling
-            actually refused at least one eligible candidate (an operator-visible
-            "the crawl may be incomplete" signal), ``False`` otherwise. Reaching
-            the cap without dropping an eligible link is **not** truncation.
+        frontier_truncated: ``True`` when the whole-crawl admission ceiling cost
+            the crawl at least one eligible discovered link — an operator-visible
+            "the crawl may be incomplete" signal — and ``False`` otherwise.
+            Reaching the cap without dropping an eligible link is **not**
+            truncation. The signal is deliberately conservative (plan decision
+            D3): at a depth-zero exhausted short-circuit it is also set from an
+            eligible ``toc-*.js`` reference that cannot be examined without a
+            network fetch, so it can over-report when that script would have
+            yielded no admissible links. A false "may be incomplete" prompts a
+            re-run; a false "complete" would hide data loss.
     """
 
     results: list[CrawlResult]
@@ -161,8 +167,11 @@ class _Frontier:
         queue: Breadth-first queue of ``(url, depth)`` pairs awaiting a fetch.
         admitted: Count of discovered links admitted to :attr:`queue` so far.
         ceiling_reported: Whether the once-per-crawl ceiling record has fired.
-        refused_any: Whether the ceiling refused at least one eligible
-            candidate — the sole basis for :attr:`truncated`.
+        refused_any: Whether the ceiling cost the crawl an eligible link — the
+            sole basis for :attr:`truncated`. Set by :meth:`admit` on a refusal
+            and, per plan decision D3, by the crawl loop at an exhausted
+            short-circuit that finds an eligible candidate (including a
+            conservative depth-zero ``toc-*.js`` reference).
     """
 
     max_frontier: int
@@ -179,14 +188,20 @@ class _Frontier:
 
     @property
     def truncated(self) -> bool:
-        """Return ``True`` when the ceiling actually refused an eligible link."""
+        """Return ``True`` when the ceiling cost the crawl an eligible link.
+
+        Reflects :attr:`refused_any`, which the crawl loop also sets for the
+        conservative depth-zero TOC-reference case (D3); the signal may
+        therefore over-report but never under-reports.
+        """
         return self.refused_any
 
     def report_ceiling(self) -> None:
         """Log the frontier truncation once per crawl at WARNING level.
 
-        Emitted only when the ceiling actually refuses an eligible candidate.
-        The payload is the sanitized crawl **origin** (scheme + host) plus the
+        Emitted only when the ceiling cost the crawl an eligible link — a direct
+        refusal or the conservative depth-zero TOC-reference case (D3). The
+        payload is the sanitized crawl **origin** (scheme + host) plus the
         admission count — never the full start URL, whose path, query,
         fragment, or userinfo could carry credentials once the record is
         default-visible.
@@ -196,7 +211,7 @@ class _Frontier:
         self.ceiling_reported = True
         logger.warning(
             "Frontier admission ceiling of %d reached for crawl origin %s after "
-            "%d admission(s); dropping further discovered links.",
+            "%d admission(s); eligible discovered links may have been dropped.",
             self.max_frontier,
             self.start_label,
             self.admitted,

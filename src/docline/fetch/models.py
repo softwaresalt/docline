@@ -36,9 +36,10 @@ class StagingJob(BaseModel):
         cache_path: Filesystem path to the staged content.
         complete: Whether the staging job has completed successfully.
         frontier_truncated: Whether a web crawl's whole-crawl admission ceiling
-            refused an eligible discovered link (the crawl may be incomplete).
-            Always ``False`` for non-crawl source types. Surfaced to both the
-            CLI and MCP paths for interface parity.
+            cost the crawl an eligible discovered link (the crawl may be
+            incomplete; the signal is deliberately conservative). Always
+            ``False`` for non-crawl source types. Surfaced to both the CLI and
+            MCP paths for interface parity.
     """
 
     job_id: str

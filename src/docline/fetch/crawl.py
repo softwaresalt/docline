@@ -68,10 +68,10 @@ async def crawl(
             of section scope, print pages, duplicate finals) do not fire it.
 
     Returns:
-        A :class:`CrawlOutcome` whose ``results`` are the :class:`CrawlResult`
-        values in breadth-first discovery order (up to ``config.max_pages``
-        items) and whose ``frontier_truncated`` flag is ``True`` when the
-        admission ceiling actually refused an eligible discovered link.
+        A :class:`CrawlOutcome`: ``results`` are the :class:`CrawlResult` values
+        in breadth-first discovery order (up to ``config.max_pages`` items), and
+        ``frontier_truncated`` reports whether the ceiling cost the crawl an
+        eligible link — deliberately conservative per :class:`CrawlOutcome`.
 
     Note:
         Discovered-link admissions to the frontier are capped at
