@@ -292,9 +292,13 @@ class CrawlStagedNothingError(OSError, DoclineError):
 
 It subclasses `OSError` so every existing caller and test that catches `OSError` keeps working,
 and `DoclineError` so it joins the typed hierarchy. `_fetch_url` raises it in place of the bare
-`OSError` with the same message; `_execute_source` catches it explicitly, sets
-`job.frontier_truncated` from it, and still marks the job incomplete. All other error paths are
-unchanged.
+`OSError` with the same message.
+
+**`_execute_source` cannot set the flag on `job` inside the handler** — `StagingJob` is not
+constructed until *after* the `try`/`except` block (`execute.py:227`). Instead: initialise a local
+`frontier_truncated = False` before the `try`, assign it from the success tuple **or** from
+`CrawlStagedNothingError` in the handler, and pass that local into the later `StagingJob(...)`
+construction. The job is still marked incomplete. All other error paths are unchanged.
 
 ### D9 — Out of scope
 
@@ -394,6 +398,10 @@ admission policies).
 - Add `CrawlOutcome` per D1 with a Google-style docstring documenting both attributes. `crawl()`
   returns `CrawlOutcome(results=results, frontier_truncated=frontier.truncated)`. `report_ceiling`
   becomes `logger.warning` with the D4 payload, lazy `%` args. Export `CrawlOutcome`.
+- **`crawl()` is public via `crawl.__all__` and its current docstring promises a list.** Update
+  both its return annotation and its Google-style `Returns:` section to describe `CrawlOutcome`
+  and its ordered `results`, otherwise the landed public API documentation contradicts the
+  contract this task introduces.
 - **Acceptance:** A.T5 green; `pyright src/` 0 errors. Full `pytest` is **expected red** in caller
   modules here — see the Verification gate exception.
 - **Depends on:** A.T5, A.T4.
@@ -405,6 +413,19 @@ admission policies).
 - Mechanical: `results = await crawl(...)` → `outcome = await crawl(...)`; assertions read
   `outcome.results`. No assertion semantics change.
 - **Acceptance:** these three modules green.
+- **Depends on:** A.T6.
+
+### A.T7b — Migrate the A.T2b characterization harness to `CrawlOutcome`
+
+- **Domain:** tests. **Files:** `tests/fetch/test_crawl_control_flow.py`.
+- A.T2b creates this module as a `crawl()` caller *before* the return-type break, and its
+  characterization inspects the returned results to prove no `CrawlResult` was produced. It
+  therefore needs the same migration as the pre-existing callers, or the full suite cannot
+  recover.
+- It gets its own task rather than joining A.T7 because A.T7 already owns three files, which is
+  the decomposition ceiling this plan applies to every other migration task.
+- **Acceptance:** `tests/fetch/test_crawl_control_flow.py` green against `CrawlOutcome`, still
+  asserting the same control-flow invariants it characterized in A.T2b.
 - **Depends on:** A.T6.
 
 ### A.T8a — Migrate ELT test callers to `CrawlOutcome`
@@ -430,8 +451,8 @@ admission policies).
 
 - **Domain:** tests. **Files:** `tests/fetch/test_crawl_progress.py`,
   `tests/fetch/test_amplification.py`.
-- **Acceptance:** these two modules green in isolation; with A.T7, A.T8a, and A.T8b applied, the
-  whole `tests/` suite is green apart from work still owned by A.T9-A.T13.
+- **Acceptance:** these two modules green in isolation; with A.T7, **A.T7b**, A.T8a, and A.T8b
+  applied, the whole `tests/` suite is green apart from work still owned by A.T9-A.T13.
 - **Depends on:** A.T6.
 
 > A.T7, A.T8a, A.T8b, and A.T8c split round-1's single migration task, which touched 6+ files and
@@ -453,19 +474,28 @@ admission policies).
 - Per D8, add `CrawlStagedNothingError(OSError, DoclineError)` carrying `frontier_truncated`, and
   raise it in place of the bare `OSError` with the same message. **`_execute_source` builds the
   `StagingJob` only after the `try`/`except` block (`execute.py:227`), so the flag cannot be set
-  on `job` inside the handler.** Instead, hold it in a local (e.g. `frontier_truncated = False`
-  initialised before the `try`), assign it from the success tuple **or** from
-  `CrawlStagedNothingError` in the handler, and pass it into the later `StagingJob(...)`
-  construction. Do not restructure `_execute_source` beyond that.
+  on `job` inside the handler.** Instead, **initialise `frontier_truncated = False` before the
+  `try`** — this initialiser is *required*, not stylistic, because `_execute_source` handles
+  local, manifest-local and GitHub sources in the same block and always constructs `StagingJob`,
+  so a local assigned only on the URL success or URL exception path would be unbound for every
+  non-URL source. Assign it from the success tuple **or** from `CrawlStagedNothingError` in the
+  handler, and pass it into the later `StagingJob(...)` construction. Do not restructure
+  `_execute_source` beyond that.
 - **Acceptance:** manifest contains the key and is written even when zero pages stage, carrying
   the **real** flag value — regression cases required for (a) a no-refusal zero-staged path
   (print-page/exhausted short-circuit with no eligible candidate, `max_frontier=0`) → `false`,
   (b) a robots-denied or failed-start zero-staged crawl → `false`, and (c) a zero-staged crawl
   that did cost an eligible link → `true`, **with the `StagingJob` reporting the same value in
-  every case**; `_load_crawl_manifest` still parses; existing `metadata.json` files without the
-  field still validate (defaulted); the raised error still satisfies `except OSError` with the
-  same message and the `except BaseException` completion event still fires; `pyright src/` 0
-  errors.
+  every case**, plus a **non-URL source** (local or GitHub) asserting `frontier_truncated` is
+  `False` with no `NameError`; `_load_crawl_manifest` still parses; existing `metadata.json` files
+  without the field still validate (defaulted); the raised error still satisfies `except OSError`
+  with the same message; `pyright src/` 0 errors.
+- **Completion-callback contract (precise).** The zero-staged raise happens **after** the
+  `try/except/else`, so the **success-path** callback in the `else` branch has already run and the
+  `except BaseException` handler does **not** fire for `CrawlStagedNothingError`. Assert the real
+  contract: exactly **one** completion callback occurs before `CrawlStagedNothingError`
+  propagates, and the `except BaseException` path remains intact for failures raised *during*
+  crawl or result staging.
 - **Depends on:** A.T6.
 
 ### A.T10 — Harness: CLI/MCP parity for the truncation signal (red)
@@ -480,7 +510,7 @@ admission policies).
   the persisted `crawl-manifest.json`, and the failure case where no crawl ran and both report
   `False`.
 - **Acceptance:** red before A.T9/A.T11b land.
-- **Depends on:** A.T8a, A.T8b, A.T8c.
+- **Depends on:** A.T7, A.T7b, A.T8a, A.T8b, A.T8c.
 
 ### A.T11a — Verify the CLI needs no source change
 
@@ -555,21 +585,30 @@ admission policies).
 
 ## Dependency graph
 
-```text
-A.T1 → A.T2 → A.T2b → A.T3 → A.T4 ─┬──────────────→ A.T6 ─┬→ A.T7   ─┐
-                           │  A.T5 ─────────┘      ├→ A.T8a  ─┤
-                           │                       ├→ A.T8b  ─┼→ A.T10 → A.T11a → A.T11b ─┐
-                           │                       ├→ A.T8c  ─┘                            ├→ A.T14
-                           │                       └→ A.T9 ─────────────→ A.T11a           │
-                           └──────────────────→ A.T12 → A.T13 ───────────────────────────  ┘
-```
+Stated in prose rather than ASCII art. An earlier diagram drifted twice under editing and its
+misalignment was read as asserting an edge that does not exist, so the authoritative form is the
+list below; the executable form is each artifact's `dependencies` frontmatter.
+
+- **A.T1** → no prerequisites.
+- **A.T2** → A.T1. **A.T2b** → A.T2. **A.T3** → A.T2b. **A.T4** → A.T3.
+- **A.T5** → no prerequisites (red harness).
+- **A.T6** → A.T5 **and** A.T4.
+- **A.T7**, **A.T7b**, **A.T8a**, **A.T8b**, **A.T8c**, **A.T9** → A.T6.
+- **A.T10** → A.T7, A.T7b, A.T8a, A.T8b, A.T8c (all five migration tasks).
+- **A.T11a** → A.T10 **and** A.T9. **A.T11b** → A.T11a.
+- **A.T12** → A.T4. **A.T13** → A.T12 **and** A.T4.
+- **A.T14** → A.T11b **and** A.T13.
+
+A.T4 is a prerequisite of A.T10 only *transitively*, through A.T6 — there is no direct
+`A.T4 → A.T10` edge.
 
 ## Verification
 
 Gates: `ruff check .`, `pyright src/`, `pytest`, `ruff format --check .`.
 
 **Gate policy exception (aligns with R7).** Full-suite green is a *merge* precondition for the
-atomic unit {A.T6, A.T7, A.T8a, A.T8b, A.T8c, A.T9, A.T10, A.T11a, A.T11b}, not a per-task gate.
+atomic unit {A.T6, A.T7, A.T7b, A.T8a, A.T8b, A.T8c, A.T9, A.T10, A.T11a, A.T11b}, not a
+per-task gate.
 Inside that unit, and for the red-harness tasks (A.T1, A.T2, A.T5, A.T10, A.T12), the per-task
 gate is `ruff check` + `pyright src/` + the task's own targeted tests. Every other task carries
 the full four-gate requirement.
@@ -609,14 +648,14 @@ the model's config and, if `extra="forbid"` is set, the rollback note is amended
 | ID | Risk | Likelihood | Blast radius | Mitigation |
 |---|---|---|---|---|
 | R1 | The `_Frontier` extraction silently changes admission behaviour and re-opens the 058-S memory-exhaustion vector | Medium | High — reintroduces a shipped security/availability fix | A.T1/A.T2 precede A.T3 and pin the 058-S invariants: refused links never enter `visited`; `admitted` increments only on success; report fires once. A.T3 must pass with **zero edits to existing tests**. |
-| R2 | The `CrawlOutcome` change is missed at a caller and fails at runtime | Medium | Medium | `pyright src/` covers the single `src/` caller. **`pyright src/` does not type-check `tests/`**, so the "fails loudly" guarantee for test callers rests on runtime `AttributeError`, not type-check — hence the enumerated inventory in A.T7/A.T8a/A.T8b/A.T8c and the mandatory pre-A.T6 re-search. Round 1 missed 3 callers and round 3 missed a 4th (`tests/elt/test_execute_fetch_progress.py`); that is why the re-search is mandatory and must match on **monkeypatch/stub sites**, not just `await crawl(` call sites. Exact-field contract assertions (`tests/parity/test_equivalence.py`) must also be searched before any model change. |
+| R2 | The `CrawlOutcome` change is missed at a caller and fails at runtime | Medium | Medium | `pyright src/` covers the single `src/` caller. **`pyright src/` does not type-check `tests/`**, so the "fails loudly" guarantee for test callers rests on runtime `AttributeError`, not type-check — hence the enumerated inventory in A.T7/A.T7b/A.T8a/A.T8b/A.T8c and the mandatory pre-A.T6 re-search. Round 1 missed 3 callers and round 3 missed a 4th (`tests/elt/test_execute_fetch_progress.py`); that is why the re-search is mandatory and must match on **monkeypatch/stub sites**, not just `await crawl(` call sites. Exact-field contract assertions (`tests/parity/test_equivalence.py`) must also be searched before any model change. |
 | R3 | D6 ordering breaks an order-sensitive existing assertion | Medium | Low-Medium | A.T12 requires a grep for order-dependent assertions **before** implementation, and fixes them in tests width. D6.1 states the `max_pages` behaviour change openly instead of asserting a false invariant. |
 | R4 | The WARNING leaks URL-carried secrets now that it is default-visible | Medium | Medium — credential disclosure in logs | D4 reduces the payload to sanitized origin + count. A.T5 asserts absence of path, query, fragment, userinfo, and control characters, using credential-in-path and unrecognized-credential-parameter cases that `sanitize_source` alone does not cover. |
 | R5 | The module split introduces a circular import or breaks an undiscovered importer | Medium | Medium — unbuildable tree | Round 1's seam **was** circular (`_normalize_url`). D5 moves it into the leaf module and mandates a one-way direction. A.T4 acceptance includes an explicit import-and-acyclicity check plus a repo-wide grep for each moved symbol. |
 | R6 | Scope creep into a general crawl redesign | Medium | Medium | D9 is binding. The third-module contingency in D5 is pre-authorized and bounded; anything else goes to the stash. |
-| R7 | A partially-landed shipment leaves `main` with `crawl()` returning `CrawlOutcome` but callers expecting a list | Low | High — broken ELT/CLI/MCP path | {A.T6, A.T7, A.T8a, A.T8b, A.T8c, A.T9, A.T10, A.T11a, A.T11b} is atomic for merge. The Verification gate exception makes the red window explicit and bounded rather than contradicting the gate policy. |
+| R7 | A partially-landed shipment leaves `main` with `crawl()` returning `CrawlOutcome` but callers expecting a list | Low | High — broken ELT/CLI/MCP path | {A.T6, A.T7, A.T7b, A.T8a, A.T8b, A.T8c, A.T9, A.T10, A.T11a, A.T11b} is atomic for merge. The Verification gate exception makes the red window explicit and bounded rather than contradicting the gate policy. |
 | R8 | Both shipments edit `docs/ARCHITECTURE.md`, producing a merge conflict if they land concurrently | Medium | Low | Acknowledged: the two shipments share **no source file** but do share this doc. A.T14 is scoped to the crawl/fetch section, Group B's doc task to the sitemap section. Whichever shipment merges second rebases the doc hunk. |
-| R9 | The zero-staged manifest write (D8) masks or reorders the existing `OSError` | Low | Medium | A.T9 acceptance requires the `OSError` still raise with the same message and the `except BaseException` completion event still fire. The write is inserted before the guard, not in place of it. |
+| R9 | The zero-staged manifest write (D8) masks or reorders the existing `OSError` | Low | Medium | A.T9 acceptance requires the raised error to still satisfy `except OSError` with the same message. **Callback contract, corrected:** the zero-staged raise sits *after* the `try/except/else`, so the success-path callback has already fired and the `except BaseException` handler does **not** run for `CrawlStagedNothingError`. A.T9 asserts exactly one completion callback before it propagates, and that the `except BaseException` path stays intact for failures raised *during* crawl or result staging. The write is inserted before the guard, not in place of it. |
 
 ### Rollback rehearsal
 
@@ -655,6 +694,6 @@ Multi-persona adversarial plan review, 4 rounds. Gate outcome: **PASS**.
 |---|---|---|---|
 | Architecture | FAIL | **PASS** | P1 split could not reach 400 lines → D5 now two leaf modules with stated arithmetic + pre-authorized contingency. P1 circular import (`crawl_links` needs `_normalize_url`) → `_normalize_url` and `_dedup_key` moved into the leaf; acyclicity is an A.T4 gate. P2 `_Frontier` conflated responsibilities → `visited` excluded. P3 gate-policy contradiction → explicit exception. P3 shared `ARCHITECTURE.md` → R8. P3 field placement → D7 layering-exception rationale. |
 | Correctness | FAIL | **PASS** | P1 caller inventory incomplete (6 → 9 modules, incl. `test_crawl_section_scope.py`, `tests/elt/test_elt_real_execution.py`, root-level `tests/test_execute_fetch.py`). P1 CLI/MCP parity not achieved → D7 + A.T10/A.T11a/A.T11b targeting the real seams. P1 D8 hard-coded `true` contradicted D3 → now the real flag with three zero-staged regression cases. P2 truncated predicate off-by-one → D3 `refused_any`. P2 zero-staged manifest never written → D8. P2 `max_pages` claim false → D6.1 retraction. P2 no characterization for the non-counting section-scope `continue` → A.T2b. |
-| Scope | FAIL | **PASS** | P1 A.T6 at 6 files → split to A.T7 + A.T8a/b/c, each ≤2 files in one sub-domain. P2 A.T11 at 3 files mixing CLI and MCP → A.T11a/A.T11b. Ruled D7 parity and D8 manifest-write **in scope** (7F34A0D5 names both CLI and MCP paths). |
+| Scope | FAIL | **PASS** | P1 A.T6 at 6 files → split to A.T7 + A.T8a/b/c. Round 2 landed each at ≤2 files; later review added `test_crawl_control_flow.py`, so the standing plan-wide limit is **≤3 files per migration task**, with A.T7 at three and A.T7b carved out to keep it there. P2 A.T11 at 3 files mixing CLI and MCP → A.T11a/A.T11b. Ruled D7 parity and D8 manifest-write **in scope** (7F34A0D5 names both CLI and MCP paths). |
 | Security | ADVISORY | **ADVISORY** | P2 WARNING payload widens URL-secret exposure (`sanitize_source` does not redact path segments, unrecognized query names, or control characters) → D4 reduces the payload to sanitized origin + count; A.T5 asserts absence of path/query/fragment/userinfo. Confirmed the manifest boolean leaks nothing. |
 | Python-safety | ADVISORY | **ADVISORY** | P2 `frozen=True` + `list` field synthesizes an unhashable `__hash__` → D1 pins `@dataclass(slots=True)`, not frozen. P2 mutable dataclass defaults → D2 mandates `field(default_factory=...)`, precise generics, and states `_Frontier` is not frozen. P3 docstrings on new public symbols/modules → A.T4/A.T6 acceptance. P3 `pyright src/` does not cover `tests/` → recorded in R2. |
