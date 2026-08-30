@@ -177,6 +177,7 @@ review *body*; PR #178's rounds produced a mix of both.
 | 13 | `7d80b1b` (PR #178) | 1 | PR description stale again: round range and artifact list duplicated volatile facts, so it was fixed by **removing** them and pointing elsewhere |
 | 14 | `2f9715b` (PR #178) | 1 + 1 suppressed | D8 prose still said to set `job.frontier_truncated` in the handler, contradicting the corrected A.T9; PR description named this file as authoritative for the artifact list, which it is not |
 | 15 | `70db340` (PR #178) | 1 + 1 suppressed | my A.T9 rewrite dropped the `frontier_truncated = False` initialiser, which is load-bearing because `_execute_source` serves non-URL sources too; Plan Review Record still said the migration split produced tasks of ≤2 files while A.T7 owns three |
+| 16 | `6900748` (PR #178) | 0 threads + 1 suppressed | the `Final state on origin/main` snapshot would self-invalidate the moment this PR merged; re-anchored to immutable merge `9edbb91` |
 
 Four findings, producing three design changes rather than wording changes:
 
@@ -206,9 +207,13 @@ incomplete search of the current tree, and no re-check of callers the plan itsel
 re-search now requires matching stub sites, and exact-field contract assertions must be searched
 before **any** model change.
 
-### Final state on `origin/main`
+### State at merge `9edbb91` (PR #177)
 
-- 29 artifacts, all `queued`: 2 features, 2 shipments, 25 tasks.
+Tied to an immutable commit rather than to `origin/main`, which moves. PR #178 adds
+`068.019-T` (A.T7b), taking the total to **30** artifacts and `059-S` to **20 items**. For the
+current state, query the backlog — it is authoritative, not this snapshot.
+
+- 29 artifacts at `9edbb91`, all `queued`: 2 features, 2 shipments, 25 tasks.
 - Active stash empty; all four entries archived with `harvested_artifact_id` forward references.
 - Operator-owned files (`.autoharness/config.yaml`, `.github/agents/_orchestrator.agent.md`,
   `.github/agents/_ship.agent.md`, `.gitignore`) never staged and left modified in the worktree.
@@ -382,3 +387,17 @@ only works if the naming itself is exact.
 Finding 1 is the sharpest lesson of the session: **a clarity edit is still a semantic edit.** I
 removed a parenthetical that looked like an example (`e.g. frontier_truncated = False`) and in
 doing so deleted a correctness requirement.
+
+### Round 16 findings (PR #178)
+
+**Zero review threads, one suppressed finding** — the exact shape that caused the round-5 mistake,
+caught this time by reading the review body first.
+
+The closure carried a heading `Final state on origin/main` with a 29-artifact count. That was true
+at merge `9edbb91` and would have become false the instant PR #178 landed, since this PR creates
+`068.019-T`. A "final state" pinned to a moving ref is a fact with an expiry date.
+
+Re-anchored to the immutable merge commit, with an explicit pointer that the backlog — not this
+snapshot — is authoritative for current state. Same class as the running total, the ASCII graph,
+the missing table row and the PR description: **a stored copy of something that keeps changing.**
+The durable form is to anchor a snapshot to an immutable reference and name the live source.
