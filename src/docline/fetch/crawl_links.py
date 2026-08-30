@@ -13,7 +13,6 @@ from collections.abc import Iterator
 from html.parser import HTMLParser
 from urllib.parse import parse_qsl, urldefrag, urljoin, urlparse
 
-from docline.fetch.staging import sanitize_source
 from docline.fetch.url_canonical import UrlCanonicalizationError, canonicalize_url
 from docline.fetch.url_policy import CrawlUrlRejectedError, validate_crawl_url
 
@@ -202,6 +201,35 @@ def _is_print_page(url: str, body: str | None = None) -> bool:
     return False
 
 
+def _link_in_scope(
+    url: str,
+    *,
+    domain_lock: bool,
+    start_host: str,
+    section_scope: str | None,
+) -> bool:
+    """Return whether *url* passes the crawl's domain-lock and section-scope filters.
+
+    Single source of truth for the admission-eligibility filter so the crawl
+    loop, the eligibility helpers, and TOC discovery cannot drift out of
+    lockstep — a drift would silently corrupt the ``frontier_truncated`` signal.
+
+    Args:
+        url: The absolute candidate URL.
+        domain_lock: Whether discovered links must stay on the start host.
+        start_host: The start URL's ``netloc``.
+        section_scope: Inferred section prefix, or ``None`` for no scope.
+
+    Returns:
+        ``True`` when the URL is admissible under the current filters.
+    """
+    if not domain_lock:
+        return True
+    if urlparse(url).netloc != start_host:
+        return False
+    return _url_within_section_scope(url, section_scope)
+
+
 def _iter_eligible_links(
     links: list[str],
     *,
@@ -218,9 +246,9 @@ def _iter_eligible_links(
     parse work.
     """
     for link in links:
-        if domain_lock and urlparse(link).netloc != start_host:
-            continue
-        if domain_lock and not _url_within_section_scope(link, section_scope):
+        if not _link_in_scope(
+            link, domain_lock=domain_lock, start_host=start_host, section_scope=section_scope
+        ):
             continue
         link_key = _dedup_key(link)
         if link_key in visited:
@@ -268,26 +296,14 @@ def _has_eligible_toc_script(
     truncation when lifting the ceiling would have discovered TOC-derived links.
     """
     for script_url in extract_toc_script_urls(html_text, page_url):
-        if domain_lock and urlparse(script_url).netloc != start_host:
-            continue
-        if domain_lock and not _url_within_section_scope(script_url, section_scope):
-            continue
-        return True
+        if _link_in_scope(
+            script_url,
+            domain_lock=domain_lock,
+            start_host=start_host,
+            section_scope=section_scope,
+        ):
+            return True
     return False
-
-
-def _origin_label(url: str) -> str:
-    """Return the sanitized ``scheme://host[:port]`` origin for log records.
-
-    Strips path, query, fragment, and userinfo so a default-visible truncation
-    record cannot leak URL-carried credentials.
-    """
-    parsed = urlparse(url)
-    host = parsed.hostname or ""
-    if parsed.port is not None:
-        host = f"{host}:{parsed.port}"
-    origin = f"{parsed.scheme}://{host}" if host else parsed.scheme
-    return sanitize_source(origin)
 
 
 __all__ = [

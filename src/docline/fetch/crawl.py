@@ -13,8 +13,8 @@ from docline.fetch.crawl_links import (
     _has_eligible_toc_script,
     _is_print_page,
     _iter_eligible_links,
+    _link_in_scope,
     _normalize_url,
-    _origin_label,
     _url_within_section_scope,
     extract_links,
     extract_toc_links,
@@ -28,6 +28,7 @@ from docline.fetch.crawl_models import (
     CrawlResult,
     CrawlRobotsError,
     _Frontier,
+    _origin_label,
 )
 from docline.fetch.http import (
     MAX_FETCH_ATTEMPTS,
@@ -182,9 +183,7 @@ async def crawl(
             if depth < crawl_config.max_depth and _is_html_response(response):
                 page_links = extract_links(response.body, final_url)
                 if frontier.exhausted:
-                    # Cap already full: skip admission but still parse links in
-                    # memory to record a truncation only when an eligible
-                    # candidate was actually dropped.
+                    # Cap full: parse in memory, record truncation only on a real drop.
                     if _has_eligible_link(
                         page_links,
                         domain_lock=crawl_config.domain_lock,
@@ -226,10 +225,8 @@ async def crawl(
 
         anchor_links = extract_links(response.body, final_url)
         if frontier.exhausted:
-            # The ceiling is exhausted, so every discovered link would be
-            # refused. Skip the TOC *network* discovery, but still parse links
-            # (and, at depth zero, TOC script references) in memory to record a
-            # truncation only when an eligible candidate was actually dropped.
+            # Ceiling exhausted: skip TOC *network* discovery but still parse
+            # links (and depth-zero TOC scripts) to record a real drop only.
             if _has_eligible_link(
                 anchor_links,
                 domain_lock=crawl_config.domain_lock,
@@ -356,12 +353,19 @@ async def _discover_toc_links(
     budget: "RemainingByteBudget | None" = None,
 ) -> list[str]:
     """Fetch mdBook TOC assets referenced by the root page and extract page links."""
+
+    def _in_scope(candidate: str) -> bool:
+        return _link_in_scope(
+            candidate,
+            domain_lock=crawl_config.domain_lock,
+            start_host=start_host,
+            section_scope=section_scope,
+        )
+
     links: list[str] = []
     seen: set[str] = set()
     for script_url in extract_toc_script_urls(html_text, page_url):
-        if crawl_config.domain_lock and urlparse(script_url).netloc != start_host:
-            continue
-        if crawl_config.domain_lock and not _url_within_section_scope(script_url, section_scope):
+        if not _in_scope(script_url):
             continue
         try:
             response = await _fetch_with_retries(script_url, crawl_config, budget)
@@ -372,9 +376,7 @@ async def _discover_toc_links(
         except (DoclineError, OSError):
             continue
         for link in extract_toc_links(response.body, page_url):
-            if crawl_config.domain_lock and urlparse(link).netloc != start_host:
-                continue
-            if crawl_config.domain_lock and not _url_within_section_scope(link, section_scope):
+            if not _in_scope(link):
                 continue
             if link in seen:
                 continue

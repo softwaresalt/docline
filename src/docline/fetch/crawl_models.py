@@ -10,14 +10,45 @@ crawl package import graph strictly one-way.
 import logging
 from collections import deque
 from dataclasses import dataclass, field
+from urllib.parse import urlparse
 
 from docline.fetch.http import FetchResponse
+from docline.fetch.staging import sanitize_source
 from docline.schema.models import DoclineError
+
+CRAWL_LOGGER_NAME = "docline.fetch.crawl"
+"""Operator-facing logger name for crawl-level observability records.
+
+Pinned to the crawl loop's module name so ceiling/truncation records emit under
+one stable logger regardless of which internal module owns the admission state.
+"""
 
 # Ceiling records are a crawl-level observability event: emit them under the
 # crawl loop's logger so operators watch a single, stable logger name regardless
 # of which internal module owns the admission state.
-logger = logging.getLogger("docline.fetch.crawl")
+logger = logging.getLogger(CRAWL_LOGGER_NAME)
+
+
+def _origin_label(url: str) -> str:
+    """Return the sanitized ``scheme://host[:port]`` origin for log records.
+
+    Strips path, query, fragment, and userinfo so a default-visible truncation
+    record cannot leak URL-carried credentials.
+
+    Args:
+        url: The crawl start URL.
+
+    Returns:
+        The sanitized origin (``scheme://host[:port]``) with no path, query,
+        fragment, or userinfo.
+    """
+    parsed = urlparse(url)
+    host = parsed.hostname or ""
+    if parsed.port is not None:
+        host = f"{host}:{parsed.port}"
+    origin = f"{parsed.scheme}://{host}" if host else parsed.scheme
+    return sanitize_source(origin)
+
 
 MAX_FRONTIER: int = 10_000
 """Absolute ceiling on discovered-link admissions for a single crawl.

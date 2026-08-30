@@ -85,8 +85,13 @@ class CrawlStagedNothingError(OSError, DoclineError):
             eligible discovered link before nothing was staged.
     """
 
-    def __init__(self, message: str, *, frontier_truncated: bool) -> None:
-        """Store *message* and the crawl's ``frontier_truncated`` flag."""
+    def __init__(self, message: str, *, frontier_truncated: bool = False) -> None:
+        """Store *message* and the crawl's ``frontier_truncated`` flag.
+
+        ``frontier_truncated`` defaults to ``False`` so the standard exception
+        reconstruction contract (``type(exc)(*exc.args)``) does not raise on a
+        missing keyword-only argument.
+        """
         super().__init__(message)
         self.frontier_truncated = frontier_truncated
 
@@ -240,14 +245,9 @@ def _execute_single_source(
         elif isinstance(config, (GitHubRepoSource, ManifestGitSource)):
             _fetch_github(config, files_dir)
             complete = True
-    except CrawlStagedNothingError as err:
-        frontier_truncated = err.frontier_truncated
-        _log.exception(
-            "ELT source execution failed for source_key=%s job_id=%s",
-            source_key,
-            job_id,
-        )
-    except Exception:  # noqa: BLE001
+    except Exception as err:  # noqa: BLE001
+        if isinstance(err, CrawlStagedNothingError):
+            frontier_truncated = err.frontier_truncated
         _log.exception(
             "ELT source execution failed for source_key=%s job_id=%s",
             source_key,
