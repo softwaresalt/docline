@@ -35,9 +35,14 @@ class StagingJob(BaseModel):
         metadata: Capture metadata from the fetch operation.
         cache_path: Filesystem path to the staged content.
         complete: Whether the staging job has completed successfully.
+        frontier_truncated: Whether a web crawl's whole-crawl admission ceiling
+            refused an eligible discovered link (the crawl may be incomplete).
+            Always ``False`` for non-crawl source types. Surfaced to both the
+            CLI and MCP paths for interface parity.
     """
 
     job_id: str
     metadata: SourceMetadata
     cache_path: str
     complete: bool = False
+    frontier_truncated: bool = False

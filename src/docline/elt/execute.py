@@ -56,6 +56,7 @@ from docline.fetch.models import SourceMetadata, StagingJob
 from docline.fetch.staging import build_cache_path, make_job_id, sanitize_source
 from docline.paths import PathContainmentError, safe_workspace_path
 from docline.readers.github import fetch_github_files
+from docline.schema.models import DoclineError
 
 # ---------------------------------------------------------------------------
 # Compatibility: generated-artifact exclusion for .elt fallback root
@@ -68,6 +69,26 @@ _ELT_GENERATED_DIR_PREFIXES: tuple[str, ...] = ("runtime-staging", "runtime-outp
 _STAGED_WEB_METADATA_SUFFIX = ".meta.json"
 _CRAWL_MANIFEST_NAME = "crawl-manifest.json"
 _log = logging.getLogger(__name__)
+
+
+class CrawlStagedNothingError(OSError, DoclineError):
+    """Raised when a crawl staged no pages, carrying the truncation flag.
+
+    Subclasses :class:`OSError` so existing ``except OSError`` callers keep
+    working, and :class:`~docline.schema.models.DoclineError` so it joins the
+    typed hierarchy. It conveys the crawl's real ``frontier_truncated`` value
+    across the zero-staged boundary, where the staging job is built after the
+    fetch attempt.
+
+    Attributes:
+        frontier_truncated: Whether the crawl frontier ceiling refused an
+            eligible discovered link before nothing was staged.
+    """
+
+    def __init__(self, message: str, *, frontier_truncated: bool) -> None:
+        """Store *message* and the crawl's ``frontier_truncated`` flag."""
+        super().__init__(message)
+        self.frontier_truncated = frontier_truncated
 
 
 def _is_elt_generated_artifact(src: Path, base: Path) -> bool:
@@ -205,6 +226,7 @@ def _execute_single_source(
     )
 
     complete = False
+    frontier_truncated = False
     try:
         if isinstance(config, LocalFileSource):
             _fetch_local_files(config, root, files_dir)
@@ -213,10 +235,18 @@ def _execute_single_source(
             _fetch_manifest_local(config, root, files_dir)
             complete = True
         elif isinstance(config, (WebCrawlSource, ManifestUrlSource)):
-            complete = _fetch_url(config, files_dir, progress=progress) > 0
+            staged_count, frontier_truncated = _fetch_url(config, files_dir, progress=progress)
+            complete = staged_count > 0
         elif isinstance(config, (GitHubRepoSource, ManifestGitSource)):
             _fetch_github(config, files_dir)
             complete = True
+    except CrawlStagedNothingError as err:
+        frontier_truncated = err.frontier_truncated
+        _log.exception(
+            "ELT source execution failed for source_key=%s job_id=%s",
+            source_key,
+            job_id,
+        )
     except Exception:  # noqa: BLE001
         _log.exception(
             "ELT source execution failed for source_key=%s job_id=%s",
@@ -229,6 +259,7 @@ def _execute_single_source(
         metadata=metadata,
         cache_path=cache_rel,
         complete=complete,
+        frontier_truncated=frontier_truncated,
     )
     (cache_abs / "metadata.json").write_text(job.model_dump_json(indent=2), encoding="utf-8")
     return job
@@ -496,7 +527,7 @@ def _fetch_url(
     config: WebCrawlSource | ManifestUrlSource,
     files_dir: Path,
     progress: Callable[[int, int | None, str], None] | None = None,
-) -> int:
+) -> tuple[int, bool]:
     """Fetch a URL source and stage every crawled HTML page.
 
     Args:
@@ -509,20 +540,26 @@ def _fetch_url(
             count-only completion event.
 
     Returns:
-        Number of staged HTML pages.
+        A ``(staged_count, frontier_truncated)`` pair: the number of staged HTML
+        pages and whether the crawl's whole-crawl admission ceiling refused an
+        eligible discovered link.
 
     Raises:
-        OSError: When no crawlable pages were staged.
+        CrawlStagedNothingError: When no crawlable pages were staged. It
+            subclasses :class:`OSError` (so ``except OSError`` still matches) and
+            carries the real ``frontier_truncated`` flag.
     """
     from docline.fetch.crawl import crawl
 
     url = config.url
     staged_count = 0
+    frontier_truncated = False
     used_paths: dict[str, str] = {}
     manifest_pages: list[dict[str, object]] = []
     try:
-        results = asyncio.run(crawl(url, _crawl_config_from_source(config), progress=progress))
-        for result in results:
+        outcome = asyncio.run(crawl(url, _crawl_config_from_source(config), progress=progress))
+        frontier_truncated = outcome.frontier_truncated
+        for result in outcome.results:
             if result.response is not None and result.response.body:
                 rel_path = _staged_web_relative_path(result.url, url, used_paths)
                 dest = files_dir / rel_path
@@ -565,18 +602,24 @@ def _fetch_url(
         # real error and is allowed to propagate.
         if progress is not None:
             progress(staged_count, None, url)
-    if staged_count == 0:
-        raise OSError(f"No crawlable HTML pages were staged for {url}")
+    # Write the manifest even when nothing staged, so a fully-truncated crawl
+    # still leaves the operator-visible frontier_truncated signal on disk (D8).
     _crawl_manifest_path(files_dir).write_text(
         json.dumps(
             {
                 "pages": manifest_pages,
+                "frontier_truncated": frontier_truncated,
             },
             indent=2,
         ),
         encoding="utf-8",
     )
-    return staged_count
+    if staged_count == 0:
+        raise CrawlStagedNothingError(
+            f"No crawlable HTML pages were staged for {url}",
+            frontier_truncated=frontier_truncated,
+        )
+    return staged_count, frontier_truncated
 
 
 def _fetch_github(config: GitHubRepoSource | ManifestGitSource, files_dir: Path) -> None:
