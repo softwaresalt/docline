@@ -93,7 +93,13 @@ def test_cli_and_mcp_process_input_path_preserved(capsys, monkeypatch, tmp_path)
 
 def test_fetch_result_model_fields_complete() -> None:
     """FetchResult exposes the full expected field set."""
-    assert set(FetchResult.model_fields) == {"source", "staged_path", "success", "error"}
+    assert set(FetchResult.model_fields) == {
+        "source",
+        "staged_path",
+        "success",
+        "error",
+        "frontier_truncated",
+    }
 
 
 def test_process_result_model_fields_complete() -> None:

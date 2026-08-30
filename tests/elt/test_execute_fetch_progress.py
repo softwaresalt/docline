@@ -12,7 +12,7 @@ import pytest
 
 from docline.app import execute_fetch
 from docline.app_models import FetchRequest, FetchResult
-from docline.fetch.crawl import CrawlResult
+from docline.fetch.crawl import CrawlOutcome, CrawlResult
 from docline.fetch.http import FetchResponse
 
 
@@ -39,7 +39,10 @@ def test_progress_forwarded_and_final_staged_count_event(
         if progress is not None:
             # a budget-consumed event, total is the max_pages budget (an int)
             progress(1, config.max_pages if config else None, start_url)
-        return [_page(start_url), _page(start_url.rstrip("/") + "/b.html")]
+        return CrawlOutcome(
+            results=[_page(start_url), _page(start_url.rstrip("/") + "/b.html")],
+            frontier_truncated=False,
+        )
 
     monkeypatch.setattr("docline.fetch.crawl.crawl", _fake)
     monkeypatch.chdir(tmp_path)
@@ -67,7 +70,7 @@ def test_progress_not_a_fetch_request_field() -> None:
 
 def test_progress_none_default_still_stages(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
     async def _fake(start_url, config=None, progress=None):
-        return [_page(start_url)]
+        return CrawlOutcome(results=[_page(start_url)], frontier_truncated=False)
 
     monkeypatch.setattr("docline.fetch.crawl.crawl", _fake)
     monkeypatch.chdir(tmp_path)
@@ -82,7 +85,10 @@ def test_zero_page_crawl_still_emits_final_count_only_event(
         if progress is not None:
             progress(1, config.max_pages if config else None, start_url)  # a budget event
         # a robots-denied/failed crawl stages nothing (no response bodies)
-        return [CrawlResult(url=start_url, depth=0, skipped=True, skip_reason="robots.txt")]
+        return CrawlOutcome(
+            results=[CrawlResult(url=start_url, depth=0, skipped=True, skip_reason="robots.txt")],
+            frontier_truncated=False,
+        )
 
     monkeypatch.setattr("docline.fetch.crawl.crawl", _fake)
     monkeypatch.chdir(tmp_path)
@@ -116,3 +122,82 @@ def test_final_event_emitted_even_when_crawl_raises(
     assert result.success is False
     # the try/finally still emits the authoritative (0) completion event
     assert calls[-1] == (0, None, "https://ex.org/docs/")
+
+
+def test_fetch_url_zero_staged_raises_typed_error_with_single_callback(
+    monkeypatch: pytest.MonkeyPatch, tmp_path
+) -> None:
+    """A.T9 contract: `_fetch_url` raises a typed, OSError-catchable zero-staged error.
+
+    Exercises `_fetch_url` directly (not through `execute_fetch`, which swallows
+    the exception): the zero-staged path must raise `CrawlStagedNothingError`
+    that is catchable as `OSError` with the exact message, carry the real
+    `frontier_truncated` flag, and fire exactly one completion callback before
+    the exception propagates.
+    """
+    from docline.elt.execute import CrawlStagedNothingError, _fetch_url
+    from docline.elt.models import WebCrawlSource
+    from docline.fetch.crawl import CrawlOutcome, CrawlResult
+
+    url = "https://ex.org/docs/"
+
+    async def _fake(start_url, config=None, progress=None):
+        # A skipped result has no response body, so nothing stages.
+        return CrawlOutcome(
+            results=[CrawlResult(url=start_url, depth=0, skipped=True, skip_reason="dropped")],
+            frontier_truncated=True,
+        )
+
+    monkeypatch.setattr("docline.fetch.crawl.crawl", _fake)
+    files_dir = tmp_path / "files"
+    files_dir.mkdir()
+
+    calls: list[tuple[int, int | None, str]] = []
+    with pytest.raises(CrawlStagedNothingError) as excinfo:
+        _fetch_url(
+            WebCrawlSource(type="web_crawl", url=url, depth=0, max_pages=5),
+            files_dir,
+            progress=lambda d, t, det: calls.append((d, t, det)),
+        )
+
+    err = excinfo.value
+    assert isinstance(err, OSError)
+    assert str(err) == f"No crawlable HTML pages were staged for {url}"
+    assert err.frontier_truncated is True
+    # Exactly one completion callback fires before the exception propagates.
+    assert calls == [(0, None, url)]
+
+
+def test_fetch_url_zero_staged_false_case_retains_flag_on_error_and_manifest(
+    monkeypatch: pytest.MonkeyPatch, tmp_path
+) -> None:
+    """D8 false case: a zero-staged crawl that dropped nothing reports False.
+
+    The error remains catchable as `OSError`, and both the raised
+    `frontier_truncated` and the persisted `crawl-manifest.json` must record
+    `False` — a hard-coded `True` on this path would violate the contract.
+    """
+    import json
+
+    from docline.elt.execute import CrawlStagedNothingError, _fetch_url
+    from docline.elt.models import WebCrawlSource
+    from docline.fetch.crawl import CrawlOutcome
+
+    async def _fake(start_url, config=None, progress=None):
+        return CrawlOutcome(results=[], frontier_truncated=False)
+
+    monkeypatch.setattr("docline.fetch.crawl.crawl", _fake)
+    files_dir = tmp_path / "files"
+    files_dir.mkdir()
+
+    caught: OSError | None = None
+    try:
+        _fetch_url(WebCrawlSource(type="web_crawl", url="https://ex.org/docs/", depth=0), files_dir)
+    except OSError as err:
+        caught = err
+
+    assert isinstance(caught, CrawlStagedNothingError)
+    assert caught.frontier_truncated is False
+    manifest = json.loads((files_dir.parent / "crawl-manifest.json").read_text(encoding="utf-8"))
+    assert manifest["frontier_truncated"] is False
+    assert manifest["pages"] == []

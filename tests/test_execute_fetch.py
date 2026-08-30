@@ -11,7 +11,7 @@ import pytest
 
 from docline.app import execute_fetch
 from docline.app_models import FetchRequest
-from docline.fetch.crawl import CrawlConfig, CrawlResult
+from docline.fetch.crawl import CrawlConfig, CrawlOutcome, CrawlResult
 from docline.fetch.http import FetchResponse
 
 _HTML = "<html><body><h1>Title</h1><p>Body text.</p></body></html>"
@@ -36,11 +36,14 @@ def fake_crawl(monkeypatch):
 
     async def _fake(
         start_url: str, config: CrawlConfig | None = None, progress=None
-    ) -> list[CrawlResult]:
+    ) -> CrawlOutcome:
         captured["start_url"] = start_url
         captured["config"] = config
         captured["progress"] = progress
-        return [_page(start_url), _page(start_url.rstrip("/") + "/child.html")]
+        return CrawlOutcome(
+            results=[_page(start_url), _page(start_url.rstrip("/") + "/child.html")],
+            frontier_truncated=False,
+        )
 
     monkeypatch.setattr("docline.fetch.crawl.crawl", _fake)
     return captured
@@ -111,8 +114,8 @@ def test_execute_fetch_reports_failure_when_no_pages_staged(monkeypatch, tmp_pat
 
     async def _empty(
         start_url: str, config: CrawlConfig | None = None, progress=None
-    ) -> list[CrawlResult]:
-        return []
+    ) -> CrawlOutcome:
+        return CrawlOutcome(results=[], frontier_truncated=False)
 
     monkeypatch.setattr("docline.fetch.crawl.crawl", _empty)
     result = execute_fetch(FetchRequest(source="https://example.org/docs/", output_dir="staging"))

@@ -2,14 +2,34 @@
 
 import asyncio
 import logging
-import re
-from collections import deque
 from collections.abc import Callable
-from dataclasses import dataclass
-from html.parser import HTMLParser
-from urllib.parse import parse_qsl, urldefrag, urljoin, urlparse
-from urllib.robotparser import RobotFileParser
+from urllib.parse import urlparse
 
+from docline.fetch.crawl_discovery import check_robots_allowed, compute_backoff_seconds
+from docline.fetch.crawl_links import (
+    _dedup_key,
+    _derive_section_scope,
+    _has_eligible_link,
+    _has_eligible_toc_script,
+    _is_print_page,
+    _iter_eligible_links,
+    _link_in_scope,
+    _normalize_url,
+    _url_within_section_scope,
+    extract_links,
+    extract_toc_links,
+    extract_toc_script_urls,
+)
+from docline.fetch.crawl_models import (
+    MAX_FRONTIER,
+    CrawlConfig,
+    CrawlLimitExceededError,
+    CrawlOutcome,
+    CrawlResult,
+    CrawlRobotsError,
+    _Frontier,
+    _origin_label,
+)
 from docline.fetch.http import (
     MAX_FETCH_ATTEMPTS,
     MAX_TOTAL_FETCH_BYTES,
@@ -18,113 +38,17 @@ from docline.fetch.http import (
     RemainingByteBudget,
     fetch_page,
 )
-from docline.fetch.staging import sanitize_source
-from docline.fetch.url_canonical import UrlCanonicalizationError, canonicalize_url
 from docline.fetch.url_policy import CrawlUrlRejectedError, validate_crawl_url
 from docline.schema.models import DoclineError
 
 logger = logging.getLogger(__name__)
-
-MAX_FRONTIER: int = 10_000
-"""Absolute ceiling on discovered-link admissions for a single crawl.
-
-Independent of ``max_pages`` and ``max_depth``: it bounds how many links a
-crawl may admit to the frontier, so an adversarial link fan-out cannot grow
-the resident ``frontier``/``visited`` structures without bound.
-"""
-
-
-class CrawlLimitExceededError(DoclineError):
-    """Raised when a crawl exceeds the configured page or time budget."""
-
-
-class CrawlRobotsError(DoclineError):
-    """Raised when the robots.txt policy disallows the requested URL."""
-
-
-@dataclass(frozen=True)
-class CrawlConfig:
-    """Configuration for a bounded crawl session.
-
-    Attributes:
-        max_pages: Maximum number of pages to fetch before stopping.
-        max_depth: Maximum discovery depth from the start URL.
-        page_timeout_seconds: Per-page timeout in seconds.
-        max_redirects: Redirect cap per page.
-        respect_robots: Whether to parse and honour ``robots.txt`` rules.
-        domain_lock: Whether discovered links must remain on the start URL host.
-        user_agent: User-agent string sent with each request.
-        max_retries: Maximum retry attempts for transient failures.
-        backoff_base_seconds: Base interval for exponential backoff.
-        rate_limit_ms: Delay between page fetches in milliseconds.
-        max_frontier: Ceiling on discovered-link admissions to the frontier.
-            ``0`` disables link discovery entirely; negative values are rejected.
-    """
-
-    max_pages: int = 50
-    max_depth: int = 0
-    page_timeout_seconds: float = 30.0
-    max_redirects: int = 5
-    respect_robots: bool = True
-    domain_lock: bool = True
-    user_agent: str = "docline-crawler/1.0"
-    max_retries: int = 3
-    backoff_base_seconds: float = 1.0
-    rate_limit_ms: int = 0
-    max_frontier: int = MAX_FRONTIER
-
-
-@dataclass
-class CrawlResult:
-    """Outcome of crawling a single page.
-
-    Attributes:
-        url: The URL that was crawled.
-        depth: Discovery depth relative to the start URL.
-        response: The HTTP response, or ``None`` when the page was skipped.
-        skipped: Whether the page was skipped (e.g. robots.txt disallow).
-        skip_reason: Human-readable reason for skipping, if applicable.
-    """
-
-    url: str
-    depth: int = 0
-    response: FetchResponse | None = None
-    skipped: bool = False
-    skip_reason: str | None = None
-
-
-class _LinkExtractor(HTMLParser):
-    """Collect href values from HTML anchors and the first base href."""
-
-    def __init__(self) -> None:
-        super().__init__()
-        self.base_href: str | None = None
-        self.hrefs: list[str] = []
-        self.script_srcs: list[str] = []
-
-    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
-        """Record link targets from ``<base>`` and ``<a>`` tags."""
-        attrs_map = {name.lower(): value for name, value in attrs}
-        lowered = tag.lower()
-        if lowered == "base" and self.base_href is None:
-            href = attrs_map.get("href")
-            if href:
-                self.base_href = href
-        if lowered == "a":
-            href = attrs_map.get("href")
-            if href:
-                self.hrefs.append(href)
-        if lowered == "script":
-            src = attrs_map.get("src")
-            if src:
-                self.script_srcs.append(src)
 
 
 async def crawl(
     start_url: str,
     config: CrawlConfig | None = None,
     progress: Callable[[int, int | None, str], None] | None = None,
-) -> list[CrawlResult]:
+) -> CrawlOutcome:
     """Crawl *start_url* within the configured page and depth budgets.
 
     Performs a bounded breadth-first crawl starting at *start_url*,
@@ -144,8 +68,10 @@ async def crawl(
             of section scope, print pages, duplicate finals) do not fire it.
 
     Returns:
-        A list of :class:`CrawlResult` values, in breadth-first discovery order,
-        up to ``config.max_pages`` items.
+        A :class:`CrawlOutcome`: ``results`` are the :class:`CrawlResult` values
+        in breadth-first discovery order (up to ``config.max_pages`` items), and
+        ``frontier_truncated`` reports whether the ceiling cost the crawl an
+        eligible link — deliberately conservative per :class:`CrawlOutcome`.
 
     Note:
         Discovered-link admissions to the frontier are capped at
@@ -176,7 +102,11 @@ async def crawl(
     start = _normalize_url(validate_crawl_url(start_url))
     start_host = urlparse(start).netloc
     section_scope = _derive_section_scope(start)
-    frontier: deque[tuple[str, int]] = deque([(start, 0)])
+    frontier = _Frontier(
+        max_frontier=crawl_config.max_frontier,
+        start_label=_origin_label(start),
+    )
+    frontier.queue.append((start, 0))
     visited: set[str] = {_dedup_key(start)}
     emitted_urls: set[str] = set()
     robots_cache: dict[str, str | None] = {}
@@ -185,45 +115,9 @@ async def crawl(
     # Request-scoped aggregate byte + fetch-attempt budget threaded through every
     # fetch_page call so no auxiliary/retry/redirect traffic bypasses the bound.
     budget = RemainingByteBudget(MAX_TOTAL_FETCH_BYTES, max_attempts=MAX_FETCH_ATTEMPTS)
-    admitted = 0
-    ceiling_reported = False
 
-    def _report_ceiling() -> None:
-        """Log the frontier ceiling hit once per crawl."""
-        nonlocal ceiling_reported
-        if ceiling_reported:
-            return
-        ceiling_reported = True
-        logger.debug(
-            "Frontier admission ceiling of %d reached for crawl of %s; "
-            "dropping further discovered links.",
-            crawl_config.max_frontier,
-            sanitize_source(start),
-        )
-
-    def _admit(link: str, link_key: str, next_depth: int) -> bool:
-        """Admit a discovered link to the frontier unless the ceiling is reached.
-
-        Args:
-            link: The absolute discovered URL.
-            link_key: The canonical dedup key for *link*.
-            next_depth: Discovery depth to record for *link*.
-
-        Returns:
-            ``True`` when the link was admitted, ``False`` when the whole-crawl
-            frontier ceiling refused it.
-        """
-        nonlocal admitted
-        if admitted >= crawl_config.max_frontier:
-            _report_ceiling()
-            return False
-        admitted += 1
-        visited.add(link_key)
-        frontier.append((link, next_depth))
-        return True
-
-    while frontier and page_count < crawl_config.max_pages:
-        current_url, depth = frontier.popleft()
+    while frontier.queue and page_count < crawl_config.max_pages:
+        current_url, depth = frontier.queue.popleft()
 
         if crawl_config.respect_robots and not await _robots_allow(
             current_url,
@@ -287,21 +181,28 @@ async def crawl(
         if _is_print_page(final_url, response.body):
             visited.add(_dedup_key(final_url))
             if depth < crawl_config.max_depth and _is_html_response(response):
-                if admitted >= crawl_config.max_frontier:
-                    _report_ceiling()
-                    continue
-                for link in extract_links(response.body, final_url):
-                    if crawl_config.domain_lock and urlparse(link).netloc != start_host:
-                        continue
-                    if crawl_config.domain_lock and not _url_within_section_scope(
-                        link, section_scope
+                page_links = extract_links(response.body, final_url)
+                if frontier.exhausted:
+                    # Cap full: parse in memory, record truncation only on a real drop.
+                    if _has_eligible_link(
+                        page_links,
+                        domain_lock=crawl_config.domain_lock,
+                        start_host=start_host,
+                        section_scope=section_scope,
+                        visited=visited,
                     ):
-                        continue
-                    link_key = _dedup_key(link)
-                    if link_key in visited:
-                        continue
-                    if not _admit(link, link_key, depth + 1):
-                        break
+                        frontier.refused_any = True
+                        frontier.report_ceiling()
+                else:
+                    for link, link_key in _iter_eligible_links(
+                        page_links,
+                        domain_lock=crawl_config.domain_lock,
+                        start_host=start_host,
+                        section_scope=section_scope,
+                        visited=visited,
+                    ):
+                        if not frontier.admit(link, link_key, depth + 1, visited):
+                            break
             continue
 
         final_key = _dedup_key(final_url)
@@ -321,16 +222,36 @@ async def crawl(
             continue
         if not _is_html_response(response):
             continue
-        if admitted >= crawl_config.max_frontier:
-            # The ceiling is exhausted, so every discovered link would be refused.
-            # Skip discovery entirely rather than issuing TOC-asset requests and
-            # building link lists that cannot be admitted.
-            _report_ceiling()
+
+        anchor_links = extract_links(response.body, final_url)
+        if frontier.exhausted:
+            # Ceiling exhausted: skip TOC *network* discovery but still parse
+            # links (and depth-zero TOC scripts) to record a real drop only.
+            if _has_eligible_link(
+                anchor_links,
+                domain_lock=crawl_config.domain_lock,
+                start_host=start_host,
+                section_scope=section_scope,
+                visited=visited,
+            ):
+                frontier.refused_any = True
+                frontier.report_ceiling()
+            elif depth == 0 and _has_eligible_toc_script(
+                response.body,
+                final_url,
+                domain_lock=crawl_config.domain_lock,
+                start_host=start_host,
+                section_scope=section_scope,
+            ):
+                frontier.refused_any = True
+                frontier.report_ceiling()
             continue
 
-        discovered_links = extract_links(response.body, final_url)
+        discovered_links = anchor_links
         if depth == 0:
-            discovered_links.extend(
+            # TOC-derived navigation is ordered ahead of in-page anchors so an
+            # admission-competition drop sheds anchors, not authoritative TOC (D6).
+            discovered_links = (
                 await _discover_toc_links(
                     response.body,
                     final_url,
@@ -339,117 +260,20 @@ async def crawl(
                     section_scope=section_scope,
                     budget=budget,
                 )
+                + anchor_links
             )
 
-        for link in discovered_links:
-            if crawl_config.domain_lock and urlparse(link).netloc != start_host:
-                continue
-            if crawl_config.domain_lock and not _url_within_section_scope(link, section_scope):
-                continue
-            link_key = _dedup_key(link)
-            if link_key in visited:
-                continue
-            if not _admit(link, link_key, depth + 1):
+        for link, link_key in _iter_eligible_links(
+            discovered_links,
+            domain_lock=crawl_config.domain_lock,
+            start_host=start_host,
+            section_scope=section_scope,
+            visited=visited,
+        ):
+            if not frontier.admit(link, link_key, depth + 1, visited):
                 break
 
-    return results
-
-
-def check_robots_allowed(robots_txt: str, user_agent: str, url: str) -> bool:
-    """Parse *robots_txt* and return whether *url* is allowed for *user_agent*.
-
-    Args:
-        robots_txt: Full text content of a ``robots.txt`` file.
-        user_agent: User-agent identifier to check rules against.
-        url: The URL path (or full URL) to test against the parsed rules.
-
-    Returns:
-        ``True`` when the URL is allowed, ``False`` when disallowed.
-    """
-    if not robots_txt:
-        return True
-    parser = RobotFileParser()
-    parser.parse(robots_txt.splitlines())
-    return parser.can_fetch(user_agent, url)
-
-
-def extract_links(html_text: str, page_url: str) -> list[str]:
-    """Extract normalized absolute HTTP(S) links from HTML content.
-
-    Args:
-        html_text: HTML page body.
-        page_url: Canonical URL of the page that produced *html_text*.
-
-    Returns:
-        Normalized absolute links discovered in document order.
-    """
-    parser = _LinkExtractor()
-    parser.feed(html_text)
-    base_url = urljoin(page_url, parser.base_href) if parser.base_href else page_url
-
-    links: list[str] = []
-    seen: set[str] = set()
-    for href in parser.hrefs:
-        normalized_href = href.strip()
-        if not normalized_href:
-            continue
-        if normalized_href.startswith(("#", "mailto:", "javascript:", "data:", "tel:")):
-            continue
-        try:
-            absolute = _normalize_url(validate_crawl_url(urljoin(base_url, normalized_href)))
-        except CrawlUrlRejectedError:
-            continue
-        if absolute in seen:
-            continue
-        seen.add(absolute)
-        links.append(absolute)
-    return links
-
-
-def extract_toc_script_urls(html_text: str, page_url: str) -> list[str]:
-    """Extract mdBook-style TOC script URLs from HTML content."""
-    parser = _LinkExtractor()
-    parser.feed(html_text)
-
-    script_urls: list[str] = []
-    seen: set[str] = set()
-    for script_src in parser.script_srcs:
-        normalized_src = script_src.strip()
-        if not normalized_src:
-            continue
-        basename = normalized_src.rsplit("/", 1)[-1].lower()
-        if not (basename.startswith("toc-") and basename.endswith(".js")):
-            continue
-        try:
-            absolute = _normalize_url(validate_crawl_url(urljoin(page_url, normalized_src)))
-        except CrawlUrlRejectedError:
-            continue
-        if absolute in seen:
-            continue
-        seen.add(absolute)
-        script_urls.append(absolute)
-    return script_urls
-
-
-def extract_toc_links(script_text: str, page_url: str) -> list[str]:
-    """Extract page links from an mdBook TOC script payload."""
-    links: list[str] = []
-    seen: set[str] = set()
-    for match in re.finditer(r'href=(?P<quote>["\'])(?P<href>.*?)(?P=quote)', script_text):
-        normalized_href = match.group("href").strip()
-        if not normalized_href:
-            continue
-        if normalized_href.startswith(("#", "mailto:", "javascript:", "data:", "tel:")):
-            continue
-        try:
-            absolute = _normalize_url(validate_crawl_url(urljoin(page_url, normalized_href)))
-        except CrawlUrlRejectedError:
-            continue
-        if absolute in seen:
-            continue
-        seen.add(absolute)
-        links.append(absolute)
-    return links
+    return CrawlOutcome(results=results, frontier_truncated=frontier.truncated)
 
 
 async def _fetch_with_retries(
@@ -519,28 +343,6 @@ def _is_html_response(response: FetchResponse) -> bool:
     return "html" in content_type or "<html" in response.body.lower()
 
 
-def _normalize_url(url: str) -> str:
-    """Remove fragments and normalize empty paths for crawl bookkeeping."""
-    without_fragment, _ = urldefrag(url)
-    parsed = urlparse(without_fragment)
-    normalized_path = parsed.path or "/"
-    return parsed._replace(path=normalized_path, fragment="").geturl()
-
-
-def _dedup_key(url: str) -> str:
-    """Return a canonical dedup key for *url*.
-
-    Wraps :func:`canonicalize_url` to collapse aliases that differ only in
-    query order, tracking parameters, scheme/host case, fragments, or default
-    ports. Falls back to :func:`_normalize_url` when canonicalization fails so
-    dedup never raises during normal crawl iteration.
-    """
-    try:
-        return canonicalize_url(url)
-    except UrlCanonicalizationError:
-        return _normalize_url(url)
-
-
 async def _discover_toc_links(
     html_text: str,
     page_url: str,
@@ -551,12 +353,19 @@ async def _discover_toc_links(
     budget: "RemainingByteBudget | None" = None,
 ) -> list[str]:
     """Fetch mdBook TOC assets referenced by the root page and extract page links."""
+
+    def _in_scope(candidate: str) -> bool:
+        return _link_in_scope(
+            candidate,
+            domain_lock=crawl_config.domain_lock,
+            start_host=start_host,
+            section_scope=section_scope,
+        )
+
     links: list[str] = []
     seen: set[str] = set()
     for script_url in extract_toc_script_urls(html_text, page_url):
-        if crawl_config.domain_lock and urlparse(script_url).netloc != start_host:
-            continue
-        if crawl_config.domain_lock and not _url_within_section_scope(script_url, section_scope):
+        if not _in_scope(script_url):
             continue
         try:
             response = await _fetch_with_retries(script_url, crawl_config, budget)
@@ -567,9 +376,7 @@ async def _discover_toc_links(
         except (DoclineError, OSError):
             continue
         for link in extract_toc_links(response.body, page_url):
-            if crawl_config.domain_lock and urlparse(link).netloc != start_host:
-                continue
-            if crawl_config.domain_lock and not _url_within_section_scope(link, section_scope):
+            if not _in_scope(link):
                 continue
             if link in seen:
                 continue
@@ -578,79 +385,11 @@ async def _discover_toc_links(
     return links
 
 
-def _derive_section_scope(url: str) -> str | None:
-    """Infer a section prefix that bounds a crawl to the start URL's subtree.
-
-    Uses the **full directory prefix** of the start URL so a crawl of a
-    sub-path (e.g. ``/docs/current/``) stays within that subsection and does
-    not wander into sibling subsections (e.g. other ``/docs/<version>/`` trees).
-    A directory URL scopes to itself; a file URL scopes to its parent
-    directory. A bare-root or ambiguous extensionless path imposes no scope
-    (the crawl is then bounded only by ``domain_lock``).
-    """
-    path = urlparse(url).path or "/"
-    segments = [segment for segment in path.split("/") if segment]
-    if not segments:
-        return None
-    if path.endswith("/"):
-        return path
-    if "." in segments[-1]:
-        parent = path.rsplit("/", 1)[0]
-        return f"{parent}/" if parent else None
-    return None
-
-
-def _url_within_section_scope(url: str, section_scope: str | None) -> bool:
-    """Return True when *url* remains inside the inferred site section."""
-    if not section_scope:
-        return True
-    path = urlparse(url).path or "/"
-    normalized_scope = section_scope.rstrip("/")
-    return path == normalized_scope or path.startswith(section_scope)
-
-
-def _is_print_page(url: str, body: str | None = None) -> bool:
-    """Return True when a URL looks like a site-wide print page."""
-    parsed = urlparse(url)
-    basename = parsed.path.rstrip("/").rsplit("/", 1)[-1].lower()
-    if basename in {"print", "print.html", "print.htm"}:
-        return True
-
-    for key, value in parse_qsl(parsed.query, keep_blank_values=True):
-        if "print" in key.lower() or "print" in value.lower():
-            return True
-
-    if body is None:
-        return False
-
-    lowered = body.lower()
-    if "window.print" in lowered and "noindex" in lowered:
-        return True
-    if "data-r-output-format=print" in lowered and "canonical" in lowered:
-        return True
-    if 'data-r-output-format="print"' in lowered and "canonical" in lowered:
-        return True
-
-    return False
-
-
-def compute_backoff_seconds(attempt: int, base: float = 1.0) -> float:
-    """Compute an exponential backoff interval for a retry attempt.
-
-    Args:
-        attempt: Zero-based attempt index (0 = first retry).
-        base: Base interval in seconds.
-
-    Returns:
-        The backoff duration in seconds (capped at 60 seconds).
-    """
-    return float(min(base * (2**attempt), 60.0))
-
-
 __all__ = [
     "MAX_FRONTIER",
     "CrawlConfig",
     "CrawlLimitExceededError",
+    "CrawlOutcome",
     "CrawlResult",
     "CrawlRobotsError",
     "check_robots_allowed",

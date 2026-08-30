@@ -228,6 +228,24 @@ Progress metrics:
   ceiling, the crawl may finish early — so completion reports the authoritative
   count of pages actually staged rather than a forced 100%.
 
+## Crawl frontier truncation
+
+A web crawl admits at most 10,000 discovered links (the `MAX_FRONTIER` ceiling),
+independent of `depth` and `max_pages`. When the ceiling drops an eligible link,
+the crawl tells you in three places:
+
+* a single `WARNING` line at default verbosity, naming the crawl origin (scheme
+  and host) and the admission count — never the path, query, or credentials.
+* a `frontier_truncated: true` key in the staged `crawl-manifest.json`.
+* a `frontier_truncated` field on the JSON result — on `StagingJob` for
+  `docline fetch` and on `FetchResult` for the MCP `fetch` tool. Both report the
+  same value for the same request.
+
+The ceiling is not adjustable from the CLI or MCP fetch paths. When you see the
+warning, narrow the crawl: start from a deeper, section-scoped URL or lower the
+`depth`. The signal is conservative and may occasionally report truncation for a
+crawl that lost nothing, which is safer than hiding an incomplete result.
+
 ## Running the local stdio MCP server
 
 docline ships an MCP (Model Context Protocol) server over stdio so an MCP client

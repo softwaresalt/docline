@@ -46,3 +46,39 @@ docline (console script)
   (`docline.mcp.server` advertise/dispatch gate, `docline.mcp.stdio` `-32602`
   mapping, `docline.mcp.__main__` startup resolution) and does **not** change CLI
   behavior: `docline process --pdf-engine mistral_ocr` is unaffected.
+
+## Crawl frontier truncation observability
+
+The bounded crawl (`docline.fetch.crawl`) admits at most `MAX_FRONTIER` (10,000)
+discovered links per crawl, independent of `max_pages` and `max_depth`. When that
+ceiling refuses an eligible link, the crawl records the loss through one signal
+that reaches **both** interfaces by construction:
+
+* `crawl()` returns a `CrawlOutcome` carrying `results` and a `frontier_truncated`
+  flag. The flag reports whether the ceiling cost the crawl an eligible link. It
+  is set on a direct admission refusal and, at a depth-zero exhausted
+  short-circuit, from an eligible `toc-*.js` reference that cannot be examined
+  without a network fetch (the conservative case below). Reaching the cap without
+  dropping an eligible link is not truncation.
+* A single WARNING is logged once per crawl at default verbosity. Its payload is
+  the sanitized crawl **origin** (scheme and host) plus the admission count; it
+  omits the path, query, fragment, and userinfo, so a default-visible record
+  cannot leak URL-carried credentials.
+* `docline.elt.execute` threads the flag into `crawl-manifest.json` (written even
+  when zero pages stage) and onto `StagingJob.frontier_truncated`.
+* The CLI serializes `StagingJob` verbatim, so the field appears in CLI JSON with
+  no CLI-specific change. The MCP path copies it onto `FetchResult.frontier_truncated`.
+  Both surfaces report the same value for an equivalent request.
+
+At depth zero, TOC-derived navigation is ordered ahead of in-page anchors, so a
+truncated mdBook crawl sheds anchors and keeps the authoritative TOC set. The
+signal is deliberately conservative: a depth-zero page that references a TOC
+script may report truncation even when that script would have yielded no
+admissible links, because confirming otherwise would require the network fetch
+the exhausted short-circuit exists to avoid. A false "may be incomplete" prompts
+a re-run; a false "complete" would hide data loss.
+
+`MAX_FRONTIER` is not operator-configurable on the CLI or MCP fetch paths, and
+the ELT path always uses the default. The remedy for a truncated crawl is to
+narrow it with a tighter start URL, a lower `depth`, or a section-scoped entry
+point.

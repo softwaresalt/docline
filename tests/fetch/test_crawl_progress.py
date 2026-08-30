@@ -31,7 +31,7 @@ def _run(pages: dict[str, FetchResponse], monkeypatch, start: str, **cfg):
 
     results = asyncio.run(
         crawl(start, CrawlConfig(respect_robots=False, domain_lock=False, **cfg), progress=record)
-    )
+    ).results
     return results, calls
 
 
@@ -116,8 +116,8 @@ def test_progress_none_default_leaves_results_unchanged(monkeypatch: pytest.Monk
     monkeypatch.setattr("docline.fetch.crawl.fetch_page", fake_fetch_page)
     cfg = CrawlConfig(respect_robots=False, domain_lock=False, max_pages=10, max_depth=2)
 
-    without = asyncio.run(crawl("https://ex.org/a.html", cfg))
-    with_noop = asyncio.run(crawl("https://ex.org/a.html", cfg, progress=lambda *a: None))
+    without = asyncio.run(crawl("https://ex.org/a.html", cfg)).results
+    with_noop = asyncio.run(crawl("https://ex.org/a.html", cfg, progress=lambda *a: None)).results
 
     assert [r.url for r in without] == [r.url for r in with_noop]
     assert [r.response is not None for r in without] == [r.response is not None for r in with_noop]
@@ -140,7 +140,7 @@ def test_progress_fires_for_robots_denied_page(monkeypatch: pytest.MonkeyPatch) 
             CrawlConfig(respect_robots=True, domain_lock=False, max_pages=5),
             progress=lambda d, t, det: calls.append((d, t, det)),
         )
-    )
+    ).results
     assert results[0].skipped is True
     assert calls == [(1, 5, "https://ex.org/a.html")]  # robots denial consumes the budget
 
@@ -157,7 +157,7 @@ def test_progress_fires_for_fetch_failure(monkeypatch: pytest.MonkeyPatch) -> No
             CrawlConfig(respect_robots=False, domain_lock=False, max_pages=5, max_retries=0),
             progress=lambda d, t, det: calls.append((d, t, det)),
         )
-    )
+    ).results
     assert results[0].skipped is True
     assert calls == [(1, 5, "https://ex.org/a.html")]  # fetch failure consumes the budget
 
@@ -180,7 +180,7 @@ def test_progress_fires_for_domain_rejected_redirect(monkeypatch: pytest.MonkeyP
             CrawlConfig(respect_robots=False, domain_lock=True, max_pages=5),
             progress=lambda d, t, det: calls.append((d, t, det)),
         )
-    )
+    ).results
     assert results[0].skipped is True
     assert calls == [
         (1, 5, "https://ex.org/a.html")

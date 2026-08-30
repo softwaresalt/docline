@@ -145,7 +145,9 @@ def test_crawl_reraises_aggregate_on_main_page(monkeypatch) -> None:
 
     monkeypatch.setattr("docline.fetch.crawl.fetch_page", _raise_budget)
     with pytest.raises(AggregateBudgetExceededError):
-        asyncio.run(crawl("http://example.com", CrawlConfig(max_pages=5, respect_robots=False)))
+        asyncio.run(
+            crawl("http://example.com", CrawlConfig(max_pages=5, respect_robots=False))
+        ).results
 
 
 def test_crawl_reraises_aggregate_on_robots(monkeypatch) -> None:
@@ -154,4 +156,6 @@ def test_crawl_reraises_aggregate_on_robots(monkeypatch) -> None:
 
     monkeypatch.setattr("docline.fetch.crawl.fetch_page", _raise_budget)
     with pytest.raises(AggregateBudgetExceededError):
-        asyncio.run(crawl("http://example.com", CrawlConfig(max_pages=5, respect_robots=True)))
+        asyncio.run(
+            crawl("http://example.com", CrawlConfig(max_pages=5, respect_robots=True))
+        ).results
