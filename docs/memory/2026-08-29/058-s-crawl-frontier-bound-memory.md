@@ -4,7 +4,9 @@ date: 2026-08-29
 agent: ship
 shipment: 058-S
 branch: feat/067-crawl-frontier-bound
-status: in-progress
+pr: 175
+merge_commit: b1f4549e308b25a02dbd3f30eb6d87bf8a126331
+status: shipped
 ---
 
 ## Scope
@@ -29,6 +31,11 @@ Manifest: `067-F`, `067.001-T` (red harness), `067.002-T` (green implementation)
 |---|---|---|
 | 067.001-T | `799d48b` | Red harness: `tests/fetch/test_crawl_frontier_bound.py`, 12 tests. Observed red: 5 behavioural failures, 7 structural passes. |
 | 067.002-T | `bfa1bf4` | Green: `_admit()` admission gate enforced at both discovery append sites in `crawl()`. |
+| Persona review fixes | `afd76e6` | Print-page coverage, negative-cap validation, budget-threading double, drop-log assertions. |
+| Copilot cycle 1 | `4d9b422` | Discovery short-circuits once admissions are exhausted; zero cap issues no TOC-asset requests. |
+| Copilot cycle 2 | `922ad78` | Ceiling record redacts the start URL; print-page branch reports drops consistently. |
+
+Merged as `b1f4549` (true merge commit, two parents) via PR #175.
 
 ## Decisions and rationale
 
@@ -50,14 +57,17 @@ Manifest: `067-F`, `067.001-T` (red harness), `067.002-T` (green implementation)
 ## Verification
 
 Gates run in order, all green: `ruff check .`, `pyright src/` (0 errors),
-`pytest` (2001 passed, 6 skipped), `ruff format --check .` (278 files).
+`pytest` (2008 passed, 6 skipped), `ruff format --check .` (278 files). CI green on the merged
+HEAD across all eight checks. Runtime spot-check: a 5,000-link fan-out with `max_pages=1_000_000`
+and `max_depth=10` bounded to exactly `1 + max_frontier` requests.
 
 ## Next steps
 
-1. Multi-persona adversarial review (correctness, Python safety, scope boundary).
-2. Open implementation PR; drive Copilot review loop to zero unresolved threads with CI green.
-3. Merge with a merge commit under the standing operator approval.
-4. Runtime verification, shipment archive/close, post-merge closure PR under identical gates.
+Closure recorded in `docs/closure/2026-08-29-058-s-crawl-frontier-bound-closure.md`. Shipment
+`058-S` is shipped and all four artifacts are archived with the merge SHA. Follow-ups stashed as
+`8A99D90C`, `7F34A0D5`, and `ABBE9BCC`. Compound learnings captured for the admission-cap pattern
+and the worktree gate invocation. `docs/memory/` holds 25 files, below the compaction threshold,
+so `compact-context` was not required this session.
 
 ## Out of scope
 
