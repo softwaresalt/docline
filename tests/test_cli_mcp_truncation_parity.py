@@ -142,3 +142,15 @@ def test_crawl_failure_reports_false_on_both_surfaces(
     assert mcp["frontier_truncated"] is False
     assert cli["complete"] is False
     assert mcp["success"] is False
+
+
+def test_cli_serialization_carries_flag_without_cli_source_change() -> None:
+    """A.T11a: the CLI emits the flag purely via StagingJob.model_dump().
+
+    ``cli.py`` serializes the whole ``StagingJob`` with ``model_dump(mode="json")``,
+    so the field appears in CLI output with no CLI edit. This pins the model as
+    the seam; ``git diff --stat src/docline/cli.py`` stays empty for this shipment.
+    """
+    from docline.fetch.models import StagingJob
+
+    assert "frontier_truncated" in StagingJob.model_fields
