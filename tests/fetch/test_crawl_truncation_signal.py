@@ -26,6 +26,7 @@ import pytest
 from docline.fetch.crawl import CrawlConfig, CrawlOutcome, crawl
 from docline.fetch.crawl_models import _origin_label
 from docline.fetch.http import FetchResponse, RemainingByteBudget
+from docline.fetch.url_policy import CrawlUrlRejectedError
 
 CRAWL_LOGGER = "docline.fetch.crawl"
 ORIGIN = "https://example.com"
@@ -170,6 +171,61 @@ def test_exactly_at_cap_link_free_page_flags_false_and_is_silent(
     assert _ceiling_records(caplog) == []
     # The admitted page was actually visited, so the short-circuit was reached.
     assert only in requested
+
+
+def test_truncation_true_when_later_page_drops_eligible_anchor(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    """A cap filled across pages, then a later page's new anchor is dropped.
+
+    The root exactly fills the cap with two admitted children (no refusal at the
+    root). A depth-one child then exposes a new eligible anchor that the
+    already-exhausted frontier must drop — exercising the main-branch
+    ``frontier.exhausted`` short-circuit's ``_has_eligible_link`` path (A.T2's
+    exhausted-frontier positive case), which the root-level refusal tests do not
+    reach.
+    """
+    start = f"{ORIGIN}/docs/"
+    child0 = f"{ORIGIN}/docs/child-0"
+    child1 = f"{ORIGIN}/docs/child-1"
+    grandchild = f"{ORIGIN}/docs/grandchild"
+    pages = {
+        start: _html(
+            start,
+            '<html><body><a href="/docs/child-0">0</a><a href="/docs/child-1">1</a></body></html>',
+        ),
+        child0: _html(child0, '<html><body><a href="/docs/grandchild">g</a></body></html>'),
+        child1: _html(child1, "<html><body><h1>leaf</h1></body></html>"),
+    }
+    requested: list[str] = []
+    _install_fetch(monkeypatch, pages, requested)
+
+    with caplog.at_level(logging.WARNING, logger=CRAWL_LOGGER):
+        outcome = asyncio.run(
+            crawl(
+                start, CrawlConfig(max_pages=10, max_depth=2, max_frontier=2, respect_robots=False)
+            )
+        )
+
+    emitted = {result.url for result in outcome.results}
+    assert child0 in emitted
+    assert child1 in emitted
+    # The cap was full before child-0's anchor was seen, so it is dropped.
+    assert grandchild not in emitted
+    assert grandchild not in requested
+    assert outcome.frontier_truncated is True
+    assert len(_ceiling_records(caplog)) == 1
+
+
+def test_malformed_port_start_url_raises_typed_rejection() -> None:
+    """A start URL with a non-numeric port is rejected typed, not as ValueError.
+
+    ``validate_crawl_url`` inspects only the hostname, so the observability
+    setup's origin-label parse is the first ``.port`` access; it must surface a
+    typed :class:`CrawlUrlRejectedError`, not leak a raw ``ValueError``.
+    """
+    with pytest.raises(CrawlUrlRejectedError):
+        asyncio.run(crawl("https://example.com:not-a-port", CrawlConfig(respect_robots=False)))
 
 
 # ---------------------------------------------------------------------------

@@ -135,7 +135,8 @@ def validate_crawl_url(url: str) -> str:
 
     1. Scheme must be ``http`` or ``https``.
     2. Host must not be empty.
-    3. Host must not resolve to a loopback, link-local, or private address
+    3. Port, if present, must be a valid integer.
+    4. Host must not resolve to a loopback, link-local, or private address
        (RFC 1918 / RFC 4193 / metadata services).
 
     Args:
@@ -155,6 +156,10 @@ def validate_crawl_url(url: str) -> str:
     host = parsed.hostname or ""
     if not host:
         raise CrawlUrlRejectedError("URL has no host component.")
+    try:
+        parsed.port
+    except ValueError as err:
+        raise CrawlUrlRejectedError("URL has a malformed port.") from err
     if is_private_host(host):
         raise CrawlUrlRejectedError(f"Host '{host}' resolves to a reserved or private address.")
     return url
