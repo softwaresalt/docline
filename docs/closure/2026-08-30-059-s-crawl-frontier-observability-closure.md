@@ -35,7 +35,12 @@ status: closed
 
 Review remediation landed across `c0f6b2f`, `c142d1d`, `df5f5b1`, `91aa1f0`, `13a2f8e`, `0516847`,
 `42bdcf0`, and `31f4954`. All 21 artifacts (shipment, feature, 19 tasks) are archived under
-`.backlogit/archive/` with the merge SHA `58ba5c5` recorded.
+`.backlogit/archive/` with the merge SHA `58ba5c5` recorded. The `backlogit shipment ship` CLI
+deadlocked from the worktree, so archival used the single-artifact fallback (`move` +
+`update --commit` + `archive` + task-commit backfill); the shipment was therefore archived directly
+from `active` and its frontmatter retains `archived_status: active` rather than a shipped lifecycle
+state — a cosmetic difference from the normal ship path, with archive placement and merge
+traceability fully intact (see `docs/compound/2026-08-30-ship-shipment-deadlocks-in-worktree.md`).
 
 ## What shipped
 

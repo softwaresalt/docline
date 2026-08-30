@@ -66,6 +66,6 @@ compound refresh -> compact-context.
 - Runtime verification: 18/18 checks passed across truncation, conservative TOC, payload redaction, manifest/StagingJob/FetchResult parity, malformed-port rejection, and uncapped no-op.
 - Shipment 059-S, feature 068-F, and all 19 tasks archived with merge SHA `58ba5c5`. The `shipment ship` CLI deadlocked in the worktree; completed via `move` + per-artifact `update --commit` + `archive` + task-commit backfill (see compound learning `2026-08-30-ship-shipment-deadlocks-in-worktree.md`).
 - Closure record: `docs/closure/2026-08-30-059-s-crawl-frontier-observability-closure.md`.
-- Compaction: plan finalized to `docs/plans/2026-08-29-crawl-frontier-observability-decided-plan.md`; verbose original archived to `docs/archive/plans/`. `docs/memory/` (26 files, ~204 KB) is below the 40-file/500 KB thresholds — preserved.
+- Compaction: plan finalized to `docs/plans/2026-08-29-crawl-frontier-observability-decided-plan.md`; verbose original archived to `docs/archive/plans/`. `docs/memory/` remains well below the 40-file/500 KB thresholds — preserved (no memory files archived).
 - Follow-up `D6E758F5` (high) preserved in stash; 060-S untouched.
 
