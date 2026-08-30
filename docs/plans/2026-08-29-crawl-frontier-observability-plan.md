@@ -52,10 +52,17 @@ ceiling value or to the ceiling's semantics.
 - **Full test caller inventory for `crawl()`** (verified by repo-wide search):
   `tests/fetch/test_crawl_limits.py`, `test_crawl_frontier_bound.py`, `test_aggregate_budget.py`,
   `test_crawl_backoff.py`, `test_crawl_progress.py`, `test_amplification.py`,
-  **`test_crawl_section_scope.py`**, `tests/elt/test_elt_real_execution.py`, and
+  **`test_crawl_section_scope.py`**, `tests/elt/test_elt_real_execution.py`,
+  **`tests/elt/test_execute_fetch_progress.py`** (patches `docline.fetch.crawl.crawl` with fakes
+  returning bare lists in three cases, incl. a zero-page case), and
   **`tests/test_execute_fetch.py`** — root level, *not* under `tests/elt/`; it monkeypatches
   `docline.fetch.crawl.crawl` with a fake returning `list[CrawlResult]`, so the fake itself must
   be migrated.
+- **`tests/parity/test_equivalence.py` asserts exact model field sets.**
+  `test_fetch_result_model_fields_complete` asserts
+  `set(FetchResult.model_fields) == {"source", "staged_path", "success", "error"}`. Adding a field
+  to `FetchResult` **will fail this test** unless it is updated in the same shipment. There is no
+  equivalent exact-field assertion for `StagingJob`, but A.T9 must re-check before landing.
 - Ruff config selects `E, F, I, UP` only. The 400-line convention is **not** gate-enforced.
 
 ## Constitution Check
@@ -403,10 +410,12 @@ admission policies).
 ### A.T8a — Migrate ELT test callers to `CrawlOutcome`
 
 - **Domain:** tests. **Files:** `tests/elt/test_elt_real_execution.py`,
-  `tests/test_execute_fetch.py`.
-- Same mechanical migration. **Both modules monkeypatch or stub `crawl`**, so their fakes must be
-  updated to return a `CrawlOutcome`, not just their call sites. Also update any assertion on
-  `_fetch_url`'s return value, which becomes a `(count, truncated)` pair in A.T9.
+  `tests/elt/test_execute_fetch_progress.py`, `tests/test_execute_fetch.py`.
+- Same mechanical migration. **All three modules monkeypatch or stub `crawl`**, so their fakes
+  must be updated to return a `CrawlOutcome`, not just their call sites —
+  `test_execute_fetch_progress.py` has three such fakes, including a zero-page case that is
+  directly relevant to D8. Also update any assertion on `_fetch_url`'s return value, which becomes
+  a `(count, truncated)` pair in A.T9.
 - **Acceptance:** these two modules green in isolation.
 - **Depends on:** A.T6.
 
@@ -485,11 +494,16 @@ admission policies).
 
 ### A.T11b — Surface `frontier_truncated` on the MCP response
 
-- **Domain:** src. **Files:** `src/docline/app_models.py`, `src/docline/app.py`.
+- **Domain:** src. **Files:** `src/docline/app_models.py`, `src/docline/app.py`,
+  `tests/parity/test_equivalence.py`.
 - Add `frontier_truncated: bool = False` to `FetchResult` with an `Attributes:` docstring entry,
   and populate it from `job.frontier_truncated` at the `execute_fetch` success return
   (`app.py:621`). The zero-staged return at 615 must also carry the real flag from the job so it
   agrees with the manifest; the pre-crawl failure returns (592, 596, 611) keep the default.
+- **`tests/parity/test_equivalence.py::test_fetch_result_model_fields_complete` asserts the exact
+  field set** and will fail otherwise. Update that assertion to include `frontier_truncated` in
+  the same task — it is a contract test for this model, so changing it here is correct rather than
+  a width violation. Do not touch the neighbouring `ProcessResult` assertion.
 - **`mcp/server.py` is not edited** — it returns `execute_fetch()` unchanged, so the field
   propagates automatically. Confirm this by test, not by assumption.
 - **Acceptance:** A.T10 fully green (both halves); full `pytest` green; `pyright src/` 0 errors.
@@ -595,7 +609,7 @@ the model's config and, if `extra="forbid"` is set, the rollback note is amended
 | ID | Risk | Likelihood | Blast radius | Mitigation |
 |---|---|---|---|---|
 | R1 | The `_Frontier` extraction silently changes admission behaviour and re-opens the 058-S memory-exhaustion vector | Medium | High — reintroduces a shipped security/availability fix | A.T1/A.T2 precede A.T3 and pin the 058-S invariants: refused links never enter `visited`; `admitted` increments only on success; report fires once. A.T3 must pass with **zero edits to existing tests**. |
-| R2 | The `CrawlOutcome` change is missed at a caller and fails at runtime | Medium | Medium | `pyright src/` covers the single `src/` caller. **`pyright src/` does not type-check `tests/`**, so the "fails loudly" guarantee for test callers rests on runtime `AttributeError`, not type-check — hence the enumerated inventory in A.T7/A.T8a/A.T8b/A.T8c and the mandatory pre-A.T6 re-search. Round 1 missed 3 callers; that is why re-search is mandatory. |
+| R2 | The `CrawlOutcome` change is missed at a caller and fails at runtime | Medium | Medium | `pyright src/` covers the single `src/` caller. **`pyright src/` does not type-check `tests/`**, so the "fails loudly" guarantee for test callers rests on runtime `AttributeError`, not type-check — hence the enumerated inventory in A.T7/A.T8a/A.T8b/A.T8c and the mandatory pre-A.T6 re-search. Round 1 missed 3 callers and round 3 missed a 4th (`tests/elt/test_execute_fetch_progress.py`); that is why the re-search is mandatory and must match on **monkeypatch/stub sites**, not just `await crawl(` call sites. Exact-field contract assertions (`tests/parity/test_equivalence.py`) must also be searched before any model change. |
 | R3 | D6 ordering breaks an order-sensitive existing assertion | Medium | Low-Medium | A.T12 requires a grep for order-dependent assertions **before** implementation, and fixes them in tests width. D6.1 states the `max_pages` behaviour change openly instead of asserting a false invariant. |
 | R4 | The WARNING leaks URL-carried secrets now that it is default-visible | Medium | Medium — credential disclosure in logs | D4 reduces the payload to sanitized origin + count. A.T5 asserts absence of path, query, fragment, userinfo, and control characters, using credential-in-path and unrecognized-credential-parameter cases that `sanitize_source` alone does not cover. |
 | R5 | The module split introduces a circular import or breaks an undiscovered importer | Medium | Medium — unbuildable tree | Round 1's seam **was** circular (`_normalize_url`). D5 moves it into the leaf module and mandates a one-way direction. A.T4 acceptance includes an explicit import-and-acyclicity check plus a repo-wide grep for each moved symbol. |
