@@ -579,13 +579,22 @@ admission policies).
 ## Dependency graph
 
 ```text
-A.T1 → A.T2 → A.T2b → A.T3 → A.T4 ─┬──────────────→ A.T6 ─┬→ A.T7   ─┐
-                           │  A.T5 ─────────┘      ├→ A.T8a  ─┤
-                           │                       ├→ A.T8b  ─┼→ A.T10 → A.T11a → A.T11b ─┐
-                           │                       ├→ A.T8c  ─┘                            ├→ A.T14
-                           │                       └→ A.T9 ─────────────→ A.T11a           │
-                           └──────────────────→ A.T12 → A.T13 ───────────────────────────  ┘
+A.T1 → A.T2 → A.T2b → A.T3 → A.T4 ─┬──────────────────────┐
+                                   │                      │
+A.T5 ──────────────────────────────┴→ A.T6 ─┬→ A.T7  ──┐  │
+                                            ├→ A.T7b ──┤  │
+                                            ├→ A.T8a ──┼──┴──→ A.T10 → A.T11a → A.T11b ─┐
+                                            ├→ A.T8b ──┤                                 │
+                                            ├→ A.T8c ──┘                                 ├→ A.T14
+                                            └→ A.T9 ──────────→ A.T11a                   │
+                                                                                         │
+A.T4 ─────────────────────→ A.T12 → A.T13 ───────────────────────────────────────────────┘
 ```
+
+Read as: A.T6 requires A.T4 **and** A.T5. All five migration tasks (A.T7, A.T7b, A.T8a, A.T8b,
+A.T8c) and A.T9 depend on A.T6. A.T10 requires all five migration tasks; A.T11a requires A.T10
+and A.T9; A.T11b requires A.T11a. A.T12 requires A.T4; A.T13 requires A.T12 and A.T4. A.T14
+requires A.T11b and A.T13.
 
 ## Verification
 
@@ -633,12 +642,12 @@ the model's config and, if `extra="forbid"` is set, the rollback note is amended
 | ID | Risk | Likelihood | Blast radius | Mitigation |
 |---|---|---|---|---|
 | R1 | The `_Frontier` extraction silently changes admission behaviour and re-opens the 058-S memory-exhaustion vector | Medium | High — reintroduces a shipped security/availability fix | A.T1/A.T2 precede A.T3 and pin the 058-S invariants: refused links never enter `visited`; `admitted` increments only on success; report fires once. A.T3 must pass with **zero edits to existing tests**. |
-| R2 | The `CrawlOutcome` change is missed at a caller and fails at runtime | Medium | Medium | `pyright src/` covers the single `src/` caller. **`pyright src/` does not type-check `tests/`**, so the "fails loudly" guarantee for test callers rests on runtime `AttributeError`, not type-check — hence the enumerated inventory in A.T7/A.T8a/A.T8b/A.T8c and the mandatory pre-A.T6 re-search. Round 1 missed 3 callers and round 3 missed a 4th (`tests/elt/test_execute_fetch_progress.py`); that is why the re-search is mandatory and must match on **monkeypatch/stub sites**, not just `await crawl(` call sites. Exact-field contract assertions (`tests/parity/test_equivalence.py`) must also be searched before any model change. |
+| R2 | The `CrawlOutcome` change is missed at a caller and fails at runtime | Medium | Medium | `pyright src/` covers the single `src/` caller. **`pyright src/` does not type-check `tests/`**, so the "fails loudly" guarantee for test callers rests on runtime `AttributeError`, not type-check — hence the enumerated inventory in A.T7/A.T7b/A.T8a/A.T8b/A.T8c and the mandatory pre-A.T6 re-search. Round 1 missed 3 callers and round 3 missed a 4th (`tests/elt/test_execute_fetch_progress.py`); that is why the re-search is mandatory and must match on **monkeypatch/stub sites**, not just `await crawl(` call sites. Exact-field contract assertions (`tests/parity/test_equivalence.py`) must also be searched before any model change. |
 | R3 | D6 ordering breaks an order-sensitive existing assertion | Medium | Low-Medium | A.T12 requires a grep for order-dependent assertions **before** implementation, and fixes them in tests width. D6.1 states the `max_pages` behaviour change openly instead of asserting a false invariant. |
 | R4 | The WARNING leaks URL-carried secrets now that it is default-visible | Medium | Medium — credential disclosure in logs | D4 reduces the payload to sanitized origin + count. A.T5 asserts absence of path, query, fragment, userinfo, and control characters, using credential-in-path and unrecognized-credential-parameter cases that `sanitize_source` alone does not cover. |
 | R5 | The module split introduces a circular import or breaks an undiscovered importer | Medium | Medium — unbuildable tree | Round 1's seam **was** circular (`_normalize_url`). D5 moves it into the leaf module and mandates a one-way direction. A.T4 acceptance includes an explicit import-and-acyclicity check plus a repo-wide grep for each moved symbol. |
 | R6 | Scope creep into a general crawl redesign | Medium | Medium | D9 is binding. The third-module contingency in D5 is pre-authorized and bounded; anything else goes to the stash. |
-| R7 | A partially-landed shipment leaves `main` with `crawl()` returning `CrawlOutcome` but callers expecting a list | Low | High — broken ELT/CLI/MCP path | {A.T6, A.T7, A.T8a, A.T8b, A.T8c, A.T9, A.T10, A.T11a, A.T11b} is atomic for merge. The Verification gate exception makes the red window explicit and bounded rather than contradicting the gate policy. |
+| R7 | A partially-landed shipment leaves `main` with `crawl()` returning `CrawlOutcome` but callers expecting a list | Low | High — broken ELT/CLI/MCP path | {A.T6, A.T7, A.T7b, A.T8a, A.T8b, A.T8c, A.T9, A.T10, A.T11a, A.T11b} is atomic for merge. The Verification gate exception makes the red window explicit and bounded rather than contradicting the gate policy. |
 | R8 | Both shipments edit `docs/ARCHITECTURE.md`, producing a merge conflict if they land concurrently | Medium | Low | Acknowledged: the two shipments share **no source file** but do share this doc. A.T14 is scoped to the crawl/fetch section, Group B's doc task to the sitemap section. Whichever shipment merges second rebases the doc hunk. |
 | R9 | The zero-staged manifest write (D8) masks or reorders the existing `OSError` | Low | Medium | A.T9 acceptance requires the raised error to still satisfy `except OSError` with the same message. **Callback contract, corrected:** the zero-staged raise sits *after* the `try/except/else`, so the success-path callback has already fired and the `except BaseException` handler does **not** run for `CrawlStagedNothingError`. A.T9 asserts exactly one completion callback before it propagates, and that the `except BaseException` path stays intact for failures raised *during* crawl or result staging. The write is inserted before the guard, not in place of it. |
 

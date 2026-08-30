@@ -166,6 +166,7 @@ review *body*; PR #178's rounds produced a mix of both.
 | 6 | `63ab0a1` (PR #178) | 1 | caught my own inaccurate "clean" claim about round 5 |
 | 7 | `e2a9ef7` (PR #178) | 2 + 3 suppressed | stale artifact `updated_at` after a bare `dep add`; PR description understated backlog changes; arithmetic and history errors in this very file |
 | 8 | `e04fa26` (PR #178) | 3 + 1 suppressed | R9 still contradicted the corrected callback contract; A.T7 at four files broke the plan's own three-file ceiling; the running-total framing was itself the defect |
+| 9 | `540275c` (PR #178) | 3 + 1 suppressed | shipment manifest not dependency-ordered after appending A.T7b; `068.013-T` prose omitted the new edge; dependency graph and R2/R7 still listed the old migration set; PR description understated scope again |
 
 Four findings, producing three design changes rather than wording changes:
 
@@ -252,3 +253,22 @@ review **body** must be read for suppressed findings before declaring a gate cle
   last row be the state.
 - **A fix that resolves one section can contradict another.** After correcting a contract, grep
   the risk register and every task that references it.
+
+### Round 9 findings (PR #178)
+
+1. **`shipment add` appends.** Adding `068.019-T` put it *after* its dependent `068.013-T`, so the
+   manifest was no longer dependency-ordered. Fixed by editing `059-S` directly and re-syncing;
+   `068.019-T` now sits immediately after `068.008-T`. **Appending to a shipment does not preserve
+   dependency order — verify ordering after every `shipment add`.**
+2. **Adding a dependency edge is three edits, not one:** the frontmatter, the task prose that
+   explains prerequisites, and any plan summary that enumerates the set. `068.013-T` had the edge
+   but not the explanation.
+3. **The dependency graph and the R2/R7 mitigations still listed the old migration set** without
+   A.T7b, so the atomic-merge guard could be read as permitting a partial landing. The ASCII graph
+   was also misaligned by an earlier edit and has been redrawn with a prose reading beneath it,
+   since an ASCII diagram that drifts is worse than no diagram.
+
+**Added to the durable lessons:** when adding an artifact mid-flight, the checklist is *create →
+wire dependencies → verify shipment ordering → update prose → update every summary that enumerates
+the set → update the PR description*. Skipping any one of these produces exactly the class of
+inconsistency this round caught.
