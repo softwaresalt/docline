@@ -151,6 +151,10 @@ Both are independent — no cross-shipment dependency edge. The only shared file
 > earlier attempts at a single "N findings" figure went stale the moment the next review landed.
 > Each row is closed when its findings are fixed and its threads resolved; the final state is
 > whatever the last row says. Do not re-derive a grand total — read the rows.
+>
+> **The table is authoritative.** The per-round detail sections below expand on individual rounds,
+> but a round is not recorded until it has a **table row**. Round 10 was written as a detail
+> section with no row, and round 11 caught exactly that.
 
 Every finding across every round was valid and every one was fixed. Rounds 1-4 (PR #177) produced
 review threads only; round 5 produced **zero threads** but carried 7 suppressed findings in its
@@ -169,6 +173,7 @@ review *body*; PR #178's rounds produced a mix of both.
 | 9 | `540275c` (PR #178) | 3 + 1 suppressed | shipment manifest not dependency-ordered after appending A.T7b; `068.013-T` prose omitted the new edge; dependency graph and R2/R7 still listed the old migration set; PR description understated scope again |
 | 10 | `fcfb88f` (PR #178) | 2 + 1 suppressed | redrawn ASCII graph implied a false `A.T4 → A.T10` edge; `059-S` `updated_at` stale after the direct reorder; a heading missed its preceding blank line |
 | 11 | `d59e513` (PR #178) | 2 | this table omitted round 10; PR description claimed every artifact landed in #177, which is untrue of the newly created `068.019-T` |
+| 12 | `87c2536` (PR #178) | 1 + 2 suppressed | round-11 note described a cutoff rule that was never actually added; `068.007-T` said `lazy %% args` (an escaped literal percent) instead of `lazy % args`; A.T8c and `068.011-T` still claimed suite recovery without A.T7b |
 
 Four findings, producing three design changes rather than wording changes:
 
@@ -304,3 +309,22 @@ inconsistency this round caught.
 Both are the same failure in different places: **a summary that stops being updated is worse than
 no summary, because readers trust it.** That is now the third instance in this session, after the
 running finding-total and the ASCII dependency graph.
+
+### Round 12 findings (PR #178)
+
+1. **I described a fix I had not made.** The round-11 note claimed the cutoff rule now requires a
+   table row, but the string replacement that was supposed to add that sentence never matched, so
+   the note asserted a rule the document did not contain. The rule is now actually present.
+   Verifying an edit landed is not optional just because the tool reported success.
+2. **`068.007-T` said `lazy %% args`.** In Python formatting `%%` is an escaped literal percent,
+   not lazy interpolation — a real misdirection for the implementer. Corrected to `lazy % args`
+   with a parenthetical spelling out the intent.
+3. **Adding A.T7b left a stale suite-recovery promise.** A.T8c and `068.011-T` still claimed the
+   suite goes green after A.T7/A.T8a/A.T8b, but the A.T2b harness stays on the old list contract
+   until A.T7b runs. Both now include A.T7b, with the reason stated in the task.
+
+Finding 3 is the *fourth* place A.T7b had to be propagated. Adding one task to a reviewed plan
+touched: the task list, the dependency graph, `A.T10`'s prerequisites, R2, R7, the shipment
+manifest and its ordering, `068.013-T`'s prose, and a suite-recovery acceptance criterion two
+tasks away. **Late additions to a reviewed plan are expensive and each one needs a full
+propagation sweep.**

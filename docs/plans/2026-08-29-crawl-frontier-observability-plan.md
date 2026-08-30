@@ -447,8 +447,8 @@ admission policies).
 
 - **Domain:** tests. **Files:** `tests/fetch/test_crawl_progress.py`,
   `tests/fetch/test_amplification.py`.
-- **Acceptance:** these two modules green in isolation; with A.T7, A.T8a, and A.T8b applied, the
-  whole `tests/` suite is green apart from work still owned by A.T9-A.T13.
+- **Acceptance:** these two modules green in isolation; with A.T7, **A.T7b**, A.T8a, and A.T8b
+  applied, the whole `tests/` suite is green apart from work still owned by A.T9-A.T13.
 - **Depends on:** A.T6.
 
 > A.T7, A.T8a, A.T8b, and A.T8c split round-1's single migration task, which touched 6+ files and
