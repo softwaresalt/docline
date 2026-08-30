@@ -85,11 +85,54 @@ merged HEAD.
 
 ## Risk record
 
-* **ActionRisk**: high (security boundary, fail-closed SSRF classifier).
-* **ActionResult**: applied. Merged via merge commit `b89c902` per Principle XI; squash and
-  rebase merge are disabled at the repository level (verified before merge).
-* **Rollback**: revert `b89c902`. Single-domain change, no data or config migration. The live
-  crawl path is behavior-preserving — the consolidation is strictly tightening.
+Per `.github/instructions/strict-safety.instructions.md`.
+
+### ProposedAction
+
+* **summary** — Consolidate SSRF unsafe-address classification onto a single canonical predicate,
+  fix the cloud-metadata membership gate to compare parsed addresses after normalization, and
+  close the sitemap validate-then-return-hostname TOCTOU by routing retrieval through the
+  address-pinned HTTP sink. Raise the interpreter floor so the corrected CPython `ipaddress`
+  tables back the flag checks.
+* **targets** —
+  * `src/docline/fetch/url_policy.py` (canonical classifier, metadata set, `is_private_host`)
+  * `src/docline/fetch/sitemap.py` (duplicate predicate removed, `fetch_sitemap` added)
+  * `tests/fetch/` (three new harness modules, one existing module repointed)
+  * `pyproject.toml`, `uv.lock` (runtime floor)
+  * Runtime surface: the outbound fetch path used by crawl and sitemap retrieval.
+* **change_kind** — local edit to a security boundary, plus a config change (dependency-resolution
+  floor). No migration, no data change, no rollout or external call.
+* **rollback** — revert merge commit `b89c902`. Single-domain, no data or config migration, and
+  the live crawl path is behavior-preserving, so revert risk is low.
+* **approval_required** — yes. Two gates applied:
+  1. *Merge approval* — the operator granted merge approval for 057-S in the dispatching
+     instruction, scoped to this shipment.
+  2. *Merge-strategy compliance* — verified before merging that the repository permits merge
+     commits only (`allow_merge_commit: true`, `allow_squash_merge: false`,
+     `allow_rebase_merge: false`), satisfying Principle XI / P-009.
+
+### ActionRisk
+
+**high** — security boundary on a fail-closed SSRF classifier. Not `destructive`: no deletion of
+data or config, and the change is revertible by a single commit revert.
+
+### ActionResult
+
+**applied.** Merged as merge commit `b89c902` after four-persona adversarial review (no P0; one P1
+fixed in `a654ffd`), three Copilot review cycles with every thread resolved, all local gates and
+7/7 CI jobs green, and post-merge runtime verification of the class table, the CVE over-block
+guard, rebinding rejection, and the preflight deadline. Approval evidence: operator merge grant
+plus the pre-merge repository merge-strategy check recorded above.
+
+### Approval path evidence
+
+| Gate | Evidence |
+|---|---|
+| Adversarial review | 4 reviewers, diverse models; no P0; P1 fixed in `a654ffd` |
+| Bot review | 3 Copilot cycles on PR #173; final review covers HEAD `3007afd`; 3/3 threads resolved |
+| CI | 7/7 jobs green on the merged HEAD |
+| Merge strategy | Verified merge-commit-only before merging (P-009) |
+| Operator | Merge approval granted for 057-S; 058-S explicitly not claimed |
 
 ## Follow-up debt
 
