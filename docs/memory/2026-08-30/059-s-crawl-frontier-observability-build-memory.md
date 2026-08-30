@@ -40,7 +40,7 @@ All 19 tasks (068.001-T … 068.019-T) implemented on branch `ship/059-s`
 
 - ruff check . : PASS
 - ruff format --check . : PASS
-- pytest : 2040 passed, 6 skipped
+- pytest : 2049 passed, 6 skipped (final, after review-regression tests)
 - pyright src/ : 0 errors when run with the `.venv` interpreter (CI resolves deps via `uv sync`). Default local pyright reports pre-existing environmental `reportMissingImports` (pydantic/httpx/etc.) unrelated to this change.
 
 ## Untouched (parity confirmed)
