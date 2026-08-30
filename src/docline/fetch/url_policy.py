@@ -11,12 +11,14 @@ _ALLOWED_SCHEMES = frozenset({"http", "https"})
 # Maximum number of HTTP redirects followed per crawl request.
 MAX_REDIRECTS: int = 5
 
-# Cloud-metadata endpoints rejected before and after resolution.
-_METADATA_IPS: frozenset[str] = frozenset(
+# Cloud-metadata endpoints rejected after parse and normalization. Stored as
+# parsed ``ipaddress`` objects so alternate spellings of the same address
+# (IPv4-mapped, expanded, uppercase) cannot bypass the membership check.
+_METADATA_IPS: frozenset[ipaddress.IPv4Address | ipaddress.IPv6Address] = frozenset(
     {
-        "169.254.169.254",  # AWS, GCP, Azure IMDS
-        "169.254.170.2",  # ECS task metadata
-        "fd00:ec2::254",  # AWS IPv6 IMDS
+        ipaddress.ip_address("169.254.169.254"),  # AWS, GCP, Azure IMDS
+        ipaddress.ip_address("169.254.170.2"),  # ECS task metadata
+        ipaddress.ip_address("fd00:ec2::254"),  # AWS IPv6 IMDS
     }
 )
 
@@ -27,6 +29,11 @@ _CGNAT_NETWORK: ipaddress.IPv4Network = ipaddress.IPv4Network("100.64.0.0/10")
 # Unique-local IPv6 addresses (RFC 4193), fc00::/7 — rejected explicitly.
 _ULA_NETWORK: ipaddress.IPv6Network = ipaddress.IPv6Network("fc00::/7")
 
+# Site-local IPv6 addresses (deprecated by RFC 3879), fec0::/10. Reported by
+# ``IPv6Address.is_site_local`` but by none of the six special-use flags the
+# predicate relies on; rejected via explicit membership.
+_SITE_LOCAL_NETWORK: ipaddress.IPv6Network = ipaddress.IPv6Network("fec0::/10")
+
 
 class CrawlUrlRejectedError(DoclineError):
     """Raised when a crawl URL is rejected by policy."""
@@ -35,10 +42,22 @@ class CrawlUrlRejectedError(DoclineError):
 def is_unsafe_resolved_address(addr: str) -> bool:
     """Return ``True`` when a resolved IP is not a global public-unicast address.
 
-    Fails closed: an unclassifiable address is treated as unsafe. Mirrors the
-    class predicates of ``docline.fetch.sitemap._is_unsafe_address`` and adds an
-    explicit CGNAT (``100.64.0.0/10``) and ULA (``fc00::/7``) membership check
-    that the six ``ipaddress`` special-use flags miss.
+    This is the single canonical unsafe-address classifier for the package;
+    :mod:`docline.fetch.sitemap` and :mod:`docline.fetch.http` both consume it
+    so an address-class fix can never land in one surface and be forgotten in
+    another.
+
+    Fails closed: an unclassifiable address is treated as unsafe. Classification
+    combines the six :mod:`ipaddress` special-use flags with explicit network
+    membership for the classes those flags miss — cloud metadata, CGNAT
+    (``100.64.0.0/10``), ULA (``fc00::/7``), and site-local (``fec0::/10``).
+
+    The CVE-2024-4032-affected prefixes are deliberately **not** rejected
+    wholesale: they retain documented globally-reachable exceptions (for example
+    ``192.0.0.9``, ``192.0.0.10``, and reachable ``2001::/23`` subranges) that a
+    blanket reject would break. The mitigation is the ``requires-python >=
+    3.12.4`` floor, which guarantees the corrected CPython classification tables
+    back the flag checks below.
 
     Args:
         addr: A resolved IP address literal.
@@ -46,16 +65,17 @@ def is_unsafe_resolved_address(addr: str) -> bool:
     Returns:
         ``True`` when the address must not be connected to.
     """
-    if addr in _METADATA_IPS:
-        return True
     try:
         ip = ipaddress.ip_address(addr)
     except ValueError:
         return True
     # Normalize an IPv4-mapped IPv6 literal to its embedded IPv4 form before
-    # classification so the flag checks and CGNAT membership see the real class.
+    # classification so the flag checks, the metadata membership test, and
+    # CGNAT membership all see the real class.
     if isinstance(ip, ipaddress.IPv6Address) and ip.ipv4_mapped is not None:
         ip = ip.ipv4_mapped
+    if ip in _METADATA_IPS:
+        return True
     if (
         ip.is_private
         or ip.is_loopback
@@ -65,11 +85,9 @@ def is_unsafe_resolved_address(addr: str) -> bool:
         or ip.is_unspecified
     ):
         return True
-    if isinstance(ip, ipaddress.IPv4Address) and ip in _CGNAT_NETWORK:
-        return True
-    if isinstance(ip, ipaddress.IPv6Address) and ip in _ULA_NETWORK:
-        return True
-    return False
+    if isinstance(ip, ipaddress.IPv4Address):
+        return ip in _CGNAT_NETWORK
+    return ip in _ULA_NETWORK or ip in _SITE_LOCAL_NETWORK
 
 
 def resolve_and_validate(host: str) -> list[str]:
@@ -143,24 +161,26 @@ def validate_crawl_url(url: str) -> str:
 
 
 def is_private_host(host: str) -> bool:
-    """Return ``True`` if *host* is a loopback, private, or link-local address.
+    """Return ``True`` if *host* is an address class we must not connect to.
 
-    Covers IPv4 and IPv6 literals.  Hostname strings (e.g. ``localhost``) are
-    matched by name only; DNS resolution is intentionally **not** performed
-    here — callers that need post-resolution checks must resolve first and
-    then call this function on the resolved IP string.
+    IP literals are classified by the single canonical predicate
+    :func:`is_unsafe_resolved_address`, so this pre-resolution check can never
+    diverge from the post-resolution one. Hostname strings (e.g. ``localhost``)
+    are matched by name only; DNS resolution is intentionally **not** performed
+    here — callers that need post-resolution checks must resolve first and then
+    classify the resolved IP.
 
     Args:
         host: A hostname or IP address string (no port, no brackets for IPv6).
 
     Returns:
-        ``True`` when the host is a reserved address class.
+        ``True`` when the host is a reserved address class or ``localhost``.
     """
     try:
-        addr = ipaddress.ip_address(host)
-        return addr.is_loopback or addr.is_private or addr.is_link_local
+        ipaddress.ip_address(host)
     except ValueError:
         return host.lower() == "localhost"
+    return is_unsafe_resolved_address(host)
 
 
 def assert_redirect_count(count: int) -> None:

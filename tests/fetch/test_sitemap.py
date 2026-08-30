@@ -35,8 +35,8 @@ import pytest
 from docline.fetch.sitemap import (
     SitemapEntry,
     SitemapError,
-    _is_unsafe_address,
     discover_sitemaps_from_robots,
+    is_unsafe_resolved_address,
     parse_sitemap_index,
     parse_sitemap_urlset,
     validate_sitemap_url,
@@ -337,7 +337,7 @@ def test_validate_sitemap_url_rejects_when_dns_resolution_fails(
 )
 def test_is_unsafe_address_rejects_cgnat_class(addr: str) -> None:
     """CGNAT ``100.64.0.0/10`` addresses (incl. IPv4-mapped) are unsafe."""
-    assert _is_unsafe_address(addr) is True
+    assert is_unsafe_resolved_address(addr) is True
 
 
 @pytest.mark.parametrize(
@@ -375,4 +375,4 @@ def test_validate_sitemap_url_rejects_cgnat(
 )
 def test_is_unsafe_address_accepts_cgnat_boundaries(addr: str) -> None:
     """Addresses just outside ``100.64.0.0/10`` stay accepted — no over-rejection."""
-    assert _is_unsafe_address(addr) is False
+    assert is_unsafe_resolved_address(addr) is False
