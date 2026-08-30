@@ -188,9 +188,11 @@ auditor's corrective.
   exceptions `192.0.0.9`, `192.0.0.10`, reachable `2001::/23` subranges) apply at runtime. The
   predicate deliberately does **not** hand-roll wholesale rejection of these prefixes, which would
   block those globally-reachable exceptions; A.T1 adds positive over-block guards asserting they
-  stay accepted (and those guards only classify correctly under the A.T7 floor). The
-  security-critical SSRF classes (private/loopback/link-local/CGNAT/ULA/site-local/metadata) are
-  pinned by explicit membership independent of the flag table.
+  stay accepted (and those guards only classify correctly under the A.T7 floor). Explicit
+  network-membership pins **metadata, CGNAT (`100.64.0.0/10`), ULA (`fc00::/7`), and site-local
+  (`fec0::/10`)** — the classes the six `ipaddress` flags miss; the remaining classes (private,
+  loopback, link-local, multicast, reserved, unspecified) stay flag-based and rely on the corrected
+  3.12.4 tables (do not add unplanned hand-rolled networks for them).
 - **Regression guard**: A.T1 enumerates every class both predicates currently reject so
   consolidation cannot drop one; the union (adds ULA + site-local to sitemap) only tightens.
 - **HTTPS integrity guard**: A.T5 asserts SNI/cert target the hostname, never the pinned IP.
