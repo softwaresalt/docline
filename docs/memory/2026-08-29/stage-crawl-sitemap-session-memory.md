@@ -227,6 +227,7 @@ All 7 were valid:
 
 **Process note:** a Copilot review with zero threads is *not* necessarily a clean review. The
 review **body** must be read for suppressed findings before declaring a gate clean.
+
 ### Round 7-8 findings (PR #178)
 
 1. **`dep add` does not refresh `updated_at`.** Adding the `068.013-T → 068.008-T` edge changed
@@ -272,3 +273,18 @@ review **body** must be read for suppressed findings before declaring a gate cle
 wire dependencies → verify shipment ordering → update prose → update every summary that enumerates
 the set → update the PR description*. Skipping any one of these produces exactly the class of
 inconsistency this round caught.
+
+### Round 10 findings (PR #178)
+
+1. **The redrawn ASCII graph asserted an edge that does not exist.** Its upper `A.T4` line ran
+   into the join before `A.T10`, implying a direct `A.T4 → A.T10` edge that neither the prose nor
+   `068.013-T` carries. After drifting twice under editing, the diagram was **deleted** and
+   replaced with a prose edge list plus an explicit note that A.T4 reaches A.T10 only
+   *transitively* through A.T6. **Do not maintain ASCII dependency art in an evolving document —
+   the executable form is the `dependencies` frontmatter, and prose is what survives editing.**
+2. **A direct file edit leaves `updated_at` stale**, exactly as `dep add` does. The `059-S`
+   reorder was made by editing the artifact, so its freshness metadata still showed the earlier
+   task-addition time. Refreshed through `backlogit update`, and the item order was re-verified
+   afterwards to confirm the refresh did not re-sort the manifest.
+3. **A heading was missing its preceding blank line**, against the repository Markdown guide. Fixed
+   and the whole file re-checked programmatically rather than by eye.

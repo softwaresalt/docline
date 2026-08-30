@@ -578,23 +578,22 @@ admission policies).
 
 ## Dependency graph
 
-```text
-A.T1 → A.T2 → A.T2b → A.T3 → A.T4 ─┬──────────────────────┐
-                                   │                      │
-A.T5 ──────────────────────────────┴→ A.T6 ─┬→ A.T7  ──┐  │
-                                            ├→ A.T7b ──┤  │
-                                            ├→ A.T8a ──┼──┴──→ A.T10 → A.T11a → A.T11b ─┐
-                                            ├→ A.T8b ──┤                                 │
-                                            ├→ A.T8c ──┘                                 ├→ A.T14
-                                            └→ A.T9 ──────────→ A.T11a                   │
-                                                                                         │
-A.T4 ─────────────────────→ A.T12 → A.T13 ───────────────────────────────────────────────┘
-```
+Stated in prose rather than ASCII art. An earlier diagram drifted twice under editing and its
+misalignment was read as asserting an edge that does not exist, so the authoritative form is the
+list below; the executable form is each artifact's `dependencies` frontmatter.
 
-Read as: A.T6 requires A.T4 **and** A.T5. All five migration tasks (A.T7, A.T7b, A.T8a, A.T8b,
-A.T8c) and A.T9 depend on A.T6. A.T10 requires all five migration tasks; A.T11a requires A.T10
-and A.T9; A.T11b requires A.T11a. A.T12 requires A.T4; A.T13 requires A.T12 and A.T4. A.T14
-requires A.T11b and A.T13.
+- **A.T1** → no prerequisites.
+- **A.T2** → A.T1. **A.T2b** → A.T2. **A.T3** → A.T2b. **A.T4** → A.T3.
+- **A.T5** → no prerequisites (red harness).
+- **A.T6** → A.T5 **and** A.T4.
+- **A.T7**, **A.T7b**, **A.T8a**, **A.T8b**, **A.T8c**, **A.T9** → A.T6.
+- **A.T10** → A.T7, A.T7b, A.T8a, A.T8b, A.T8c (all five migration tasks).
+- **A.T11a** → A.T10 **and** A.T9. **A.T11b** → A.T11a.
+- **A.T12** → A.T4. **A.T13** → A.T12 **and** A.T4.
+- **A.T14** → A.T11b **and** A.T13.
+
+A.T4 is a prerequisite of A.T10 only *transitively*, through A.T6 — there is no direct
+`A.T4 → A.T10` edge.
 
 ## Verification
 
