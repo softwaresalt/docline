@@ -54,12 +54,17 @@ class FetchResult(BaseModel):
         staged_path: Path to the staged file on disk.
         success: Whether the fetch completed without error.
         error: Error message if the fetch failed, otherwise ``None``.
+        frontier_truncated: Whether a web crawl's admission ceiling refused an
+            eligible discovered link (the staged crawl may be incomplete).
+            ``False`` for non-crawl sources and for failures that ran no crawl.
+            Mirrors ``StagingJob.frontier_truncated`` for CLI/MCP parity.
     """
 
     source: str
     staged_path: str
     success: bool
     error: str | None = None
+    frontier_truncated: bool = False
 
 
 class ProcessRequest(BaseModel):

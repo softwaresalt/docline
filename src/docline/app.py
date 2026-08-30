@@ -617,8 +617,14 @@ def execute_fetch(
             staged_path="",
             success=False,
             error=f"No crawlable pages were staged for {request.source}.",
+            frontier_truncated=job.frontier_truncated,
         )
-    return FetchResult(source=request.source, staged_path=job.cache_path, success=True)
+    return FetchResult(
+        source=request.source,
+        staged_path=job.cache_path,
+        success=True,
+        frontier_truncated=job.frontier_truncated,
+    )
 
 
 def _emit_openapi_documents(
