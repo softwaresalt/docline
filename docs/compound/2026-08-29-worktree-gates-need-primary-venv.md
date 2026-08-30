@@ -15,8 +15,6 @@ trigger:
   - "pytest fails with ModuleNotFoundError: No module named 'docline'"
 ---
 
-# Pyright and pytest in a git worktree need the primary checkout's venv
-
 ## Problem
 
 Running the quality gates from a `git worktree add` directory produced two failures that looked

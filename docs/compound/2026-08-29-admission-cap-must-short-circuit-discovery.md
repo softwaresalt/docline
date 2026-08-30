@@ -15,8 +15,6 @@ trigger:
   - "Bounding memory growth where a dedup set gates enqueue"
 ---
 
-# An admission cap must short-circuit discovery, not just refuse admissions
-
 ## Problem
 
 Bounding `crawl()`'s frontier growth looked like a one-line guard: count admissions, and refuse

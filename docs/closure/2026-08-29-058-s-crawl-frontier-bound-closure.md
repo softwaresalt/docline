@@ -55,9 +55,9 @@ completion with the admitted set.
 | `pytest` | 2008 passed, 6 skipped |
 | `ruff format --check .` | 278 files formatted |
 
-CI on the merged HEAD `922ad78` was green across all eight checks: ci gate, pyright, ruff lint,
+CI on PR #175's final head `922ad78` was green across all eight checks: ci gate, pyright, ruff lint,
 ruff format check, pytest (ubuntu-latest), sdist + wheel, detect code changes, and the Copilot
-reviewer check.
+reviewer check. The merge commit `b1f4549` itself was produced from that verified head.
 
 ### Test-first evidence
 
@@ -84,7 +84,7 @@ The bound held with `max_pages` and `max_depth` effectively unbounded, confirmin
 
 Three independent persona reviews ran before submission — correctness, Python safety, and scope
 boundary. No P0 or P1 findings. Copilot review then ran three cycles against successive HEADs,
-ending with a fresh review on the merged HEAD and zero unresolved threads.
+ending with a fresh review on PR #175's final head `922ad78` and zero unresolved threads.
 
 Findings remediated in this shipment:
 
@@ -115,7 +115,7 @@ defect. It is stashed as follow-up `7F34A0D5`.
 | Artifact | Action |
 |---|---|
 | Stash `173238FD` | Already consumed by Stage during harvest; no action needed |
-| Deliberation | None recorded on `067-F` |
+| Deliberation record | `docs/decisions/2026-08-29-crawl-frontier-bound-deliberation.md` (status `accepted`) is the durable decision artifact, referenced by the plan. No backlog `source_deliberation_id` was recorded on `067-F`, so there is no backlog deliberation artifact to archive |
 | Stash `F0F13C0B` | Left active by design — out of scope for 058-S, routed separately |
 
 ## Follow-ups stashed
@@ -125,6 +125,19 @@ defect. It is stashed as follow-up `7F34A0D5`.
 | `8A99D90C` | medium | Split `crawl.py` and extract frontier bookkeeping into a module-level dataclass |
 | `7F34A0D5` | medium | Surface frontier truncation downstream and raise the drop-record log level |
 | `ABBE9BCC` | low | Prioritise TOC-derived links over in-page anchors when the ceiling truncates |
+
+## Context compaction
+
+`compact-context` ran with `target: all` as the mandatory post-merge step.
+
+| Target | Assessment | Action |
+|---|---|---|
+| `docs/plans/` | 058-S plan complete and carrying plan-review and plan-hardening content | Consolidated into `docs/plans/2026-08-29-crawl-frontier-bound-decided-plan.md`; verbose original archived to `docs/archive/plans/` |
+| `docs/memory/` | 25 files, 174 KB — below the 40-file and 500 KB thresholds; the 058-S entry is the most recent checkpoint for the completed release unit | Preserved |
+| `docs/closure/` | This record is same-day, below the 14-day threshold | Preserved |
+
+No files were deleted. The decided-plan records `source_plan` so the path back to the archived
+original stays traceable.
 
 ## Monitoring and rollback
 

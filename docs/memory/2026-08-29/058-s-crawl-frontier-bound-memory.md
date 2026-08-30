@@ -66,8 +66,10 @@ and `max_depth=10` bounded to exactly `1 + max_frontier` requests.
 Closure recorded in `docs/closure/2026-08-29-058-s-crawl-frontier-bound-closure.md`. Shipment
 `058-S` is shipped and all four artifacts are archived with the merge SHA. Follow-ups stashed as
 `8A99D90C`, `7F34A0D5`, and `ABBE9BCC`. Compound learnings captured for the admission-cap pattern
-and the worktree gate invocation. `docs/memory/` holds 25 files, below the compaction threshold,
-so `compact-context` was not required this session.
+and the worktree gate invocation. `compact-context` ran with `target: all`: the 058-S plan was
+consolidated into `docs/plans/2026-08-29-crawl-frontier-bound-decided-plan.md` with the verbose
+original archived to `docs/archive/plans/`; memory (25 files, 174 KB) and the same-day closure
+record were below their thresholds and preserved.
 
 ## Out of scope
 
