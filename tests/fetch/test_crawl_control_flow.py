@@ -90,7 +90,7 @@ def _run(
             CrawlConfig(max_pages=50, max_depth=1, respect_robots=False),
             progress=_recorder(progress_calls),
         )
-    )
+    ).results
 
 
 # ---------------------------------------------------------------------------
