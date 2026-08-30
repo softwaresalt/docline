@@ -25,7 +25,7 @@ import pytest
 from docline.fetch import sitemap as sitemap_module
 from docline.fetch import url_policy as url_policy_module
 from docline.fetch.sitemap import SitemapError, validate_sitemap_url
-from docline.fetch.url_policy import is_unsafe_resolved_address
+from docline.fetch.url_policy import is_private_host, is_unsafe_resolved_address
 
 # Every address class the canonical predicate must reject, pinned by concrete
 # literal. ``id`` names the class so a parametrized failure reports which class
@@ -144,3 +144,27 @@ def test_sitemap_url_surface_rejects_every_unsafe_class(address: str) -> None:
     host = f"[{address}]" if ":" in address else address
     with pytest.raises(SitemapError):
         validate_sitemap_url(f"http://{host}/sitemap.xml")
+
+
+@pytest.mark.parametrize(
+    "address",
+    [pytest.param(addr, id=name) for name, addr in _REJECTED],
+)
+def test_is_private_host_classifies_literals_through_the_canonical_predicate(
+    address: str,
+) -> None:
+    """The pre-resolution literal check cannot diverge from the canonical predicate."""
+    assert is_private_host(address) is True
+
+
+@pytest.mark.parametrize("address", _MUST_NOT_REJECT + _ORDINARY_PUBLIC)
+def test_is_private_host_accepts_globally_reachable_literals(address: str) -> None:
+    """Globally reachable literals are not rejected by the pre-resolution check."""
+    assert is_private_host(address) is False
+
+
+def test_is_private_host_still_matches_hostnames_by_name() -> None:
+    """Non-literal hosts keep the name-only ``localhost`` match and no DNS lookup."""
+    assert is_private_host("localhost") is True
+    assert is_private_host("LOCALHOST") is True
+    assert is_private_host("example.com") is False

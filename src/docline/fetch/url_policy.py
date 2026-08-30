@@ -161,24 +161,26 @@ def validate_crawl_url(url: str) -> str:
 
 
 def is_private_host(host: str) -> bool:
-    """Return ``True`` if *host* is a loopback, private, or link-local address.
+    """Return ``True`` if *host* is an address class we must not connect to.
 
-    Covers IPv4 and IPv6 literals.  Hostname strings (e.g. ``localhost``) are
-    matched by name only; DNS resolution is intentionally **not** performed
-    here — callers that need post-resolution checks must resolve first and
-    then call this function on the resolved IP string.
+    IP literals are classified by the single canonical predicate
+    :func:`is_unsafe_resolved_address`, so this pre-resolution check can never
+    diverge from the post-resolution one. Hostname strings (e.g. ``localhost``)
+    are matched by name only; DNS resolution is intentionally **not** performed
+    here — callers that need post-resolution checks must resolve first and then
+    classify the resolved IP.
 
     Args:
         host: A hostname or IP address string (no port, no brackets for IPv6).
 
     Returns:
-        ``True`` when the host is a reserved address class.
+        ``True`` when the host is a reserved address class or ``localhost``.
     """
     try:
-        addr = ipaddress.ip_address(host)
-        return addr.is_loopback or addr.is_private or addr.is_link_local
+        ipaddress.ip_address(host)
     except ValueError:
         return host.lower() == "localhost"
+    return is_unsafe_resolved_address(host)
 
 
 def assert_redirect_count(count: int) -> None:

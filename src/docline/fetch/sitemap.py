@@ -291,7 +291,6 @@ __all__ = [
     "SitemapError",
     "discover_sitemaps_from_robots",
     "fetch_sitemap",
-    "is_unsafe_resolved_address",
     "parse_sitemap_index",
     "parse_sitemap_urlset",
     "validate_sitemap_url",
