@@ -21,6 +21,14 @@ from docline.fetch.url_canonical import UrlCanonicalizationError, canonicalize_u
 from docline.fetch.url_policy import CrawlUrlRejectedError, validate_crawl_url
 from docline.schema.models import DoclineError
 
+MAX_FRONTIER: int = 10_000
+"""Absolute ceiling on discovered-link admissions for a single crawl.
+
+Independent of ``max_pages`` and ``max_depth``: it bounds how many links a
+crawl may admit to the frontier, so an adversarial link fan-out cannot grow
+the resident ``frontier``/``visited`` structures without bound.
+"""
+
 
 class CrawlLimitExceededError(DoclineError):
     """Raised when a crawl exceeds the configured page or time budget."""
@@ -45,6 +53,7 @@ class CrawlConfig:
         max_retries: Maximum retry attempts for transient failures.
         backoff_base_seconds: Base interval for exponential backoff.
         rate_limit_ms: Delay between page fetches in milliseconds.
+        max_frontier: Ceiling on discovered-link admissions to the frontier.
     """
 
     max_pages: int = 50
@@ -57,6 +66,7 @@ class CrawlConfig:
     max_retries: int = 3
     backoff_base_seconds: float = 1.0
     rate_limit_ms: int = 0
+    max_frontier: int = MAX_FRONTIER
 
 
 @dataclass
@@ -574,6 +584,7 @@ def compute_backoff_seconds(attempt: int, base: float = 1.0) -> float:
 
 
 __all__ = [
+    "MAX_FRONTIER",
     "CrawlConfig",
     "CrawlLimitExceededError",
     "CrawlResult",
