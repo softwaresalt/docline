@@ -81,7 +81,7 @@ of in-page anchors so a truncated mdBook crawl sheds anchors and keeps the autho
 | `ruff check .` | pass |
 | `pyright src/` | 0 errors, 0 warnings |
 | `pytest` | 2049 passed, 6 skipped |
-| `ruff format --check .` | 286 files formatted |
+| `ruff format --check .` | pass (286 files already formatted, no changes) |
 
 CI on PR #179's final head `31f4954` was green across all seven checks: ci gate, pyright, ruff lint,
 ruff format check, pytest (ubuntu-latest), sdist + wheel, and detect code changes. The merge commit
