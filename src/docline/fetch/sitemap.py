@@ -13,13 +13,16 @@ Implements the contract pinned by ``tests/fetch/test_sitemap.py``
     3. reject explicit cloud-metadata hostnames before resolution
     4. resolve hostname with :func:`socket.getaddrinfo` to enumerate
        **all** addresses (defense against DNS rebinding)
-    5. normalize IPv4-mapped IPv6 addresses (``::ffff:a.b.c.d``) to their
-       embedded IPv4 form, then classify every resolved address with
-       :mod:`ipaddress`; reject if any address is private, loopback,
-       link-local, multicast, reserved, unspecified, or in the CGNAT
-       shared address space ``100.64.0.0/10`` (RFC 6598)
-    6. reject explicit cloud-metadata IPs even if classification would
-       otherwise allow them
+    5. classify every resolved address with the single canonical predicate
+       :func:`docline.fetch.url_policy.is_unsafe_resolved_address`, which
+       normalizes IPv4-mapped IPv6 addresses and rejects private, loopback,
+       link-local, multicast, reserved, unspecified, cloud-metadata, CGNAT
+       (``100.64.0.0/10``), ULA (``fc00::/7``), and site-local
+       (``fec0::/10``) addresses
+
+This module deliberately owns **no** address classifier of its own: it
+delegates to ``url_policy`` so the live crawl path and the sitemap path can
+never diverge on a security-critical predicate.
 """
 
 from __future__ import annotations
@@ -30,6 +33,7 @@ from dataclasses import dataclass
 from urllib.parse import urlparse
 from xml.etree import ElementTree as ET
 
+from docline.fetch.url_policy import is_unsafe_resolved_address
 from docline.schema.models import DoclineError
 
 _ALLOWED_SCHEMES: frozenset[str] = frozenset({"http", "https"})
@@ -44,22 +48,6 @@ _METADATA_HOSTNAMES: frozenset[str] = frozenset(
         "metadata",
     }
 )
-
-# Specific cloud-metadata IPs that must be rejected even when classification
-# of the resolved address wouldn't otherwise catch them.
-_METADATA_IPS: frozenset[str] = frozenset(
-    {
-        "169.254.169.254",  # AWS, GCP, Azure IMDS
-        "169.254.170.2",  # ECS task metadata
-        "fd00:ec2::254",  # AWS IPv6 IMDS
-    }
-)
-
-
-# Carrier-grade NAT (CGNAT) shared address space, RFC 6598. Not flagged by
-# any ``ipaddress`` special-use property on Python 3.12.x, so it must be
-# rejected via an explicit network-membership check.
-_CGNAT_NETWORK: ipaddress.IPv4Network = ipaddress.IPv4Network("100.64.0.0/10")
 
 
 class SitemapError(DoclineError):
@@ -178,37 +166,6 @@ def discover_sitemaps_from_robots(robots_txt: str) -> tuple[str, ...]:
     return tuple(sitemaps)
 
 
-def _is_unsafe_address(addr: str) -> bool:
-    """Return ``True`` when ``addr`` is in a class we must not fetch from."""
-    if addr in _METADATA_IPS:
-        return True
-    try:
-        ip = ipaddress.ip_address(addr)
-    except ValueError:
-        # If we can't classify it, treat as unsafe — fail closed.
-        return True
-    # Normalize an IPv4-mapped IPv6 literal (``::ffff:a.b.c.d``) to its
-    # embedded IPv4 address BEFORE classification, so the six-flag checks and
-    # the CGNAT membership test see the real address. Guarded for IPv6 only:
-    # ``IPv4Address`` has no ``.ipv4_mapped`` attribute.
-    if isinstance(ip, ipaddress.IPv6Address) and ip.ipv4_mapped is not None:
-        ip = ip.ipv4_mapped
-    if (
-        ip.is_private
-        or ip.is_loopback
-        or ip.is_link_local
-        or ip.is_multicast
-        or ip.is_reserved
-        or ip.is_unspecified
-    ):
-        return True
-    # CGNAT / RFC 6598 shared address space (100.64.0.0/10) is not caught by
-    # any ``ipaddress`` special-use flag on Python 3.12.x; reject explicitly.
-    # The ``isinstance`` guard both narrows to IPv4 for the membership test and
-    # ensures a still-IPv6 address never mis-tests against the IPv4 network.
-    return isinstance(ip, ipaddress.IPv4Address) and ip in _CGNAT_NETWORK
-
-
 def _resolve_all_addresses(host: str) -> tuple[str, ...]:
     """Return every IP address the resolver yields for ``host``.
 
@@ -268,13 +225,13 @@ def validate_sitemap_url(url: str) -> str:
     except ValueError:
         literal = None
     if literal is not None:
-        if _is_unsafe_address(str(literal)):
+        if is_unsafe_resolved_address(str(literal)):
             raise SitemapError(f"host {host!r} resolves to a reserved address")
         return url
 
     addresses = _resolve_all_addresses(host)
     for addr in addresses:
-        if _is_unsafe_address(addr):
+        if is_unsafe_resolved_address(addr):
             raise SitemapError(
                 f"host {host!r} resolves to unsafe address {addr!r} "
                 "(SSRF guard, defense against DNS rebinding)"
@@ -286,6 +243,7 @@ __all__ = [
     "SitemapEntry",
     "SitemapError",
     "discover_sitemaps_from_robots",
+    "is_unsafe_resolved_address",
     "parse_sitemap_index",
     "parse_sitemap_urlset",
     "validate_sitemap_url",

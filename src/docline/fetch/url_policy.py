@@ -27,6 +27,11 @@ _CGNAT_NETWORK: ipaddress.IPv4Network = ipaddress.IPv4Network("100.64.0.0/10")
 # Unique-local IPv6 addresses (RFC 4193), fc00::/7 — rejected explicitly.
 _ULA_NETWORK: ipaddress.IPv6Network = ipaddress.IPv6Network("fc00::/7")
 
+# Site-local IPv6 addresses (deprecated by RFC 3879), fec0::/10. Reported by
+# ``IPv6Address.is_site_local`` but by none of the six special-use flags the
+# predicate relies on; rejected via explicit membership.
+_SITE_LOCAL_NETWORK: ipaddress.IPv6Network = ipaddress.IPv6Network("fec0::/10")
+
 
 class CrawlUrlRejectedError(DoclineError):
     """Raised when a crawl URL is rejected by policy."""
@@ -35,10 +40,22 @@ class CrawlUrlRejectedError(DoclineError):
 def is_unsafe_resolved_address(addr: str) -> bool:
     """Return ``True`` when a resolved IP is not a global public-unicast address.
 
-    Fails closed: an unclassifiable address is treated as unsafe. Mirrors the
-    class predicates of ``docline.fetch.sitemap._is_unsafe_address`` and adds an
-    explicit CGNAT (``100.64.0.0/10``) and ULA (``fc00::/7``) membership check
-    that the six ``ipaddress`` special-use flags miss.
+    This is the single canonical unsafe-address classifier for the package;
+    :mod:`docline.fetch.sitemap` and :mod:`docline.fetch.http` both consume it
+    so an address-class fix can never land in one surface and be forgotten in
+    another.
+
+    Fails closed: an unclassifiable address is treated as unsafe. Classification
+    combines the six :mod:`ipaddress` special-use flags with explicit network
+    membership for the classes those flags miss — cloud metadata, CGNAT
+    (``100.64.0.0/10``), ULA (``fc00::/7``), and site-local (``fec0::/10``).
+
+    The CVE-2024-4032-affected prefixes are deliberately **not** rejected
+    wholesale: they retain documented globally-reachable exceptions (for example
+    ``192.0.0.9``, ``192.0.0.10``, and reachable ``2001::/23`` subranges) that a
+    blanket reject would break. The mitigation is the ``requires-python >=
+    3.12.4`` floor, which guarantees the corrected CPython classification tables
+    back the flag checks below.
 
     Args:
         addr: A resolved IP address literal.
@@ -65,11 +82,9 @@ def is_unsafe_resolved_address(addr: str) -> bool:
         or ip.is_unspecified
     ):
         return True
-    if isinstance(ip, ipaddress.IPv4Address) and ip in _CGNAT_NETWORK:
-        return True
-    if isinstance(ip, ipaddress.IPv6Address) and ip in _ULA_NETWORK:
-        return True
-    return False
+    if isinstance(ip, ipaddress.IPv4Address):
+        return ip in _CGNAT_NETWORK
+    return ip in _ULA_NETWORK or ip in _SITE_LOCAL_NETWORK
 
 
 def resolve_and_validate(host: str) -> list[str]:
