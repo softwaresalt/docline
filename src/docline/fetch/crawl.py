@@ -23,6 +23,7 @@ from docline.fetch.crawl_models import (
     MAX_FRONTIER,
     CrawlConfig,
     CrawlLimitExceededError,
+    CrawlOutcome,
     CrawlResult,
     CrawlRobotsError,
     _Frontier,
@@ -42,11 +43,25 @@ from docline.schema.models import DoclineError
 logger = logging.getLogger(__name__)
 
 
+def _origin_label(url: str) -> str:
+    """Return the sanitized ``scheme://host[:port]`` origin for log records.
+
+    Strips path, query, fragment, and userinfo so the default-visible
+    truncation record cannot leak URL-carried credentials.
+    """
+    parsed = urlparse(url)
+    host = parsed.hostname or ""
+    if parsed.port is not None:
+        host = f"{host}:{parsed.port}"
+    origin = f"{parsed.scheme}://{host}" if host else parsed.scheme
+    return sanitize_source(origin)
+
+
 async def crawl(
     start_url: str,
     config: CrawlConfig | None = None,
     progress: Callable[[int, int | None, str], None] | None = None,
-) -> list[CrawlResult]:
+) -> CrawlOutcome:
     """Crawl *start_url* within the configured page and depth budgets.
 
     Performs a bounded breadth-first crawl starting at *start_url*,
@@ -66,8 +81,10 @@ async def crawl(
             of section scope, print pages, duplicate finals) do not fire it.
 
     Returns:
-        A list of :class:`CrawlResult` values, in breadth-first discovery order,
-        up to ``config.max_pages`` items.
+        A :class:`CrawlOutcome` whose ``results`` are the :class:`CrawlResult`
+        values in breadth-first discovery order (up to ``config.max_pages``
+        items) and whose ``frontier_truncated`` flag is ``True`` when the
+        admission ceiling actually refused an eligible discovered link.
 
     Note:
         Discovered-link admissions to the frontier are capped at
@@ -100,7 +117,7 @@ async def crawl(
     section_scope = _derive_section_scope(start)
     frontier = _Frontier(
         max_frontier=crawl_config.max_frontier,
-        start_label=sanitize_source(start),
+        start_label=_origin_label(start),
     )
     frontier.queue.append((start, 0))
     visited: set[str] = {_dedup_key(start)}
@@ -180,8 +197,8 @@ async def crawl(
                 page_links = extract_links(response.body, final_url)
                 if frontier.exhausted:
                     # Cap already full: skip admission but still parse links in
-                    # memory to record whether an eligible candidate was dropped.
-                    frontier.report_ceiling()
+                    # memory to record a truncation only when an eligible
+                    # candidate was actually dropped.
                     if _has_eligible_link(
                         page_links,
                         domain_lock=crawl_config.domain_lock,
@@ -190,6 +207,7 @@ async def crawl(
                         visited=visited,
                     ):
                         frontier.refused_any = True
+                        frontier.report_ceiling()
                 else:
                     for link, link_key in _iter_eligible_links(
                         page_links,
@@ -224,9 +242,8 @@ async def crawl(
         if frontier.exhausted:
             # The ceiling is exhausted, so every discovered link would be
             # refused. Skip the TOC *network* discovery, but still parse links
-            # (and, at depth zero, TOC script references) in memory to record
-            # whether an eligible candidate was actually dropped.
-            frontier.report_ceiling()
+            # (and, at depth zero, TOC script references) in memory to record a
+            # truncation only when an eligible candidate was actually dropped.
             if _has_eligible_link(
                 anchor_links,
                 domain_lock=crawl_config.domain_lock,
@@ -235,6 +252,7 @@ async def crawl(
                 visited=visited,
             ):
                 frontier.refused_any = True
+                frontier.report_ceiling()
             elif depth == 0 and _has_eligible_toc_script(
                 response.body,
                 final_url,
@@ -243,6 +261,7 @@ async def crawl(
                 section_scope=section_scope,
             ):
                 frontier.refused_any = True
+                frontier.report_ceiling()
             continue
 
         discovered_links = anchor_links
@@ -266,7 +285,7 @@ async def crawl(
             if not frontier.admit(link, link_key, depth + 1, visited):
                 break
 
-    return results
+    return CrawlOutcome(results=results, frontier_truncated=frontier.truncated)
 
 
 async def _fetch_with_retries(
@@ -377,6 +396,7 @@ __all__ = [
     "MAX_FRONTIER",
     "CrawlConfig",
     "CrawlLimitExceededError",
+    "CrawlOutcome",
     "CrawlResult",
     "CrawlRobotsError",
     "check_robots_allowed",

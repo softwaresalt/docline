@@ -88,6 +88,23 @@ class CrawlResult:
 
 
 @dataclass(slots=True)
+class CrawlOutcome:
+    """Result of a bounded crawl: the ordered pages and the truncation signal.
+
+    Attributes:
+        results: The per-page :class:`CrawlResult` values in breadth-first
+            discovery order, up to ``config.max_pages`` items.
+        frontier_truncated: ``True`` when the whole-crawl admission ceiling
+            actually refused at least one eligible candidate (an operator-visible
+            "the crawl may be incomplete" signal), ``False`` otherwise. Reaching
+            the cap without dropping an eligible link is **not** truncation.
+    """
+
+    results: list[CrawlResult]
+    frontier_truncated: bool
+
+
+@dataclass(slots=True)
 class _Frontier:
     """Whole-crawl admission-state owner for the discovered-link ceiling.
 
@@ -130,15 +147,23 @@ class _Frontier:
         return self.refused_any
 
     def report_ceiling(self) -> None:
-        """Log the frontier ceiling hit once per crawl."""
+        """Log the frontier truncation once per crawl at WARNING level.
+
+        Emitted only when the ceiling actually refuses an eligible candidate.
+        The payload is the sanitized crawl **origin** (scheme + host) plus the
+        admission count — never the full start URL, whose path, query,
+        fragment, or userinfo could carry credentials once the record is
+        default-visible.
+        """
         if self.ceiling_reported:
             return
         self.ceiling_reported = True
-        logger.debug(
-            "Frontier admission ceiling of %d reached for crawl of %s; "
-            "dropping further discovered links.",
+        logger.warning(
+            "Frontier admission ceiling of %d reached for crawl origin %s after "
+            "%d admission(s); dropping further discovered links.",
             self.max_frontier,
             self.start_label,
+            self.admitted,
         )
 
     def admit(self, link: str, link_key: str, next_depth: int, visited: set[str]) -> bool:
@@ -154,11 +179,12 @@ class _Frontier:
 
         Returns:
             ``True`` when the link was admitted, ``False`` when the whole-crawl
-            frontier ceiling refused it. A refusal records :attr:`refused_any`.
+            frontier ceiling refused it. A refusal records :attr:`refused_any`
+            and emits the truncation record.
         """
         if self.exhausted:
-            self.report_ceiling()
             self.refused_any = True
+            self.report_ceiling()
             return False
         self.admitted += 1
         visited.add(link_key)
@@ -170,6 +196,7 @@ __all__ = [
     "MAX_FRONTIER",
     "CrawlConfig",
     "CrawlLimitExceededError",
+    "CrawlOutcome",
     "CrawlResult",
     "CrawlRobotsError",
 ]
