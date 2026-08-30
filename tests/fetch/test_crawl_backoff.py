@@ -172,7 +172,7 @@ def test_crawl_retries_transient_fetch_failure_and_succeeds(
         max_retries=2,
         backoff_base_seconds=0.0,
     )
-    results = asyncio.run(crawl("https://example.com", config))
+    results = asyncio.run(crawl("https://example.com", config)).results
 
     assert len(results) == 1
     assert results[0].skipped is False
@@ -212,7 +212,7 @@ def test_crawl_returns_skipped_result_when_robots_txt_disallows(
     monkeypatch.setattr("docline.fetch.crawl.fetch_page", fake_fetch_page)
 
     config = CrawlConfig(respect_robots=True, max_retries=0)
-    results = asyncio.run(crawl("https://example.com/page", config))
+    results = asyncio.run(crawl("https://example.com/page", config)).results
 
     assert len(results) == 1
     assert results[0].skipped is True, "Result must be marked skipped when robots.txt disallows"
