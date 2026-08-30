@@ -1,6 +1,7 @@
 """Bounded async crawl executor with depth, robots, rate-limit, and backoff."""
 
 import asyncio
+import logging
 import re
 from collections import deque
 from collections.abc import Callable
@@ -20,6 +21,8 @@ from docline.fetch.http import (
 from docline.fetch.url_canonical import UrlCanonicalizationError, canonicalize_url
 from docline.fetch.url_policy import CrawlUrlRejectedError, validate_crawl_url
 from docline.schema.models import DoclineError
+
+logger = logging.getLogger(__name__)
 
 MAX_FRONTIER: int = 10_000
 """Absolute ceiling on discovered-link admissions for a single crawl.
@@ -142,6 +145,13 @@ async def crawl(
         A list of :class:`CrawlResult` values, in breadth-first discovery order,
         up to ``config.max_pages`` items.
 
+    Note:
+        Discovered-link admissions to the frontier are capped at
+        ``config.max_frontier`` for the whole crawl, independently of
+        ``config.max_pages`` and ``config.max_depth``. The start URL is never
+        subject to the cap, and breadth-first order is preserved for admitted
+        links.
+
     Raises:
         CrawlLimitExceededError: If ``config.max_pages`` is less than 1
             (zero-page budget cannot accommodate a single page).
@@ -166,6 +176,36 @@ async def crawl(
     # Request-scoped aggregate byte + fetch-attempt budget threaded through every
     # fetch_page call so no auxiliary/retry/redirect traffic bypasses the bound.
     budget = RemainingByteBudget(MAX_TOTAL_FETCH_BYTES, max_attempts=MAX_FETCH_ATTEMPTS)
+    admitted = 0
+    ceiling_reported = False
+
+    def _admit(link: str, link_key: str, next_depth: int) -> bool:
+        """Admit a discovered link to the frontier unless the ceiling is reached.
+
+        Args:
+            link: The absolute discovered URL.
+            link_key: The canonical dedup key for *link*.
+            next_depth: Discovery depth to record for *link*.
+
+        Returns:
+            ``True`` when the link was admitted, ``False`` when the whole-crawl
+            frontier ceiling refused it.
+        """
+        nonlocal admitted, ceiling_reported
+        if admitted >= crawl_config.max_frontier:
+            if not ceiling_reported:
+                ceiling_reported = True
+                logger.debug(
+                    "Frontier admission ceiling of %d reached for crawl of %s; "
+                    "dropping further discovered links.",
+                    crawl_config.max_frontier,
+                    start,
+                )
+            return False
+        admitted += 1
+        visited.add(link_key)
+        frontier.append((link, next_depth))
+        return True
 
     while frontier and page_count < crawl_config.max_pages:
         current_url, depth = frontier.popleft()
@@ -242,8 +282,8 @@ async def crawl(
                     link_key = _dedup_key(link)
                     if link_key in visited:
                         continue
-                    visited.add(link_key)
-                    frontier.append((link, depth + 1))
+                    if not _admit(link, link_key, depth + 1):
+                        break
             continue
 
         final_key = _dedup_key(final_url)
@@ -285,8 +325,8 @@ async def crawl(
             link_key = _dedup_key(link)
             if link_key in visited:
                 continue
-            visited.add(link_key)
-            frontier.append((link, depth + 1))
+            if not _admit(link, link_key, depth + 1):
+                break
 
     return results
 
