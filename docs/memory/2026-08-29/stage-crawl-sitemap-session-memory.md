@@ -147,7 +147,10 @@ Both are independent — no cross-shipment dependency edge. The only shared file
 
 ### Copilot review cycles
 
-Four rounds, **26 findings**, all valid, all fixed / replied with fix SHA / thread resolved.
+Six rounds, **35 findings**, all valid, all fixed. Rounds 1-4 produced 26 review threads, each
+replied to with the fix SHA and resolved. Round 5 produced **no threads** but its review body
+carried **7 suppressed "previously missed" findings** — these were real and are fixed in PR #178.
+Round 6 caught that I had recorded round 5 as clean.
 
 | Round | HEAD | Findings | Substance |
 |---|---|---|---|
@@ -155,7 +158,8 @@ Four rounds, **26 findings**, all valid, all fixed / replied with fix SHA / thre
 | 2 | `b6f3700` | 10 | TOC-only false negative; `job` not constructed until after the `except` block; `max_frontier` remedy not reachable by operators; missing `A.T12→A.T4` edge; archive forward refs; stale memory counts |
 | 3 | `cecbddb` | 4 | `tests/parity/test_equivalence.py` asserts the **exact** `FetchResult` field set — a hard blocker; a 10th caller module (`test_execute_fetch_progress.py`) |
 | 4 | `f1f85e8` | 2 | two internal count inconsistencies introduced by my own round-3 edits |
-| 5 | `4558b0f` | **0** | clean review on current HEAD |
+| 5 | `4558b0f` | **7 suppressed** | *not* clean — review `5060076290` surfaced 7 previously-missed findings as suppressed comments rather than threads |
+| 6 | `63ab0a1` (PR #178) | 1 | caught my own inaccurate "clean" claim about round 5 |
 
 Three findings changed the design rather than the wording:
 
@@ -190,3 +194,26 @@ before **any** model change.
   `.github/agents/_ship.agent.md`, `.gitignore`) never staged and left modified in the worktree.
 
 **Ship claims `059-S` first, then `060-S`.**
+
+### Round 5's suppressed findings (fixed in PR #178)
+
+Copilot round 5 emitted **zero review threads** but its review body listed 7 suppressed
+"previously missed" findings. I initially recorded the round as clean; round 6 caught that.
+All 7 were valid:
+
+1. **A.T2b created an unowned `crawl()` caller.** `tests/fetch/test_crawl_control_flow.py` is
+   written before the return-type break and must inspect returned results, so it needed a
+   migration task. Added to A.T7 / `068.008-T` (now four modules).
+2. **`crawl()`'s public `Returns:` docstring** promises a list; A.T6 / `068.007-T` now requires
+   updating the annotation *and* the Google-style return docs.
+3. **The `except BaseException` claim was wrong.** The zero-staged raise happens *after* the
+   `try/except/else`, so the success-path callback in the `else` branch has already fired and the
+   handler never runs for `CrawlStagedNothingError`. A.T9 / `068.012-T` now states the real
+   contract: exactly one completion callback before the error propagates, with the
+   `except BaseException` path intact only for failures raised *during* crawl or result staging.
+4. **A.T10's textual dependency list omitted A.T7**, and `068.013-T` was missing the
+   `068.008-T` edge — so the chain could reach A.T11b's full-`pytest` gate with the crawl-core
+   tests unmigrated. Both fixed and verified with `dep list`.
+
+**Process note:** a Copilot review with zero threads is *not* necessarily a clean review. The
+review **body** must be read for suppressed findings before declaring a gate clean.

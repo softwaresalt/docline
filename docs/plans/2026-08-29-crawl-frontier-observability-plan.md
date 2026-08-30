@@ -394,6 +394,10 @@ admission policies).
 - Add `CrawlOutcome` per D1 with a Google-style docstring documenting both attributes. `crawl()`
   returns `CrawlOutcome(results=results, frontier_truncated=frontier.truncated)`. `report_ceiling`
   becomes `logger.warning` with the D4 payload, lazy `%` args. Export `CrawlOutcome`.
+- **`crawl()` is public via `crawl.__all__` and its current docstring promises a list.** Update
+  both its return annotation and its Google-style `Returns:` section to describe `CrawlOutcome`
+  and its ordered `results`, otherwise the landed public API documentation contradicts the
+  contract this task introduces.
 - **Acceptance:** A.T5 green; `pyright src/` 0 errors. Full `pytest` is **expected red** in caller
   modules here — see the Verification gate exception.
 - **Depends on:** A.T5, A.T4.
@@ -401,10 +405,14 @@ admission policies).
 ### A.T7 — Migrate crawl-core test callers to `CrawlOutcome`
 
 - **Domain:** tests. **Files:** `tests/fetch/test_crawl_limits.py`,
-  `tests/fetch/test_crawl_frontier_bound.py`, `tests/fetch/test_crawl_section_scope.py`.
+  `tests/fetch/test_crawl_frontier_bound.py`, `tests/fetch/test_crawl_section_scope.py`,
+  `tests/fetch/test_crawl_control_flow.py`.
 - Mechanical: `results = await crawl(...)` → `outcome = await crawl(...)`; assertions read
   `outcome.results`. No assertion semantics change.
-- **Acceptance:** these three modules green.
+- **`test_crawl_control_flow.py` is included because A.T2b creates it** as a new `crawl()` caller
+  *before* the return-type break, and its characterization must inspect the returned results to
+  prove no `CrawlResult` was produced. Without migrating it, the full suite cannot recover.
+- **Acceptance:** these four modules green.
 - **Depends on:** A.T6.
 
 ### A.T8a — Migrate ELT test callers to `CrawlOutcome`
@@ -464,8 +472,14 @@ admission policies).
   that did cost an eligible link → `true`, **with the `StagingJob` reporting the same value in
   every case**; `_load_crawl_manifest` still parses; existing `metadata.json` files without the
   field still validate (defaulted); the raised error still satisfies `except OSError` with the
-  same message and the `except BaseException` completion event still fires; `pyright src/` 0
+  same message; `pyright src/` 0
   errors.
+- **Completion-callback contract (precise).** The zero-staged raise happens **after** the
+  `try/except/else`, so the **success-path** callback in the `else` branch has already run and the
+  `except BaseException` handler does **not** fire for `CrawlStagedNothingError`. Assert the real
+  contract: exactly **one** completion callback occurs before `CrawlStagedNothingError`
+  propagates, and the `except BaseException` path remains intact for failures raised *during*
+  crawl or result staging.
 - **Depends on:** A.T6.
 
 ### A.T10 — Harness: CLI/MCP parity for the truncation signal (red)
@@ -480,7 +494,7 @@ admission policies).
   the persisted `crawl-manifest.json`, and the failure case where no crawl ran and both report
   `False`.
 - **Acceptance:** red before A.T9/A.T11b land.
-- **Depends on:** A.T8a, A.T8b, A.T8c.
+- **Depends on:** A.T7, A.T8a, A.T8b, A.T8c.
 
 ### A.T11a — Verify the CLI needs no source change
 
