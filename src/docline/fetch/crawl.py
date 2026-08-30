@@ -4,8 +4,8 @@ import asyncio
 import logging
 import re
 from collections import deque
-from collections.abc import Callable
-from dataclasses import dataclass
+from collections.abc import Callable, Iterator
+from dataclasses import dataclass, field
 from html.parser import HTMLParser
 from urllib.parse import parse_qsl, urldefrag, urljoin, urlparse
 from urllib.robotparser import RobotFileParser
@@ -120,6 +120,159 @@ class _LinkExtractor(HTMLParser):
                 self.script_srcs.append(src)
 
 
+@dataclass(slots=True)
+class _Frontier:
+    """Whole-crawl admission-state owner for the discovered-link ceiling.
+
+    Encapsulates the breadth-first work queue and the admission counters that
+    bound how many discovered links a single crawl may enqueue. The crawl loop
+    reads :attr:`queue` directly for ``popleft`` and emptiness checks — queue
+    ordering is the loop's concern — while admission accounting stays here so
+    the 058-S ceiling invariants are testable without driving a full crawl.
+
+    The emitted-page ``visited`` set is deliberately **not** a field: it is
+    mutated at non-admission sites and serves emitted-page dedup, a separate
+    responsibility. :meth:`admit` takes it as an argument and records an
+    admitted link's dedup key on success only.
+
+    Attributes:
+        max_frontier: Whole-crawl ceiling on discovered-link admissions.
+        start_label: Sanitized crawl label used in the ceiling log record.
+        queue: Breadth-first queue of ``(url, depth)`` pairs awaiting a fetch.
+        admitted: Count of discovered links admitted to :attr:`queue` so far.
+        ceiling_reported: Whether the once-per-crawl ceiling record has fired.
+        refused_any: Whether the ceiling refused at least one eligible
+            candidate — the sole basis for :attr:`truncated`.
+    """
+
+    max_frontier: int
+    start_label: str
+    queue: deque[tuple[str, int]] = field(default_factory=deque)
+    admitted: int = 0
+    ceiling_reported: bool = False
+    refused_any: bool = False
+
+    @property
+    def exhausted(self) -> bool:
+        """Return ``True`` when the admission ceiling is full."""
+        return self.admitted >= self.max_frontier
+
+    @property
+    def truncated(self) -> bool:
+        """Return ``True`` when the ceiling actually refused an eligible link."""
+        return self.refused_any
+
+    def report_ceiling(self) -> None:
+        """Log the frontier ceiling hit once per crawl."""
+        if self.ceiling_reported:
+            return
+        self.ceiling_reported = True
+        logger.debug(
+            "Frontier admission ceiling of %d reached for crawl of %s; "
+            "dropping further discovered links.",
+            self.max_frontier,
+            self.start_label,
+        )
+
+    def admit(self, link: str, link_key: str, next_depth: int, visited: set[str]) -> bool:
+        """Admit a discovered link to the queue unless the ceiling refuses it.
+
+        Args:
+            link: The absolute discovered URL.
+            link_key: The canonical dedup key for *link*.
+            next_depth: Discovery depth to record for *link*.
+            visited: Emitted/queued dedup set. *link_key* is added on a
+                successful admission and never on a refusal (the 058-S
+                invariant).
+
+        Returns:
+            ``True`` when the link was admitted, ``False`` when the whole-crawl
+            frontier ceiling refused it. A refusal records :attr:`refused_any`.
+        """
+        if self.exhausted:
+            self.report_ceiling()
+            self.refused_any = True
+            return False
+        self.admitted += 1
+        visited.add(link_key)
+        self.queue.append((link, next_depth))
+        return True
+
+
+def _iter_eligible_links(
+    links: list[str],
+    *,
+    domain_lock: bool,
+    start_host: str,
+    section_scope: str | None,
+    visited: set[str],
+) -> Iterator[tuple[str, str]]:
+    """Yield ``(link, link_key)`` for links passing the admission filters.
+
+    Applies the same domain-lock, section-scope, and ``visited`` dedup filters
+    the crawl loop enforces before an admission. Lazy: iteration stops as soon
+    as the caller stops consuming, so a refusal ``break`` skips the remaining
+    parse work.
+    """
+    for link in links:
+        if domain_lock and urlparse(link).netloc != start_host:
+            continue
+        if domain_lock and not _url_within_section_scope(link, section_scope):
+            continue
+        link_key = _dedup_key(link)
+        if link_key in visited:
+            continue
+        yield link, link_key
+
+
+def _has_eligible_link(
+    links: list[str],
+    *,
+    domain_lock: bool,
+    start_host: str,
+    section_scope: str | None,
+    visited: set[str],
+) -> bool:
+    """Return whether *links* contains at least one admissible candidate."""
+    return (
+        next(
+            _iter_eligible_links(
+                links,
+                domain_lock=domain_lock,
+                start_host=start_host,
+                section_scope=section_scope,
+                visited=visited,
+            ),
+            None,
+        )
+        is not None
+    )
+
+
+def _has_eligible_toc_script(
+    html_text: str,
+    page_url: str,
+    *,
+    domain_lock: bool,
+    start_host: str,
+    section_scope: str | None,
+) -> bool:
+    """Return whether the page references an eligible, in-scope TOC script.
+
+    A pure in-memory parse with **no** TOC network fetch. It mirrors the
+    domain/scope filter :func:`_discover_toc_links` applies to TOC script
+    assets, so a depth-zero short-circuit can conservatively flag truncation
+    when lifting the ceiling would have discovered TOC-derived links.
+    """
+    for script_url in extract_toc_script_urls(html_text, page_url):
+        if domain_lock and urlparse(script_url).netloc != start_host:
+            continue
+        if domain_lock and not _url_within_section_scope(script_url, section_scope):
+            continue
+        return True
+    return False
+
+
 async def crawl(
     start_url: str,
     config: CrawlConfig | None = None,
@@ -176,7 +329,11 @@ async def crawl(
     start = _normalize_url(validate_crawl_url(start_url))
     start_host = urlparse(start).netloc
     section_scope = _derive_section_scope(start)
-    frontier: deque[tuple[str, int]] = deque([(start, 0)])
+    frontier = _Frontier(
+        max_frontier=crawl_config.max_frontier,
+        start_label=sanitize_source(start),
+    )
+    frontier.queue.append((start, 0))
     visited: set[str] = {_dedup_key(start)}
     emitted_urls: set[str] = set()
     robots_cache: dict[str, str | None] = {}
@@ -185,45 +342,9 @@ async def crawl(
     # Request-scoped aggregate byte + fetch-attempt budget threaded through every
     # fetch_page call so no auxiliary/retry/redirect traffic bypasses the bound.
     budget = RemainingByteBudget(MAX_TOTAL_FETCH_BYTES, max_attempts=MAX_FETCH_ATTEMPTS)
-    admitted = 0
-    ceiling_reported = False
 
-    def _report_ceiling() -> None:
-        """Log the frontier ceiling hit once per crawl."""
-        nonlocal ceiling_reported
-        if ceiling_reported:
-            return
-        ceiling_reported = True
-        logger.debug(
-            "Frontier admission ceiling of %d reached for crawl of %s; "
-            "dropping further discovered links.",
-            crawl_config.max_frontier,
-            sanitize_source(start),
-        )
-
-    def _admit(link: str, link_key: str, next_depth: int) -> bool:
-        """Admit a discovered link to the frontier unless the ceiling is reached.
-
-        Args:
-            link: The absolute discovered URL.
-            link_key: The canonical dedup key for *link*.
-            next_depth: Discovery depth to record for *link*.
-
-        Returns:
-            ``True`` when the link was admitted, ``False`` when the whole-crawl
-            frontier ceiling refused it.
-        """
-        nonlocal admitted
-        if admitted >= crawl_config.max_frontier:
-            _report_ceiling()
-            return False
-        admitted += 1
-        visited.add(link_key)
-        frontier.append((link, next_depth))
-        return True
-
-    while frontier and page_count < crawl_config.max_pages:
-        current_url, depth = frontier.popleft()
+    while frontier.queue and page_count < crawl_config.max_pages:
+        current_url, depth = frontier.queue.popleft()
 
         if crawl_config.respect_robots and not await _robots_allow(
             current_url,
@@ -287,21 +408,29 @@ async def crawl(
         if _is_print_page(final_url, response.body):
             visited.add(_dedup_key(final_url))
             if depth < crawl_config.max_depth and _is_html_response(response):
-                if admitted >= crawl_config.max_frontier:
-                    _report_ceiling()
-                    continue
-                for link in extract_links(response.body, final_url):
-                    if crawl_config.domain_lock and urlparse(link).netloc != start_host:
-                        continue
-                    if crawl_config.domain_lock and not _url_within_section_scope(
-                        link, section_scope
+                page_links = extract_links(response.body, final_url)
+                if frontier.exhausted:
+                    # Cap already full: skip admission but still parse links in
+                    # memory to record whether an eligible candidate was dropped.
+                    frontier.report_ceiling()
+                    if _has_eligible_link(
+                        page_links,
+                        domain_lock=crawl_config.domain_lock,
+                        start_host=start_host,
+                        section_scope=section_scope,
+                        visited=visited,
                     ):
-                        continue
-                    link_key = _dedup_key(link)
-                    if link_key in visited:
-                        continue
-                    if not _admit(link, link_key, depth + 1):
-                        break
+                        frontier.refused_any = True
+                else:
+                    for link, link_key in _iter_eligible_links(
+                        page_links,
+                        domain_lock=crawl_config.domain_lock,
+                        start_host=start_host,
+                        section_scope=section_scope,
+                        visited=visited,
+                    ):
+                        if not frontier.admit(link, link_key, depth + 1, visited):
+                            break
             continue
 
         final_key = _dedup_key(final_url)
@@ -321,35 +450,51 @@ async def crawl(
             continue
         if not _is_html_response(response):
             continue
-        if admitted >= crawl_config.max_frontier:
-            # The ceiling is exhausted, so every discovered link would be refused.
-            # Skip discovery entirely rather than issuing TOC-asset requests and
-            # building link lists that cannot be admitted.
-            _report_ceiling()
+
+        anchor_links = extract_links(response.body, final_url)
+        if frontier.exhausted:
+            # The ceiling is exhausted, so every discovered link would be
+            # refused. Skip the TOC *network* discovery, but still parse links
+            # (and, at depth zero, TOC script references) in memory to record
+            # whether an eligible candidate was actually dropped.
+            frontier.report_ceiling()
+            if _has_eligible_link(
+                anchor_links,
+                domain_lock=crawl_config.domain_lock,
+                start_host=start_host,
+                section_scope=section_scope,
+                visited=visited,
+            ):
+                frontier.refused_any = True
+            elif depth == 0 and _has_eligible_toc_script(
+                response.body,
+                final_url,
+                domain_lock=crawl_config.domain_lock,
+                start_host=start_host,
+                section_scope=section_scope,
+            ):
+                frontier.refused_any = True
             continue
 
-        discovered_links = extract_links(response.body, final_url)
+        discovered_links = anchor_links
         if depth == 0:
-            discovered_links.extend(
-                await _discover_toc_links(
-                    response.body,
-                    final_url,
-                    crawl_config,
-                    start_host=start_host,
-                    section_scope=section_scope,
-                    budget=budget,
-                )
+            discovered_links = anchor_links + await _discover_toc_links(
+                response.body,
+                final_url,
+                crawl_config,
+                start_host=start_host,
+                section_scope=section_scope,
+                budget=budget,
             )
 
-        for link in discovered_links:
-            if crawl_config.domain_lock and urlparse(link).netloc != start_host:
-                continue
-            if crawl_config.domain_lock and not _url_within_section_scope(link, section_scope):
-                continue
-            link_key = _dedup_key(link)
-            if link_key in visited:
-                continue
-            if not _admit(link, link_key, depth + 1):
+        for link, link_key in _iter_eligible_links(
+            discovered_links,
+            domain_lock=crawl_config.domain_lock,
+            start_host=start_host,
+            section_scope=section_scope,
+            visited=visited,
+        ):
+            if not frontier.admit(link, link_key, depth + 1, visited):
                 break
 
     return results
