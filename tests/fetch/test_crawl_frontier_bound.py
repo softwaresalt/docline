@@ -14,17 +14,20 @@ admission bounds (FAIL in red phase, before the cap is enforced in ``crawl()``).
 """
 
 import asyncio
+import logging
 
 import pytest
 
 from docline.fetch.crawl import (
     MAX_FRONTIER,
     CrawlConfig,
+    CrawlLimitExceededError,
     crawl,
 )
-from docline.fetch.http import MAX_FETCH_ATTEMPTS, FetchResponse
+from docline.fetch.http import MAX_FETCH_ATTEMPTS, FetchResponse, RemainingByteBudget
 
 SITE = "https://example.com/docs/"
+CRAWL_LOGGER = "docline.fetch.crawl"
 
 
 def _fan_out_body(count: int, *, prefix: str = "page") -> str:
@@ -44,17 +47,28 @@ def _install_fetch(
     requested: list[str],
     *,
     default_body: str = "<html><body><h1>leaf</h1></body></html>",
+    budgets: list[RemainingByteBudget] | None = None,
 ) -> None:
-    """Monkeypatch ``crawl.fetch_page`` with a synthetic in-memory site."""
+    """Monkeypatch ``crawl.fetch_page`` with a synthetic in-memory site.
+
+    The double mirrors the real ``fetch_page`` contract: it requires the
+    request-scoped ``budget`` to be threaded through and debits one outbound
+    attempt per call, so the ``MAX_FETCH_ATTEMPTS`` envelope stays load-bearing.
+    """
 
     async def fake_fetch_page(
         url: str,
         *,
         timeout_seconds: float = 30.0,
         max_redirects: int = 5,
+        budget: RemainingByteBudget | None = None,
         **_kwargs: object,
     ) -> FetchResponse:
         del timeout_seconds, max_redirects
+        assert budget is not None, "crawl() must thread the request-scoped budget through"
+        budget.debit_attempt()
+        if budgets is not None and budget not in budgets:
+            budgets.append(budget)
         requested.append(url)
         if url in pages:
             return pages[url]
@@ -83,11 +97,10 @@ def test_crawl_config_custom_max_frontier() -> None:
     assert CrawlConfig(max_frontier=7).max_frontier == 7
 
 
-def test_max_frontier_is_independent_of_page_and_depth_defaults() -> None:
-    """The frontier ceiling is not derived from max_pages or max_depth."""
-    config = CrawlConfig()
-    assert config.max_frontier != config.max_pages
-    assert config.max_frontier != config.max_depth
+def test_negative_max_frontier_is_rejected() -> None:
+    """A negative ceiling fails loudly rather than silently disabling discovery."""
+    with pytest.raises(CrawlLimitExceededError):
+        asyncio.run(crawl(SITE, CrawlConfig(max_frontier=-1)))
 
 
 # ---------------------------------------------------------------------------
@@ -314,7 +327,8 @@ def test_redirect_alias_branches_stay_within_the_bounded_envelope(
         "https://example.com/docs/alias-2": _html(canonical, _fan_out_body(200)),
     }
     requested: list[str] = []
-    _install_fetch(monkeypatch, pages, requested)
+    budgets: list[RemainingByteBudget] = []
+    _install_fetch(monkeypatch, pages, requested, budgets=budgets)
 
     max_frontier = 6
     results = asyncio.run(
@@ -345,4 +359,97 @@ def test_redirect_alias_branches_stay_within_the_bounded_envelope(
     assert emitted[0] == SITE
 
     # Total resident identity keys are bounded by MAX_FETCH_ATTEMPTS + max_frontier.
-    assert len(requested) <= MAX_FETCH_ATTEMPTS + max_frontier
+    # The attempt budget is genuinely debited by the double, so the envelope is
+    # observable rather than assumed.
+    assert len(budgets) == 1
+    assert budgets[0].attempts_remaining == MAX_FETCH_ATTEMPTS - len(requested)
+
+
+def test_print_page_discovery_branch_is_also_capped(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The print-page discovery branch honours the same admission ceiling.
+
+    The print-page branch does not emit a ``CrawlResult`` and does not increment
+    ``page_count``, so without the cap it is a second unbounded admission site.
+    """
+    print_url = "https://example.com/docs/print.html"
+    pages = {
+        SITE: _html(SITE, '<html><body><a href="/docs/print.html">Print</a></body></html>'),
+        print_url: _html(print_url, _fan_out_body(200, prefix="printed")),
+    }
+    requested: list[str] = []
+    _install_fetch(monkeypatch, pages, requested)
+
+    max_frontier = 4
+    results = asyncio.run(
+        crawl(
+            SITE,
+            CrawlConfig(
+                max_pages=500,
+                max_depth=3,
+                max_frontier=max_frontier,
+                respect_robots=False,
+            ),
+        )
+    )
+
+    # One admission for the print page itself, three for its capped fan-out.
+    assert len(requested) == 1 + max_frontier
+    assert requested[1] == print_url
+    # The print page yields no CrawlResult, so results are start + admitted fan-out.
+    emitted = [result.url for result in results]
+    assert print_url not in emitted
+    assert emitted == [
+        SITE,
+        "https://example.com/docs/printed-0",
+        "https://example.com/docs/printed-1",
+        "https://example.com/docs/printed-2",
+    ]
+
+
+def test_ceiling_hit_emits_exactly_one_debug_record(
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Reaching the ceiling logs once at DEBUG, not once per dropped link."""
+    requested: list[str] = []
+    _install_fetch(monkeypatch, {SITE: _html(SITE, _fan_out_body(200))}, requested)
+
+    with caplog.at_level(logging.DEBUG, logger=CRAWL_LOGGER):
+        asyncio.run(
+            crawl(
+                SITE,
+                CrawlConfig(
+                    max_pages=500,
+                    max_depth=1,
+                    max_frontier=3,
+                    respect_robots=False,
+                ),
+            )
+        )
+
+    ceiling_records = [
+        record
+        for record in caplog.records
+        if record.name == CRAWL_LOGGER and "ceiling" in record.getMessage()
+    ]
+    assert len(ceiling_records) == 1
+    assert ceiling_records[0].levelno == logging.DEBUG
+
+
+def test_under_cap_crawl_emits_no_ceiling_record(
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """A crawl that stays under the ceiling logs nothing about dropped links."""
+    requested: list[str] = []
+    _install_fetch(monkeypatch, {SITE: _html(SITE, _fan_out_body(3))}, requested)
+
+    with caplog.at_level(logging.DEBUG, logger=CRAWL_LOGGER):
+        asyncio.run(
+            crawl(
+                SITE,
+                CrawlConfig(max_pages=50, max_depth=1, respect_robots=False),
+            )
+        )
+
+    assert not [record for record in caplog.records if "ceiling" in record.getMessage()]

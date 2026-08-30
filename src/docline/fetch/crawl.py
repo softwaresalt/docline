@@ -57,6 +57,7 @@ class CrawlConfig:
         backoff_base_seconds: Base interval for exponential backoff.
         rate_limit_ms: Delay between page fetches in milliseconds.
         max_frontier: Ceiling on discovered-link admissions to the frontier.
+            ``0`` disables link discovery entirely; negative values are rejected.
     """
 
     max_pages: int = 50
@@ -154,7 +155,8 @@ async def crawl(
 
     Raises:
         CrawlLimitExceededError: If ``config.max_pages`` is less than 1
-            (zero-page budget cannot accommodate a single page).
+            (zero-page budget cannot accommodate a single page), or if
+            ``config.max_frontier`` is negative.
         CrawlUrlRejectedError: If ``start_url`` fails URL policy validation.
     """
     crawl_config = config or CrawlConfig()
@@ -162,6 +164,12 @@ async def crawl(
     if crawl_config.max_pages < 1:
         raise CrawlLimitExceededError(
             f"Page budget of {crawl_config.max_pages} cannot accommodate a single page."
+        )
+
+    if crawl_config.max_frontier < 0:
+        raise CrawlLimitExceededError(
+            f"Frontier ceiling of {crawl_config.max_frontier} is negative; "
+            "use 0 to disable link discovery."
         )
 
     start = _normalize_url(validate_crawl_url(start_url))
