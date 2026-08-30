@@ -168,11 +168,18 @@ def test_fetch_url_zero_staged_raises_typed_error_with_single_callback(
     assert calls == [(0, None, url)]
 
 
-def test_fetch_url_zero_staged_error_is_catchable_as_oserror(
+def test_fetch_url_zero_staged_false_case_retains_flag_on_error_and_manifest(
     monkeypatch: pytest.MonkeyPatch, tmp_path
 ) -> None:
-    """The zero-staged error remains catchable via a bare `except OSError`."""
-    from docline.elt.execute import _fetch_url
+    """D8 false case: a zero-staged crawl that dropped nothing reports False.
+
+    The error remains catchable as `OSError`, and both the raised
+    `frontier_truncated` and the persisted `crawl-manifest.json` must record
+    `False` — a hard-coded `True` on this path would violate the contract.
+    """
+    import json
+
+    from docline.elt.execute import CrawlStagedNothingError, _fetch_url
     from docline.elt.models import WebCrawlSource
     from docline.fetch.crawl import CrawlOutcome
 
@@ -183,9 +190,14 @@ def test_fetch_url_zero_staged_error_is_catchable_as_oserror(
     files_dir = tmp_path / "files"
     files_dir.mkdir()
 
-    caught = False
+    caught: OSError | None = None
     try:
         _fetch_url(WebCrawlSource(type="web_crawl", url="https://ex.org/docs/", depth=0), files_dir)
-    except OSError:
-        caught = True
-    assert caught is True
+    except OSError as err:
+        caught = err
+
+    assert isinstance(caught, CrawlStagedNothingError)
+    assert caught.frontier_truncated is False
+    manifest = json.loads((files_dir.parent / "crawl-manifest.json").read_text(encoding="utf-8"))
+    assert manifest["frontier_truncated"] is False
+    assert manifest["pages"] == []

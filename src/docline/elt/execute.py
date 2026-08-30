@@ -81,8 +81,9 @@ class CrawlStagedNothingError(OSError, DoclineError):
     fetch attempt.
 
     Attributes:
-        frontier_truncated: Whether the crawl frontier ceiling refused an
-            eligible discovered link before nothing was staged.
+        frontier_truncated: Whether the crawl frontier ceiling cost the crawl an
+            eligible discovered link before nothing was staged (deliberately
+            conservative — see :class:`docline.fetch.crawl_models.CrawlOutcome`).
     """
 
     def __init__(self, message: str, *, frontier_truncated: bool = False) -> None:
@@ -541,8 +542,9 @@ def _fetch_url(
 
     Returns:
         A ``(staged_count, frontier_truncated)`` pair: the number of staged HTML
-        pages and whether the crawl's whole-crawl admission ceiling refused an
-        eligible discovered link.
+        pages and whether the crawl's whole-crawl admission ceiling cost the
+        crawl an eligible discovered link (deliberately conservative — see
+        :class:`docline.fetch.crawl_models.CrawlOutcome`).
 
     Raises:
         CrawlStagedNothingError: When no crawlable pages were staged. It
