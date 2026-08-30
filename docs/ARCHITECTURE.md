@@ -55,8 +55,11 @@ ceiling refuses an eligible link, the crawl records the loss through one signal
 that reaches **both** interfaces by construction:
 
 * `crawl()` returns a `CrawlOutcome` carrying `results` and a `frontier_truncated`
-  flag. The flag is `True` only when an eligible candidate was actually dropped,
-  not when the cap was merely reached.
+  flag. The flag reports whether the ceiling cost the crawl an eligible link. It
+  is set on a direct admission refusal and, at a depth-zero exhausted
+  short-circuit, from an eligible `toc-*.js` reference that cannot be examined
+  without a network fetch (the conservative case below). Reaching the cap without
+  dropping an eligible link is not truncation.
 * A single WARNING is logged once per crawl at default verbosity. Its payload is
   the sanitized crawl **origin** (scheme and host) plus the admission count; it
   omits the path, query, fragment, and userinfo, so a default-visible record
