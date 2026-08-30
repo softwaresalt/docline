@@ -365,12 +365,18 @@ def test_preflight_is_bounded_by_the_request_timeout(monkeypatch: pytest.MonkeyP
 
     monkeypatch.setattr(socket, "getaddrinfo", _hanging_resolver)
 
-    started = time.monotonic()
-    with pytest.raises(FetchTimeoutError):
-        asyncio.run(
-            sitemap_module.fetch_sitemap("http://example.com/sitemap.xml", timeout_seconds=0.5)
-        )
-    assert time.monotonic() - started < 10, "the preflight must honor the request deadline"
+    async def _run() -> float:
+        started = time.monotonic()
+        with pytest.raises(FetchTimeoutError):
+            await sitemap_module.fetch_sitemap(
+                "http://example.com/sitemap.xml", timeout_seconds=0.5
+            )
+        return time.monotonic() - started
+
+    # The abandoned resolver thread is not cancellable, so measure the awaited
+    # deadline itself rather than event-loop shutdown, which joins that thread.
+    elapsed = asyncio.run(_run())
+    assert elapsed < 5, "the preflight must honor the request deadline"
 
 
 def test_preflight_elapsed_time_is_deducted_from_the_fetch_deadline(

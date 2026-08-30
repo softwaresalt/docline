@@ -27,13 +27,15 @@ never diverge on a security-critical predicate.
 
 from __future__ import annotations
 
+import asyncio
 import ipaddress
 import socket
+import time
 from dataclasses import dataclass
 from urllib.parse import urlparse
 from xml.etree import ElementTree as ET
 
-from docline.fetch.http import FetchResponse, fetch_page
+from docline.fetch.http import FetchResponse, FetchTimeoutError, fetch_page
 from docline.fetch.url_policy import is_unsafe_resolved_address
 from docline.schema.models import DoclineError
 
@@ -271,17 +273,45 @@ async def fetch_sitemap(
     Returns:
         The :class:`~docline.fetch.http.FetchResponse` for the sitemap.
 
+    ``timeout_seconds`` bounds the whole operation, not just the HTTP fetch:
+    the preflight performs a blocking :func:`socket.getaddrinfo` lookup, so it
+    runs in the default executor (never on the event loop) under the same
+    deadline, and the time it consumes is deducted from the budget handed to
+    :func:`~docline.fetch.http.fetch_page`.
+
+    Args:
+        url: The sitemap URL to retrieve.
+        timeout_seconds: Deadline in seconds for the preflight and fetch combined.
+        max_redirects: Maximum number of HTTP redirects to follow.
+
+    Returns:
+        The :class:`~docline.fetch.http.FetchResponse` for the sitemap.
+
     Raises:
         SitemapError: When the preflight rejects ``url``.
         CrawlUrlRejectedError: When the URL or any redirect target resolves to
             an address the canonical predicate rejects.
-        FetchTimeoutError: When the request exceeds ``timeout_seconds``.
+        FetchTimeoutError: When the preflight or the request exceeds
+            ``timeout_seconds``.
         FetchError: For non-timeout fetch failures or redirect-cap violations.
     """
-    validate_sitemap_url(url)
+    loop = asyncio.get_running_loop()
+    started = time.monotonic()
+    try:
+        await asyncio.wait_for(
+            loop.run_in_executor(None, validate_sitemap_url, url),
+            timeout=timeout_seconds,
+        )
+    except TimeoutError as err:
+        raise FetchTimeoutError(
+            f"Timed out validating {url} after {timeout_seconds} seconds"
+        ) from err
+    remaining = timeout_seconds - (time.monotonic() - started)
+    if remaining <= 0:
+        raise FetchTimeoutError(f"Timed out validating {url} after {timeout_seconds} seconds")
     return await fetch_page(
         url,
-        timeout_seconds=timeout_seconds,
+        timeout_seconds=remaining,
         max_redirects=max_redirects,
     )
 
