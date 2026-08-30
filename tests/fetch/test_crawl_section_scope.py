@@ -99,7 +99,7 @@ def test_crawl_from_subsection_does_not_follow_sibling_version_links(
             "https://ex.org/docs/current/",
             CrawlConfig(max_pages=10, max_depth=2, respect_robots=False, domain_lock=True),
         )
-    )
+    ).results
     fetched = {r.url for r in results if r.response is not None}
     assert "https://ex.org/docs/current/page.html" in fetched
     assert "https://ex.org/docs/10/page.html" not in fetched

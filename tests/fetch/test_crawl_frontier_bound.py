@@ -100,7 +100,7 @@ def test_crawl_config_custom_max_frontier() -> None:
 def test_negative_max_frontier_is_rejected() -> None:
     """A negative ceiling fails loudly rather than silently disabling discovery."""
     with pytest.raises(CrawlLimitExceededError):
-        asyncio.run(crawl(SITE, CrawlConfig(max_frontier=-1)))
+        asyncio.run(crawl(SITE, CrawlConfig(max_frontier=-1))).results
 
 
 # ---------------------------------------------------------------------------
@@ -125,7 +125,7 @@ def test_fan_out_beyond_cap_admits_at_most_max_frontier(
                 respect_robots=False,
             ),
         )
-    )
+    ).results
 
     # start URL plus at most `max_frontier` admitted discoveries
     assert len(requested) == 6
@@ -147,7 +147,7 @@ def test_fan_out_cap_still_honours_max_pages(monkeypatch: pytest.MonkeyPatch) ->
                 respect_robots=False,
             ),
         )
-    )
+    ).results
 
     assert len(results) == 3
     assert len(requested) == 3
@@ -168,7 +168,7 @@ def test_fan_out_cap_still_honours_max_depth(monkeypatch: pytest.MonkeyPatch) ->
                 respect_robots=False,
             ),
         )
-    )
+    ).results
 
     assert [result.url for result in results] == [SITE]
     assert requested == [SITE]
@@ -189,7 +189,7 @@ def test_start_url_is_never_dropped_by_a_tiny_cap(monkeypatch: pytest.MonkeyPatc
                 respect_robots=False,
             ),
         )
-    )
+    ).results
 
     assert [result.url for result in results] == [SITE]
 
@@ -222,7 +222,7 @@ def test_small_cap_bounds_admissions_under_large_page_and_depth_budgets(
                 respect_robots=False,
             ),
         )
-    )
+    ).results
 
     assert len(requested) == 4
     assert len(results) == 4
@@ -245,7 +245,7 @@ def test_breadth_first_order_is_preserved_for_admitted_links(
                 respect_robots=False,
             ),
         )
-    )
+    ).results
 
     assert [result.url for result in results] == [
         SITE,
@@ -274,7 +274,7 @@ def test_under_cap_crawl_is_unchanged_at_the_default_ceiling(
             SITE,
             CrawlConfig(max_pages=50, max_depth=1, respect_robots=False),
         )
-    )
+    ).results
 
     raised_requested: list[str] = []
     _install_fetch(monkeypatch, pages, raised_requested)
@@ -288,7 +288,7 @@ def test_under_cap_crawl_is_unchanged_at_the_default_ceiling(
                 respect_robots=False,
             ),
         )
-    )
+    ).results
 
     assert default_requested == raised_requested
     assert [(r.url, r.depth) for r in default_results] == [(r.url, r.depth) for r in raised_results]
@@ -341,7 +341,7 @@ def test_redirect_alias_branches_stay_within_the_bounded_envelope(
                 respect_robots=False,
             ),
         )
-    )
+    ).results
 
     # Three alias admissions plus three fan-out admissions exhaust the cap.
     assert len(requested) == 1 + max_frontier
@@ -390,7 +390,7 @@ def test_print_page_discovery_branch_is_also_capped(monkeypatch: pytest.MonkeyPa
                 respect_robots=False,
             ),
         )
-    )
+    ).results
 
     # One admission for the print page itself, three for its capped fan-out.
     assert len(requested) == 1 + max_frontier
@@ -426,7 +426,7 @@ def test_ceiling_record_redacts_credentials_in_the_start_url(
                     respect_robots=False,
                 ),
             )
-        )
+        ).results
 
     ceiling_records = [record for record in caplog.records if "ceiling" in record.getMessage()]
     assert len(ceiling_records) == 1
@@ -457,7 +457,7 @@ def test_print_page_branch_reports_the_ceiling_when_exhausted(
                     respect_robots=False,
                 ),
             )
-        )
+        ).results
 
     # The single admission is consumed by the print URL itself; its fan-out is dropped.
     assert requested == [SITE, print_url]
@@ -501,7 +501,7 @@ def test_zero_cap_suppresses_toc_asset_requests(monkeypatch: pytest.MonkeyPatch)
                 respect_robots=False,
             ),
         )
-    )
+    ).results
 
     assert requested == [SITE]
     assert toc_url not in requested
@@ -536,17 +536,21 @@ def test_toc_assets_are_fetched_when_the_ceiling_allows_admissions(
                 respect_robots=False,
             ),
         )
-    )
+    ).results
 
     assert toc_url in requested
     assert [result.url for result in results] == [SITE, "https://example.com/docs/from-toc"]
 
 
-def test_ceiling_hit_emits_exactly_one_debug_record(
+def test_ceiling_hit_emits_exactly_one_warning_record(
     monkeypatch: pytest.MonkeyPatch,
     caplog: pytest.LogCaptureFixture,
 ) -> None:
-    """Reaching the ceiling logs once at DEBUG, not once per dropped link."""
+    """Reaching the ceiling logs once at WARNING, not once per dropped link.
+
+    059-S (D4) promotes the truncation record from DEBUG to a default-visible
+    WARNING; the once-per-crawl guarantee is unchanged.
+    """
     requested: list[str] = []
     _install_fetch(monkeypatch, {SITE: _html(SITE, _fan_out_body(200))}, requested)
 
@@ -561,7 +565,7 @@ def test_ceiling_hit_emits_exactly_one_debug_record(
                     respect_robots=False,
                 ),
             )
-        )
+        ).results
 
     ceiling_records = [
         record
@@ -569,7 +573,7 @@ def test_ceiling_hit_emits_exactly_one_debug_record(
         if record.name == CRAWL_LOGGER and "ceiling" in record.getMessage()
     ]
     assert len(ceiling_records) == 1
-    assert ceiling_records[0].levelno == logging.DEBUG
+    assert ceiling_records[0].levelno == logging.WARNING
 
 
 def test_under_cap_crawl_emits_no_ceiling_record(
@@ -586,6 +590,6 @@ def test_under_cap_crawl_emits_no_ceiling_record(
                 SITE,
                 CrawlConfig(max_pages=50, max_depth=1, respect_robots=False),
             )
-        )
+        ).results
 
     assert not [record for record in caplog.records if "ceiling" in record.getMessage()]
