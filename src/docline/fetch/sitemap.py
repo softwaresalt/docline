@@ -265,14 +265,6 @@ async def fetch_sitemap(
     certificate verification, which closes the validate-then-re-resolve
     (DNS-rebinding) window without weakening HTTPS.
 
-    Args:
-        url: The sitemap URL to retrieve.
-        timeout_seconds: Per-request timeout in seconds.
-        max_redirects: Maximum number of HTTP redirects to follow.
-
-    Returns:
-        The :class:`~docline.fetch.http.FetchResponse` for the sitemap.
-
     ``timeout_seconds`` bounds the whole operation, not just the HTTP fetch:
     the preflight performs a blocking :func:`socket.getaddrinfo` lookup, so it
     runs in the default executor (never on the event loop) under the same

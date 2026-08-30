@@ -360,7 +360,10 @@ def test_preflight_is_bounded_by_the_request_timeout(monkeypatch: pytest.MonkeyP
     from docline.fetch.http import FetchTimeoutError
 
     def _hanging_resolver(host: str, *args: Any, **kwargs: Any) -> list[tuple[Any, ...]]:
-        time.sleep(30)
+        # Only needs to outlive the 0.5s deadline. Kept short because the
+        # abandoned thread is joined at event-loop shutdown, so a long sleep
+        # would be charged to every suite run.
+        time.sleep(2)
         raise AssertionError("resolver should have been abandoned")
 
     monkeypatch.setattr(socket, "getaddrinfo", _hanging_resolver)
@@ -376,7 +379,7 @@ def test_preflight_is_bounded_by_the_request_timeout(monkeypatch: pytest.MonkeyP
     # The abandoned resolver thread is not cancellable, so measure the awaited
     # deadline itself rather than event-loop shutdown, which joins that thread.
     elapsed = asyncio.run(_run())
-    assert elapsed < 5, "the preflight must honor the request deadline"
+    assert elapsed < 1.5, "the preflight must honor the request deadline"
 
 
 def test_preflight_elapsed_time_is_deducted_from_the_fetch_deadline(
