@@ -63,7 +63,9 @@ def test_crawl_attempt_budget_counts_auxiliary_robots(monkeypatch) -> None:
 
     monkeypatch.setattr(crawl_mod, "fetch_page", _fake_fetch_page)
     with pytest.raises(FetchAttemptBudgetExceededError):
-        asyncio.run(crawl("http://example.com", CrawlConfig(max_pages=5, respect_robots=True)))
+        asyncio.run(
+            crawl("http://example.com", CrawlConfig(max_pages=5, respect_robots=True))
+        ).results
 
 
 # ---------------------------------------------------------------------------
