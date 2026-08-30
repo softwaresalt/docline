@@ -57,8 +57,9 @@ Merged as `b1f4549` (true merge commit, two parents) via PR #175.
 ## Verification
 
 Gates run in order, all green: `ruff check .`, `pyright src/` (0 errors),
-`pytest` (2008 passed, 6 skipped), `ruff format --check .` (278 files). CI green on the merged
-HEAD across all eight checks. Runtime spot-check: a 5,000-link fan-out with `max_pages=1_000_000`
+`pytest` (2008 passed, 6 skipped), `ruff format --check .` (278 files). CI green on PR #175's final
+head `922ad78` across all eight checks. Runtime spot-check: a 5,000-link fan-out with
+`max_pages=1_000_000`
 and `max_depth=10` bounded to exactly `1 + max_frontier` requests.
 
 ## Next steps
