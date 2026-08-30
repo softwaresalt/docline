@@ -18,6 +18,7 @@ from docline.fetch.http import (
     RemainingByteBudget,
     fetch_page,
 )
+from docline.fetch.staging import sanitize_source
 from docline.fetch.url_canonical import UrlCanonicalizationError, canonicalize_url
 from docline.fetch.url_policy import CrawlUrlRejectedError, validate_crawl_url
 from docline.schema.models import DoclineError
@@ -197,7 +198,7 @@ async def crawl(
             "Frontier admission ceiling of %d reached for crawl of %s; "
             "dropping further discovered links.",
             crawl_config.max_frontier,
-            start,
+            sanitize_source(start),
         )
 
     def _admit(link: str, link_key: str, next_depth: int) -> bool:
@@ -285,11 +286,10 @@ async def crawl(
 
         if _is_print_page(final_url, response.body):
             visited.add(_dedup_key(final_url))
-            if (
-                depth < crawl_config.max_depth
-                and admitted < crawl_config.max_frontier
-                and _is_html_response(response)
-            ):
+            if depth < crawl_config.max_depth and _is_html_response(response):
+                if admitted >= crawl_config.max_frontier:
+                    _report_ceiling()
+                    continue
                 for link in extract_links(response.body, final_url):
                     if crawl_config.domain_lock and urlparse(link).netloc != start_host:
                         continue

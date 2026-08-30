@@ -406,6 +406,65 @@ def test_print_page_discovery_branch_is_also_capped(monkeypatch: pytest.MonkeyPa
     ]
 
 
+def test_ceiling_record_redacts_credentials_in_the_start_url(
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """The drop record sanitises the start URL rather than leaking credentials."""
+    start = "https://example.com/docs/?token=supersecret"
+    requested: list[str] = []
+    _install_fetch(monkeypatch, {start: _html(start, _fan_out_body(50))}, requested)
+
+    with caplog.at_level(logging.DEBUG, logger=CRAWL_LOGGER):
+        asyncio.run(
+            crawl(
+                start,
+                CrawlConfig(
+                    max_pages=500,
+                    max_depth=1,
+                    max_frontier=2,
+                    respect_robots=False,
+                ),
+            )
+        )
+
+    ceiling_records = [record for record in caplog.records if "ceiling" in record.getMessage()]
+    assert len(ceiling_records) == 1
+    assert "supersecret" not in ceiling_records[0].getMessage()
+
+
+def test_print_page_branch_reports_the_ceiling_when_exhausted(
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """A print page skipped by an exhausted ceiling still emits the drop record."""
+    print_url = "https://example.com/docs/print.html"
+    pages = {
+        SITE: _html(SITE, '<html><body><a href="/docs/print.html">Print</a></body></html>'),
+        print_url: _html(print_url, _fan_out_body(50, prefix="printed")),
+    }
+    requested: list[str] = []
+    _install_fetch(monkeypatch, pages, requested)
+
+    with caplog.at_level(logging.DEBUG, logger=CRAWL_LOGGER):
+        asyncio.run(
+            crawl(
+                SITE,
+                CrawlConfig(
+                    max_pages=500,
+                    max_depth=3,
+                    max_frontier=1,
+                    respect_robots=False,
+                ),
+            )
+        )
+
+    # The single admission is consumed by the print URL itself; its fan-out is dropped.
+    assert requested == [SITE, print_url]
+    ceiling_records = [record for record in caplog.records if "ceiling" in record.getMessage()]
+    assert len(ceiling_records) == 1
+
+
 def test_zero_cap_suppresses_toc_asset_requests(monkeypatch: pytest.MonkeyPatch) -> None:
     """A zero ceiling issues no mdBook TOC-asset requests at depth zero.
 
