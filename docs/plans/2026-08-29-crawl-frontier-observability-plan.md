@@ -148,13 +148,26 @@ Resolution: at both short-circuit sites, **still call `extract_links()` and stil
 eligible candidate exists. Link extraction is pure parsing of a body already in memory — no I/O.
 What the short-circuit continues to skip is `_discover_toc_links()`, which performs **network
 fetches** for TOC assets; that is the expensive part 058-S wanted to avoid and it stays skipped.
-The cheap parse is what makes the signal honest.
 
-`refused_any` is therefore set in exactly two places: on the refusal path inside `admit()`, and
-at a short-circuit that finds ≥1 eligible candidate. A.T2 asserts all six cases: under-cap;
-exactly-at-cap with no further candidates; exactly-at-cap then a **link-free** page; exactly-at-cap
-then a page **with** eligible links (must be `True`); print-page-branch refusal; main-branch
-refusal.
+**TOC-only truncation (round-4 correction).** Skipping `_discover_toc_links()` leaves a
+false-negative: a depth-zero page with **no** eligible anchors but an eligible `toc-*.js`
+reference would report `refused_any = False`, even though lifting the cap would have discovered
+and admitted TOC links. Performing the TOC fetch to find out would reintroduce exactly the
+network cost the short-circuit exists to avoid.
+
+The signal is therefore **deliberately conservative**: at a depth-zero short-circuit, also call
+`extract_toc_script_urls()` — another pure in-memory parse — and set `refused_any` if it yields
+an eligible, in-scope TOC script reference. This can **over**-report (the script might have
+yielded zero admissible links), and that asymmetry is intentional: a false "we may have truncated"
+is an operator prompt to re-run with a wider bound, while a false "complete" is silent data loss.
+The over-reporting case is documented in `A.T14` and asserted in `A.T2`.
+
+`refused_any` is therefore set in exactly three places: on the refusal path inside `admit()`; at a
+short-circuit that finds ≥1 eligible link candidate; and at a depth-zero short-circuit that finds
+an eligible TOC script reference. A.T2 asserts seven cases: under-cap; exactly-at-cap with no
+further candidates; exactly-at-cap then a **link-free, TOC-free** page; exactly-at-cap then a page
+**with** eligible links; exactly-at-cap at depth zero with **no anchors but an eligible TOC
+script** (must be `True`, conservatively); print-page-branch refusal; main-branch refusal.
 
 ### D4 — The truncation record is WARNING with a reduced payload
 
@@ -240,7 +253,7 @@ layering. It goes on `StagingJob` instead because **`SourceMetadata` is construc
 fetch runs** (`execute.py:202`, ahead of the `try:`), whereas `StagingJob` is constructed after
 it completes (`execute.py:227`) — the only point at which the truncation outcome is known.
 Putting it on `SourceMetadata` would require post-hoc mutation of an already-built pydantic model
-inside the error-handling path. The cost of the exception is a field that is permanently `False`
+inside the error-handling path. (The flag is threaded through a local across that boundary - see A.T9.) The cost of the exception is a field that is permanently `False`
 for non-web sources; the cost of the alternative is mutation in a `try/except` path that A.T9 is
 explicitly forbidden to restructure. If a future change makes `SourceMetadata` construction lazy,
 the field should move.
@@ -298,10 +311,12 @@ admission policies).
 ### A.T2 — Harness: `truncated` predicate across all report sites (red)
 
 - **Domain:** tests. **Files:** `tests/fetch/test_crawl_frontier_admission.py` (extends A.T1).
-- Asserts D3's six cases: under-cap → `False`; exactly-at-cap with no further candidates →
-  `False`; exactly-at-cap then a **link-free** HTML page → `False`; exactly-at-cap then a page
-  **with at least one eligible link** → `True` (the short-circuit must still evaluate
-  eligibility); refusal in the print-page branch → `True`; refusal in the main branch → `True`.
+- Asserts D3's seven cases: under-cap → `False`; exactly-at-cap with no further candidates →
+  `False`; exactly-at-cap then a **link-free, TOC-free** HTML page → `False`; exactly-at-cap then
+  a page **with at least one eligible link** → `True`; exactly-at-cap at **depth zero with no
+  anchors but an eligible TOC script reference** → `True` (the conservative signal — assert it is
+  reached by a pure parse, with **no** TOC network fetch); refusal in the print-page branch →
+  `True`; refusal in the main branch → `True`.
 - **Acceptance:** red. No source change.
 - **Depends on:** A.T1.
 
@@ -357,7 +372,9 @@ admission policies).
 - **Domain:** tests. **Files:** `tests/fetch/test_crawl_truncation_signal.py` (new).
 - Asserts `crawl()` returns `CrawlOutcome`; `frontier_truncated` matches D3 semantics on a real
   crawl; **exactly one** WARNING via `caplog` on a truncated crawl and **zero** on an
-  under-ceiling crawl.
+  under-ceiling crawl. Must include the **exactly-at-cap, link-free, TOC-free** case and assert
+  **no** WARNING is emitted for it — otherwise an implementation could keep the current
+  short-circuit logging behaviour, emit a false truncation warning, and still pass this task.
 - Payload assertions per D4: the record contains the sanitized origin and the admission count and
   **does not** contain the URL path, query string, fragment, or userinfo. Cases must include a
   credential in the path, an unrecognized credential-shaped query name (`code`, `jwt`, `session`),
@@ -425,9 +442,12 @@ admission policies).
   `staged_count == 0` guard (D8). `StagingJob` gains `frontier_truncated: bool = False` with an
   `Attributes:` docstring entry; `_execute_source` sets it from `_fetch_url`.
 - Per D8, add `CrawlStagedNothingError(OSError, DoclineError)` carrying `frontier_truncated`, and
-  raise it in place of the bare `OSError` with the same message. `_execute_source` catches it
-  explicitly and sets `job.frontier_truncated` from it before marking the job incomplete, so the
-  flag survives the exception path and the manifest cannot disagree with the payloads.
+  raise it in place of the bare `OSError` with the same message. **`_execute_source` builds the
+  `StagingJob` only after the `try`/`except` block (`execute.py:227`), so the flag cannot be set
+  on `job` inside the handler.** Instead, hold it in a local (e.g. `frontier_truncated = False`
+  initialised before the `try`), assign it from the success tuple **or** from
+  `CrawlStagedNothingError` in the handler, and pass it into the later `StagingJob(...)`
+  construction. Do not restructure `_execute_source` beyond that.
 - **Acceptance:** manifest contains the key and is written even when zero pages stage, carrying
   the **real** flag value — regression cases required for (a) a no-refusal zero-staged path
   (print-page/exhausted short-circuit with no eligible candidate, `max_frontier=0`) → `false`,
@@ -506,9 +526,14 @@ admission policies).
 
 - **Domain:** docs. **Files:** `docs/ARCHITECTURE.md`, `README.md`.
 - Record the WARNING record and its reduced payload, the `frontier_truncated` manifest key, the
-  `StagingJob` field, the CLI/MCP surfacing, and the operator remedy (raise `max_frontier` or
-  narrow the crawl). Note that the ELT path always uses the `MAX_FRONTIER` default because
-  `_crawl_config_from_source` does not override it.
+  `StagingJob` and `FetchResult` fields, and the CLI/MCP surfacing.
+- **The documented remedy must be actionable from the surface the operator actually has.**
+  `_crawl_config_from_source` does not forward `max_frontier` and D9 keeps that passthrough out of
+  scope, so CLI and MCP operators **cannot** raise the ceiling. Document **narrowing the crawl**
+  (tighter start URL, lower `depth`, section-scoped entry point) as the remedy, and state plainly
+  that the ceiling is not currently operator-configurable on these paths and that the ELT path
+  always uses the `MAX_FRONTIER` default. Also document that the signal is deliberately
+  conservative (D3) and can over-report when a TOC script yields no admissible links.
 - Edit **only** the crawl/fetch section of `docs/ARCHITECTURE.md`; Group B's doc task edits the
   sitemap section. The two shipments share this file (see R8).
 - **Acceptance:** markdown gates pass; no source change.

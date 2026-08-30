@@ -68,10 +68,12 @@ entries; constrains Units 2-3: no per-link logging, no derived ceiling) and
 
 ## Step 3 — plans written, hardening applied
 
-- `docs/plans/2026-08-29-crawl-frontier-observability-plan.md` — 10 tasks, `requires_plan_hardening: yes`,
-  `## Plan Hardening` with a 7-row risk register (R1-R7).
-- `docs/plans/2026-08-29-sitemap-preflight-dedup-plan.md` — 7 tasks, `requires_plan_hardening: yes`,
-  `## Plan Hardening` with a 7-row risk register (R1-R7).
+- `docs/plans/2026-08-29-crawl-frontier-observability-plan.md` — **18 tasks** as reviewed,
+  `requires_plan_hardening: yes`, `## Plan Hardening` with a **9-row** risk register (R1-R9).
+  The first draft was 10 tasks with R1-R7; review split oversized tasks and added the CLI/MCP
+  parity work.
+- `docs/plans/2026-08-29-sitemap-preflight-dedup-plan.md` — **7 tasks** as reviewed,
+  `requires_plan_hardening: yes`, `## Plan Hardening` with a **9-row** risk register (R1-R9).
 
 Key grounded discovery that materially expanded Group B's honest scope: the sitemap preflight's
 resolving behaviour is pinned by real tests —
