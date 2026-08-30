@@ -13,6 +13,7 @@ from collections.abc import Iterator
 from html.parser import HTMLParser
 from urllib.parse import parse_qsl, urldefrag, urljoin, urlparse
 
+from docline.fetch.staging import sanitize_source
 from docline.fetch.url_canonical import UrlCanonicalizationError, canonicalize_url
 from docline.fetch.url_policy import CrawlUrlRejectedError, validate_crawl_url
 
@@ -273,6 +274,20 @@ def _has_eligible_toc_script(
             continue
         return True
     return False
+
+
+def _origin_label(url: str) -> str:
+    """Return the sanitized ``scheme://host[:port]`` origin for log records.
+
+    Strips path, query, fragment, and userinfo so a default-visible truncation
+    record cannot leak URL-carried credentials.
+    """
+    parsed = urlparse(url)
+    host = parsed.hostname or ""
+    if parsed.port is not None:
+        host = f"{host}:{parsed.port}"
+    origin = f"{parsed.scheme}://{host}" if host else parsed.scheme
+    return sanitize_source(origin)
 
 
 __all__ = [

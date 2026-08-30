@@ -14,6 +14,7 @@ from docline.fetch.crawl_links import (
     _is_print_page,
     _iter_eligible_links,
     _normalize_url,
+    _origin_label,
     _url_within_section_scope,
     extract_links,
     extract_toc_links,
@@ -36,25 +37,10 @@ from docline.fetch.http import (
     RemainingByteBudget,
     fetch_page,
 )
-from docline.fetch.staging import sanitize_source
 from docline.fetch.url_policy import CrawlUrlRejectedError, validate_crawl_url
 from docline.schema.models import DoclineError
 
 logger = logging.getLogger(__name__)
-
-
-def _origin_label(url: str) -> str:
-    """Return the sanitized ``scheme://host[:port]`` origin for log records.
-
-    Strips path, query, fragment, and userinfo so the default-visible
-    truncation record cannot leak URL-carried credentials.
-    """
-    parsed = urlparse(url)
-    host = parsed.hostname or ""
-    if parsed.port is not None:
-        host = f"{host}:{parsed.port}"
-    origin = f"{parsed.scheme}://{host}" if host else parsed.scheme
-    return sanitize_source(origin)
 
 
 async def crawl(
@@ -266,13 +252,18 @@ async def crawl(
 
         discovered_links = anchor_links
         if depth == 0:
-            discovered_links = anchor_links + await _discover_toc_links(
-                response.body,
-                final_url,
-                crawl_config,
-                start_host=start_host,
-                section_scope=section_scope,
-                budget=budget,
+            # TOC-derived navigation is ordered ahead of in-page anchors so an
+            # admission-competition drop sheds anchors, not authoritative TOC (D6).
+            discovered_links = (
+                await _discover_toc_links(
+                    response.body,
+                    final_url,
+                    crawl_config,
+                    start_host=start_host,
+                    section_scope=section_scope,
+                    budget=budget,
+                )
+                + anchor_links
             )
 
         for link, link_key in _iter_eligible_links(
