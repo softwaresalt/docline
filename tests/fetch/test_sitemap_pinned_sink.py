@@ -24,6 +24,8 @@ import asyncio
 import io
 import socket
 import ssl
+import threading
+import time
 from typing import Any
 
 import pytest
@@ -320,3 +322,81 @@ def test_https_sni_and_verification_use_the_hostname_not_the_pinned_ip(
     )
     assert captured["check_hostname"] is True, "hostname verification must stay enabled"
     assert captured["verify_mode"] == ssl.CERT_REQUIRED, "certificate verification must stay on"
+
+
+# ---------------------------------------------------------------------------
+# Preflight must not block the event loop and must share the request deadline
+# ---------------------------------------------------------------------------
+
+
+def test_preflight_resolution_runs_off_the_event_loop(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The blocking preflight DNS lookup must not run on the event-loop thread."""
+    resolver_threads: list[int] = []
+    base_resolver = _sequenced_getaddrinfo({"example.com": [[_PUBLIC_IP]]})
+
+    def _recording_resolver(host: str, *args: Any, **kwargs: Any) -> list[tuple[Any, ...]]:
+        resolver_threads.append(threading.get_ident())
+        return base_resolver(host, *args, **kwargs)
+
+    monkeypatch.setattr(socket, "getaddrinfo", _recording_resolver)
+    log: list[tuple[str, int]] = []
+    monkeypatch.setattr(socket, "create_connection", _scripted_transport([_OK_SITEMAP], log))
+
+    async def _run() -> int:
+        loop_thread = threading.get_ident()
+        await sitemap_module.fetch_sitemap("http://example.com/sitemap.xml")
+        return loop_thread
+
+    loop_thread = asyncio.run(_run())
+
+    assert resolver_threads, "the preflight must actually resolve"
+    assert loop_thread not in resolver_threads, (
+        "a slow resolver must never block the event loop during the preflight"
+    )
+
+
+def test_preflight_is_bounded_by_the_request_timeout(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A hanging resolver in the preflight is cut off by ``timeout_seconds``."""
+    from docline.fetch.http import FetchTimeoutError
+
+    def _hanging_resolver(host: str, *args: Any, **kwargs: Any) -> list[tuple[Any, ...]]:
+        time.sleep(30)
+        raise AssertionError("resolver should have been abandoned")
+
+    monkeypatch.setattr(socket, "getaddrinfo", _hanging_resolver)
+
+    started = time.monotonic()
+    with pytest.raises(FetchTimeoutError):
+        asyncio.run(
+            sitemap_module.fetch_sitemap("http://example.com/sitemap.xml", timeout_seconds=0.5)
+        )
+    assert time.monotonic() - started < 10, "the preflight must honor the request deadline"
+
+
+def test_preflight_elapsed_time_is_deducted_from_the_fetch_deadline(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Time spent in the preflight shrinks the deadline handed to the pinned sink."""
+    base_resolver = _sequenced_getaddrinfo({"example.com": [[_PUBLIC_IP]]})
+
+    def _slow_resolver(host: str, *args: Any, **kwargs: Any) -> list[tuple[Any, ...]]:
+        time.sleep(0.35)
+        return base_resolver(host, *args, **kwargs)
+
+    monkeypatch.setattr(socket, "getaddrinfo", _slow_resolver)
+
+    captured: dict[str, Any] = {}
+
+    async def _recording_fetch_page(url: str, **kwargs: Any) -> object:
+        captured.update(kwargs)
+        captured["url"] = url
+        return object()
+
+    monkeypatch.setattr(sitemap_module, "fetch_page", _recording_fetch_page)
+
+    asyncio.run(sitemap_module.fetch_sitemap("http://example.com/sitemap.xml", timeout_seconds=5.0))
+
+    assert captured["url"] == "http://example.com/sitemap.xml"
+    assert captured["max_redirects"] == 5
+    assert captured["timeout_seconds"] < 5.0, "preflight time must be charged to the deadline"
+    assert captured["timeout_seconds"] > 4.0, "the deadline must not collapse"
