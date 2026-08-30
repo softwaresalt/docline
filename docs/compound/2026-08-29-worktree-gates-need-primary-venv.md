@@ -37,12 +37,26 @@ unresolved.
 
 ## Resolution
 
-Point both tools at the primary checkout's interpreter explicitly. From the worktree root:
+Point both tools at the primary checkout's interpreter explicitly. Derive the primary checkout from
+Git rather than hardcoding a path — `git rev-parse --git-common-dir` resolves to the primary
+repository's `.git` directory from inside any linked worktree, so its parent is the primary
+checkout root. From the worktree root:
 
 ```powershell
+$primary = Split-Path (Resolve-Path (git rev-parse --git-common-dir))
+$py = Join-Path $primary ".venv\Scripts\python.exe"
 $env:PYTHONPATH = "src"
-C:\Source\GitHub\docline\.venv\Scripts\python.exe -m pytest -q
-C:\Source\GitHub\docline\.venv\Scripts\python.exe -m pyright --pythonpath C:\Source\GitHub\docline\.venv\Scripts\python.exe src/
+& $py -m pytest -q
+& $py -m pyright --pythonpath $py src/
+```
+
+The bash equivalent:
+
+```bash
+primary="$(dirname "$(cd "$(git rev-parse --git-common-dir)" && pwd)")"
+py="$primary/.venv/bin/python"
+PYTHONPATH=src "$py" -m pytest -q
+PYTHONPATH=src "$py" -m pyright --pythonpath "$py" src/
 ```
 
 `PYTHONPATH=src` substitutes for the missing editable install; `--pythonpath` is required
