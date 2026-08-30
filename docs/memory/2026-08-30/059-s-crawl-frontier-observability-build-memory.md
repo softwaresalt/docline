@@ -20,7 +20,7 @@ All 19 tasks (068.001-T … 068.019-T) implemented on branch `ship/059-s`
 - A.T1/A.T2 -> 068.001/068.002: `_Frontier` admission + truncated-predicate unit harness.
 - A.T2b -> 068.003: non-counting control-flow characterization harness.
 - A.T3 -> 068.004: extract `_Frontier`, retire admission closures.
-- A.T4 -> 068.005: split `crawl.py` into `crawl_models.py` + `crawl_links.py` (+ `crawl_discovery.py` contingency). crawl.py = 397 lines.
+- A.T4 -> 068.005: split `crawl.py` into `crawl_models.py` + `crawl_links.py` (+ `crawl_discovery.py` contingency). crawl.py = 399 lines.
 - A.T5 -> 068.006: truncation observability signal harness.
 - A.T6 -> 068.007: `CrawlOutcome` + WARNING promotion (origin-only payload; report only on real refusal).
 - A.T7/A.T7b/A.T8a/A.T8b/A.T8c -> 068.008/068.019/068.009/068.010/068.011: caller migrations to `CrawlOutcome`.
@@ -31,7 +31,7 @@ All 19 tasks (068.001-T … 068.019-T) implemented on branch `ship/059-s`
 
 ## Key decisions and deviations
 
-- **D5 contingency adapted**: the literal move of `_fetch_with_retries`/`_robots_allow`/`_discover_toc_links` to `crawl_discovery.py` would break the `docline.fetch.crawl.fetch_page` monkeypatch seam (5 test modules) and force test edits forbidden by A.T4. Instead moved eligibility helpers + `_origin_label` to `crawl_links.py` and `check_robots_allowed` + `compute_backoff_seconds` to `crawl_discovery.py`. crawl.py landed at 397 lines (< 400).
+- **D5 contingency adapted**: the literal move of `_fetch_with_retries`/`_robots_allow`/`_discover_toc_links` to `crawl_discovery.py` would break the `docline.fetch.crawl.fetch_page` monkeypatch seam (5 test modules) and force test edits forbidden by A.T4. Instead moved the pure eligibility helpers to `crawl_links.py`, `_origin_label` to `crawl_models.py` (its observability owner), and `check_robots_allowed` + `compute_backoff_seconds` to `crawl_discovery.py`. crawl.py landed at 399 lines (< 400). Note: the `_origin_label`/`_link_in_scope` placement reflects the post-review architecture remediation.
 - **Ceiling logger**: `crawl_models.py` logger = `getLogger("docline.fetch.crawl")` so the WARNING stays on the crawl logger (keeps 058-S caplog tests green, matches A.T7 "no logger-name change").
 - **WARNING fires only on real refusal** (refused_any), never on mere cap-fill (D3/D4). Existing-test DEBUG->WARNING update in `test_crawl_frontier_bound.py`.
 - **StagingJob exact-field contract** in `test_envelope_parity.py` updated (plan's "A.T9 must re-check").

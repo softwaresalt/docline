@@ -24,6 +24,7 @@ import logging
 import pytest
 
 from docline.fetch.crawl import CrawlConfig, CrawlOutcome, crawl
+from docline.fetch.crawl_models import _origin_label
 from docline.fetch.http import FetchResponse, RemainingByteBudget
 
 CRAWL_LOGGER = "docline.fetch.crawl"
@@ -245,3 +246,27 @@ def test_warning_payload_has_no_fragment_or_control_chars(
     message = _run_truncating_crawl(monkeypatch, caplog, start)
     assert "leakfragment" not in message
     assert not any(ord(char) < 32 for char in message)
+
+
+# ---------------------------------------------------------------------------
+# Origin label — IPv6 literals (regression: bracket-stripping ValueError)
+# ---------------------------------------------------------------------------
+
+
+def test_origin_label_preserves_ipv6_brackets_with_port() -> None:
+    """An IPv6 origin keeps its brackets and drops path/query (no ValueError)."""
+    label = _origin_label("https://[2606:4700:4700::1111]:8443/docs/?token=leak")
+    assert label == "https://[2606:4700:4700::1111]:8443"
+    assert "leak" not in label
+
+
+def test_origin_label_ipv6_without_port_does_not_raise() -> None:
+    """A bracketed IPv6 host with a letter group must not raise on port parse."""
+    label = _origin_label("https://[2606:4700:4700::1a2b]/docs/")
+    assert label == "https://[2606:4700:4700::1a2b]"
+
+
+def test_origin_label_ipv4_and_hostname_unchanged() -> None:
+    """Non-IPv6 hosts are unaffected by the bracket-preservation branch."""
+    assert _origin_label("https://198.51.100.7:9000/docs/?k=v") == "https://198.51.100.7:9000"
+    assert _origin_label("https://example.com/docs/") == "https://example.com"

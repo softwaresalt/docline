@@ -33,7 +33,8 @@ def _origin_label(url: str) -> str:
     """Return the sanitized ``scheme://host[:port]`` origin for log records.
 
     Strips path, query, fragment, and userinfo so a default-visible truncation
-    record cannot leak URL-carried credentials.
+    record cannot leak URL-carried credentials. IPv6 literals keep their
+    brackets so the reconstructed authority stays well-formed.
 
     Args:
         url: The crawl start URL.
@@ -44,6 +45,10 @@ def _origin_label(url: str) -> str:
     """
     parsed = urlparse(url)
     host = parsed.hostname or ""
+    if ":" in host:
+        # ``urlparse().hostname`` drops IPv6 brackets; restore them so the
+        # rebuilt authority is valid and its ``port`` stays parseable.
+        host = f"[{host}]"
     if parsed.port is not None:
         host = f"{host}:{parsed.port}"
     origin = f"{parsed.scheme}://{host}" if host else parsed.scheme
