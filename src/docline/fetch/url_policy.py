@@ -11,12 +11,14 @@ _ALLOWED_SCHEMES = frozenset({"http", "https"})
 # Maximum number of HTTP redirects followed per crawl request.
 MAX_REDIRECTS: int = 5
 
-# Cloud-metadata endpoints rejected before and after resolution.
-_METADATA_IPS: frozenset[str] = frozenset(
+# Cloud-metadata endpoints rejected after parse and normalization. Stored as
+# parsed ``ipaddress`` objects so alternate spellings of the same address
+# (IPv4-mapped, expanded, uppercase) cannot bypass the membership check.
+_METADATA_IPS: frozenset[ipaddress.IPv4Address | ipaddress.IPv6Address] = frozenset(
     {
-        "169.254.169.254",  # AWS, GCP, Azure IMDS
-        "169.254.170.2",  # ECS task metadata
-        "fd00:ec2::254",  # AWS IPv6 IMDS
+        ipaddress.ip_address("169.254.169.254"),  # AWS, GCP, Azure IMDS
+        ipaddress.ip_address("169.254.170.2"),  # ECS task metadata
+        ipaddress.ip_address("fd00:ec2::254"),  # AWS IPv6 IMDS
     }
 )
 
@@ -63,16 +65,17 @@ def is_unsafe_resolved_address(addr: str) -> bool:
     Returns:
         ``True`` when the address must not be connected to.
     """
-    if addr in _METADATA_IPS:
-        return True
     try:
         ip = ipaddress.ip_address(addr)
     except ValueError:
         return True
     # Normalize an IPv4-mapped IPv6 literal to its embedded IPv4 form before
-    # classification so the flag checks and CGNAT membership see the real class.
+    # classification so the flag checks, the metadata membership test, and
+    # CGNAT membership all see the real class.
     if isinstance(ip, ipaddress.IPv6Address) and ip.ipv4_mapped is not None:
         ip = ip.ipv4_mapped
+    if ip in _METADATA_IPS:
+        return True
     if (
         ip.is_private
         or ip.is_loopback
