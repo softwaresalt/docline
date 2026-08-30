@@ -33,6 +33,7 @@ from dataclasses import dataclass
 from urllib.parse import urlparse
 from xml.etree import ElementTree as ET
 
+from docline.fetch.http import FetchResponse, fetch_page
 from docline.fetch.url_policy import is_unsafe_resolved_address
 from docline.schema.models import DoclineError
 
@@ -189,7 +190,13 @@ def _resolve_all_addresses(host: str) -> tuple[str, ...]:
 
 
 def validate_sitemap_url(url: str) -> str:
-    """Validate ``url`` for SSRF safety and return it unchanged when safe.
+    """Run the synchronous SSRF preflight for ``url`` and return it unchanged.
+
+    This is a **preflight only**. Its resolution is advisory and deliberately
+    non-authoritative: the returned value is the original URL, not a resolved
+    address, so callers must not treat a passing preflight as permission to
+    connect. Use :func:`fetch_sitemap` to retrieve a sitemap — it performs the
+    authoritative resolve-validate-pin sequence atomically.
 
     Args:
         url: Candidate sitemap URL.
@@ -239,10 +246,51 @@ def validate_sitemap_url(url: str) -> str:
     return url
 
 
+async def fetch_sitemap(
+    url: str,
+    *,
+    timeout_seconds: float = 30.0,
+    max_redirects: int = 5,
+) -> FetchResponse:
+    """Fetch a sitemap through the SSRF-hardened, address-pinned HTTP sink.
+
+    This is the single authoritative sitemap retrieval path. It runs the
+    synchronous preflight and then delegates to
+    :func:`docline.fetch.http.fetch_page`, so resolution, address validation,
+    connect, redirect revalidation, and proxy suppression happen as one atomic
+    unit. The validated address is pinned for the outbound TCP connection while
+    the original hostname is preserved for the ``Host`` header, TLS SNI, and
+    certificate verification, which closes the validate-then-re-resolve
+    (DNS-rebinding) window without weakening HTTPS.
+
+    Args:
+        url: The sitemap URL to retrieve.
+        timeout_seconds: Per-request timeout in seconds.
+        max_redirects: Maximum number of HTTP redirects to follow.
+
+    Returns:
+        The :class:`~docline.fetch.http.FetchResponse` for the sitemap.
+
+    Raises:
+        SitemapError: When the preflight rejects ``url``.
+        CrawlUrlRejectedError: When the URL or any redirect target resolves to
+            an address the canonical predicate rejects.
+        FetchTimeoutError: When the request exceeds ``timeout_seconds``.
+        FetchError: For non-timeout fetch failures or redirect-cap violations.
+    """
+    validate_sitemap_url(url)
+    return await fetch_page(
+        url,
+        timeout_seconds=timeout_seconds,
+        max_redirects=max_redirects,
+    )
+
+
 __all__ = [
     "SitemapEntry",
     "SitemapError",
     "discover_sitemaps_from_robots",
+    "fetch_sitemap",
     "is_unsafe_resolved_address",
     "parse_sitemap_index",
     "parse_sitemap_urlset",
