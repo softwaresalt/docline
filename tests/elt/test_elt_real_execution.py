@@ -14,6 +14,7 @@ import zipfile
 from pathlib import Path
 from unittest.mock import patch
 
+from docline.fetch.crawl import CrawlOutcome
 from docline.fetch.models import SourceMetadata, StagingJob
 
 
@@ -262,7 +263,7 @@ class TestEltFetchUrlSource:
 
         async def fake_crawl(start_url: str, config=None, progress=None):
             del start_url, config, progress
-            return [mock_result]
+            return CrawlOutcome(results=[mock_result], frontier_truncated=False)
 
         with patch("docline.fetch.crawl.crawl", side_effect=fake_crawl):
             jobs = execute_elt_fetch(config_dir, ".elt/staging", workspace_root=tmp_path)
@@ -357,7 +358,7 @@ class TestEltFetchUrlSource:
 
         async def fake_crawl(start_url: str, config=None, progress=None):
             del start_url, config, progress
-            return crawl_results
+            return CrawlOutcome(results=crawl_results, frontier_truncated=False)
 
         with patch("docline.fetch.crawl.crawl", side_effect=fake_crawl):
             orchestrated_jobs = orchestrate_fetch(
@@ -417,7 +418,7 @@ class TestEltFetchUrlSource:
 
         async def fake_crawl(start_url: str, config=None, progress=None):
             del start_url, config, progress
-            return crawl_results
+            return CrawlOutcome(results=crawl_results, frontier_truncated=False)
 
         with patch("docline.fetch.crawl.crawl", side_effect=fake_crawl):
             jobs = execute_elt_fetch(config_dir, ".elt/staging", workspace_root=tmp_path)

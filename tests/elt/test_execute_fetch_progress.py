@@ -12,7 +12,7 @@ import pytest
 
 from docline.app import execute_fetch
 from docline.app_models import FetchRequest, FetchResult
-from docline.fetch.crawl import CrawlResult
+from docline.fetch.crawl import CrawlOutcome, CrawlResult
 from docline.fetch.http import FetchResponse
 
 
@@ -39,7 +39,10 @@ def test_progress_forwarded_and_final_staged_count_event(
         if progress is not None:
             # a budget-consumed event, total is the max_pages budget (an int)
             progress(1, config.max_pages if config else None, start_url)
-        return [_page(start_url), _page(start_url.rstrip("/") + "/b.html")]
+        return CrawlOutcome(
+            results=[_page(start_url), _page(start_url.rstrip("/") + "/b.html")],
+            frontier_truncated=False,
+        )
 
     monkeypatch.setattr("docline.fetch.crawl.crawl", _fake)
     monkeypatch.chdir(tmp_path)
@@ -67,7 +70,7 @@ def test_progress_not_a_fetch_request_field() -> None:
 
 def test_progress_none_default_still_stages(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
     async def _fake(start_url, config=None, progress=None):
-        return [_page(start_url)]
+        return CrawlOutcome(results=[_page(start_url)], frontier_truncated=False)
 
     monkeypatch.setattr("docline.fetch.crawl.crawl", _fake)
     monkeypatch.chdir(tmp_path)
@@ -82,7 +85,10 @@ def test_zero_page_crawl_still_emits_final_count_only_event(
         if progress is not None:
             progress(1, config.max_pages if config else None, start_url)  # a budget event
         # a robots-denied/failed crawl stages nothing (no response bodies)
-        return [CrawlResult(url=start_url, depth=0, skipped=True, skip_reason="robots.txt")]
+        return CrawlOutcome(
+            results=[CrawlResult(url=start_url, depth=0, skipped=True, skip_reason="robots.txt")],
+            frontier_truncated=False,
+        )
 
     monkeypatch.setattr("docline.fetch.crawl.crawl", _fake)
     monkeypatch.chdir(tmp_path)
