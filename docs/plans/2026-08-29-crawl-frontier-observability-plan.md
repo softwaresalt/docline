@@ -474,19 +474,22 @@ admission policies).
 - Per D8, add `CrawlStagedNothingError(OSError, DoclineError)` carrying `frontier_truncated`, and
   raise it in place of the bare `OSError` with the same message. **`_execute_source` builds the
   `StagingJob` only after the `try`/`except` block (`execute.py:227`), so the flag cannot be set
-  on `job` inside the handler.** Instead, hold it in a local (e.g. `frontier_truncated = False`
-  initialised before the `try`), assign it from the success tuple **or** from
-  `CrawlStagedNothingError` in the handler, and pass it into the later `StagingJob(...)`
-  construction. Do not restructure `_execute_source` beyond that.
+  on `job` inside the handler.** Instead, **initialise `frontier_truncated = False` before the
+  `try`** — this initialiser is *required*, not stylistic, because `_execute_source` handles
+  local, manifest-local and GitHub sources in the same block and always constructs `StagingJob`,
+  so a local assigned only on the URL success or URL exception path would be unbound for every
+  non-URL source. Assign it from the success tuple **or** from `CrawlStagedNothingError` in the
+  handler, and pass it into the later `StagingJob(...)` construction. Do not restructure
+  `_execute_source` beyond that.
 - **Acceptance:** manifest contains the key and is written even when zero pages stage, carrying
   the **real** flag value — regression cases required for (a) a no-refusal zero-staged path
   (print-page/exhausted short-circuit with no eligible candidate, `max_frontier=0`) → `false`,
   (b) a robots-denied or failed-start zero-staged crawl → `false`, and (c) a zero-staged crawl
   that did cost an eligible link → `true`, **with the `StagingJob` reporting the same value in
-  every case**; `_load_crawl_manifest` still parses; existing `metadata.json` files without the
-  field still validate (defaulted); the raised error still satisfies `except OSError` with the
-  same message; `pyright src/` 0
-  errors.
+  every case**, plus a **non-URL source** (local or GitHub) asserting `frontier_truncated` is
+  `False` with no `NameError`; `_load_crawl_manifest` still parses; existing `metadata.json` files
+  without the field still validate (defaulted); the raised error still satisfies `except OSError`
+  with the same message; `pyright src/` 0 errors.
 - **Completion-callback contract (precise).** The zero-staged raise happens **after** the
   `try/except/else`, so the **success-path** callback in the `else` branch has already run and the
   `except BaseException` handler does **not** fire for `CrawlStagedNothingError`. Assert the real
@@ -691,6 +694,6 @@ Multi-persona adversarial plan review, 4 rounds. Gate outcome: **PASS**.
 |---|---|---|---|
 | Architecture | FAIL | **PASS** | P1 split could not reach 400 lines → D5 now two leaf modules with stated arithmetic + pre-authorized contingency. P1 circular import (`crawl_links` needs `_normalize_url`) → `_normalize_url` and `_dedup_key` moved into the leaf; acyclicity is an A.T4 gate. P2 `_Frontier` conflated responsibilities → `visited` excluded. P3 gate-policy contradiction → explicit exception. P3 shared `ARCHITECTURE.md` → R8. P3 field placement → D7 layering-exception rationale. |
 | Correctness | FAIL | **PASS** | P1 caller inventory incomplete (6 → 9 modules, incl. `test_crawl_section_scope.py`, `tests/elt/test_elt_real_execution.py`, root-level `tests/test_execute_fetch.py`). P1 CLI/MCP parity not achieved → D7 + A.T10/A.T11a/A.T11b targeting the real seams. P1 D8 hard-coded `true` contradicted D3 → now the real flag with three zero-staged regression cases. P2 truncated predicate off-by-one → D3 `refused_any`. P2 zero-staged manifest never written → D8. P2 `max_pages` claim false → D6.1 retraction. P2 no characterization for the non-counting section-scope `continue` → A.T2b. |
-| Scope | FAIL | **PASS** | P1 A.T6 at 6 files → split to A.T7 + A.T8a/b/c, each ≤2 files in one sub-domain. P2 A.T11 at 3 files mixing CLI and MCP → A.T11a/A.T11b. Ruled D7 parity and D8 manifest-write **in scope** (7F34A0D5 names both CLI and MCP paths). |
+| Scope | FAIL | **PASS** | P1 A.T6 at 6 files → split to A.T7 + A.T8a/b/c. Round 2 landed each at ≤2 files; later review added `test_crawl_control_flow.py`, so the standing plan-wide limit is **≤3 files per migration task**, with A.T7 at three and A.T7b carved out to keep it there. P2 A.T11 at 3 files mixing CLI and MCP → A.T11a/A.T11b. Ruled D7 parity and D8 manifest-write **in scope** (7F34A0D5 names both CLI and MCP paths). |
 | Security | ADVISORY | **ADVISORY** | P2 WARNING payload widens URL-secret exposure (`sanitize_source` does not redact path segments, unrecognized query names, or control characters) → D4 reduces the payload to sanitized origin + count; A.T5 asserts absence of path/query/fragment/userinfo. Confirmed the manifest boolean leaks nothing. |
 | Python-safety | ADVISORY | **ADVISORY** | P2 `frozen=True` + `list` field synthesizes an unhashable `__hash__` → D1 pins `@dataclass(slots=True)`, not frozen. P2 mutable dataclass defaults → D2 mandates `field(default_factory=...)`, precise generics, and states `_Frontier` is not frozen. P3 docstrings on new public symbols/modules → A.T4/A.T6 acceptance. P3 `pyright src/` does not cover `tests/` → recorded in R2. |

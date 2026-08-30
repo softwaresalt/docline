@@ -176,6 +176,7 @@ review *body*; PR #178's rounds produced a mix of both.
 | 12 | `87c2536` (PR #178) | 1 + 2 suppressed | round-11 note described a cutoff rule that was never actually added; `068.007-T` said `lazy %% args` (an escaped literal percent) instead of `lazy % args`; A.T8c and `068.011-T` still claimed suite recovery without A.T7b |
 | 13 | `7d80b1b` (PR #178) | 1 | PR description stale again: round range and artifact list duplicated volatile facts, so it was fixed by **removing** them and pointing elsewhere |
 | 14 | `2f9715b` (PR #178) | 1 + 1 suppressed | D8 prose still said to set `job.frontier_truncated` in the handler, contradicting the corrected A.T9; PR description named this file as authoritative for the artifact list, which it is not |
+| 15 | `70db340` (PR #178) | 1 + 1 suppressed | my A.T9 rewrite dropped the `frontier_truncated = False` initialiser, which is load-bearing because `_execute_source` serves non-URL sources too; Plan Review Record still said the migration split produced tasks of ≤2 files while A.T7 owns three |
 
 Four findings, producing three design changes rather than wording changes:
 
@@ -363,3 +364,21 @@ authoritative location per volatile fact and reference it everywhere else.
 Finding 2 is a fitting close: even the fix for duplicated facts introduced its own inaccuracy by
 being imprecise about **which** fact lives **where**. Naming one authoritative location per fact
 only works if the naming itself is exact.
+
+### Round 15 findings (PR #178)
+
+1. **My own rewrite dropped a load-bearing initialiser.** Tightening A.T9's wording removed
+   `frontier_truncated = False` before the `try`. That initialiser is not stylistic:
+   `_execute_source` handles local, manifest-local and GitHub sources in the same block and always
+   constructs `StagingJob`, so a local assigned only on the URL success or URL exception path
+   would be **unbound** for every non-URL source. Restored in both D8/A.T9 and `068.012-T`, with
+   the reason stated inline and a non-URL acceptance case added so the requirement is enforced by
+   a test rather than by prose.
+2. **The Plan Review Record still advertised a ≤2-file migration limit** while A.T7 owns three, so
+   the plan published two different decomposition ceilings. The historical entry now records the
+   actual outcome: round 2 landed ≤2 files, later review added a file, and the standing limit is
+   **≤3 files per migration task** — which is exactly why A.T7b was carved out.
+
+Finding 1 is the sharpest lesson of the session: **a clarity edit is still a semantic edit.** I
+removed a parenthetical that looked like an example (`e.g. frontier_truncated = False`) and in
+doing so deleted a correctness requirement.
