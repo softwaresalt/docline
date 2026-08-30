@@ -167,6 +167,8 @@ review *body*; PR #178's rounds produced a mix of both.
 | 7 | `e2a9ef7` (PR #178) | 2 + 3 suppressed | stale artifact `updated_at` after a bare `dep add`; PR description understated backlog changes; arithmetic and history errors in this very file |
 | 8 | `e04fa26` (PR #178) | 3 + 1 suppressed | R9 still contradicted the corrected callback contract; A.T7 at four files broke the plan's own three-file ceiling; the running-total framing was itself the defect |
 | 9 | `540275c` (PR #178) | 3 + 1 suppressed | shipment manifest not dependency-ordered after appending A.T7b; `068.013-T` prose omitted the new edge; dependency graph and R2/R7 still listed the old migration set; PR description understated scope again |
+| 10 | `fcfb88f` (PR #178) | 2 + 1 suppressed | redrawn ASCII graph implied a false `A.T4 → A.T10` edge; `059-S` `updated_at` stale after the direct reorder; a heading missed its preceding blank line |
+| 11 | `d59e513` (PR #178) | 2 | this table omitted round 10; PR description claimed every artifact landed in #177, which is untrue of the newly created `068.019-T` |
 
 Four findings, producing three design changes rather than wording changes:
 
@@ -288,3 +290,17 @@ inconsistency this round caught.
    afterwards to confirm the refresh did not re-sort the manifest.
 3. **A heading was missing its preceding blank line**, against the repository Markdown guide. Fixed
    and the whole file re-checked programmatically rather than by eye.
+
+### Round 11 findings (PR #178)
+
+1. **A round was documented in prose but missing from the authoritative table.** Round 10 had a
+   detail section and no table row, while the cutoff note tells readers the last table row *is*
+   the final state — so the central log was stale by its own stated rule. The cutoff note now
+   states that a round is not recorded until it has a table row.
+2. **The PR description claimed every artifact "landed on main in #177".** Untrue of
+   `068.019-T`, which this PR creates. Reworded to state that every affected artifact is
+   `queued`, without the false history claim.
+
+Both are the same failure in different places: **a summary that stops being updated is worse than
+no summary, because readers trust it.** That is now the third instance in this session, after the
+running finding-total and the ASCII dependency graph.
