@@ -22,7 +22,13 @@ def test_cli_fetch_outputs_staging_job_contract(capsys, monkeypatch, tmp_path) -
     main(["fetch"])
     payload = json.loads(capsys.readouterr().out)
 
-    assert set(payload[0]) == {"job_id", "metadata", "cache_path", "complete"}
+    assert set(payload[0]) == {
+        "job_id",
+        "metadata",
+        "cache_path",
+        "complete",
+        "frontier_truncated",
+    }
 
 
 def test_cli_process_success_envelope_has_required_fields(capsys, monkeypatch, tmp_path) -> None:
