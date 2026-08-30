@@ -1,7 +1,10 @@
 ---
 title: "Implementation Plan: Bound crawl frontier growth independently of depth/max_pages"
 date: 2026-08-29
-status: reviewed
+status: shipped
+shipment: 058-S
+pr: 175
+merge_commit: b1f4549e308b25a02dbd3f30eb6d87bf8a126331
 feature: "Feature B (crawl frontier)"
 source_deliberation: docs/decisions/2026-08-29-crawl-frontier-bound-deliberation.md
 stash_ids: [173238FD]
