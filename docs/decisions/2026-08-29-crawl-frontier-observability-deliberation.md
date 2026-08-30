@@ -73,10 +73,13 @@ counters (`admitted`, `ceiling_reported`, and a refusal marker), exposing `admit
 > option and narrows it in two ways: (1) the `visited` set stays in the crawl loop rather than
 > moving into the dataclass — it is mutated at three non-admission sites and serves emitted-page
 > dedup, a separate responsibility (plan decision D2); (2) the split is `crawl_models.py` +
-> `crawl_links.py` plus a `crawl_discovery.py` leaf for the robots/backoff helpers (the D5
-> contingency, applied because the realized `crawl.py` line count exceeded 400), rather than a
-> link/discovery pair, because a discovery module would need `CrawlConfig` and the models module is
-> what makes that acyclic. See
+> `crawl_links.py` plus a `crawl_discovery.py` leaf — an **adapted** application of the D5
+> contingency: because the realized `crawl.py` line count exceeded 400, only the two stateless
+> robots/backoff helpers (`check_robots_allowed`, `compute_backoff_seconds`) moved to
+> `crawl_discovery.py`, while the fetch-calling helpers stayed in `crawl.py` to preserve the
+> `docline.fetch.crawl.fetch_page` monkeypatch seam. This is rather than a link/discovery pair,
+> because a discovery module would need `CrawlConfig` and the models module is what makes that
+> acyclic. See
 > `docs/archive/plans/2026-08-29-crawl-frontier-observability-plan.md`.
 
 1. promote the truncation record from DEBUG to WARNING and add a `frontier_truncated` marker that

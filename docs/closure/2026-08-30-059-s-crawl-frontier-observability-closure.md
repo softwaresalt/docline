@@ -126,7 +126,7 @@ exception-reconstruction default on `CrawlStagedNothingError`, the ELT handler c
 `_link_in_scope` deduplication of the triplicated scope filter, the `_origin_label` relocation to
 its observability owner, and the `CRAWL_LOGGER_NAME` single-source constant.
 
-Copilot review then ran seven cycles against successive HEADs, ending with an "Approval recommended"
+Copilot review then ran eight cycles against successive HEADs, ending with an "Approval recommended"
 review on the final head `31f4954` with zero unresolved threads and zero suppressed findings.
 Findings remediated:
 
@@ -171,7 +171,7 @@ persisted artifacts.
 | Field | Value |
 |---|---|
 | Invariants | Refused links never enter `visited` (058-S memory bound holds); the ceiling value and semantics are unchanged; `crawl()` still yields `list[CrawlResult]`-shaped iteration via `outcome.results`; CLI and MCP report the same `frontier_truncated` for an equivalent request; `max_frontier=0` issues no TOC network I/O |
-| Pre-deploy audit | `ruff check`, `pyright src/`, `pytest` (2049 passed), `ruff format --check` all green on `31f4954`; CI green on the same head; five-persona + seven Copilot review cycles clean |
+| Pre-deploy audit | `ruff check`, `pyright src/`, `pytest` (2049 passed), `ruff format --check` all green on `31f4954`; CI green on the same head; five-persona + eight Copilot review cycles clean |
 | Rollout path | Merged to `main` via merge commit `58ba5c5`. No staged rollout, feature flag, or migration — the change is a library-level behavior addition on the fetch path; effective immediately for all `docline fetch` / MCP `fetch` callers |
 | Post-deploy checks | Runtime verification (18/18) executed against the merged tree; no separate production environment to smoke-test (CLI/MCP library) |
 | Healthy signal | Crawls under the ceiling emit no WARNING and report `frontier_truncated=false`; normal uncapped crawls admit all eligible links |

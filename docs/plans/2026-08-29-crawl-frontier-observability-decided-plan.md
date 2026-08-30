@@ -111,7 +111,7 @@ rejection, and unchanged uncapped behavior — all passed.
 
 ## Review Outcome
 
-Five-persona adversarial review (no P0/P1) plus seven Copilot review cycles ending in "Approval
+Five-persona adversarial review (no P0/P1) plus eight Copilot review cycles ending in "Approval
 recommended" with zero unresolved threads. Notable remediations: IPv6 origin-label bracket
 preservation, typed rejection of malformed crawl-URL ports, mutation-coverage tests for the
 exhausted TOC and print-page branches and the zero-staged `_fetch_url` D8 contract, and reconciling

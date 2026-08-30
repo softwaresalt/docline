@@ -62,7 +62,7 @@ compound refresh -> compact-context.
 ## Closure (2026-08-30, session complete)
 
 - Merged as PR #179, merge commit `58ba5c5b67abf5c73457d11e5af76c60bdd483b1` (merge commit; P-009 verified).
-- Seven Copilot review cycles ended "Approval recommended" with zero unresolved threads; five-persona adversarial review had no P0/P1.
+- Eight Copilot review cycles ended "Approval recommended" with zero unresolved threads; five-persona adversarial review had no P0/P1.
 - Runtime verification: 18/18 checks passed across truncation, conservative TOC, payload redaction, manifest/StagingJob/FetchResult parity, malformed-port rejection, and uncapped no-op.
 - Shipment 059-S, feature 068-F, and all 19 tasks archived with merge SHA `58ba5c5`. The `shipment ship` CLI deadlocked in the worktree; completed via `move` + per-artifact `update --commit` + `archive` + task-commit backfill (see compound learning `2026-08-30-ship-shipment-deadlocks-in-worktree.md`).
 - Closure record: `docs/closure/2026-08-30-059-s-crawl-frontier-observability-closure.md`.
