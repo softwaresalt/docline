@@ -176,12 +176,18 @@ def test_exactly_at_cap_link_free_page_flags_false_and_is_silent(
 # ---------------------------------------------------------------------------
 
 
+def _relative_fan_out_body(count: int) -> str:
+    """Return an HTML body linking to *count* pages relative to the start dir."""
+    anchors = "".join(f'<a href="child-{index}">L{index}</a>' for index in range(count))
+    return f"<html><body>{anchors}</body></html>"
+
+
 def _run_truncating_crawl(
     monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture, start: str
 ) -> str:
     """Drive a truncating crawl from *start* and return the WARNING message."""
     requested: list[str] = []
-    _install_fetch(monkeypatch, {}, requested, default_body=_fan_out_body(50))
+    _install_fetch(monkeypatch, {}, requested, default_body=_relative_fan_out_body(50))
     with caplog.at_level(logging.WARNING, logger=CRAWL_LOGGER):
         asyncio.run(
             crawl(
