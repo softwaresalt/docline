@@ -147,10 +147,14 @@ Both are independent — no cross-shipment dependency edge. The only shared file
 
 ### Copilot review cycles
 
-Six rounds, **34 findings** (10 + 10 + 4 + 2 + 7 + 1), all valid, all fixed. Rounds 1-4 produced 26 review threads, each
-replied to with the fix SHA and resolved. Round 5 produced **no threads** but its review body
-carried **7 suppressed "previously missed" findings** — these were real and are fixed in PR #178.
-Round 6 caught that I had recorded round 5 as clean.
+> **Cutoff.** This section is written as an ongoing log rather than a running total, because two
+> earlier attempts at a single "N findings" figure went stale the moment the next review landed.
+> Each row is closed when its findings are fixed and its threads resolved; the final state is
+> whatever the last row says. Do not re-derive a grand total — read the rows.
+
+Every finding across every round was valid and every one was fixed. Rounds 1-4 (PR #177) produced
+review threads only; round 5 produced **zero threads** but carried 7 suppressed findings in its
+review *body*; PR #178's rounds produced a mix of both.
 
 | Round | HEAD | Findings | Substance |
 |---|---|---|---|
@@ -160,6 +164,8 @@ Round 6 caught that I had recorded round 5 as clean.
 | 4 | `f1f85e8` | 2 | two internal count inconsistencies introduced by my own round-3 edits |
 | 5 | `4558b0f` | **7 suppressed** | *not* clean — review `5060076290` surfaced 7 previously-missed findings as suppressed comments rather than threads |
 | 6 | `63ab0a1` (PR #178) | 1 | caught my own inaccurate "clean" claim about round 5 |
+| 7 | `e2a9ef7` (PR #178) | 2 + 3 suppressed | stale artifact `updated_at` after a bare `dep add`; PR description understated backlog changes; arithmetic and history errors in this very file |
+| 8 | `e04fa26` (PR #178) | 3 + 1 suppressed | R9 still contradicted the corrected callback contract; A.T7 at four files broke the plan's own three-file ceiling; the running-total framing was itself the defect |
 
 Four findings, producing three design changes rather than wording changes:
 
@@ -220,3 +226,29 @@ All 7 were valid:
 
 **Process note:** a Copilot review with zero threads is *not* necessarily a clean review. The
 review **body** must be read for suppressed findings before declaring a gate clean.
+### Round 7-8 findings (PR #178)
+
+1. **`dep add` does not refresh `updated_at`.** Adding the `068.013-T → 068.008-T` edge changed
+   the artifact's content but left stale freshness metadata. Refreshed via `backlogit update`.
+   Worth remembering alongside the earlier `--dependencies` quirk: **both** dependency paths in
+   this CLI have surprising side effects.
+2. **`R9` still asserted the old callback contract** after `A.T9` was corrected, so an implementer
+   reading the risk register and the task would get contradictory instructions. R9 now carries the
+   corrected contract.
+3. **`A.T7` grew to four files** when `test_crawl_control_flow.py` was added — breaking the very
+   three-file ceiling this plan had invoked to split `A.T8`. Split into `A.T7` (3 files) and new
+   **`A.T7b` / `068.019-T`** (1 file), wired into `A.T10`'s dependencies and added to `059-S`,
+   which is now **20 items**.
+4. **The running finding-total was itself the recurring defect** — corrected twice and stale both
+   times. Replaced with a per-round log and an explicit cutoff note.
+
+### Durable lessons
+
+- **Zero review threads does not mean a clean review.** Read the review *body* for suppressed
+  findings before declaring any gate clean. This one cost the most.
+- **When a plan creates a new caller of an API it is about to change, that caller needs a
+  migration owner too.** Searching only the current tree is not enough.
+- **Do not record running totals that every subsequent round invalidates.** Log rounds; let the
+  last row be the state.
+- **A fix that resolves one section can contradict another.** After correcting a contract, grep
+  the risk register and every task that references it.

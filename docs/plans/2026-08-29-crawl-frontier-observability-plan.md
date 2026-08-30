@@ -405,14 +405,23 @@ admission policies).
 ### A.T7 — Migrate crawl-core test callers to `CrawlOutcome`
 
 - **Domain:** tests. **Files:** `tests/fetch/test_crawl_limits.py`,
-  `tests/fetch/test_crawl_frontier_bound.py`, `tests/fetch/test_crawl_section_scope.py`,
-  `tests/fetch/test_crawl_control_flow.py`.
+  `tests/fetch/test_crawl_frontier_bound.py`, `tests/fetch/test_crawl_section_scope.py`.
 - Mechanical: `results = await crawl(...)` → `outcome = await crawl(...)`; assertions read
   `outcome.results`. No assertion semantics change.
-- **`test_crawl_control_flow.py` is included because A.T2b creates it** as a new `crawl()` caller
-  *before* the return-type break, and its characterization must inspect the returned results to
-  prove no `CrawlResult` was produced. Without migrating it, the full suite cannot recover.
-- **Acceptance:** these four modules green.
+- **Acceptance:** these three modules green.
+- **Depends on:** A.T6.
+
+### A.T7b — Migrate the A.T2b characterization harness to `CrawlOutcome`
+
+- **Domain:** tests. **Files:** `tests/fetch/test_crawl_control_flow.py`.
+- A.T2b creates this module as a `crawl()` caller *before* the return-type break, and its
+  characterization inspects the returned results to prove no `CrawlResult` was produced. It
+  therefore needs the same migration as the pre-existing callers, or the full suite cannot
+  recover.
+- It gets its own task rather than joining A.T7 because A.T7 already owns three files, which is
+  the decomposition ceiling this plan applies to every other migration task.
+- **Acceptance:** `tests/fetch/test_crawl_control_flow.py` green against `CrawlOutcome`, still
+  asserting the same control-flow invariants it characterized in A.T2b.
 - **Depends on:** A.T6.
 
 ### A.T8a — Migrate ELT test callers to `CrawlOutcome`
@@ -494,7 +503,7 @@ admission policies).
   the persisted `crawl-manifest.json`, and the failure case where no crawl ran and both report
   `False`.
 - **Acceptance:** red before A.T9/A.T11b land.
-- **Depends on:** A.T7, A.T8a, A.T8b, A.T8c.
+- **Depends on:** A.T7, A.T7b, A.T8a, A.T8b, A.T8c.
 
 ### A.T11a — Verify the CLI needs no source change
 
@@ -583,7 +592,8 @@ A.T1 → A.T2 → A.T2b → A.T3 → A.T4 ─┬──────────�
 Gates: `ruff check .`, `pyright src/`, `pytest`, `ruff format --check .`.
 
 **Gate policy exception (aligns with R7).** Full-suite green is a *merge* precondition for the
-atomic unit {A.T6, A.T7, A.T8a, A.T8b, A.T8c, A.T9, A.T10, A.T11a, A.T11b}, not a per-task gate.
+atomic unit {A.T6, A.T7, A.T7b, A.T8a, A.T8b, A.T8c, A.T9, A.T10, A.T11a, A.T11b}, not a
+per-task gate.
 Inside that unit, and for the red-harness tasks (A.T1, A.T2, A.T5, A.T10, A.T12), the per-task
 gate is `ruff check` + `pyright src/` + the task's own targeted tests. Every other task carries
 the full four-gate requirement.
@@ -630,7 +640,7 @@ the model's config and, if `extra="forbid"` is set, the rollback note is amended
 | R6 | Scope creep into a general crawl redesign | Medium | Medium | D9 is binding. The third-module contingency in D5 is pre-authorized and bounded; anything else goes to the stash. |
 | R7 | A partially-landed shipment leaves `main` with `crawl()` returning `CrawlOutcome` but callers expecting a list | Low | High — broken ELT/CLI/MCP path | {A.T6, A.T7, A.T8a, A.T8b, A.T8c, A.T9, A.T10, A.T11a, A.T11b} is atomic for merge. The Verification gate exception makes the red window explicit and bounded rather than contradicting the gate policy. |
 | R8 | Both shipments edit `docs/ARCHITECTURE.md`, producing a merge conflict if they land concurrently | Medium | Low | Acknowledged: the two shipments share **no source file** but do share this doc. A.T14 is scoped to the crawl/fetch section, Group B's doc task to the sitemap section. Whichever shipment merges second rebases the doc hunk. |
-| R9 | The zero-staged manifest write (D8) masks or reorders the existing `OSError` | Low | Medium | A.T9 acceptance requires the `OSError` still raise with the same message and the `except BaseException` completion event still fire. The write is inserted before the guard, not in place of it. |
+| R9 | The zero-staged manifest write (D8) masks or reorders the existing `OSError` | Low | Medium | A.T9 acceptance requires the raised error to still satisfy `except OSError` with the same message. **Callback contract, corrected:** the zero-staged raise sits *after* the `try/except/else`, so the success-path callback has already fired and the `except BaseException` handler does **not** run for `CrawlStagedNothingError`. A.T9 asserts exactly one completion callback before it propagates, and that the `except BaseException` path stays intact for failures raised *during* crawl or result staging. The write is inserted before the guard, not in place of it. |
 
 ### Rollback rehearsal
 
