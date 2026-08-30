@@ -6,7 +6,7 @@ feature: "Group A (crawl reliability/composability)"
 source_deliberation: docs/decisions/2026-08-29-crawl-frontier-observability-deliberation.md
 stash_ids: [8A99D90C, 7F34A0D5, ABBE9BCC]
 requires_plan_hardening: yes
-plan_review: round 2 — revised against 5-persona adversarial review (architecture, security, correctness, scope, python-safety)
+plan_review: "final — PASS. 4 rounds of 5-persona adversarial review (architecture, security, correctness, scope, python-safety), plus 1 Copilot review round on PR #177. See ## Plan Review Record."
 ---
 
 ## Objective
@@ -125,22 +125,36 @@ Binding constraints:
   added; the loop uses `frontier.queue` for `popleft`/emptiness, which is a deliberate, documented
   seam and not an encapsulation break because queue ordering is the loop's concern.
 
-### D3 — `frontier_truncated` means "at least one eligible link was refused"
+### D3 — `frontier_truncated` means "the ceiling actually cost the crawl a link"
 
-`truncated` returns `refused_any`, **not** `ceiling_reported` and **not**
+`truncated` returns a dedicated `refused_any` flag, **not** `ceiling_reported` and **not**
 `admitted >= max_frontier`. This distinction is load-bearing:
 
-- `report_ceiling()` fires from the two short-circuits (290-291, 324-329) merely because the cap
-  is *full*, before any link is examined. A crawl that exactly fills the cap and then visits a
-  link-free HTML page has lost nothing.
+- `report_ceiling()` fires from the two short-circuits merely because the cap is *full*, before
+  any link is examined. A crawl that exactly fills the cap and then visits a link-free HTML page
+  has lost nothing.
 - `admitted >= max_frontier` is `True` the instant the cap is exactly reached — an off-by-one
   that reports truncation for a crawl that discarded nothing.
 
-`refused_any` is set **only** in `admit()` on the refusal path, before returning `False`. The two
-short-circuit sites continue to call `report_ceiling()` (operator-facing log) but must **not** set
-`refused_any` unless a candidate link was actually rejected. A.T2 asserts all five cases:
-under-cap, exactly-at-cap-with-no-further-candidates, exactly-at-cap-then-link-free-page,
-print-page-branch refusal, main-branch refusal.
+**The two short-circuits must still evaluate eligibility (round-3 correction).** As written in
+round 2, the short-circuits at `crawl.py:290-291` and `324-329` `continue` *before* extracting
+links. If the cap was filled by an earlier page, every later page's links are silently dropped
+with no refusal ever recorded, so `refused_any` would stay `False` while the crawl really was
+truncated — and the WARNING could fire for a link-free page while the flag stayed `False`. The
+signal and the log would both be wrong.
+
+Resolution: at both short-circuit sites, **still call `extract_links()` and still apply the
+`domain_lock` / section-scope / `visited` filters**, and set `refused_any` if at least one
+eligible candidate exists. Link extraction is pure parsing of a body already in memory — no I/O.
+What the short-circuit continues to skip is `_discover_toc_links()`, which performs **network
+fetches** for TOC assets; that is the expensive part 058-S wanted to avoid and it stays skipped.
+The cheap parse is what makes the signal honest.
+
+`refused_any` is therefore set in exactly two places: on the refusal path inside `admit()`, and
+at a short-circuit that finds ≥1 eligible candidate. A.T2 asserts all six cases: under-cap;
+exactly-at-cap with no further candidates; exactly-at-cap then a **link-free** page; exactly-at-cap
+then a page **with** eligible links (must be `True`); print-page-branch refusal; main-branch
+refusal.
 
 ### D4 — The truncation record is WARNING with a reduced payload
 
@@ -207,16 +221,17 @@ lives inside the staging cache; a caller must know the private layout to read it
 **The two interfaces do not share one response model**, and round 2's assumption that they did
 was wrong:
 
-- **CLI** serializes `StagingJob` directly. `StagingJob` gains `frontier_truncated: bool = False`
-  (additive, defaulted, so every existing construction site and every persisted `metadata.json`
-  stays valid). `_fetch_url` returns the staged count **and** the flag; `_execute_source` sets it
-  on the job.
+- **CLI** serializes `StagingJob` wholesale — `cli.py:380` does
+  `json.dumps([job.model_dump(mode="json") for job in jobs])`. `StagingJob` gains
+  `frontier_truncated: bool = False` (additive, defaulted, so every existing construction site and
+  every persisted `metadata.json` stays valid); `_fetch_url` returns the staged count **and** the
+  flag, and `_execute_source` sets it. **No CLI source change is required** — the field is emitted
+  automatically once the model carries it. A.T11a is therefore a *verification* task, not an edit.
 - **MCP** returns `FetchResult`, which `execute_fetch` constructs fresh from the completed
   `StagingJob` (`app.py:621`, with failure returns at 592, 596, 611, 615). `FetchResult` gains the
   same additive defaulted field, populated from `job.frontier_truncated` at the success return.
-  Failure returns keep the default `False` — a request that never produced a job cannot report
-  truncation. Editing `mcp/server.py` alone would be a no-op because that method performs no
-  result transformation.
+  Editing `mcp/server.py` would be a **no-op** because that method performs no result
+  transformation, so it is not edited.
 
 **Field placement rationale (layering exception, deliberate).** `frontier_truncated` is a
 fetch-capture attribute, and `SourceMetadata` is where web/HTTP-specific capture attributes
@@ -240,11 +255,26 @@ and the `except BaseException` completion-event contract is untouched.
 
 **The value is the real flag, never a hard-coded `true`.** Zero pages staged does not imply
 truncation: a print-page start URL with `max_frontier=0` hits the exhausted short-circuit at
-`crawl.py:290-291`, which calls `report_ceiling()` but never calls `admit()` and so never sets
-`refused_any`; robots-denied and failed-start crawls likewise stage nothing while refusing no
-discovered link. Under D3 all of those report `False`. Writing `true` unconditionally would make
-the persisted manifest contradict the CLI and MCP payloads that A.T10 requires to report `False`
-for the same request.
+`crawl.py:290-291` with no eligible candidate; robots-denied and failed-start crawls likewise
+stage nothing while costing no link. Under D3 all of those report `False`. A zero-staged crawl
+that *did* drop an eligible link reports `True`.
+
+**The flag must survive the `OSError` path (round-3 correction).** `_fetch_url` raises before it
+can return its `(count, flag)` tuple, and `_execute_source` catches the exception and builds the
+`StagingJob` with the default `False` — so the manifest would say `true` while the CLI and MCP
+payloads said `false`, breaking exit criterion 6. The exception must therefore carry the flag:
+
+```python
+class CrawlStagedNothingError(OSError, DoclineError):
+    """Raised when a crawl staged no pages; carries the frontier-truncation flag."""
+    def __init__(self, message: str, *, frontier_truncated: bool) -> None: ...
+```
+
+It subclasses `OSError` so every existing caller and test that catches `OSError` keeps working,
+and `DoclineError` so it joins the typed hierarchy. `_fetch_url` raises it in place of the bare
+`OSError` with the same message; `_execute_source` catches it explicitly, sets
+`job.frontier_truncated` from it, and still marks the job incomplete. All other error paths are
+unchanged.
 
 ### D9 — Out of scope
 
@@ -268,9 +298,10 @@ admission policies).
 ### A.T2 — Harness: `truncated` predicate across all report sites (red)
 
 - **Domain:** tests. **Files:** `tests/fetch/test_crawl_frontier_admission.py` (extends A.T1).
-- Asserts D3's five cases: under-cap → `False`; exactly-at-cap with no further candidates →
-  `False`; exactly-at-cap then a link-free HTML page → `False`; refusal in the print-page branch →
-  `True`; refusal in the main branch → `True`.
+- Asserts D3's six cases: under-cap → `False`; exactly-at-cap with no further candidates →
+  `False`; exactly-at-cap then a **link-free** HTML page → `False`; exactly-at-cap then a page
+  **with at least one eligible link** → `True` (the short-circuit must still evaluate
+  eligibility); refusal in the print-page branch → `True`; refusal in the main branch → `True`.
 - **Acceptance:** red. No source change.
 - **Depends on:** A.T1.
 
@@ -295,8 +326,13 @@ admission policies).
 - **Domain:** src. **Files:** `src/docline/fetch/crawl.py`.
 - Add `_Frontier` per D2 (module-level for now; it moves in A.T4). Delete `_admit` /
   `_report_ceiling` and all `nonlocal` admission state. Route the two short-circuits through
-  `frontier.exhausted` and the refusal path through `admit()`.
-- **Behaviour-preserving: no log-level change, no return-type change, no ordering change.**
+  `frontier.exhausted` and the refusal path through `admit()`. Per D3, **each short-circuit must
+  still extract links and apply the `domain_lock` / section-scope / `visited` filters** so it can
+  set `refused_any` when ≥1 eligible candidate exists; only `_discover_toc_links()` (the
+  network-fetching part) stays skipped.
+- **Otherwise behaviour-preserving: no log-level change, no return-type change, no ordering
+  change.** The added eligibility evaluation is a pure in-memory parse and changes no admitted
+  set.
 - **Acceptance:** A.T1 + A.T2 + **A.T2b** green; **full `pytest` green with zero edits to existing
   tests** — needing to edit an existing test is treated as an unplanned behaviour change and halts
   the task. Control-flow paths preserved verbatim: the non-counting section-scope `continue`
@@ -385,16 +421,22 @@ admission policies).
   outcome unpacking and the `for result in outcome.results` iteration must remain **inside** the
   existing `try:` so the `except BaseException` completion-event path still fires on partial
   staging failure. Manifest becomes
-  `{"pages": manifest_pages, "frontier_truncated": <bool>}` and is written **before** the
+  `{"pages": manifest_pages, "frontier_truncated": <the real flag>}` and is written **before** the
   `staged_count == 0` guard (D8). `StagingJob` gains `frontier_truncated: bool = False` with an
   `Attributes:` docstring entry; `_execute_source` sets it from `_fetch_url`.
+- Per D8, add `CrawlStagedNothingError(OSError, DoclineError)` carrying `frontier_truncated`, and
+  raise it in place of the bare `OSError` with the same message. `_execute_source` catches it
+  explicitly and sets `job.frontier_truncated` from it before marking the job incomplete, so the
+  flag survives the exception path and the manifest cannot disagree with the payloads.
 - **Acceptance:** manifest contains the key and is written even when zero pages stage, carrying
   the **real** flag value — regression cases required for (a) a no-refusal zero-staged path
-  (print-page/exhausted short-circuit, `max_frontier=0`) → `false`, (b) a robots-denied or
-  failed-start zero-staged crawl → `false`, and (c) any reachable zero-staged crawl that did
-  refuse a link → `true`; `_load_crawl_manifest` still parses; existing `metadata.json` files
-  without the field still validate (defaulted); the `OSError` still raises with the same message
-  and the `except BaseException` completion event still fires; `pyright src/` 0 errors.
+  (print-page/exhausted short-circuit with no eligible candidate, `max_frontier=0`) → `false`,
+  (b) a robots-denied or failed-start zero-staged crawl → `false`, and (c) a zero-staged crawl
+  that did cost an eligible link → `true`, **with the `StagingJob` reporting the same value in
+  every case**; `_load_crawl_manifest` still parses; existing `metadata.json` files without the
+  field still validate (defaulted); the raised error still satisfies `except OSError` with the
+  same message and the `except BaseException` completion event still fires; `pyright src/` 0
+  errors.
 - **Depends on:** A.T6.
 
 ### A.T10 — Harness: CLI/MCP parity for the truncation signal (red)
@@ -403,19 +445,22 @@ admission policies).
 - Executes an equivalent truncating web-crawl request through the CLI surface and the MCP tool
   surface and asserts both report the **same** `frontier_truncated` value, and that both report
   `False` for an untruncated crawl.
-- Assertions are made against the **actual serialized payloads** — the CLI's `StagingJob` output
-  and the MCP tool's `FetchResult` — not against internal objects. Includes the failure and
-  zero-staged cases, where both surfaces must report `False` rather than raising or omitting the
-  field.
-- **Acceptance:** red before A.T9/A.T11a/A.T11b land.
+- Assertions are made against the **actual serialized payloads** — the CLI's `job.model_dump()`
+  output and the MCP tool's `FetchResult` — not against internal objects. Includes the
+  **zero-staged** case, where both surfaces must report the **real** flag (D8) and must agree with
+  the persisted `crawl-manifest.json`, and the failure case where no crawl ran and both report
+  `False`.
+- **Acceptance:** red before A.T9/A.T11b land.
 - **Depends on:** A.T8a, A.T8b, A.T8c.
 
-### A.T11a — Surface `frontier_truncated` on the CLI response
+### A.T11a — Verify the CLI needs no source change
 
-- **Domain:** src. **Files:** `src/docline/cli.py`.
-- Propagate the `StagingJob` field (added in A.T9) into the CLI's job output. Additive and
-  defaulted; no existing field is renamed or removed.
-- **Acceptance:** the CLI half of A.T10 green; `pyright src/` 0 errors.
+- **Domain:** tests. **Files:** `tests/test_cli_mcp_truncation_parity.py` (extends A.T10).
+- `cli.py:380` already serializes the whole `StagingJob` via `model_dump(mode="json")`, so the
+  A.T9 model field appears in CLI output with **no CLI edit**. This task asserts that — it does
+  **not** modify `cli.py`. If the assertion fails, the CLI seam is different from the grounding
+  and a src-width task must be opened; do not silently edit `cli.py` here.
+- **Acceptance:** the CLI half of A.T10 green with `git diff --stat src/docline/cli.py` empty.
 - **Depends on:** A.T10, A.T9.
 
 ### A.T11b — Surface `frontier_truncated` on the MCP response
@@ -423,16 +468,18 @@ admission policies).
 - **Domain:** src. **Files:** `src/docline/app_models.py`, `src/docline/app.py`.
 - Add `frontier_truncated: bool = False` to `FetchResult` with an `Attributes:` docstring entry,
   and populate it from `job.frontier_truncated` at the `execute_fetch` success return
-  (`app.py:621`). The four failure returns (592, 596, 611, 615) keep the default.
+  (`app.py:621`). The zero-staged return at 615 must also carry the real flag from the job so it
+  agrees with the manifest; the pre-crawl failure returns (592, 596, 611) keep the default.
 - **`mcp/server.py` is not edited** — it returns `execute_fetch()` unchanged, so the field
-  propagates automatically once `FetchResult` carries it. Confirm this by test, not by assumption.
+  propagates automatically. Confirm this by test, not by assumption.
 - **Acceptance:** A.T10 fully green (both halves); full `pytest` green; `pyright src/` 0 errors.
 - **Depends on:** A.T11a.
 
 > A.T11a/A.T11b split round-2's single A.T11, which touched 3 files and mixed the CLI and MCP
-> skill domains. Round 3 also corrected the MCP seam: the field must be added to `FetchResult` in
-> `app_models.py` and populated in `app.py`, because `execute_fetch` builds a fresh `FetchResult`
-> rather than returning the `StagingJob`.
+> skill domains. Round 3 corrected the MCP seam to `FetchResult` in `app_models.py`/`app.py`,
+> because `execute_fetch` builds a fresh `FetchResult` rather than returning the `StagingJob`.
+> Copilot review then established that the CLI needs no edit at all, so A.T11a became
+> verification-only rather than a mandated no-op edit.
 
 ### A.T12 — Harness: TOC-first ordering under truncation (red)
 
@@ -507,8 +554,10 @@ Shipment exit criteria:
 ## Rollback
 
 Single `git revert -m 1 <merge-sha>`. Non-additive changes are confined to D1 (return type), D6
-(ordering), and D8 (manifest write position) — all inside `fetch/crawl*.py`, `fetch/models.py`,
-`elt/execute.py`, `cli.py`, `mcp/server.py`, and their tests. Persisted artifacts survive a
+(ordering), and D8 (manifest write position + `CrawlStagedNothingError`) — all inside
+`fetch/crawl*.py`, `fetch/models.py`, `elt/execute.py`, `app_models.py`, `app.py`, and their
+tests. **`cli.py` and `mcp/server.py` are not modified by this shipment.** Persisted artifacts
+survive a
 revert harmlessly: `crawl-manifest.json` readers use only `"pages"`, and `StagingJob` gains a
 defaulted field, so a reverted build still validates a `metadata.json` written by the new build
 (the extra key is ignored by pydantic's default configuration — **A.T9 must confirm this against

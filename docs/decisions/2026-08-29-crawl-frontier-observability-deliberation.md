@@ -65,10 +65,17 @@ surface to a reliability review surface and violate width isolation.
 
 ### Option A — Extract a `_Frontier` dataclass first, then layer observability and ordering on it (chosen)
 
-Introduce a module-level private `@dataclass` owning `admitted`, `ceiling_reported`, the
-`frontier` deque, and the `visited` set, exposing `admit(link, key, depth) -> bool` and a
-`truncated` property. Split `crawl.py` along its existing seams into a link-extraction module and
-a discovery module, leaving the loop in `crawl.py`. Then:
+Introduce a module-level private `@dataclass` owning the frontier queue and the admission
+counters (`admitted`, `ceiling_reported`, and a refusal marker), exposing `admit()` and a
+`truncated` property. Split `crawl.py` along its existing seams. Then:
+
+> **Refined during planning.** The implementation plan is the authoritative expression of this
+> option and narrows it in two ways: (1) the `visited` set stays in the crawl loop rather than
+> moving into the dataclass — it is mutated at three non-admission sites and serves emitted-page
+> dedup, a separate responsibility (plan decision D2); (2) the split is `crawl_models.py` +
+> `crawl_links.py` rather than a link/discovery pair, because a discovery module would need
+> `CrawlConfig` and the models module is what makes that acyclic (plan decision D5). See
+> `docs/plans/2026-08-29-crawl-frontier-observability-plan.md`.
 
 1. promote the truncation record from DEBUG to WARNING and add a `frontier_truncated` marker that
    reaches `crawl-manifest.json`;

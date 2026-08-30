@@ -6,7 +6,7 @@ feature: "Group B (sitemap security-efficiency)"
 source_deliberation: docs/decisions/2026-08-29-sitemap-preflight-dedup-deliberation.md
 stash_ids: [F0F13C0B]
 requires_plan_hardening: yes
-plan_review: round 2 — revised against 5-persona adversarial review (architecture, security, correctness, scope, python-safety)
+plan_review: "final — PASS. 3 rounds of 5-persona adversarial review (architecture, security, correctness, scope, python-safety), plus 1 Copilot review round on PR #177. See ## Plan Review Record."
 ---
 
 ## Objective
