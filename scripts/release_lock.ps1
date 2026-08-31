@@ -23,10 +23,19 @@ if (-not (Test-Path -LiteralPath $FilePath)) {
     Write-Warning "Target file does not exist: $FilePath"
 }
 
-$resolvedDir = if (Test-Path -LiteralPath $FilePath) {
-    Split-Path -Parent (Resolve-Path -LiteralPath $FilePath)
+# Resolve through the parent directory rather than the target: the target may
+# have been deleted, and `Split-Path -Parent` returns an empty string for a
+# repository-root-relative path such as `AGENTS.md`, which would make the
+# `Join-Path` below terminate under `ErrorActionPreference = 'Stop'`.
+$parentDir = Split-Path -Parent $FilePath
+if ([string]::IsNullOrEmpty($parentDir)) {
+    $parentDir = '.'
+}
+
+$resolvedDir = if (Test-Path -LiteralPath $parentDir) {
+    (Resolve-Path -LiteralPath $parentDir).Path
 } else {
-    Split-Path -Parent $FilePath
+    $parentDir
 }
 
 $fileName = Split-Path -Leaf $FilePath

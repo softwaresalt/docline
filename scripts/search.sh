@@ -46,7 +46,7 @@ for DIR in "$SKILLS_ROOT"/*/; do
             continue
         fi
         if [ "$IN_FRONTMATTER" -eq 1 ]; then
-            if echo "$LINE" | grep -qiE '^\s*description:'; then
+            if echo "$LINE" | grep -qiE '^[[:space:]]*description:'; then
                 DESCRIPTION="$(echo "$LINE" | sed 's/^[[:space:]]*description:[[:space:]]*"*//;s/"*[[:space:]]*$//')"
                 break
             fi

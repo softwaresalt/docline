@@ -245,7 +245,11 @@ jobs:
         with:
           python-version: "3.12"
       - name: Install autoharness
-        run: pip install autoharness
+        # Pinned to the harness version recorded in
+        # .autoharness/harness-manifest.yaml. Bump this together with the
+        # manifest during a merge-install so an upstream release cannot change
+        # the topology verdict for an otherwise unchanged commit.
+        run: pip install autoharness==1.5.0
       - name: Run CI topology-check entrypoint
         run: bash scripts/ci-topology-check.sh
 

@@ -254,6 +254,12 @@ logs/
 docs/scratch/*
 !docs/scratch/.gitkeep
 
+# Ephemeral experiment logs written by the iterative-experiment skill. The skill
+# treats these as untracked so the loop's clean-tree invariant holds between
+# iterations; opt into committed reproducibility mode to track them instead.
+docs/experiments/*
+!docs/experiments/.gitkeep
+
 # Transient docline run output at repo root (canonical path is .elt/output/).
 /output/
 
