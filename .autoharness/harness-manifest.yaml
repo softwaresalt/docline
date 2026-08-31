@@ -383,6 +383,11 @@ artifacts:
   primitive: 8
   template: policies/workflow-policies.md.tmpl
   checksum: b0cca5851e6eb68f15040dbdb50cbe168b31092d28a8aac4132a51c5949e6ced
+- path: .github/prompts/feature-flow-dark.prompt.md
+  artifact_type: prompt
+  primitive: 4
+  template: prompts/feature-flow-dark.prompt.md.tmpl
+  checksum: 45f0f3a75ba5b9923e0f9e99328ddf9300401893340004792049e24229260b41
 - path: .github/prompts/feature-flow-parallel.prompt.md
   artifact_type: prompt
   primitive: 4
