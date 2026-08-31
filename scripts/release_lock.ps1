@@ -23,17 +23,11 @@ if (-not (Test-Path -LiteralPath $FilePath)) {
     Write-Warning "Target file does not exist: $FilePath"
 }
 
-$targetDir = Split-Path -Parent $FilePath
-if ([string]::IsNullOrWhiteSpace($targetDir)) {
-    $targetDir = "."
+$resolvedDir = if (Test-Path -LiteralPath $FilePath) {
+    Split-Path -Parent (Resolve-Path -LiteralPath $FilePath)
+} else {
+    Split-Path -Parent $FilePath
 }
-
-if (-not (Test-Path -LiteralPath $targetDir -PathType Container)) {
-    Write-Error "Parent directory does not exist: $targetDir"
-    exit 1
-}
-
-$resolvedDir = (Resolve-Path -LiteralPath $targetDir).Path
 
 $fileName = Split-Path -Leaf $FilePath
 $lockFile = Join-Path $resolvedDir ".$fileName.lock"

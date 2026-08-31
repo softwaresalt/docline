@@ -18,12 +18,10 @@ if [ ! -e "$FILEPATH" ]; then
     echo "Warning: Target file does not exist: $FILEPATH" >&2
 fi
 
-TARGET_DIR="$(dirname "$FILEPATH")"
-if [ -d "$TARGET_DIR" ]; then
-    RESOLVED_DIR="$(cd "$TARGET_DIR" && pwd -P)"
+if [ -e "$FILEPATH" ]; then
+    RESOLVED_DIR="$(cd "$(dirname "$FILEPATH")" && pwd -P)"
 else
-    echo "Error: Parent directory does not exist: $TARGET_DIR" >&2
-    exit 1
+    RESOLVED_DIR="$(dirname "$FILEPATH")"
 fi
 
 FILENAME="$(basename "$FILEPATH")"

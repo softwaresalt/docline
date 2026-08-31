@@ -219,6 +219,7 @@ __marimo__/
 
 # autoharness
 .autoharness/backups/
+.autoharness/staging/
 
 # local extract-land-transform staging
 .elt/
@@ -232,7 +233,6 @@ __marimo__/
 .backlogit/telemetry*.jsonl
 .backlogit/hooks_queue.jsonl
 .backlogit/logs/
-.backlogit/checkpoints/
 .backlogit/runtime/
 
 # local agent/editor state

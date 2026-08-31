@@ -7,31 +7,16 @@
 #
 # Install: copy to .git/hooks/pre-commit (or register via .pre-commit-config.yaml)
 
-set -euo pipefail
-
-if ! command -v git >/dev/null 2>&1; then
-  echo "ERROR: git is required to run pre-commit-markdownlint.sh." >&2
-  exit 1
-fi
+set -uo pipefail
 
 # Run from repo root so repo-root-relative paths from git are valid
-REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null)" || {
-  echo "ERROR: Unable to determine the git repository root." >&2
-  exit 1
-}
-
-if [ -z "$REPO_ROOT" ] || [ ! -d "$REPO_ROOT" ]; then
-  echo "ERROR: Computed git repository root is invalid: ${REPO_ROOT:-<empty>}" >&2
-  exit 1
-fi
-
-cd "$REPO_ROOT"
+cd "$(git rev-parse --show-toplevel)"
 
 # Collect staged .md files using NUL delimiters (handles spaces in paths)
 STAGED_MD_FILES=()
 while IFS= read -r -d '' f; do
   STAGED_MD_FILES+=("$f")
-done < <(git diff --cached --name-only -z --diff-filter=ACMR -- '*.md')
+done < <(git diff --cached --name-only -z --diff-filter=ACMR | grep -zE '\.md$' || true)
 
 if [ ${#STAGED_MD_FILES[@]} -eq 0 ]; then
   exit 0

@@ -1,10 +1,11 @@
 # .autoharness/workspace-profile.yaml
 schema_version: "1.0.0"
-generated_at: "2026-05-30T00:09:53-07:00"
+generated_at: "2026-08-31T09:29:29-07:00"
 workspace_path: "<local-workspace-path>"
 
 languages:
   primary: "python"
+  version: "3.12"
   secondary: []
 
 frameworks:
@@ -20,8 +21,9 @@ stack_packs:
   - "mcp-server"
 
 build:
-  tool: null
-  command: null
+  tool: "pip"
+  command: "python -m build"
+  check_command: "python -m py_compile src/docline/__init__.py"
 
 test:
   runner: "pytest"
@@ -32,14 +34,47 @@ lint:
   tool: "ruff"
   command: "ruff check ."
 
+typecheck:
+  tool: "pyright"
+  command: "pyright src/"
+
 format:
   tool: "ruff"
   command: "ruff format ."
+  check_command: "ruff format --check ."
 
 ci:
-  platform: "github-actions"
-  pipeline_steps: []
-  quality_gates: []
+  platform: "GitHub Actions"
+  pipeline_steps:
+    - "changes"
+    - "lint"
+    - "format"
+    - "typecheck"
+    - "test"
+    - "build"
+    - "ci-gate"
+  quality_gates:
+    - "ruff check ."
+    - "ruff format --check ."
+    - "pyright src/"
+    - "pytest"
+  required_check_name: "ci gate"
+  linux_only: true
+  path_filter_mode: "fail_closed_changes_job"
+  docs_only_paths:
+    - "docs/**"
+    - ".backlogit/**"
+    - ".autoharness/**"
+  autoharness_install_command: "pip install autoharness"
+
+local_gating:
+  pre_push_enabled: true
+  pre_push_gates:
+    - "lint"
+    - "format"
+    - "typecheck"
+    - "test"
+    - "build"
 
 structure:
   source_layout: "src"
@@ -60,15 +95,55 @@ runtime_validation:
       - surface: "cli"
         adapter_hint: "command"
         probe_hints:
-          - "docline --help"
-          - "docline --manifest"
+          - id: "cli-help"
+            kind: "command"
+            target: "docline"
+            command: "docline --help"
+            url: null
+            route: null
+            expected_signal: "usage banner and non-error exit"
+            required: true
+            evidence_types:
+              - "stdout"
+              - "exit-code"
+            notes: "Smoke check that the console script entry point resolves."
+          - id: "cli-manifest"
+            kind: "command"
+            target: "docline"
+            command: "docline --manifest"
+            url: null
+            route: null
+            expected_signal: "JSON Schema tool definition on stdout"
+            required: true
+            evidence_types:
+              - "stdout"
+              - "exit-code"
+            notes: "Must stay schema-identical to the MCP tools/list surface (CLI/MCP parity)."
         manual_checkpoints: []
       - surface: "api"
         adapter_hint: "auto"
         probe_hints:
-          - "MCP tools/list response"
+          - id: "mcp-tools-list"
+            kind: "command"
+            target: "docline-mcp"
+            command: "docline-mcp"
+            url: null
+            route: null
+            expected_signal: "tools/list response enumerating registered tools"
+            required: true
+            evidence_types:
+              - "stdout"
+              - "response-body"
+            notes: "stdio transport; compare against CLI --manifest output."
         manual_checkpoints:
-          - "Verify MCP server responds to initialize handshake"
+          - id: "mcp-initialize-handshake"
+            label: "MCP initialize handshake"
+            reason: "stdio MCP handshake is not reliably automatable in this environment."
+            required_for_release: true
+            evidence_types:
+              - "operator-note"
+            notes: "Confirm the server responds to initialize before declaring release readiness."
+            fallback: "Capture the raw stdio transcript as an operator note."
   validation_expectations:
     required: true
     surfaces_expected:
@@ -84,8 +159,18 @@ runtime_validation:
     required: true
     status_when_satisfied: "READY"
     required_evidence:
-      - "CLI smoke test passes"
-      - "MCP initialize handshake succeeds"
+      - kind: "healthy-signal"
+        required: true
+        description: "CLI smoke test passes (docline --help and docline --manifest)."
+      - kind: "healthy-signal"
+        required: true
+        description: "MCP initialize handshake succeeds."
+      - kind: "owner"
+        required: true
+        description: "Named owner accountable for the released change."
+      - kind: "follow-up"
+        required: false
+        description: "Residual P2/P3 review findings captured as backlog items."
 
 conventions:
   code_style:
@@ -105,72 +190,104 @@ conventions:
     design_docs: "docs/design-docs"
     product_specs: "docs/product-specs"
 
-distribution: null
-
 tools:
   markdownlint: true
-  markdownlint_config: null
+  markdownlint_config: ".markdownlint.json"
 
 harness_recommendations:
   preset: "full"
-  primary_stack_pack: "mcp-server"
-  stack_packs:
-    - "cli-tool"
-    - "mcp-server"
   capability_packs:
     - "agent-engram"
     - "backlogit"
     - "strict-safety"
+    - "graphtor-docs"
+    - "adversarial-review"
   install_layers:
-    - "constitution"
-    - "agents-md"
+    - "foundation"
     - "instructions"
-    - "agents"
-    - "skills"
-    - "policies"
-    - "prompts"
+    - "workflow"
+    - "review"
+    - "runtime"
     - "backlog"
-    - "docs"
+    - "knowledge"
+    - "overlays"
   recommendation_reasons:
     preset:
-      - "Greenfield project with MCP server + CLI dual interface requires comprehensive agent support"
-      - "Complex document ingestion pipeline with multiple extraction engines benefits from full deliberation and review workflows"
-      - "Engram and backlogit already configured — full preset maximizes integration"
+      - "Dual-interface product (CLI + MCP server) requires the full agent, review, runtime, and closure surface."
+      - "Document ingestion pipeline with multiple extraction engines benefits from deliberation and multi-persona review."
+      - "Engram, backlogit, and graphtor-docs are already provisioned in the workspace, so the full preset maximizes integration."
     capability_packs:
-      - "agent-engram: Engram MCP server detected in .mcp.json, .vscode/mcp.json, and .cursor/mcp.json with .engram/ state directory present"
-      - "backlogit: backlogit MCP server configured and .backlogit/ directory with full config present"
-      - "agent-intercom: Recommended for remote operator approval during long-running pipeline operations"
-      - "strict-safety: MCP server exposes public API surface; schema validation is security-sensitive"
+      - item: "agent-engram"
+        because: "Engram MCP server is configured and .engram/ state is present, so indexed search should be the default retrieval path."
+        signals:
+          - ".mcp.json declares the engram stdio server"
+          - ".engram/ state directory present at workspace root"
+          - "copilot-instructions.md contains engram:start / engram:end markers"
+      - item: "backlogit"
+        because: "backlogit is the workspace backlog tool with MCP and CLI both available, enabling queue, dependency, checkpoint, and traceability workflows."
+        signals:
+          - ".mcp.json declares the backlogit stdio server"
+          - ".backlogit/ directory with config.yaml present"
+          - "backlogit CLI available on PATH"
+      - item: "strict-safety"
+        because: "The MCP server exposes a public tool surface to external agents and schema validation is trust-sensitive."
+        signals:
+          - "runtime_surfaces.public_api is true"
+          - "Malformed normalized output could poison downstream RAG and graph consumers"
+      - item: "graphtor-docs"
+        because: "graphtor-docs is installed in the workspace with an indexed source configuration, so documentation retrieval should route through the index."
+        signals:
+          - ".graphtor/ directory present at workspace root"
+          - ".graphtor/config/sources.yaml declares indexed sources"
+          - ".graphtor/bin/graphtor-docs.exe binary present"
+      - item: "adversarial-review"
+        because: "Multi-model consensus review is already in use in this workspace and suits a schema-and-parity-sensitive pipeline."
+        signals:
+          - "adversarial-review agent already installed under .github/agents/"
+          - "CLI/MCP parity invariants benefit from confidence-weighted consensus findings"
     install_layers:
-      - "All layers recommended for full preset with dual-interface product"
+      - item: "foundation"
+        because: "Constitution, AGENTS.md, and shared instructions anchor every other artifact."
+      - item: "instructions"
+        because: "Python, commit, markdown, CI, and MCP-server conventions all need scoped instruction files."
+      - item: "workflow"
+        because: "Stage/Ship/Orchestrator pipeline plus core skills drive the release-unit lifecycle."
+      - item: "review"
+        because: "Dual-interface parity and schema sensitivity require multi-persona code and plan review."
+      - item: "runtime"
+        because: "CLI and MCP runtime surfaces need runtime verification and operational closure before release."
+      - item: "backlog"
+        because: "backlogit is the authoritative work-item store and needs a registry plus integration guidance."
+      - item: "knowledge"
+        because: "docs/ already hosts compound learnings, plans, decisions, memory, and closure records."
+      - item: "overlays"
+        because: "Five capability packs are enabled and must be woven across foundation, agents, and skills."
 
 agent_intercom:
   detected: false
-  mcp_configured: false
   config_paths: []
   instruction_markers: []
-  recommended: true
+  recommended: false
 
 agent_engram:
   detected: true
   mcp_configured: true
   config_paths:
     - ".mcp.json"
-    - ".vscode/mcp.json"
-    - ".cursor/mcp.json"
   instruction_markers:
     - "<!-- engram:start -->"
     - "<!-- engram:end -->"
   recommended: true
 
 graphtor_docs:
-  detected: false
+  detected: true
   mcp_configured: false
   config_paths: []
-  sources_path: ""
-  binary_path: ""
+  sources_path: ".graphtor/config/sources.yaml"
+  binary_path: ".graphtor/bin/graphtor-docs.exe"
+  embed_model_dir: null
   instruction_markers: []
-  recommended: false
+  recommended: true
 
 agent_native:
   detected: true
@@ -183,12 +300,22 @@ agent_native:
   user_agent_parity_required: true
   recommended_reviewer: true
 
+copilot_review:
+  enforcement: "auto"
+  max_wait_seconds: 0
+
 existing_harness:
   has_harness: true
   artifacts:
     - path: ".github/copilot-instructions.md"
       type: "instruction"
-      description: "Engram integration instructions only"
+      description: "Shared development guidelines with engram overlay block"
+    - path: ".github/agents/"
+      type: "agent-directory"
+      description: "Pipeline, support, expert, and review-persona agents"
+    - path: ".github/skills/"
+      type: "skill-directory"
+      description: "Workflow skills installed by the previous harness version"
     - path: "start.ps1"
       type: "startup-script"
       description: "Autoharness-generated agent CLI startup script"
@@ -204,7 +331,7 @@ backlog_tool:
   mcp_registered: true
   cli_available: true
   config_path: ".backlogit/config.yaml"
-  registry_path: null
+  registry_path: ".autoharness/backlog-registry.yaml"
   status_values:
     - "queued"
     - "active"
@@ -219,11 +346,30 @@ backlog_tool:
     milestones: false
     documents: false
     telemetry: true
+    memory: true
+    checkpoints: true
+    comments: true
+    dependencies: true
+    queue: true
+    commit_tracking: true
+    shipments: true
+    stash: true
+    semantic_links: true
+    deliberation: true
+    discovery: true
+    lifecycle_hygiene: true
+    sizing: true
 
 vscode:
   detected: true
   user_settings_path: "<local-vscode-user-settings-path>"
   has_agent_settings: false
+
+ai_environments:
+  detected:
+    - "vscode"
+    - "copilot-cli"
+  register_default: "copilot-cli"
 
 strict_safety_signals:
   - "MCP server exposes public API surface to external agent consumers"

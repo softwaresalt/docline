@@ -81,11 +81,11 @@ When the `agent-intercom` capability pack is installed, agents MUST also follow
 `.github/instructions/agent-intercom.instructions.md` and the corresponding
 `Capability Overlay` section in `.github/instructions/constitution.instructions.md`:
 
-* send heartbeat / ping at session start and keep visibility alive during long-running work
-* broadcast major phase transitions: queue selection, planning, implementation, review, verification, and closure
+* establish heartbeat / ping visibility at session start and during long-running work
+* broadcast milestone progress for planning, implementation, review, verification, and closure
 * route destructive operations through the configured intercom approval workflow
 * use transmit / standby flows when blocked on clarification or handoff
-* if intercom is unavailable, declare `INTERCOM_DEGRADED`, warn that operator visibility and approval routing are reduced, and continue only with safe non-destructive work
+* warn clearly when intercom is unavailable
 
 ### Capability Overlay — agent-engram
 
@@ -93,11 +93,11 @@ When the `agent-engram` capability pack is installed, agents MUST also follow
 `.github/instructions/agent-engram.instructions.md` and the corresponding
 `Capability Overlay` section in `.github/instructions/constitution.instructions.md`:
 
-* verify the engram daemon and workspace binding state at session start before relying on indexed results
-* use `unified_search` during pre-planning and context discovery before broad file reads
+* prefer engram MCP tools for context-related search before grep, glob, or broad file reading
+* verify the daemon / workspace binding state before relying on indexed results
 * use symbol lookup, call-graph, and impact-analysis operations for blast-radius questions
 * refresh the index when results are stale after out-of-band edits
-* if engram is unavailable, declare `ENGRAM_DEGRADED` and fall back to targeted `grep`, `glob`, and `view` usage only as needed
+* fall back to file-based search only when indexed results are unavailable or insufficient
 
 ### Capability Overlay — backlogit
 
@@ -105,12 +105,50 @@ When the `backlogit` capability pack is installed, agents MUST also follow
 `.github/instructions/backlogit.instructions.md` and the corresponding
 `Capability Overlay` section in `.github/instructions/constitution.instructions.md`:
 
-* select work from the backlogit queue first instead of inventing ad hoc task order
-* use dependency-aware backlogit operations when sequencing work across fetch, process, schema, CLI, and MCP concerns
-* refresh the live backlogit workflow surface with `backlogit_get_metadata_catalog` before creating or mutating artifacts
+* prefer registry-backed backlogit operations over ad hoc markdown scanning
+* refresh the live backlogit workflow surface with `backlogit_get_metadata_catalog` before creating items, harvesting work, or whenever config or templates may have changed
+* use `backlogit_export_command_map` when a cached command reference is needed in the workspace
+* use `backlogit_list_types`, `backlogit_list_templates`, and `backlogit_get_wit_metadata` for type-specific field, section, and hierarchy details before mutating artifacts
+* use queue-aware and dependency-aware operations when selecting or sequencing work
 * persist session continuity through backlogit memory / checkpoint operations
 * record meaningful comments and commit associations for traceability
 * refresh the backlog index after out-of-band edits before trusting query results
+
+### Capability Overlay — graphtor-docs
+
+When the `graphtor-docs` capability pack is installed, agents MUST also follow
+`.github/instructions/graphtor-docs.instructions.md` and the corresponding
+`Capability Overlay` section in `.github/instructions/constitution.instructions.md`:
+
+* prefer graphtor-docs indexed retrieval (`search_local_docs`, `search_semantic`, `research_topic`) for conceptual, API-oriented, or documentation questions before broad web search or raw file scanning
+* verify server reachability and index freshness with `get_status` / `list_sources` before relying on results
+* use `traverse_doc_links` to follow related documentation and `get_document` / `get_chunk_by_id` for specific content
+* fall back to grep, glob, or direct file reading only when the server is unavailable, sources are not indexed, or the query is literal-text oriented
+* treat `.graphtor/` artifacts as tool-managed state rather than files to hand-edit
+
+### Capability Overlay — browser-verification
+
+When the `browser-verification` capability pack is installed, agents MUST also follow
+`.github/instructions/browser-verification.instructions.md` and treat browser-backed runtime
+verification as a disciplined workflow rather than an ad hoc manual check:
+
+* verify server availability and target environment before opening a browser
+* choose headed vs headless mode intentionally based on the verification goal
+* select routes from changed surfaces and adjacent critical paths rather than convenience
+* use explicit human checkpoints for OAuth, payment, email, SMS, CAPTCHA, or other external flows
+* feed browser findings into runtime verification and operational closure artifacts
+
+### Capability Overlay — continuous-learning
+
+When the `continuous-learning` capability pack is installed, agents MUST also follow
+`.github/instructions/continuous-learning.instructions.md` and treat recurring observed
+practice as a first-class input to harness evolution:
+
+* capture normalized observations under `.autoharness/continuous-learning/`
+* keep hook capture environment-specific and optional rather than assuming one IDE workflow
+* use `observe`, `learn`, and `evolve` to cluster recurring practice into instincts and learned artifacts
+* promote learned rules only when multiple corroborating observations justify them
+* treat learned artifacts as reviewable harness outputs, not invisible prompt drift
 
 ### Capability Overlay — strict-safety
 
@@ -124,13 +162,30 @@ explicit review surface:
 * require explicit approval for destructive actions and prefer approval for high-blast-radius actions
 * carry risky action records into verification and closure when rollout safety depends on them
 
-## Session Start Protocol
+### Capability Overlay — release-observability
 
-1. Ping intercom to establish heartbeat visibility; if it fails, declare `INTERCOM_DEGRADED`.
-2. Verify engram workspace binding before discovery; use `unified_search` for pre-planning; if binding or search is unavailable, declare `ENGRAM_DEGRADED`.
-3. Pull the backlogit queue before planning and honor dependency edges when selecting work.
-4. Classify any risky or destructive step as a `ProposedAction` with `ActionRisk` before execution.
-5. Broadcast phase transitions so remote operators can follow the session lifecycle.
+When the `release-observability` capability pack is installed, agents MUST also follow
+`.github/instructions/release-observability.instructions.md` and treat monitoring,
+alerting, and rollback expectations as required outputs rather than optional extras:
+
+* produce a monitoring plan before merge for every runtime-affecting release unit
+* complete a pre-deploy audit checklist for changes with runtime, migration, or rollout risk
+* define an explicit post-deploy observation window with owner and duration
+* declare at least one rollback trigger with named metric and threshold
+* carry release-observability artifacts into operational closure
+
+### Capability Overlay — adversarial-review
+
+When the `adversarial-review` capability pack is installed, agents MUST also follow
+`.github/instructions/adversarial-review.instructions.md` and treat multi-model
+consensus review as a higher-confidence gate for security-sensitive or
+compliance-critical work:
+
+* escalate from standard review when 3+ P0/P1 findings are surfaced or the work is security-sensitive
+* dispatch parallel reviewer instances across different model tiers
+* assemble consensus-weighted findings: HIGH (all agree), MEDIUM (majority), LOW (single reviewer)
+* treat HIGH-confidence P0/P1 findings as gate-blocking just like standard review findings
+* feed remediation queue entries into backlog for structured follow-up
 
 ### Capability Overlay Interaction Rules
 
@@ -140,7 +195,8 @@ precedence rules to resolve conflicts:
 | Combination | Resolution |
 |---|---|
 | agent-intercom + backlogit | Query backlogit first for task state; format the result using intercom broadcast rules for remote operator choice |
-| agent-engram + any other overlay | Engram is a discovery method; other overlays are independent. Use engram for search, other overlays for their domain |
+| agent-engram + any non-retrieval overlay | Engram is a discovery method; non-retrieval overlays are independent. Use engram for code/symbol/graph search, other overlays for their domain |
+| agent-engram + graphtor-docs | Both are indexed retrieval overlays; prefer engram for code/symbol/graph discovery and graphtor-docs for documentation and API concept lookup |
 | strict-safety + any overlay | Classify risky actions via strict-safety first; then route approval through the appropriate overlay (intercom if available, else local) |
 | strict-safety + concurrency | Log lock conflicts as `ActionResult: blocked` when strict-safety is enabled |
 | backlogit + strict-safety | Persist strict-safety decisions via backlogit checkpoints when checkpoint operations are supported |
@@ -210,10 +266,22 @@ Google-style docstrings on all public functions and classes
 1. **Harness before code**: Every feature or chore MUST have a compiling but failing
    test harness before implementation begins.
 2. **Backlog-driven planning**: All task tracking uses the configured backlog workspace and registry-backed operations; do not invent parallel task stores.
-3. **Branch per release unit**: Each feature or chore on a dedicated branch.
-4. **Commit discipline**: Conventional commits format (`feat:`, `fix:`, `docs:`, `test:`).
-5. **No dead code**: Placeholder modules replaced or removed before completion.
-6. **Closure before forgetfulness**: Runtime verification and operational closure happen before work is considered fully absorbed.
+3. **Single active implementation branch/worktree**: Each feature or chore uses
+   one dedicated implementation branch in one active worktree. Do not split
+   implementation, backlog execution, PR preparation, or closure across parallel
+   branches/worktrees. Only explicit Stage-owned spike/research worktrees are
+   exempt, and they cannot perform implementation, template/source/config
+   mutation, shipment claim, PR preparation, or Ship execution.
+4. **Dark factory mode (P-017)**: Activate only through the exact trigger
+   `Run pipeline in dark mode`, `Run pipeline in dark factory mode`, or the
+   `/feature-flow-dark` prompt shim. Dark mode must record `DARK_MODE_ACTIVE`,
+   stay bounded to the declared scope, preserve P-001 / P-009 / P-014 / P-016,
+   keep local review readiness authoritative, emit required visibility events,
+   and complete post-merge closure (including required post-merge context
+   compaction under P-020) before the scope is considered complete.
+5. **Commit discipline**: Conventional commits format (`feat:`, `fix:`, `docs:`, `test:`).
+6. **No dead code**: Placeholder modules replaced or removed before completion.
+7. **Closure before forgetfulness**: Runtime verification and operational closure happen before work is considered fully absorbed. Required post-merge context compaction (**P-020**) is a mandatory closure gate — Ship invokes the compact-context skill at every post-merge closure.
 
 ### Task Granularity (NON-NEGOTIABLE)
 
@@ -294,8 +362,8 @@ The table below is maintained as agents are superseded:
 | `doc-ops` | `ship` post-merge closure protocol | Ship handles knowledge graduation and doc gardening after merge |
 | `memory` | Stage and Ship session continuity protocols | Session persistence is inline in both primary agents |
 | `pr-review` | `ship` + `pr-lifecycle` skill | Ship manages the full PR lifecycle including review delegation |
-| `review` (agent) | `review` skill | Converted from agent to skill; dispatches persona subagents from `.github/agents/review/` |
-| `plan-review` (agent) | `plan-review` skill | Converted from agent to skill; dispatches persona subagents from `.github/agents/review/` |
+| `review` (agent) | `review` skill | Converted from agent to skill; dispatches persona subagents from `.github/agents/subagents/` |
+| `plan-review` (agent) | `plan-review` skill | Converted from agent to skill; dispatches persona subagents from `.github/agents/subagents/` |
 | `harness-architect` (agent) | `harness-architect` skill | Converted from agent to skill; invoked by ship agent |
 
 ---

@@ -3,12 +3,10 @@ name: Scope Boundary Auditor
 description: "Reviews changes for scope creep, YAGNI violations, unnecessary complexity, and verification criteria gaps"
 maturity: stable
 tools: read, search
-model_routing: "Tier 1 (Fast/Cheap)"  # DEPRECATED — use model_tier
-model_tier: 1
 max_subagent_tier: 1
-reasoning_effort: "low"
-model_provider: "openai"
-model_family: "gpt-5.4-mini"
+reasoning_effort: ""
+model_provider: "anthropic"
+model_family: "claude-haiku-4.5"
 subagent_depth: 0
 ---
 
@@ -32,8 +30,8 @@ Return a JSON array of findings:
 ```json
 [
   {
-    "file": "path/to/file.py",
-    "line": 42,
+    "file": "{{file_path}}",
+    "line": {{line_number}},
     "severity": "P0|P1|P2|P3",
     "autofix_class": "safe_auto|gated_auto|manual|advisory",
     "category": "scope",

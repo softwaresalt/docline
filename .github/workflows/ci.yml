@@ -73,7 +73,7 @@ jobs:
           while IFS= read -r f; do
             [ -z "$f" ] && continue
             case "$f" in
-              .backlogit/*|docs/*|.autoharness/*|*.md) : ;;  # doc/backlog only
+              .backlogit/*|docs/*|.autoharness/*) : ;;      # doc/backlog state only
               *) code=true ;;                                # any other path is code
             esac
           done < <(printf '%s\n' "$files")
@@ -208,6 +208,47 @@ jobs:
       - name: Build sdist and wheel
         run: uv run python -m build
 
+  # Pipeline-topology CI backstop (Gate C): server-side re-validation of the
+  # P-001 (at-most-one-active-shipment) and P-016 (single implementation
+  # worktree/branch) invariants. Local hooks are always skippable via
+  # `git ... --no-verify`, and Git has no pre-worktree-add hook at all — CI
+  # closes that gap once a checkout syncs.
+  #
+  # THREAT MODEL / LIMITS: this job is NOT a non-bypassable backstop against a
+  # malicious PR. GitHub's `pull_request` trigger loads this workflow file from
+  # the proposed PR head, so the same PR that violates topology invariants can
+  # also edit this job or ci-gate's aggregation. What it DOES provide: a catch
+  # for accidental local bypasses, and an ambient signal on every push/PR.
+  #
+  # Always runs — unlike the guarded jobs above, this is NOT gated on the
+  # `changes` path filter: the check is inexpensive, and skipping it for
+  # docs/backlog-only changes would leave exactly the commits most likely to
+  # touch `.backlogit/` state unchecked.
+  #
+  # REQUIRED-VS-ADVISORY is an operator toggle via the
+  # `PIPELINE_TOPOLOGY_GATE_REQUIRED` repository variable: unset (default)
+  # means advisory — `continue-on-error: true` keeps the reported result
+  # `success` for dependents even when the gate reports BLOCK. Setting the
+  # variable to `'true'` makes a BLOCK verdict fail this job (and therefore
+  # `ci gate`) for real, with no workflow re-render needed.
+  topology-check:
+    name: pipeline-topology (ambient)
+    runs-on: ubuntu-latest
+    continue-on-error: ${{ vars.PIPELINE_TOPOLOGY_GATE_REQUIRED != 'true' }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10  # v6.0.3
+        with:
+          persist-credentials: false
+      - name: Set up Python 3.12
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405  # v6.2.0
+        with:
+          python-version: "3.12"
+      - name: Install autoharness
+        run: pip install autoharness
+      - name: Run CI topology-check entrypoint
+        run: bash scripts/ci-topology-check.sh
+
   # Always-reporting aggregate gate. Require THIS job in branch protection
   # instead of the title-guarded test/build: when test/build are skipped for a
   # chore:/docs: PR, GitHub reports them "skipped" — which a required check
@@ -216,12 +257,12 @@ jobs:
   ci-gate:
     name: ci gate
     if: always()
-    needs: [changes, lint, format, typecheck, test, build]
+    needs: [changes, lint, format, typecheck, test, build, topology-check]
     runs-on: ubuntu-latest
     steps:
       - name: Verify no required job failed
         run: |
-          results="${{ needs.changes.result }} ${{ needs.lint.result }} ${{ needs.format.result }} ${{ needs.typecheck.result }} ${{ needs.test.result }} ${{ needs.build.result }}"
+          results="${{ needs.changes.result }} ${{ needs.lint.result }} ${{ needs.format.result }} ${{ needs.typecheck.result }} ${{ needs.test.result }} ${{ needs.build.result }} ${{ needs['topology-check'].result }}"
           echo "job results: $results"
           for r in $results; do
             if [ "$r" = "failure" ] || [ "$r" = "cancelled" ]; then

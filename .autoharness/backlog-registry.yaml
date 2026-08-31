@@ -434,3 +434,4 @@ features:
   deliberation: true
   discovery: true
   lifecycle_hygiene: true
+  sizing: true
