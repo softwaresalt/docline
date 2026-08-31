@@ -1,5 +1,6 @@
 ---
 description: "Required instructions for creating all commit messages"
+applyTo: '**'
 ---
 
 # Commit Message Guidelines

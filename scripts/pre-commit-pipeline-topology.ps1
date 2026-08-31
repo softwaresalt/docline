@@ -14,7 +14,9 @@
 # when one exists). No resolvable claimed shipment / zero active shipments ->
 # PASSES (existence-guarded, non-blocking for ordinary commits with no
 # claimed shipment); a mismatched single active or two-or-more-active
-# shipments still blocks fail-closed regardless of the advisory toggle below.
+# shipments makes the gate report a failure -- but see the advisory-first note
+# below: that failure is only turned into a hard block when
+# AUTOHARNESS_TOPOLOGY_GATE_BLOCKING=true.
 #
 # Behavior:
 #   * Absent 'autoharness' -> warn+skip, never a hard failure.

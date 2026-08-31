@@ -133,7 +133,11 @@ fi
 # always passed before the operator's own argv (e.g. ["--remote"]).
 copilot_arguments=()
 
-exec "$copilot_exe" "${copilot_arguments[@]:-}" "$@"
+# Expand with the ${arr[@]+"${arr[@]}"} idiom rather than "${arr[@]:-}": the
+# latter yields one empty-string argument when the array is empty, which would
+# pass a spurious blank argument to the CLI on every launch. This form is also
+# safe under `set -u` on bash 3.2 (macOS).
+exec "$copilot_exe" ${copilot_arguments[@]+"${copilot_arguments[@]}"} "$@"
 
 # ── Claude Code ─────────────────────────────────────────────────────────────
 # Uncomment to run Claude Code with workspace-local state directories.

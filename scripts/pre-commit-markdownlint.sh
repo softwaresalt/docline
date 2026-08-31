@@ -9,8 +9,18 @@
 
 set -uo pipefail
 
-# Run from repo root so repo-root-relative paths from git are valid
-cd "$(git rev-parse --show-toplevel)"
+# Run from repo root so repo-root-relative paths from git are valid.
+# Resolve fail-closed: without `set -e`, a failing `git rev-parse` would
+# otherwise leave the hook running in an unknown directory, produce an empty
+# file list, and exit 0 without linting anything — a silent pass.
+REPO_ROOT="$(git rev-parse --show-toplevel)" || {
+  echo "ERROR: not inside a git repository — refusing to run markdownlint hook." >&2
+  exit 1
+}
+if [ -z "$REPO_ROOT" ] || ! cd "$REPO_ROOT"; then
+  echo "ERROR: could not change to repository root '$REPO_ROOT'." >&2
+  exit 1
+fi
 
 # Collect staged .md files using NUL delimiters (handles spaces in paths)
 STAGED_MD_FILES=()

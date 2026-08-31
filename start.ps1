@@ -98,6 +98,15 @@ if (-not $copilotExe) {
     exit 1
 }
 
+# Resolving a non-empty string is not the same as resolving a runnable command:
+# an invalid COPILOT_EXE_PATH would otherwise reach the call operator, fail as a
+# non-terminating error, and let the script exit with a stale $LASTEXITCODE
+# instead of reporting the startup failure.
+if (-not (Get-Command $copilotExe -ErrorAction SilentlyContinue)) {
+    Write-Error "Copilot CLI '$copilotExe' is not a runnable command. Check COPILOT_EXE_PATH / COPILOT_EXE or your PATH."
+    exit 1
+}
+
 # Sidecar syncs -- derived at install time from the capability packs enabled
 # for this workspace (backlogit/agent-engram/graphtor-docs).
 $enabledSidecars = @('engram', 'backlogit', 'graphtor-docs')

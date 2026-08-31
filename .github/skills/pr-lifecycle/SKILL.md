@@ -14,6 +14,15 @@ input:
     - branch
 ---
 
+<!--
+  markdownlint MD025 exception: this skill's frontmatter declares a nested
+  `title:` property inside `input.properties` (the PR title argument). MD025's
+  default `front_matter_title` regex (`^\s*title\s*[:=]`) matches that indented
+  schema key and mistakes it for a document title, making the single real H1
+  below look like a duplicate. Scoped here rather than disabling
+  `front_matter_title` globally, which would weaken MD025 across the repo.
+-->
+<!-- markdownlint-disable-next-line MD025 -->
 # PR Lifecycle Skill
 
 Manage the branch-to-merged workflow for a feature or chore branch. This

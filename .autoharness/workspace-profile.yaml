@@ -52,6 +52,7 @@ ci:
     - "typecheck"
     - "test"
     - "build"
+    - "topology-check"
     - "ci-gate"
   quality_gates:
     - "ruff check ."
@@ -65,7 +66,10 @@ ci:
     - "docs/**"
     - ".backlogit/**"
     - ".autoharness/**"
-  autoharness_install_command: "pip install autoharness"
+  # Pinned to match the topology-check job in .github/workflows/ci.yml. A
+  # floating install would let a later release disagree with CI on the same
+  # commit, defeating the determinism the pinned gate exists to provide.
+  autoharness_install_command: "pip install autoharness==1.5.0"
 
 local_gating:
   pre_push_enabled: true

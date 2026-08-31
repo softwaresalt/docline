@@ -95,8 +95,9 @@ run_gate "Build" "pip" "python -m py_compile src/docline/__init__.py"
 # runs `--phase ambient` here (at-most-one-active, validating the
 # resolved target when one exists). No resolvable claimed shipment / zero
 # active shipments -> PASSES (existence-guarded, non-blocking); a
-# mismatched single active or two-or-more-active shipments still blocks
-# fail-closed regardless of the advisory toggle below.
+# mismatched single active or two-or-more-active shipments makes the gate
+# report a failure -- but see the advisory-first note below: that failure is
+# only turned into a hard block when AUTOHARNESS_TOPOLOGY_GATE_BLOCKING=true.
 #
 # Advisory-first by default (staged rollout): a gate failure warns but
 # does NOT block the push unless AUTOHARNESS_TOPOLOGY_GATE_BLOCKING=true
