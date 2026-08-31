@@ -232,6 +232,8 @@ __marimo__/
 .backlogit/telemetry*.jsonl
 .backlogit/hooks_queue.jsonl
 .backlogit/logs/
+.backlogit/checkpoints/
+.backlogit/runtime/
 
 # local agent/editor state
 .copilot/
