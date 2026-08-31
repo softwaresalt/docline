@@ -42,8 +42,22 @@
 $ErrorActionPreference = 'Continue'
 
 # Run from repo root so repo-root-relative gate invocation is valid.
+# Fail closed: with $ErrorActionPreference = 'Continue', neither a failed
+# native `git` call nor a failed Set-Location is terminating, so an
+# unguarded version would keep running in the caller's directory and
+# evaluate the topology gate against the wrong workspace. Mirrors the
+# fail-closed root discovery in the .sh hooks.
 $RepoRoot = & git rev-parse --show-toplevel
-Set-Location $RepoRoot
+if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($RepoRoot)) {
+  Write-Error "not inside a git repository - refusing to run pipeline-topology hook."
+  exit 1
+}
+try {
+  Set-Location -LiteralPath $RepoRoot -ErrorAction Stop
+} catch {
+  Write-Error "failed to change to repo root '$RepoRoot' - refusing to run pipeline-topology hook."
+  exit 1
+}
 
 if (-not (Get-Command autoharness -ErrorAction SilentlyContinue)) {
     Write-Warning "'autoharness' not found — skipping pipeline-topology gate."

@@ -37,8 +37,22 @@
 $ErrorActionPreference = 'Continue'
 
 # Run from repo root so repo-root-relative gate commands are valid.
+# Fail closed: with $ErrorActionPreference = 'Continue', neither a failed
+# native `git` call nor a failed Set-Location is terminating, so an
+# unguarded version would keep running in the caller's directory and
+# report a misleading quality-gate result for an unrelated tree. Mirrors
+# the fail-closed root discovery in the .sh hooks.
 $RepoRoot = & git rev-parse --show-toplevel
-Set-Location $RepoRoot
+if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($RepoRoot)) {
+  Write-Error "not inside a git repository - refusing to run quality gates."
+  exit 1
+}
+try {
+  Set-Location -LiteralPath $RepoRoot -ErrorAction Stop
+} catch {
+  Write-Error "failed to change to repo root '$RepoRoot' - refusing to run quality gates."
+  exit 1
+}
 
 $script:Failed = $false
 
