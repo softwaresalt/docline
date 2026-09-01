@@ -13,8 +13,19 @@ This skill is a **mandatory workflow step** invoked explicitly by the stage or s
 Invoke as part of the standard workflow:
 
 * **Stage or Ship agent**: When checkpoint count for a feature or chore exceeds 10 (mandatory trigger)
-* **Ship agent**: At batch completion (Step 5), after writing the session memory summary
+* **Ship agent**: At every post-merge closure (mandatory per-merge trigger — **P-020**), after writing the session memory summary
 * **Manual**: When `docs/memory/` file count > 40, total size > 500 KB, or the operator requests it
+
+> **Invocation is mandatory; candidate selection is threshold-gated.** P-020 mandates
+> that Ship **invokes** this skill at every post-merge closure. It does not mandate
+> heavy compaction: the **candidate selection** below stays threshold-gated
+> (`threshold_days`, `max_files`, `max_size_kb`; active checkpoints are never
+> compacted). One candidate is intended per merge — the just-closed release unit's
+> memory qualifies under the completed-work rule (Phase 2, "completed feature or
+> chore") — so the guaranteed call performs a **bounded, cheap Tier-1 consolidation**
+> of that fresh memory (the intended post-merge floor), degrading to a scan-only
+> no-op only when no completed-work memory exists and nothing else exceeds the
+> thresholds.
 
 ## Inputs
 
@@ -93,11 +104,11 @@ Mark artifacts as compaction candidates if:
 
 Summarize:
 
-* Files compacted: 12
-* Space recovered: 180 KB
-* Active task checkpoints preserved: 12
-* Plans consolidated into decided-plans: 12
-* Closure records compacted: 12
+* Files compacted: {{count}}
+* Space recovered: {{size_reduction}}
+* Active task checkpoints preserved: {{count}}
+* Plans consolidated into decided-plans: {{count}}
+* Closure records compacted: {{count}}
 
 > **Intercom**: When the `agent-intercom` capability pack is installed, broadcast `[COMPACT] Compacted {count} files, recovered {size_reduction}` after the summary is produced.
 

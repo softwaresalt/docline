@@ -105,10 +105,8 @@ translate policy into an operating posture that both the agent and the operator 
 
 When the workspace enables the `agent-intercom` capability pack, agents MUST use the configured
 intercom workflow for heartbeat, milestone broadcasting, destructive-operation approval routing,
-and operator steering waits. Heartbeat / ping is required at session start and broadcasts are
-required at phase transitions. If the intercom path becomes unavailable, agents MUST declare
-`INTERCOM_DEGRADED`, warn that remote visibility is degraded, and MUST NOT silently bypass
-approval steps that depend on it.
+and operator steering waits. If the intercom path becomes unavailable, agents MUST warn that
+remote visibility is degraded and must not silently bypass approval steps that depend on it.
 
 **Rationale**: A remote operator cannot supervise or approve work they cannot see. When intercom
 is part of the harness, observability and approval routing become operational requirements rather
@@ -118,11 +116,10 @@ than optional niceties.
 
 When the workspace enables the `agent-engram` capability pack, agents MUST use the configured
 engram workflow for indexed search, workspace binding and status checks, code-graph traversal,
-and freshness verification. Agents MUST verify workspace binding at session start, MUST use
-`unified_search` during pre-planning before broad file scans, MUST refresh or verify stale index
-state before trusting query results, and MUST not hand-edit tool-managed `.engram/` artifacts as
-a substitute for lifecycle or sync operations. If the indexed path is unavailable, agents MUST
-declare `ENGRAM_DEGRADED` before falling back to targeted file-based search.
+and freshness verification. Agents MUST prefer engram MCP tools over file-based search for
+context-related discovery, MUST refresh or verify stale index state before trusting query results,
+and MUST not hand-edit tool-managed `.engram/` artifacts as a substitute for lifecycle or sync
+operations.
 
 **Rationale**: Engram exists to compress codebase understanding into a queryable local index.
 Ignoring that index and falling back immediately to raw file reading wastes context budget and
@@ -131,16 +128,29 @@ throws away the leverage the overlay was meant to provide.
 ### Capability Overlay — backlogit
 
 When the workspace enables the `backlogit` capability pack, agents MUST use the configured
-backlogit workflow for queue-first work selection, dependency management, token-efficient task
-lookup, continuity checkpoints, and task traceability. Agents MUST prefer backlogit query and
-queue operations over manual backlog scanning when those operations are available, MUST honor
-dependency-aware planning, MUST refresh the index after out-of-band edits before trusting query
-output, and MUST not bypass backlogit by creating parallel task state outside the configured
-backlog workspace. Commit traceability MUST be captured for meaningful code changes.
+backlogit workflow for queue selection, dependency management, token-efficient task lookup,
+continuity checkpoints, and task traceability. Agents MUST prefer backlogit query and queue
+operations over manual backlog scanning when those operations are available, MUST refresh the
+index after out-of-band edits before trusting query output, and MUST not bypass backlogit by
+creating parallel task state outside the configured backlog workspace.
 
 **Rationale**: backlogit exists to preserve agent context through targeted queries, explicit work
 ordering, and durable execution traces. Treating it as a thin file store would discard the very
 capabilities that justify enabling the overlay.
+
+### Capability Overlay — graphtor-docs
+
+When the workspace enables the `graphtor-docs` capability pack, agents MUST use the configured
+graphtor-docs workflow for indexed local documentation search, semantic retrieval, doc-link
+traversal, and source-index status checks. Agents MUST prefer graphtor-docs indexed retrieval over
+broad web search or raw filesystem scanning for conceptual, API-oriented, or documentation
+questions, MUST verify server reachability and index freshness before trusting results, and MUST
+not hand-edit tool-managed `.graphtor/` artifacts as a substitute for re-indexing or configuration
+updates.
+
+**Rationale**: graphtor-docs exists to resolve domain concepts and referenced APIs from an indexed
+local documentation corpus. Defaulting immediately to broad web search or raw file scanning wastes
+context budget and discards the retrieval leverage the overlay was meant to provide.
 
 ### IX. Git-Friendly Persistence
 
@@ -211,16 +221,22 @@ ruff format --check .
 1. **Harness before code**: Every feature or chore MUST have a compiling but failing
    test harness before implementation begins.
 2. **Backlog-driven planning**: All task tracking MUST use the backlog system.
-   Select work from the queue first, respect dependency edges, and persist checkpoints for
-   long-running sessions. Static markdown task lists outside `.backlogit/` are not permitted.
-3. **Branch per release unit**: Each feature or chore MUST be developed on a dedicated branch.
+   Static markdown task lists outside `.backlogit/` are not permitted.
+3. **Single active implementation branch/worktree**: Each feature or chore MUST be
+   developed on one dedicated implementation branch in one active worktree. Agents
+   MUST NOT split implementation, backlog execution, PR preparation, or closure
+   across parallel branches or worktrees. The only exception is an explicit
+   Stage-owned, time-boxed spike/research worktree used for staging investigation;
+   that worktree MUST NOT perform implementation, template/source/config mutation,
+   shipment claim, PR preparation, or Ship execution.
 4. **Commit discipline**: Each commit MUST be coherent and buildable. Commit
    messages follow conventional commits format (`feat:`, `fix:`, `docs:`, `test:`).
 5. **No dead code**: Placeholder modules MUST be replaced or removed before a
-   release unit is considered complete. The only acceptable unimplemented marker is
-   `raise NotImplementedError("...")` in intentionally staged scaffolding.
+   release unit is considered complete.
 6. **Operational closure**: Work is not complete at “green CI” if runtime validation,
-   monitoring setup, or release handoff remains unresolved.
+   monitoring setup, or release handoff remains unresolved. Required post-merge context
+   compaction (**P-020**) is part of the mandatory closure set: Ship MUST invoke the
+   compact-context skill at every post-merge closure.
 
 ### Task Granularity (NON-NEGOTIABLE)
 
@@ -285,7 +301,7 @@ with these principles.
 | II. Test-First Development | NON-NEGOTIABLE | P-002/P-004 policies; harness-architect red phase; build-feature green phase |
 | III. Workspace Isolation | MUST | Agent runtime path resolution within workspace root |
 | IV. CLI Containment | NON-NEGOTIABLE | Agent runtime cwd boundary enforcement |
-| V. Structured Observability | MUST | Broadcasting, commit messages, structured reporting |
+| V. Structured Observability | MUST | Broadcasting, commit messages, structured reporting; P-020 post-merge compaction closure gate |
 | VI. Single Responsibility | SHOULD | Code review persona checks on dependency additions |
 | VII. Destructive Approval | NON-NEGOTIABLE | P-005 violation telemetry; strict-safety enforcement when enabled |
 | VIII. Safety Modes | MUST | safety-modes skill invocation; strict-safety decision gate when enabled |
@@ -309,4 +325,4 @@ than proceeding.
   principle violated, the justification, and the simpler alternative that
   was rejected.
 
-**Version**: 1.0.0 | **Ratified**: 2026-05-30 | **Generated by**: autoharness
+**Version**: 1.0.0 | **Ratified**: 2026-08-31 | **Generated by**: autoharness

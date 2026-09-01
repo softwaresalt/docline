@@ -49,44 +49,68 @@ Create the learnings file with YAML frontmatter:
 
 ```yaml
 ---
-title: "Evaluate OCR fallback for scanned PDFs"
-description: "Assess safe, deterministic OCR-backed markdown extraction for scanned documents in docline."
-problem_type: "best-practices"
-category: "runtime-errors"
-component: "pdf-ingestion"
-root_cause: "Image-only PDFs bypass the normal text extraction assumptions used by the current pipeline."
+title: "{{TITLE}}"
+description: "{{ONE_LINE_DESCRIPTION}}"
+source: "docs/compound/{category}/{slug}-{YYYY-MM-DD}.md"
+doc_type: "learning"
+problem_type: "{{TYPE}}"
+category: "{{CATEGORY}}"
+component: "{{AFFECTED_COMPONENT}}"
+root_cause: "{{ROOT_CAUSE}}"
 resolution_type: "code_fix|config_change|dependency_update|workaround|design_change"
 severity: "critical|high|medium|low"
-message: "Generated markdown is empty for scanned PDFs with no embedded text layer"
-file_path: "src/docline/process/pdf.py"
+message: "{{ERROR_MESSAGE_PATTERN}}"
+file_path: "{{PRIMARY_FILE}}"
 citations:
-  - "docs/plans/2026-05-30-ocr-fallback-plan.md"
-  - "docs/closure/2026-05-30-ocr-fallback-closure.md"
+  - "{{SOURCE_ARTIFACT_1}}"
+  - "{{SOURCE_ARTIFACT_2}}"
 tags:
-  - "ocr"
-  - "pdf"
+  - "{{TAG_1}}"
+  - "{{TAG_2}}"
 ---
 
 ## Problem
 
-Scanned PDFs can currently yield empty or low-value markdown output, which blocks users from indexing or reviewing image-only documents through the same CLI and MCP workflows.
+{{PROBLEM_DESCRIPTION}}
 
 ## Root Cause
 
-The pipeline assumes an embedded text layer exists. When extraction returns no text, normalization still succeeds structurally but emits low-value output because there is no fallback conversion stage.
+{{ROOT_CAUSE_ANALYSIS}}
 
 ## Resolution
 
-Detect image-only PDFs early, route them through a bounded OCR fallback, reuse the existing normalization pipeline on OCR text, and surface explicit diagnostics when OCR is skipped or incomplete.
+{{RESOLUTION_STEPS}}
 
 ## Prevention
 
-Add regression fixtures for scanned PDFs, keep fallback selection centralized, and require parity tests for every new ingestion path exposed through both CLI and MCP interfaces.
+{{HOW_TO_AVOID_IN_FUTURE}}
 ```
+
+`source` is this document's own repo-relative path — the same path the
+"Output" section above already describes. It is never a description of where
+the *problem* came from; it is the location of the learnings file itself.
+
+`doc_type` is PATH-DERIVED, never a free-text choice. Resolve it in this
+order:
+
+1. If the workspace's installed backlog/documentation tooling exposes a
+   documentation-classification operation, that operation is authoritative
+   for the path.
+2. Otherwise, the workspace's configured documentation path map is
+   authoritative.
+3. If neither is configured, apply the directory convention: a document
+   authored by this skill lives in the compound/learnings directory and is
+   therefore `learning`.
+
+Rung 3 always resolves, so this skill's own output always has a concrete,
+unambiguous `doc_type` even in a workspace with no backlog tooling installed
+at all. Never invent the value and never copy it from a neighbouring
+document.
 
 ## Quality Criteria
 
 * Frontmatter fields are populated for searchability
+* `source` equals this document's own repo-relative path, and `doc_type` is present and non-empty (see Phase 3 above)
 * Problem description is specific enough to match similar future errors
 * Resolution is actionable (not "fixed the bug")
 * Prevention notes exist for root causes that could recur

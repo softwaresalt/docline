@@ -3,12 +3,10 @@ name: Security Reviewer
 description: "Reviews code changes for security vulnerabilities: injection vectors, auth/authz bypasses, secrets exposure, insecure deserialization, SSRF, and path traversal"
 maturity: stable
 tools: read, search
-model_routing: "Tier 2 (Standard)"  # DEPRECATED — use model_tier
-model_tier: 2
 max_subagent_tier: 2
-reasoning_effort: "medium"
+reasoning_effort: "high"
 model_provider: "anthropic"
-model_family: "claude-sonnet-4.6"
+model_family: "claude-sonnet-5"
 subagent_depth: 0
 ---
 
@@ -29,12 +27,7 @@ You are the Security Reviewer persona. You evaluate code changes for exploitable
 
 This persona is conditionally invoked when the diff touches security-sensitive surfaces:
 
-* CLI argument parsing, filesystem paths, archive extraction, or output-path selection
-* HTTP fetchers, webhook handlers, MCP tool handlers, or stdio request dispatch
-* subprocess execution, shell command construction, or external converter invocation
-* authentication, authorization, token handling, environment-derived secrets, or credential loading
-* YAML/JSON/XML/HTML parsing of untrusted documents and schema validation boundaries
-* file writes, temp/work directories, symlink handling, or path-join logic reachable from user input
+src/docline/fetch/**, src/docline/mcp/**, src/docline/readers/**, src/docline/schema/**, src/docline/runtime/**, src/docline/_tools/**
 
 ## Confidence Threshold
 
@@ -52,8 +45,8 @@ Return a JSON array of findings:
 ```json
 [
   {
-    "file": "path/to/file.py",
-    "line": 42,
+    "file": "{{file_path}}",
+    "line": {{line_number}},
     "severity": "P0|P1|P2|P3",
     "autofix_class": "safe_auto|gated_auto|manual|advisory",
     "category": "security",

@@ -10,9 +10,12 @@ options, recommendation, and backlog-link targets. The artifact feeds directly
 into `impl-plan` for technical planning or into the backlog queue as a stashed
 work item for future pursuit.
 
-This skill replaces the earlier `brainstorm` entry point with a richer protocol
-that adds explicit research synthesis, option comparison, and queue/stash
-linkage.
+This skill focuses on option selection and rationale: research synthesis, option
+comparison, and queue/stash linkage. It complements `brainstorm`, the front-door
+requirements-intake skill that shapes WHAT to build (stable requirements, success
+criteria, scope) before planning. Use `brainstorm` for requirements intake and
+`deliberate` for architectural, policy, or tooling trade-off decisions; either
+may hand off to `impl-plan`.
 
 ## When to Use
 
@@ -58,6 +61,12 @@ When the `agent-engram` capability pack is installed, follow
 surface before relying on indexed discovery, and prefer engram-first lookup
 while researching the codebase.
 
+When the `graphtor-docs` capability pack is installed, follow
+`.github/instructions/graphtor-docs.instructions.md`: prefer graphtor-docs indexed
+documentation retrieval for concept, API, and prior-art documentation lookup before
+broad grep or web search. Use Engram for code relationships and graphtor-docs for
+documentation, API, and concept lookup.
+
 ### Phase 1: Frame the Problem
 
 #### Step 1.1: Classify Depth
@@ -91,6 +100,11 @@ retrieval as mandatory pre-research context, not optional.
 When the `agent-engram` capability pack is installed, prefer `unified_search`
 for broad discovery, `list_symbols` for inventory, and `query_memory` for prior
 session context.
+
+When the `graphtor-docs` capability pack is installed, prefer `search_local_docs`,
+`search_semantic`, and `research_topic` for documentation, API, and concept lookup;
+reserve Engram for code relationships and graphtor-docs for documentation and API
+questions.
 
 #### Step 2.2: Investigate the Codebase
 
@@ -213,36 +227,36 @@ Produce the artifact with this structure:
 
 ```markdown
 ---
-title: "Evaluate OCR fallback for scanned PDFs"
-description: "Assess safe, deterministic OCR-backed markdown extraction for scanned documents in docline."
-topic: "Scanned PDF OCR fallback"
-depth: "standard"
+title: "{{TITLE}}"
+description: "{{ONE_LINE_DESCRIPTION}}"
+topic: "{{TOPIC}}"
+depth: "{{DEPTH}}"
 decision_status: "decided|deferred|exploring"
 promoted_to: "plan|queue|both|none"
 linked_artifacts:
-  - "docs/plans/2026-05-30-ocr-fallback-plan.md"
+  - "{{LINKED_PLAN_OR_QUEUE_PATH}}"
 tags:
-  - "ocr"
-  - "pdf"
+  - "{{TAG_1}}"
+  - "{{TAG_2}}"
 ---
 
 ## Problem Frame
 
-Scanned PDFs can currently yield empty or low-value markdown output, which blocks users from indexing or reviewing image-only documents through the same CLI and MCP workflows.
+{{PROBLEM_DESCRIPTION}}
 
 ## Research Findings
 
-Reviewed the existing PDF ingestion flow, local OCR tooling options, hosted OCR trade-offs, and parity requirements so CLI and MCP callers receive the same fallback behavior and error model.
+{{RESEARCH_SUMMARY}}
 
 ## Options Evaluated
 
-### Option A: Hybrid local OCR pipeline
+### Option A: {{NAME}}
 
-Use a local OCR stage only when native text extraction fails. Pros: deterministic offline behavior, strong privacy posture, and shared pipeline reuse. Cons: additional dependencies, slower large-document processing, and platform-specific packaging work.
+{{DESCRIPTION_PROS_CONS}}
 
-### Option B: Hybrid local OCR pipeline
+### Option B: {{NAME}}
 
-Use a local OCR stage only when native text extraction fails. Pros: deterministic offline behavior, strong privacy posture, and shared pipeline reuse. Cons: additional dependencies, slower large-document processing, and platform-specific packaging work.
+{{DESCRIPTION_PROS_CONS}}
 
 ## Trade-off Comparison
 
@@ -252,19 +266,19 @@ Use a local OCR stage only when native text extraction fails. Pros: deterministi
 
 ## Decision
 
-Recommend a guarded local OCR fallback triggered only for image-only PDFs, because it preserves privacy, avoids network dependency, and fits docline's dual CLI/MCP contract without introducing a second output model.
+{{RECOMMENDATION_AND_RATIONALE}}
 
 ## Rejected Alternatives
 
-Always-on OCR was set aside due to cost and latency. Hosted OCR was set aside because it complicates secrets management and offline workflows. Deferring the feature entirely was set aside because scanned PDFs are a common ingestion gap.
+{{WHY_OTHER_OPTIONS_WERE_SET_ASIDE}}
 
 ## Unresolved Questions
 
-Benchmark OCR latency on representative documents, verify packaging on Windows/macOS/Linux, and confirm acceptable output quality for tables and handwritten annotations.
+{{ITEMS_NEEDING_FURTHER_INVESTIGATION}}
 
 ## Risks and Mitigations
 
-Risk: OCR introduces noisy markdown and long runtimes. Mitigation: gate fallback behind text-detection checks, bound page counts, expose timeout controls, and clearly annotate OCR-derived confidence limits in diagnostics.
+{{KNOWN_RISKS_AND_MITIGATION_STRATEGIES}}
 ```
 
 ## Quality Criteria

@@ -1,339 +1,806 @@
-schema_version: "1.0.0"
-installed_at: "2026-05-30T00:12:00-07:00"
-autoharness_version: "1.0.0"
-autoharness_home: "<local-autoharness-home>"
-profile_hash: null
-config_hash: null
-install_preset: "full"
-primary_stack_pack: "mcp-server"
-stack_packs: ["cli-tool", "mcp-server"]
-install_layers: ["foundation", "instructions", "workflow", "review", "runtime", "backlog", "knowledge", "overlays"]
-capability_packs: ["agent-engram", "backlogit", "strict-safety"]
+schema_version: 1.0.0
+installed_at: '2026-05-30T00:12:00-07:00'
+autoharness_version: 1.5.0
+autoharness_home: <local-autoharness-home>
+profile_hash: cdb72306c40f07c75d18d1a1ca12a74a596a52fbdfacc06d6f3f9b28f891d6aa
+config_hash: 0d3d1b239f3f2527217b5e4f6ca5138e5bf06c78bc6cc5c34928dcd212026cd3
+install_preset: full
+primary_stack_pack: mcp-server
+stack_packs:
+- cli-tool
+- mcp-server
+install_layers:
+- foundation
+- instructions
+- workflow
+- review
+- runtime
+- backlog
+- knowledge
+- overlays
+capability_packs:
+- agent-engram
+- backlogit
+- strict-safety
+- graphtor-docs
+- adversarial-review
+- continuous-learning
+- release-observability
 capability_pack_overlays:
-  - pack: "agent-engram"
-    overlay_targets:
-      - "foundation-docs"
-      - "agent-engram.instructions.md"
-      - "pipeline-agents"
-      - "analysis-heavy-workflows"
-    verification_checks:
-      - "agent-engram.instructions.md installed at .github/instructions/"
-      - "stage.agent.md contains Engram session-start check"
-      - "ship.agent.md contains Engram session-start check"
-      - "copilot-instructions.md engram block present"
-  - pack: "backlogit"
-    overlay_targets:
-      - "foundation-docs"
-      - "backlogit.instructions.md"
-      - "backlogit-sql-schema.instructions.md"
-      - "backlogit-yaml-header-tooling.instructions.md"
-      - "backlog-integration.instructions.md"
-      - "pipeline-agents"
-    verification_checks:
-      - "backlogit.instructions.md installed at .github/instructions/"
-      - "backlogit-sql-schema.instructions.md installed"
-      - "backlogit-yaml-header-tooling.instructions.md installed"
-      - "stage.agent.md contains backlogit references"
-      - "ship.agent.md contains backlogit references"
-  - pack: "strict-safety"
-    overlay_targets:
-      - "foundation-docs"
-      - "strict-safety.instructions.md"
-      - "pipeline-agents"
-      - "plan-harden-skill"
-      - "safety-modes-skill"
-    verification_checks:
-      - "strict-safety.instructions.md installed at .github/instructions/"
-      - "stage.agent.md contains safety references"
-      - "ship.agent.md contains safety references"
-primitives_installed: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+- pack: agent-engram
+  overlay_targets:
+  - foundation-docs
+  - agent-engram.instructions.md
+  - capability-pack-enforcement.instructions.md
+  - pipeline-agents
+  - analysis-heavy-workflows
+  verification_checks:
+  - agent-engram.instructions.md installed at .github/instructions/
+  - capability-pack-enforcement.instructions.md lists agent-engram as retrieval-enforced
+  - _stage.agent.md contains Engram session-start check
+  - _ship.agent.md contains Engram session-start check
+  - copilot-instructions.md engram block present
+- pack: backlogit
+  overlay_targets:
+  - foundation-docs
+  - backlogit.instructions.md
+  - backlogit-sql-schema.instructions.md
+  - backlogit-yaml-header-tooling.instructions.md
+  - backlog-integration.instructions.md
+  - pipeline-agents
+  - backlog-workflows
+  verification_checks:
+  - backlogit.instructions.md installed at .github/instructions/
+  - backlogit.instructions.md documents the checkpoint-recovery / prune-on-restore protocol
+  - backlog-registry.yaml resolves the .backlogit directory
+  - AGENTS.md references backlogit_export_command_map
+  - _ship.agent.md references backlogit_stash_archive
+- pack: strict-safety
+  overlay_targets:
+  - foundation-docs
+  - strict-safety.instructions.md
+  - pipeline-agents
+  - plan-harden
+  - safety-modes
+  - review-personas
+  verification_checks:
+  - strict-safety.instructions.md installed at .github/instructions/
+  - constitution.instructions.md contains the strict-safety capability overlay
+  - plan-harden and safety-modes skills installed
+  - ProposedAction / ActionRisk / ActionResult vocabulary present in pipeline agents
+- pack: graphtor-docs
+  overlay_targets:
+  - foundation-docs
+  - graphtor-docs.instructions.md
+  - capability-pack-enforcement.instructions.md
+  - research-workflows
+  verification_checks:
+  - graphtor-docs.instructions.md installed at .github/instructions/
+  - capability-pack-enforcement.instructions.md lists graphtor-docs as retrieval-enforced
+  - config.yaml graphtor_docs block resolves sources_path and binary_path
+  - start.ps1 and start.sh include the graphtor-docs sidecar sync
+- pack: adversarial-review
+  overlay_targets:
+  - adversarial-review.instructions.md
+  - adversarial-review.agent.md
+  - review-workflows
+  verification_checks:
+  - adversarial-review.instructions.md installed at .github/instructions/
+  - adversarial-review.agent.md installed under .github/agents/subagents/
+  - alternate reviewer provider/family differ from the anchor review route
+- pack: continuous-learning
+  overlay_targets:
+  - foundation-docs
+  - continuous-learning.instructions.md
+  - pipeline-agents
+  - observation-lifecycle-skills
+  verification_checks:
+  - continuous-learning.instructions.md installed at .github/instructions/
+  - observe, learn, and evolve skills installed under .github/skills/
+  - AGENTS.md contains the continuous-learning capability overlay
+  - copilot-instructions.md contains the continuous-learning capability pack section
+  - _stage.agent.md and _ship.agent.md reference continuous-learning
+- pack: release-observability
+  overlay_targets:
+  - foundation-docs
+  - release-observability.instructions.md
+  - operational-closure
+  - runtime-verification
+  verification_checks:
+  - release-observability.instructions.md installed at .github/instructions/
+  - AGENTS.md contains the release-observability capability overlay
+  - copilot-instructions.md contains the release-observability capability pack section
+  - operational-closure/SKILL.md carries monitoring plan and rollback trigger expectations
+  - runtime-verification/SKILL.md references release-observability
+primitives_installed:
+- 1
+- 2
+- 3
+- 4
+- 5
+- 6
+- 7
+- 8
+- 9
+- 10
 vscode_settings:
   applied: false
-  user_settings_path: "<local-vscode-user-settings-path>"
+  user_settings_path: <local-vscode-user-settings-path>
   entries_added: []
-  skipped_because: "deferred_to_operator"
+  skipped_because: deferred_to_operator
 artifacts:
-  # Foundation
-  - path: "AGENTS.md"
-    primitive: 9
-    template: "foundation/AGENTS.md.tmpl"
-  - path: ".github/copilot-instructions.md"
-    primitive: 6
-    template: "foundation/copilot-instructions.md.tmpl"
-  - path: ".github/instructions/constitution.instructions.md"
-    primitive: 5
-    template: "foundation/constitution.instructions.md.tmpl"
-  # Instructions
-  - path: ".github/instructions/technology-python.instructions.md"
-    primitive: 6
-    template: "instructions/technology-python.instructions.md.tmpl"
-  - path: ".github/instructions/commit-message.instructions.md"
-    primitive: 6
-    template: "instructions/commit-message.instructions.md.tmpl"
-  - path: ".github/instructions/markdown.instructions.md"
-    primitive: 6
-    template: "instructions/markdown.instructions.md.tmpl"
-  - path: ".github/instructions/writing-style.instructions.md"
-    primitive: 6
-    template: "instructions/writing-style.instructions.md.tmpl"
-  - path: ".github/instructions/git-merge.instructions.md"
-    primitive: 6
-    template: "instructions/git-merge.instructions.md.tmpl"
-  - path: ".github/instructions/pull-request.instructions.md"
-    primitive: 6
-    template: "instructions/pull-request.instructions.md.tmpl"
-  - path: ".github/instructions/prompt-builder.instructions.md"
-    primitive: 6
-    template: "instructions/prompt-builder.instructions.md.tmpl"
-  - path: ".github/instructions/circuit-breaker.instructions.md"
-    primitive: 5
-    template: "instructions/circuit-breaker.instructions.md.tmpl"
-  - path: ".github/instructions/concurrency.instructions.md"
-    primitive: 5
-    template: "instructions/concurrency.instructions.md.tmpl"
-  - path: ".github/instructions/architecture-doc.instructions.md"
-    primitive: 9
-    template: "instructions/architecture-doc.instructions.md.tmpl"
-  - path: ".github/instructions/context-efficiency.instructions.md"
-    primitive: 1
-    template: "instructions/context-efficiency.instructions.md.tmpl"
-  - path: ".github/instructions/ci-security.instructions.md"
-    primitive: 5
-    template: "instructions/ci-security.instructions.md.tmpl"
-  - path: ".github/instructions/workflows.instructions.md"
-    primitive: 6
-    template: "instructions/workflows.instructions.md.tmpl"
-  - path: ".github/instructions/github-pr-automation.instructions.md"
-    primitive: 6
-    template: "instructions/github-pr-automation.instructions.md.tmpl"
-  - path: ".github/instructions/mcp-server.instructions.md"
-    primitive: 6
-    template: "instructions/mcp-server.instructions.md.tmpl"
-  - path: ".github/instructions/backlog-integration.instructions.md"
-    primitive: 4
-    template: "instructions/backlog-integration.instructions.md.tmpl"
-  - path: ".github/instructions/coding-discipline.instructions.md"
-    primitive: 5
-    template: "instructions/coding-discipline.instructions.md.tmpl"
-  - path: ".github/instructions/role-enforcement.instructions.md"
-    primitive: 5
-    template: "instructions/role-enforcement.instructions.md.tmpl"
-  # Capability pack instructions
-  - path: ".github/instructions/agent-engram.instructions.md"
-    primitive: 6
-    template: "instructions/agent-engram.instructions.md.tmpl"
-  - path: ".github/instructions/backlogit.instructions.md"
-    primitive: 4
-    template: "instructions/backlogit.instructions.md.tmpl"
-  - path: ".github/instructions/backlogit-sql-schema.instructions.md"
-    primitive: 4
-    template: "instructions/backlogit-sql-schema.instructions.md.tmpl"
-  - path: ".github/instructions/backlogit-yaml-header-tooling.instructions.md"
-    primitive: 4
-    template: "instructions/backlogit-yaml-header-tooling.instructions.md.tmpl"
-  - path: ".github/instructions/strict-safety.instructions.md"
-    primitive: 5
-    template: "instructions/strict-safety.instructions.md.tmpl"
-  # Pipeline agents
-  - path: ".github/agents/stage.agent.md"
-    primitive: 4
-    template: "agents/stage.agent.md.tmpl"
-  - path: ".github/agents/ship.agent.md"
-    primitive: 4
-    template: "agents/ship.agent.md.tmpl"
-  - path: ".github/agents/orchestrator.agent.md"
-    primitive: 4
-    template: "agents/orchestrator.agent.md.tmpl"
-  # Subagents
-  - path: ".github/agents/subagents/python-engineer.agent.md"
-    primitive: 4
-    template: "agents/language-engineer.agent.md.tmpl"
-  - path: ".github/agents/subagents/prompt-builder.agent.md"
-    primitive: 4
-    template: "agents/prompt-builder.agent.md.tmpl"
-  - path: ".github/agents/subagents/adversarial-review.agent.md"
-    primitive: 7
-    template: "agents/adversarial-review.agent.md.tmpl"
-  - path: ".github/agents/subagents/security-sentinel.agent.md"
-    primitive: 5
-    template: "agents/security-sentinel.agent.md.tmpl"
-  - path: ".github/agents/subagents/learnings-researcher.agent.md"
-    primitive: 1
-    template: "agents/research/learnings-researcher.agent.md.tmpl"
-  # Review personas
-  - path: ".github/agents/subagents/architecture-strategist.agent.md"
-    primitive: 7
-    template: "agents/review/architecture-strategist.agent.md.tmpl"
-  - path: ".github/agents/subagents/constitution-reviewer.agent.md"
-    primitive: 7
-    template: "agents/review/constitution-reviewer.agent.md.tmpl"
-  - path: ".github/agents/subagents/correctness-reviewer.agent.md"
-    primitive: 7
-    template: "generated"
-  - path: ".github/agents/subagents/maintainability-reviewer.agent.md"
-    primitive: 7
-    template: "generated"
-  - path: ".github/agents/subagents/scope-boundary-auditor.agent.md"
-    primitive: 7
-    template: "agents/review/scope-boundary-auditor.agent.md.tmpl"
-  - path: ".github/agents/subagents/python-reviewer.agent.md"
-    primitive: 7
-    template: "agents/review/technology-reviewer.agent.md.tmpl"
-  - path: ".github/agents/subagents/concurrency-reviewer.agent.md"
-    primitive: 7
-    template: "agents/review/concurrency-reviewer.agent.md.tmpl"
-  - path: ".github/agents/subagents/agent-native-parity-reviewer.agent.md"
-    primitive: 7
-    template: "agents/review/agent-native-parity-reviewer.agent.md.tmpl"
-  - path: ".github/agents/subagents/security-reviewer.agent.md"
-    primitive: 7
-    template: "agents/review/security-reviewer.agent.md.tmpl"
-  - path: ".github/agents/subagents/security-lens-reviewer.agent.md"
-    primitive: 7
-    template: "agents/review/security-lens-reviewer.agent.md.tmpl"
-  # Skills
-  - path: ".github/skills/build-feature/SKILL.md"
-    primitive: 4
-    template: "skills/build-feature/SKILL.md.tmpl"
-  - path: ".github/skills/fix-ci/SKILL.md"
-    primitive: 4
-    template: "skills/fix-ci/SKILL.md.tmpl"
-  - path: ".github/skills/impl-plan/SKILL.md"
-    primitive: 4
-    template: "skills/impl-plan/SKILL.md.tmpl"
-  - path: ".github/skills/deliberate/SKILL.md"
-    primitive: 4
-    template: "skills/deliberate/SKILL.md.tmpl"
-  - path: ".github/skills/spike/SKILL.md"
-    primitive: 4
-    template: "skills/spike/SKILL.md.tmpl"
-  - path: ".github/skills/plan-harden/SKILL.md"
-    primitive: 4
-    template: "skills/plan-harden/SKILL.md.tmpl"
-  - path: ".github/skills/compact-context/SKILL.md"
-    primitive: 1
-    template: "skills/compact-context/SKILL.md.tmpl"
-  - path: ".github/skills/compound/SKILL.md"
-    primitive: 1
-    template: "skills/compound/SKILL.md.tmpl"
-  - path: ".github/skills/compound-refresh/SKILL.md"
-    primitive: 1
-    template: "skills/compound-refresh/SKILL.md.tmpl"
-  - path: ".github/skills/harness-architect/SKILL.md"
-    primitive: 4
-    template: "skills/harness-architect/SKILL.md.tmpl"
-  - path: ".github/skills/harvest/SKILL.md"
-    primitive: 4
-    template: "skills/harvest/SKILL.md.tmpl"
-  - path: ".github/skills/pr-lifecycle/SKILL.md"
-    primitive: 4
-    template: "skills/pr-lifecycle/SKILL.md.tmpl"
-  - path: ".github/skills/safety-modes/SKILL.md"
-    primitive: 5
-    template: "skills/safety-modes/SKILL.md.tmpl"
-  - path: ".github/skills/file-lock/SKILL.md"
-    primitive: 5
-    template: "skills/file-lock/SKILL.md.tmpl"
-  - path: ".github/skills/skill-search/SKILL.md"
-    primitive: 6
-    template: "skills/skill-search/SKILL.md.tmpl"
-  - path: ".github/skills/security-audit/SKILL.md"
-    primitive: 5
-    template: "skills/security-audit/SKILL.md.tmpl"
-  - path: ".github/skills/runtime-verification/SKILL.md"
-    primitive: 10
-    template: "skills/runtime-verification/SKILL.md.tmpl"
-  - path: ".github/skills/operational-closure/SKILL.md"
-    primitive: 10
-    template: "skills/operational-closure/SKILL.md.tmpl"
-  - path: ".github/skills/plan-review/SKILL.md"
-    primitive: 7
-    template: "skills/plan-review/SKILL.md.tmpl"
-  - path: ".github/skills/review/SKILL.md"
-    primitive: 7
-    template: "skills/review/SKILL.md.tmpl"
-  - path: ".github/skills/harness-doctor/SKILL.md"
-    primitive: 5
-    template: "skills/harness-doctor/SKILL.md.tmpl"
-  - path: ".github/skills/iterative-experiment/SKILL.md"
-    primitive: 4
-    template: "skills/iterative-experiment/SKILL.md.tmpl"
-  - path: ".github/skills/shipment-reconcile/SKILL.md"
-    primitive: 4
-    template: "skills/shipment-reconcile/SKILL.md.tmpl"
-  # Policies
-  - path: ".github/policies/workflow-policies.md"
-    primitive: 8
-    template: "policies/workflow-policies.md.tmpl"
-  # Prompts
-  - path: ".github/prompts/ping-loop.prompt.md"
-    primitive: 4
-    template: "prompts/ping-loop.prompt.md.tmpl"
-  - path: ".github/prompts/stage-grouping-analysis.prompt.md"
-    primitive: 4
-    template: "prompts/stage-grouping-analysis.prompt.md.tmpl"
-  # Scripts
-  - path: "start.ps1"
-    primitive: 4
-    template: "scripts/start.ps1.tmpl"
-  - path: "start.sh"
-    primitive: 4
-    template: "scripts/start.sh.tmpl"
-  - path: ".markdownlint.json"
-    primitive: 6
-    template: "scripts/.markdownlint.json.tmpl"
-  - path: "scripts/acquire_lock.ps1"
-    primitive: 5
-    template: "skills/file-lock/scripts/acquire_lock.ps1"
-  - path: "scripts/acquire_lock.sh"
-    primitive: 5
-    template: "skills/file-lock/scripts/acquire_lock.sh"
-  - path: "scripts/release_lock.ps1"
-    primitive: 5
-    template: "skills/file-lock/scripts/release_lock.ps1"
-  - path: "scripts/release_lock.sh"
-    primitive: 5
-    template: "skills/file-lock/scripts/release_lock.sh"
-  - path: "scripts/search.ps1"
-    primitive: 6
-    template: "skills/skill-search/scripts/search.ps1"
-  - path: "scripts/search.sh"
-    primitive: 6
-    template: "skills/skill-search/scripts/search.sh"
-  - path: "scripts/pre-commit-markdownlint.ps1"
-    primitive: 6
-    template: "scripts/pre-commit-markdownlint.ps1.tmpl"
-  - path: "scripts/pre-commit-markdownlint.sh"
-    primitive: 6
-    template: "scripts/pre-commit-markdownlint.sh.tmpl"
-  # Config
-  - path: ".autoharness/config.yaml"
-    primitive: null
-    template: "harness-config.yaml.tmpl"
-  - path: ".autoharness/backlog-registry.yaml"
-    primitive: null
-    template: "backlog/registries/backlogit.registry.yaml"
-  - path: ".autoharness/workspace-profile.yaml"
-    primitive: null
-    template: null
+- path: .autoharness/backlog-registry.yaml
+  artifact_type: config
+  primitive: 9
+  template: backlog/registries/backlogit.registry.yaml
+  checksum: 014dbfc9a27c79d3306e4469df0313a5962ee8a213b3077951f28f5f1982b649
+- path: .autoharness/config.yaml
+  artifact_type: config
+  primitive: 9
+  template: harness-config.yaml.tmpl
+  checksum: 0d3d1b239f3f2527217b5e4f6ca5138e5bf06c78bc6cc5c34928dcd212026cd3
+- path: .autoharness/workspace-profile.yaml
+  artifact_type: config
+  primitive: 9
+  template: generated
+  checksum: cdb72306c40f07c75d18d1a1ca12a74a596a52fbdfacc06d6f3f9b28f891d6aa
+- path: .github/agents/_orchestrator.agent.md
+  artifact_type: agent
+  primitive: 5
+  template: agents/_orchestrator.agent.md.tmpl
+  checksum: f1f7712114bcfe1aaa9f8819631f900ac19cddd27936e07b82d93b05e08644fb
+- path: .github/agents/_ship.agent.md
+  artifact_type: agent
+  primitive: 5
+  template: agents/_ship.agent.md.tmpl
+  checksum: a85a817186c184343c79c66c25069b99b18930995a495315399e8c3c27ba2449
+- path: .github/agents/_stage.agent.md
+  artifact_type: agent
+  primitive: 5
+  template: agents/_stage.agent.md.tmpl
+  checksum: 81fc981410162bcfd4fa76ef5c4c0951942ee78d11cac60e2f0cf8b22db2f424
+- path: .github/agents/subagents/adversarial-review.agent.md
+  artifact_type: agent
+  primitive: 3
+  template: agents/adversarial-review.agent.md.tmpl
+  checksum: 83a6f1a92e815f2821edef83127415d73f31c418d5f0300fa47a6a5451e92a63
+- path: .github/agents/subagents/agent-native-parity-reviewer.agent.md
+  artifact_type: agent
+  primitive: 3
+  template: agents/review/agent-native-parity-reviewer.agent.md.tmpl
+  checksum: e35b47708780d0cfc905a6f90f5bfa811bb53b39da7fb13fc2a8ab79fbbb8848
+- path: .github/agents/subagents/architecture-strategist.agent.md
+  artifact_type: agent
+  primitive: 3
+  template: agents/review/architecture-strategist.agent.md.tmpl
+  checksum: 5306653b329bfa3b0ff1ed3656be39dee18e58c92b439da1a02dbc07f8fc2a18
+- path: .github/agents/subagents/concurrency-reviewer.agent.md
+  artifact_type: agent
+  primitive: 3
+  template: agents/review/concurrency-reviewer.agent.md.tmpl
+  checksum: 297b560ec5de98bdb44fe4d1c4f9c8f815bcfff02b5eab574908f229988c9290
+- path: .github/agents/subagents/constitution-reviewer.agent.md
+  artifact_type: agent
+  primitive: 3
+  template: agents/review/constitution-reviewer.agent.md.tmpl
+  checksum: f39f6d65a4cb69ca480dce466b8f3c1ff90811d5015397cfd88e58290b1e4f6a
+- path: .github/agents/subagents/correctness-reviewer.agent.md
+  artifact_type: agent
+  primitive: 3
+  template: agents/review/correctness-reviewer.agent.md.tmpl
+  checksum: 3b97742a39225ec97f9a7d19cb61621358aab39d9149d5e8f37c055b46b8ce1f
+- path: .github/agents/subagents/learnings-researcher.agent.md
+  artifact_type: agent
+  primitive: 3
+  template: agents/research/learnings-researcher.agent.md.tmpl
+  checksum: 7af39df5a28d5dcf72aab57be4841c3d6f5bc19fa9de9a13ce720034d63f579d
+- path: .github/agents/subagents/maintainability-reviewer.agent.md
+  artifact_type: agent
+  primitive: 3
+  template: agents/review/maintainability-reviewer.agent.md.tmpl
+  checksum: 9f4c7aa2d4e15b83f39cb5b0e7b9615d427f8cd18a2f658e629bc100bc283f35
+- path: .github/agents/subagents/prompt-builder.agent.md
+  artifact_type: agent
+  primitive: 3
+  template: agents/prompt-builder.agent.md.tmpl
+  checksum: 381d970102252cb776da97c5d6fe798e5e6e14f9a630f7ccf09ee0205b3b7fbe
+- path: .github/agents/subagents/python-engineer.agent.md
+  artifact_type: agent
+  primitive: 3
+  template: agents/language-engineer.agent.md.tmpl
+  checksum: de0aca6c19929a9fdcb585cae6e8072f6c3500216418210ecca09f7539aaaf96
+- path: .github/agents/subagents/python-reviewer.agent.md
+  artifact_type: agent
+  primitive: 3
+  template: agents/review/technology-reviewer.agent.md.tmpl
+  checksum: 70a6cb57af30e1d4292fbf5c21516f670499a36e059f40babf3489239d920870
+- path: .github/agents/subagents/schema-cli-docs-coupling-reviewer.agent.md
+  artifact_type: agent
+  primitive: 3
+  template: agents/review/schema-cli-docs-coupling-reviewer.agent.md.tmpl
+  checksum: 373841d647777540796d655f9ae9579c55e36d8f66e899dacb5a5ff72d8f2883
+- path: .github/agents/subagents/scope-boundary-auditor.agent.md
+  artifact_type: agent
+  primitive: 3
+  template: agents/review/scope-boundary-auditor.agent.md.tmpl
+  checksum: 09f0b8e4bc52fa2211a0d4ef6463d96e0e5643f84165ecceb990f6c884c7211e
+- path: .github/agents/subagents/security-lens-reviewer.agent.md
+  artifact_type: agent
+  primitive: 3
+  template: agents/review/security-lens-reviewer.agent.md.tmpl
+  checksum: eaff3e84ee8f2b79fef3e1a7556e6a8c1030694259bbf855beb24184c460b38a
+- path: .github/agents/subagents/security-reviewer.agent.md
+  artifact_type: agent
+  primitive: 3
+  template: agents/review/security-reviewer.agent.md.tmpl
+  checksum: f490f3a12b47608fddb4e24399075ef844d48d94f7c33d022f8b22f2b4b3aa66
+- path: .github/agents/subagents/security-sentinel.agent.md
+  artifact_type: agent
+  primitive: 3
+  template: agents/security-sentinel.agent.md.tmpl
+  checksum: c4dee817326a6b6052c0635eacd501b65394875fbc7c9652dacb51dd3a92d9c7
+- path: .github/agents/subagents/template-integrity-reviewer.agent.md
+  artifact_type: agent
+  primitive: 3
+  template: agents/review/template-integrity-reviewer.agent.md.tmpl
+  checksum: ae3336fd9365552850325525bcf1aafb2668e660530a977d6d2181dd4f07499f
+- path: .github/copilot-instructions.md
+  artifact_type: foundation
+  primitive: 1
+  template: foundation/copilot-instructions.md.tmpl
+  checksum: 3c2869009a7c553278b743177b3a4a3997533f5799fc2e9f53aa6a8425716682
+- path: .github/instructions/adversarial-review.instructions.md
+  artifact_type: instruction
+  primitive: 10
+  template: instructions/adversarial-review.instructions.md.tmpl
+  checksum: 37b28931c1c9643db033b1ec0f2a2fd6889933965bd2baaebffe1e4da482dea4
+- path: .github/instructions/agent-engram.instructions.md
+  artifact_type: instruction
+  primitive: 10
+  template: instructions/agent-engram.instructions.md.tmpl
+  checksum: a3f0fd41709651834e56edf89b24335ca5f56b8cfa3d798df70babb1380c61f4
+- path: .github/instructions/architecture-doc.instructions.md
+  artifact_type: instruction
+  primitive: 9
+  template: instructions/architecture-doc.instructions.md.tmpl
+  checksum: 743e6560af474507b795a30d2810f175de04a3be6827a8ad70cc6ab410a86fba
+- path: .github/instructions/backlog-integration.instructions.md
+  artifact_type: instruction
+  primitive: 1
+  template: instructions/backlog-integration.instructions.md.tmpl
+  checksum: 5e31848eecb229f2e350410925f6ea2d48ddb73c8604149be9a2bec5991d684d
+- path: .github/instructions/backlogit-sql-schema.instructions.md
+  artifact_type: instruction
+  primitive: 10
+  template: instructions/backlogit-sql-schema.instructions.md.tmpl
+  checksum: 44bfab6aba8391dc12cc0c1d759aab58739972892d8eb5d3bcbb8a63a198609d
+- path: .github/instructions/backlogit-yaml-header-tooling.instructions.md
+  artifact_type: instruction
+  primitive: 10
+  template: instructions/backlogit-yaml-header-tooling.instructions.md.tmpl
+  checksum: d25b8a19e84b3fac44f0de7b5fb2939edcd6b7258484eee65ed303e968f25441
+- path: .github/instructions/backlogit.instructions.md
+  artifact_type: instruction
+  primitive: 10
+  template: instructions/backlogit.instructions.md.tmpl
+  checksum: 9e1a157db4d2e9d2ac2c501d13eeffc5586f9f097a4bdfe5ffc275c7192d2ce0
+- path: .github/instructions/capability-pack-enforcement.instructions.md
+  artifact_type: instruction
+  primitive: 10
+  template: instructions/capability-pack-enforcement.instructions.md.tmpl
+  checksum: 57ee627109e698d9fb3117606dcdab2b1c85b546599d8fd889aa8a2c7984ccdc
+- path: .github/instructions/ci-security.instructions.md
+  artifact_type: instruction
+  primitive: 1
+  template: instructions/ci-security.instructions.md.tmpl
+  checksum: 5a1342489bcb5663dfd2d5a8b2fb56a428be9b8eef2d73a378507313ce2eda06
+- path: .github/instructions/circuit-breaker.instructions.md
+  artifact_type: instruction
+  primitive: 7
+  template: instructions/circuit-breaker.instructions.md.tmpl
+  checksum: 5e0a6a43180edcabd37d7601adaafc04bf40337ddd2732769c9dcf81ac4d655e
+- path: .github/instructions/coding-discipline.instructions.md
+  artifact_type: instruction
+  primitive: 1
+  template: instructions/coding-discipline.instructions.md.tmpl
+  checksum: 067919a1656641d778789eb5fde6880ea0f10f566ab43eebe0ebe5cb0dff823d
+- path: .github/instructions/commit-message.instructions.md
+  artifact_type: instruction
+  primitive: 1
+  template: instructions/commit-message.instructions.md.tmpl
+  checksum: 04aaa0ffe915a0db4b9207cb48ba903081cc6852ba3d2a4b18af6ff89078a098
+- path: .github/instructions/concurrency.instructions.md
+  artifact_type: instruction
+  primitive: 7
+  template: instructions/concurrency.instructions.md.tmpl
+  checksum: e3a09c6ed5215be68bdb31344c6b3119147877e4a692349f58a464bb6b34d223
+- path: .github/instructions/constitution.instructions.md
+  artifact_type: foundation
+  primitive: 1
+  template: foundation/constitution.instructions.md.tmpl
+  checksum: e2a7f4e80e9917ce45aaeec8a1d92a1659e68eeaf69ae18ebe2cae0992043ee1
+- path: .github/instructions/context-efficiency.instructions.md
+  artifact_type: instruction
+  primitive: 9
+  template: instructions/context-efficiency.instructions.md.tmpl
+  checksum: e90a66ebab83ff0b4d6cace14752866be83c26bff88813ef11dbb018e29e9c53
+- path: .github/instructions/continuous-learning.instructions.md
+  artifact_type: instruction
+  primitive: 10
+  template: instructions/continuous-learning.instructions.md.tmpl
+  checksum: 42f5dde5d2a6ec9446e8c8f965b472b3e697d2743d593ac954f6384d3644b55b
+- path: .github/instructions/copilot-code-review.instructions.md
+  artifact_type: instruction
+  primitive: 1
+  template: instructions/copilot-code-review.instructions.md.tmpl
+  checksum: ea659ad2b42ed689fdf0d26a99efa2bcf5243b2e278c4a448ffef997dd618908
+- path: .github/instructions/escalation-protocol.instructions.md
+  artifact_type: instruction
+  primitive: 5
+  template: instructions/escalation-protocol.instructions.md.tmpl
+  checksum: 0facc938bfe97171b9e66c2f171f330fa02acef3854458281dbe74b861081174
+- path: .github/instructions/git-merge.instructions.md
+  artifact_type: instruction
+  primitive: 1
+  template: instructions/git-merge.instructions.md.tmpl
+  checksum: fa06c7b36ab3ff785ed003342dd52a92d3a8582ee8293d7f3a0a96d22f34b497
+- path: .github/instructions/github-pr-automation.instructions.md
+  artifact_type: instruction
+  primitive: 1
+  template: instructions/github-pr-automation.instructions.md.tmpl
+  checksum: a10a518801bd3c509de3a91912740f660efd5123c71cbccb30c4b2be9d03508e
+- path: .github/instructions/graphtor-docs.instructions.md
+  artifact_type: instruction
+  primitive: 10
+  template: instructions/graphtor-docs.instructions.md.tmpl
+  checksum: 4ac8ea3d32fabc6a96e875fe3b9afa4bac8e517221d3f2ab2b716481c9318020
+- path: .github/instructions/markdown.instructions.md
+  artifact_type: instruction
+  primitive: 1
+  template: instructions/markdown.instructions.md.tmpl
+  checksum: 6ac28f56d9d00c13b76362d6058fbc8da42afe6eb96acd34fc53d9bf40868d9c
+- path: .github/instructions/mcp-server.instructions.md
+  artifact_type: instruction
+  primitive: 1
+  template: instructions/mcp-server.instructions.md.tmpl
+  checksum: ed2042ea29d50da1c746d6b1a57f087f18b6c3ca526476e3fdcac7fe8d67f0cc
+- path: .github/instructions/output-timestamps.instructions.md
+  artifact_type: instruction
+  primitive: 1
+  template: instructions/output-timestamps.instructions.md.tmpl
+  checksum: 10e6faa0ca0ec29bb34926e6f0374b0eefe600451713d806c6061e0beb227b69
+- path: .github/instructions/prompt-builder.instructions.md
+  artifact_type: instruction
+  primitive: 1
+  template: instructions/prompt-builder.instructions.md.tmpl
+  checksum: 306270c592268efbff4386f069afae3ac41e311e0eeab855835acd3fb0303fc5
+- path: .github/instructions/pull-request.instructions.md
+  artifact_type: instruction
+  primitive: 1
+  template: instructions/pull-request.instructions.md.tmpl
+  checksum: 39f13c4648fce30421002fb9704e6996e116cc9f5ae2cea7cec6ad4df2d9c6e5
+- path: .github/instructions/release-observability.instructions.md
+  artifact_type: instruction
+  primitive: 10
+  template: instructions/release-observability.instructions.md.tmpl
+  checksum: 2f8c77791341b66821711b4303de283e8bc83b5a0c33bd4e156235a84dd360f7
+- path: .github/instructions/role-enforcement.instructions.md
+  artifact_type: instruction
+  primitive: 5
+  template: instructions/role-enforcement.instructions.md.tmpl
+  checksum: fd3af24626eeecda69699937a395f898017f592546156d45a76edf76013f2a85
+- path: .github/instructions/strict-safety.instructions.md
+  artifact_type: instruction
+  primitive: 10
+  template: instructions/strict-safety.instructions.md.tmpl
+  checksum: 9f70e1c9978d1071a3460dd91f5b057401e26892b97a93b2d5c94eaaf4c0f790
+- path: .github/instructions/technology-python.instructions.md
+  artifact_type: instruction
+  primitive: 1
+  template: instructions/technology-python.instructions.md.tmpl
+  checksum: e38eba9aacaeda30f0eaecf373d10932bf0d8f4f66af7275f2e0890503c2830a
+- path: .github/instructions/workflows.instructions.md
+  artifact_type: instruction
+  primitive: 1
+  template: instructions/workflows.instructions.md.tmpl
+  checksum: a821b82483d642647cc6f4fe41990345181014d9c76763c951db453e12e4e1e9
+- path: .github/instructions/writing-style.instructions.md
+  artifact_type: instruction
+  primitive: 1
+  template: instructions/writing-style.instructions.md.tmpl
+  checksum: 1fc5cdcb661bd09ec47193af6e6a50d8c36b1e2991c2164a4a6a33d2c630af79
+- path: .github/policies/policy-proposal.md
+  artifact_type: policy
+  primitive: 8
+  template: policies/policy-proposal.md.tmpl
+  checksum: 65db62479e8cbbdf3cf404e573f5c7a5f67df5aba53c23ed08c23c3f8cca5a91
+- path: .github/policies/workflow-policies.md
+  artifact_type: policy
+  primitive: 8
+  template: policies/workflow-policies.md.tmpl
+  checksum: b0cca5851e6eb68f15040dbdb50cbe168b31092d28a8aac4132a51c5949e6ced
+- path: .github/prompts/feature-flow-dark.prompt.md
+  artifact_type: prompt
+  primitive: 4
+  template: prompts/feature-flow-dark.prompt.md.tmpl
+  checksum: 45f0f3a75ba5b9923e0f9e99328ddf9300401893340004792049e24229260b41
+- path: .github/prompts/feature-flow-parallel.prompt.md
+  artifact_type: prompt
+  primitive: 4
+  template: prompts/feature-flow-parallel.prompt.md.tmpl
+  checksum: a70969a86d95320d6dabe46fa4a40fac989997ce57b0eff8913c1f9a598cf193
+- path: .github/prompts/feature-flow.prompt.md
+  artifact_type: prompt
+  primitive: 4
+  template: prompts/feature-flow.prompt.md.tmpl
+  checksum: 63495503b706477da14fc49555e25c04b1224859704771fc27d7e08bba597380
+- path: .github/prompts/stage-grouping-analysis.prompt.md
+  artifact_type: prompt
+  primitive: 4
+  template: prompts/stage-grouping-analysis.prompt.md.tmpl
+  checksum: d9cdc97d07fde6f09a0b3bfaac6252f46ca2c7ebca42503ceb4c0a99835be78e
+- path: .github/skills/brainstorm/SKILL.md
+  artifact_type: skill
+  primitive: 6
+  template: skills/brainstorm/SKILL.md.tmpl
+  checksum: a406cd1f059fd1a6b15af9b7c4f4d814c6ec4724aa9f89fa3a339ffd111efa4b
+- path: .github/skills/build-feature/SKILL.md
+  artifact_type: skill
+  primitive: 6
+  template: skills/build-feature/SKILL.md.tmpl
+  checksum: 7231e51fbd59e7ad3b048358fa0e6b4a2dec0b727f2029ee2e0811e6df0b891f
+- path: .github/skills/compact-context/SKILL.md
+  artifact_type: skill
+  primitive: 6
+  template: skills/compact-context/SKILL.md.tmpl
+  checksum: 9f6c1fe9ade0ad1c39fc962f156cfe128f254bb79c1975c1c9cf3d1e639884a2
+- path: .github/skills/compound-refresh/SKILL.md
+  artifact_type: skill
+  primitive: 6
+  template: skills/compound-refresh/SKILL.md.tmpl
+  checksum: 99f849184442886817ffd58f0060428e62c510fb516c85e546b6cfbfd4f28e11
+- path: .github/skills/compound/SKILL.md
+  artifact_type: skill
+  primitive: 6
+  template: skills/compound/SKILL.md.tmpl
+  checksum: 0b6d0587fddddde91fdea085c1dc2bb4cc5c48130f7cf1a6659670b90c47639e
+- path: .github/skills/deliberate/SKILL.md
+  artifact_type: skill
+  primitive: 6
+  template: skills/deliberate/SKILL.md.tmpl
+  checksum: 2f12d7d823bd3ec4e5960a764eed9e282637961d8ed7cabe1360378b82cbf4f9
+- path: .github/skills/doc-review/SKILL.md
+  artifact_type: skill
+  primitive: 6
+  template: skills/doc-review/SKILL.md.tmpl
+  checksum: 76510774aa24aba2cd0b7e890df44429fc85be7dc0aab1492a7c875833b15403
+- path: .github/skills/evolve/SKILL.md
+  artifact_type: skill
+  primitive: 6
+  template: skills/evolve/SKILL.md.tmpl
+  checksum: cfc0ad402117c288651e10a9b4a34ed1a38da1c5a51e4c1865974cd243ef6928
+- path: .github/skills/file-lock/SKILL.md
+  artifact_type: skill
+  primitive: 6
+  template: skills/file-lock/SKILL.md.tmpl
+  checksum: 92f9ab1fd3de3a5e2967e9aa9c4dea2f49c58589c892df04c47c892be3a0a563
+- path: .github/skills/fix-ci/SKILL.md
+  artifact_type: skill
+  primitive: 6
+  template: skills/fix-ci/SKILL.md.tmpl
+  checksum: 6849e3a648a28533798ee9e2dc41e20abd7634fe2e9d0b4f45f23209e4da2ff8
+- path: .github/skills/harness-architect/SKILL.md
+  artifact_type: skill
+  primitive: 6
+  template: skills/harness-architect/SKILL.md.tmpl
+  checksum: 45728cf28ec49c4c41010c68905360e45f238531ecfe118d8eef4c49074975e9
+- path: .github/skills/harness-doctor/SKILL.md
+  artifact_type: skill
+  primitive: 6
+  template: skills/harness-doctor/SKILL.md.tmpl
+  checksum: 849f5059a9ed77fc405c73c6330fb06bebeb58dab5045482a89174c67dca4964
+- path: .github/skills/harvest/SKILL.md
+  artifact_type: skill
+  primitive: 6
+  template: skills/harvest/SKILL.md.tmpl
+  checksum: 3b0c44ef13cc0755b1ac774475b0512cf4d0da4508389c058229abf8c5197d95
+- path: .github/skills/impl-plan/SKILL.md
+  artifact_type: skill
+  primitive: 6
+  template: skills/impl-plan/SKILL.md.tmpl
+  checksum: 06853c07d8bb445bb82d487da1742b4acda0b72c261bb3f9ca71e92771f950c6
+- path: .github/skills/iterative-experiment/SKILL.md
+  artifact_type: skill
+  primitive: 6
+  template: skills/iterative-experiment/SKILL.md.tmpl
+  checksum: d16ee90bdc02c2425f3bdf27ee9d9cd65d71abb7225ef0ff6edff4c98cdc4c86
+- path: .github/skills/learn/SKILL.md
+  artifact_type: skill
+  primitive: 6
+  template: skills/learn/SKILL.md.tmpl
+  checksum: 211a3808294ad1584a51ce403939590f19121621776c66c516c8623acf9524ab
+- path: .github/skills/observe/SKILL.md
+  artifact_type: skill
+  primitive: 6
+  template: skills/observe/SKILL.md.tmpl
+  checksum: 763b621f5098004bcdbeeb04e553b2cd4716171e24a4c57e92e984ca0a902c1c
+- path: .github/skills/operational-closure/SKILL.md
+  artifact_type: skill
+  primitive: 6
+  template: skills/operational-closure/SKILL.md.tmpl
+  checksum: 4044aed1ae261eaef6eeda893f2daeefd6750c4b1bff1722649ee95526ca97c9
+- path: .github/skills/plan-harden/SKILL.md
+  artifact_type: skill
+  primitive: 6
+  template: skills/plan-harden/SKILL.md.tmpl
+  checksum: 5e0b5d81c4c0a5216c6369e14d36f83e0fb1e98447967b1f82187febc7988c2d
+- path: .github/skills/plan-review/SKILL.md
+  artifact_type: skill
+  primitive: 6
+  template: skills/plan-review/SKILL.md.tmpl
+  checksum: 5037d701f444f65211a380edadf1872c20b7691cd7c2f2fed18b655a1ed9d704
+- path: .github/skills/pr-lifecycle/SKILL.md
+  artifact_type: skill
+  primitive: 6
+  template: skills/pr-lifecycle/SKILL.md.tmpl
+  checksum: e98eaeb657161ff6e9596b5f4c82ad89b636af8e2c456091ec5e51f9764a2d66
+- path: .github/skills/review/SKILL.md
+  artifact_type: skill
+  primitive: 6
+  template: skills/review/SKILL.md.tmpl
+  checksum: d160b90c4bf7f83c554dde297c400022b955d5ccb5d405405fe292f5d40da199
+- path: .github/skills/runtime-verification/SKILL.md
+  artifact_type: skill
+  primitive: 6
+  template: skills/runtime-verification/SKILL.md.tmpl
+  checksum: b9f724368fc435b7bcc9ca57dd9263fda5d1116b014e77ade7cdc5b4aaec61e8
+- path: .github/skills/safety-modes/SKILL.md
+  artifact_type: skill
+  primitive: 6
+  template: skills/safety-modes/SKILL.md.tmpl
+  checksum: 12cff288698ddd5b2365ba5939eae148fe56240cf09af74d470402517a510942
+- path: .github/skills/security-audit/SKILL.md
+  artifact_type: skill
+  primitive: 6
+  template: skills/security-audit/SKILL.md.tmpl
+  checksum: 58b1ff203f3490398ac32064a9a610da907c79b3bbeb13df10e4e124181cfea4
+- path: .github/skills/shipment-reconcile/SKILL.md
+  artifact_type: skill
+  primitive: 6
+  template: skills/shipment-reconcile/SKILL.md.tmpl
+  checksum: 6e8d6c5273a0c525ecf64150de215a123f317546f4bc6184f6140aad970e5efd
+- path: .github/skills/skill-search/SKILL.md
+  artifact_type: skill
+  primitive: 6
+  template: skills/skill-search/SKILL.md.tmpl
+  checksum: 4b5b4423eef36132a30108880409010fb25d1d3b2bbb5869eaa706955604b578
+- path: .github/skills/spike/SKILL.md
+  artifact_type: skill
+  primitive: 6
+  template: skills/spike/SKILL.md.tmpl
+  checksum: ca273f662a770d222fd7f0792bae6010c14ba581a8f9ab5bd7c93ea76b1da972
+- path: .github/workflows/ci.yml
+  artifact_type: config
+  primitive: 7
+  template: ci/ci.yml.tmpl
+  checksum: 1b4326d9d1c37b19be00cfe9e0ba42e7efba3ba0465b0e6ac20468496dcf6315
+- path: .markdownlint.json
+  artifact_type: config
+  primitive: 7
+  template: scripts/.markdownlint.json.tmpl
+  checksum: 5cb328173ca286c34d6eacb60cf58fe6f579fc4843d2cd6b47533bb5b1965e16
+- path: AGENTS.md
+  artifact_type: foundation
+  primitive: 1
+  template: foundation/AGENTS.md.tmpl
+  checksum: ba7cc5a3d20e91ec9887b518eb572b092f5f18fe7b1f6506795e459a82786e02
+- path: scripts/acquire_lock.ps1
+  artifact_type: script
+  primitive: 7
+  template: skills/file-lock/scripts/acquire_lock.ps1
+  checksum: 14453d7e8a9c95ac5d917816b331c1a9fd6812a9ea1e49ac009c6f3bec7b5e3d
+- path: scripts/acquire_lock.sh
+  artifact_type: script
+  primitive: 7
+  template: skills/file-lock/scripts/acquire_lock.sh
+  checksum: 65c543969c5014f5c91623be6087986acaa57ef6e98eb5ea15b944962d8886e7
+- path: scripts/ci-topology-check.sh
+  artifact_type: script
+  primitive: 7
+  template: ci/ci-topology-check.sh.tmpl
+  checksum: 6d3f8b970cd8bee66f3d75e9bd4f33a5327b5c4831ee7ef67d756199634a7a5f
+- path: scripts/pre-commit-markdownlint.ps1
+  artifact_type: script
+  primitive: 7
+  template: scripts/pre-commit-markdownlint.ps1.tmpl
+  checksum: 3fe8142f02cd30f142091c12bff38cdd8131ffcdb51bec750148e78a2903cb8d
+- path: scripts/pre-commit-markdownlint.sh
+  artifact_type: script
+  primitive: 7
+  template: scripts/pre-commit-markdownlint.sh.tmpl
+  checksum: 66d223e8102f82f52d9c4f89b36255660ea29026acd99772c2768c8ec98ea8f4
+- path: scripts/pre-commit-pipeline-topology.ps1
+  artifact_type: script
+  primitive: 7
+  template: scripts/pre-commit-pipeline-topology.ps1.tmpl
+  checksum: 16e41f54e1dbfc0b9e2cfcde8aba982e9b3ed558affe849953d36d43339898cd
+- path: scripts/pre-commit-pipeline-topology.sh
+  artifact_type: script
+  primitive: 7
+  template: scripts/pre-commit-pipeline-topology.sh.tmpl
+  checksum: 2f22d605a6af193d82c3498d5018af45026893e7f6d9dc66aaf5b5ad1af51fa5
+- path: scripts/pre-push-quality-gates.ps1
+  artifact_type: script
+  primitive: 7
+  template: scripts/pre-push-quality-gates.ps1.tmpl
+  checksum: 40aac91edee042e0eddc0d0301c787e583a666a0ebe1c75bd7818c6dfff0fadd
+- path: scripts/pre-push-quality-gates.sh
+  artifact_type: script
+  primitive: 7
+  template: scripts/pre-push-quality-gates.sh.tmpl
+  checksum: 4f34beffaf74a2b896b7c2285efb9d1065e800635a9aa13a4723dc1740ab8998
+- path: scripts/release_lock.ps1
+  artifact_type: script
+  primitive: 7
+  template: skills/file-lock/scripts/release_lock.ps1
+  checksum: 3900e9d814a29f44837c67d461119c39afc96fdd9dc6f4efdbc0d0460bcdbe3c
+- path: scripts/release_lock.sh
+  artifact_type: script
+  primitive: 7
+  template: skills/file-lock/scripts/release_lock.sh
+  checksum: 975eefc6c944c93548988a87c158fa27d9683ea878b783a1e07d8ebd769a6b09
+- path: scripts/search.ps1
+  artifact_type: script
+  primitive: 7
+  template: skills/skill-search/scripts/search.ps1
+  checksum: 402d99a385c1157e503ff8b1621bef06ebafd46b9679f1ac1fd104e46cea8424
+- path: scripts/search.sh
+  artifact_type: script
+  primitive: 7
+  template: skills/skill-search/scripts/search.sh
+  checksum: 43b464100063496fa1965e3e312c127d22aeb0c0ec9209906972a4ade465d430
+- path: start.ps1
+  artifact_type: script
+  primitive: 7
+  template: scripts/start.ps1.tmpl
+  checksum: acdb4a76827717469f18e1b519a625d9536a2d69feb42e05879ec7e6481f2e62
+- path: start.sh
+  artifact_type: script
+  primitive: 7
+  template: scripts/start.sh.tmpl
+  checksum: 0b64511677eb42212229d4ea9f0f40ba1db5ae7d52d7ec1b4fa036e0559a1d55
 variables_used:
-  PROJECT_NAME: "docline"
-  PRIMARY_LANGUAGE: "Python"
-  PRIMARY_LANGUAGE_LOWER: "python"
-  LANGUAGE_VERSION: "3.12"
-  BUILD_COMMAND: "python -m build"
-  TEST_COMMAND: "pytest"
-  LINT_COMMAND: "ruff check ."
-  FORMAT_COMMAND: "ruff format --check ."
-  FORMAT_FIX_COMMAND: "ruff format ."
-  BUILD_CHECK_COMMAND: "python -m py_compile src/docline/__init__.py"
-  TEST_DIR: "tests/"
-  SOURCE_DIR: "src/"
-  CI_PLATFORM: "GitHub Actions"
-  REPO_OWNER: "softwaresalt"
-  REPO_NAME: "docline"
-  BACKLOG_TOOL_NAME: "backlogit"
-  BACKLOG_DIRECTORY: ".backlogit"
-  DOCS_ROOT: "docs"
-  INSTALL_PRESET: "full"
-  PRIMARY_STACK_PACK: "mcp-server"
+  ADDITIONAL_COMMANDS: 'pyright src/                   # Type check
+
+    docline fetch                  # Run the I/O-bound document fetch phase
+
+    docline process                # Run the compute-bound processing phase
+
+    docline --manifest             # Output the JSON Schema tool definition'
+  AGENTIC_CONFIG_GLOB: .github/**/*.md, .github/**/*.yml, .github/**/*.yaml, .vscode/**/*.json, .autoharness/**/*.yaml
+  ALT_DOC_REVIEW_FAMILY: claude-opus-4.8
+  ALT_DOC_REVIEW_PROVIDER: anthropic
+  ALT_REVIEW_FAMILY: claude-opus-4.8
+  ALT_REVIEW_PROVIDER: anthropic
+  ANTI_PATTERNS: '* Bare `except:` or exception swallowing that hides parse failures
+
+    * Mutable default arguments and hidden module-level state
+
+    * `subprocess` calls with `shell=True` for document or URL-derived values
+
+    * Blocking I/O inside asyncio request handlers or MCP tool dispatch paths
+
+    * Implicit current-working-directory assumptions for locating schemas, fixtures, or output roots
+
+    * Writing partially normalized artifacts before validation completes'
+  AUTOHARNESS_VERSION: 1.5.0
+  BACKLOG_DIRECTORY: .backlogit
+  BACKLOG_TOOL_NAME: backlogit
+  BUILD_CHECK_COMMAND: python -m py_compile src/docline/__init__.py
+  BUILD_COMMAND: python -m build
+  BUILD_TOOL: pip
+  CI_AUTOHARNESS_INSTALL_COMMAND: pip install autoharness
+  CI_DEFAULT_BRANCH: main
+  CI_DOCS_ONLY_PATHS: "              - '!docs/**'\n              - '!.backlogit/**'\n              - '!.autoharness/**'"
+  CI_EXPENSIVE_JOB_NAME: quality gates
+  CI_PLATFORM: GitHub Actions
+  CI_REQUIRED_CHECK_NAME: ci gate
+  CI_RUNNER_OS: ubuntu-latest
+  CI_SETUP_STEPS: "      - name: Checkout\n        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10  # v6.0.3\n        with:\n          persist-credentials: false\n      - name: Install uv\n        uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39  # v8.2.0\n        with:\n          enable-cache: true\n          cache-dependency-glob: \"uv.lock\"\n      - name: Set up Python 3.12\n        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405  # v6.2.0\n        with:\n          python-version: \"3.12\"\n      - name: Sync dependencies\n        run: uv sync --locked --all-extras --dev"
+  COMMIT_SCOPES: core, cli, mcp, fetch, process, schema, docs
+  COPILOT_EXE_PATH: copilot
+  DOCS_CLOSURE: docs/closure
+  DOCS_COMPOUND: docs/compound
+  DOCS_DECISIONS: docs/decisions
+  DOCS_DESIGN_DOCS: docs/design-docs
+  DOCS_MEMORY: docs/memory
+  DOCS_PLANS: docs/plans
+  DOCS_PRODUCT_SPECS: docs/product-specs
+  DOCS_ROOT: docs
+  DOCS_SECURITY: docs/security
+  DOCUMENTATION_CONVENTIONS: Google-style docstrings on all public functions and classes
+  DOC_COMMENT_STYLE: '"""Google-style docstrings"""'
+  ERROR_HANDLING_CONVENTIONS: Raise specific Exception subclasses; never bare except
+  ERROR_HANDLING_POLICY: All exceptions must be typed; use custom exception hierarchy
+  ERROR_PATTERN: raise/except with typed exceptions
+  EXAMPLE_SCOPE: core
+  FILE_EXT: py
+  FORMAT_CHECK_COMMAND: ruff format --check .
+  FORMAT_COMMAND: ruff format --check .
+  FORMAT_FIX_COMMAND: ruff format .
+  FORMAT_TOOL: ruff
+  HARNESS_ENFORCED_SUMMARY: '* Markdown formatting and markdownlint heading hierarchy (MD001/MD025/MD041, P-008)
+
+    * Workflow policies P-001 through P-021 and constitutional principle sequencing
+
+    * Test-first red-green gate mechanics (P-002, P-004) and the `pytest` suite run
+
+    * Lint and format gates already enforced by `ruff check .` and `ruff format --check .`
+
+    * Static typing already enforced by `pyright src/`
+
+    * Merge-commit-only discipline (P-009, Principle XI) — squash and rebase are forbidden
+
+    * Role-boundary enforcement (P-010) and single-worktree topology (P-016)
+
+    * Backlog and shipment bookkeeping conventions (backlogit)
+
+    * Template variable-completeness and cross-reference integrity checks'
+  HARNESS_MANIFEST_PATH: .autoharness/harness-manifest.yaml
+  INSTALL_PRESET: full
+  LANGUAGE_FILE_GLOB: '**/*.py'
+  LANGUAGE_VERSION: '3.12'
+  LINT_COMMAND: ruff check .
+  LINT_POLICY: ruff check fails on any warning; zero-tolerance for lint errors
+  LINT_TOOL: ruff
+  MAX_WAIT: '600'
+  MCP_PROJECT_STRUCTURE: 'src/docline/mcp/       # MCP server entry point, tool registration, stdio transport
+
+    src/docline/schema/    # Pydantic models shared by the CLI and MCP tool schemas
+
+    src/docline/fetch/     # I/O-bound fetch phase invoked by both interfaces
+
+    src/docline/process/   # Compute-bound normalization phase invoked by both interfaces
+
+    tests/                 # pytest suite mirroring src/ structure'
+  MCP_SDK: mcp
+  MCP_TRANSPORT: stdio
+  NAMING_CONVENTIONS: snake_case for functions/variables, PascalCase for classes, UPPER_CASE for constants
+  POLL_INTERVAL: '30'
+  PRIMARY_LANGUAGE: Python
+  PRIMARY_LANGUAGE_LOWER: python
+  PRIMARY_STACK_PACK: mcp-server
+  PROJECT_NAME: docline
+  PROJECT_STRUCTURE: 'src/docline/ — main package
+
+    tests/ — pytest test suite
+
+    docs/design-docs/ — architecture and design documents
+
+    docs/product-specs/ — product requirements'
+  QUALITY_GATE_1: ruff check .
+  QUALITY_GATE_1_NAME: lint
+  QUALITY_GATE_2: pyright src/
+  QUALITY_GATE_2_NAME: typecheck
+  QUALITY_GATE_3: pytest
+  QUALITY_GATE_3_NAME: test
+  QUALITY_GATE_4: ruff format --check .
+  QUALITY_GATE_4_NAME: format
+  REPOSITORY_OPERATING_MODEL: Single-repo Python CLI + MCP server with dual-interface parity requirement
+  REPO_NAME: docline
+  REPO_OWNER: softwaresalt
+  SECURITY_CONFIG_RULES: Credential regexes, unsafe tool allow-lists, missing validation guardrails, exposed env defaults, and missing CI security gate references.
+  SECURITY_OWASP_PATTERNS: Python OWASP heuristics for subprocess injection, path traversal, unsafe parsing, weak crypto, secret logging, SSRF, and untrusted deserialization.
+  SECURITY_REVIEW_PATTERNS: src/docline/fetch/**, src/docline/mcp/**, src/docline/readers/**, src/docline/schema/**, src/docline/runtime/**, src/docline/_tools/**
+  SECURITY_SCAN_PATTERNS: Python patterns for subprocess and shell interpolation, unsafe archive extraction and path traversal, SSRF-prone URL handling, unsafe YAML/XML/HTML parsing, secret logging, and auth gaps between the CLI and MCP stdio entry points
+  SOURCE_DIR: src/
+  SOURCE_GLOB: src/**/*.py
+  TEST_COMMAND: pytest
+  TEST_DIR: tests/
+  TEST_STRUCTURE: Tests in tests/ directory mirroring src/ structure
+  TEST_TOOL: pytest
+  TYPECHECK_COMMAND: pyright src/
+  TYPECHECK_TOOL: pyright
+  UNIMPLEMENTED_MARKER: raise NotImplementedError("...")
+  UNSAFE_POLICY: type hints required on all public interfaces
+tuned_at: '2026-08-31T09:54:44-07:00'

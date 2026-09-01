@@ -1,159 +1,97 @@
 ---
-
-description: "Python-specific coding conventions and quality gates for docline"
-
+description: "Python programming language coding conventions and best practices"
 applyTo: '**/*.py'
-
 ---
-
-
 
 # Python Instructions
 
+Follow idiomatic Python 3.11+ practices. These conventions enforce
+type safety, consistent error handling, and maintainability.
 
+## General Rules
 
-These instructions apply to docline, a document-to-markdown ingestion and normalization pipeline implemented in Python 3.12 with strict type hints (requires Python 3.12+).
+* Target Python 3.11 or later; use modern syntax including structural
+  pattern matching, `Self` type, and `ExceptionGroup` where
+  appropriate.
+* Use type hints on all function signatures and module-level
+  variables. Run `mypy` in strict mode.
+* Follow [PEP 8](https://peps.python.org/pep-0008/) as the baseline
+  style reference.
+* Write docstrings on all public functions, classes, and modules
+  following Google or NumPy docstring conventions.
+* Keep imports organized: standard library, third-party, local.
+  Use `isort` for enforcement.
 
-
-
-## Tooling Baseline
-
-
-
-* Use `pip`-managed Python environments and target Python 3.12
-
-* Use `ruff` for formatting and `ruff` for linting
-
-* Use `pytest` for unit and integration coverage
-
-* Keep production code under `src/` and tests under `tests/`
-
-
-
-## Required Commands
-
-
+## Commands
 
 ```bash
-
-python -m build
-
-python -m py_compile src/docline/__init__.py
-
-ruff check .
-
-ruff format --check .
-
-pytest
-
+pytest                                 # Run all tests
+pytest --cov=src                       # Run with coverage
+ruff check .                           # Lint check
+ruff format --check .                  # Format check
+mypy src/                              # Type check
+python -m py_compile src/**/*.py       # Compilation check
 ```
 
+## Type Safety
 
-
-## Public API Rules
-
-
-
-* type hints required on all public interfaces
-
-* Use """Google-style docstrings""" on all public modules, classes, and functions
-
-* For intentionally incomplete code paths, use `raise NotImplementedError("...")`
-
-* Keep package exports explicit through `__init__.py`; avoid leaking internal helpers as public API
-
-
-
-## Naming and Organization
-
-
-
-* Python naming: snake_case for functions/variables/modules, PascalCase for classes, UPPER_CASE for constants, _prefixed for private
-
-* One class per module for complex classes; group related functions in modules; use __init__.py for public API; keep modules under 400 lines
-
-* Prefer small, cohesive modules over mixed parser/transport/business-logic files
-
-* Keep CLI entrypoints thin; push reusable behavior into importable modules
-
-
-
-## Validation and Safety
-
-
-
-* Type hints on all public interfaces; validate inputs at boundaries with Pydantic; no eval/exec; no pickle for untrusted data
-
-* Use Pydantic models for boundary validation where data crosses CLI, MCP, or external fetch/process layers
-
-* Sanitize file paths, URLs, and user-supplied document metadata before use
-
-* Never bypass validation with `Any` on public interfaces unless there is a documented compatibility reason
-
-
+* Use type hints on all function parameters and return values.
+* Use `typing.Protocol` for structural subtyping instead of ABCs
+  when the interface is consumption-focused.
+* Use `TypedDict` for dictionary shapes that cross module boundaries.
+* Use `Literal` types for constrained string or numeric values.
+* Use `dataclasses` or `pydantic` models for structured data.
+* Use `enum.StrEnum` for fixed sets of string values.
 
 ## Error Handling
 
+* Define custom exception classes inheriting from a project-level
+  base exception.
+* Use `raise ... from err` to preserve exception chains.
+* Catch specific exceptions; never use bare `except:` or
+  `except Exception:` without re-raising.
+* Use context managers (`with` statements) for resource cleanup.
+* Provide actionable error messages that help callers understand
+  the failure.
 
+## Async Patterns
 
-* Custom exception hierarchy rooted in DoclineError; never bare except; always log before re-raise; use contextlib.suppress for intentional swallowing
+* Use `asyncio` for I/O-bound concurrency.
+* Use `async with` and `async for` for async context managers and
+  iterators.
+* Use `asyncio.TaskGroup` (Python 3.11+) for structured concurrency.
+* Always handle task cancellation gracefully.
 
-* Follow the project pattern `raise/except with typed exceptions`
+## Testing
 
-* Preserve exception context with `raise ... from err` when adapting lower-level failures
-
-* Error messages should explain the document, source, or pipeline stage that failed
-
-
-
-## Performance and Concurrency
-
-
-
-* Prefer generators for large datasets; use asyncio for I/O-bound work; avoid global mutable state; profile before optimizing
-
-* Stream large document payloads when possible instead of materializing full intermediate copies
-
-* Use async code only when it improves I/O-bound paths; keep CPU-bound transforms synchronous unless profiling shows otherwise
-
-
-
-## Testing Expectations
-
-
-
-* Every public function has at least one test; use pytest fixtures; mock external I/O; test both success and failure paths
-
-* Cover CLI behavior, parser normalization, and MCP tool contracts with focused tests
-
-* Prefer fixtures and factories over duplicated setup in tests
-
-* Keep regression tests close to the failure mode they protect
-
-
-
-## Documentation and Dependencies
-
-
-
-* Google-style docstrings on all public functions and classes; include Args, Returns, Raises sections; module-level docstring required
-
-* Pin major versions in pyproject.toml; use extras for optional features; prefer stdlib over external deps when equivalent
-
-* Document behavior changes when they alter ingestion semantics, MCP responses, or user-facing CLI output
-
-
+* Use `pytest` as the test runner.
+* Use colocated `test_*.py` files or a `tests/` directory.
+* Use `tests/integration/` for cross-module tests.
+* Use `tests/contract/` for API and schema validation tests.
+* Use fixtures for test setup; avoid global mutable test state.
+* Use `pytest.mark.parametrize` for parameterized tests.
 
 ## Anti-Patterns
 
+* **Bare `except:`**: Always catch specific exception types.
+* **Mutable default arguments**: Use `None` and initialize inside
+  the function body.
+* **Global mutable state**: Pass dependencies explicitly through
+  function parameters.
+* **`print()` for logging**: Use the `logging` module with
+  structured handlers.
+* **`sys.exit()` outside `__main__`**: Return errors to callers.
+* **Star imports (`from x import *`)**: Always use explicit imports.
+* **Untyped function signatures**: All public functions must have
+  complete type annotations.
+* **Magic numbers**: Use named constants or enums.
 
+## Code Style
 
-* No star imports; no mutable default arguments; no global state mutations; no broad exception catches; no nested try/except
+* Use `ruff` for linting and formatting.
+* Use `isort` for import ordering (integrated with `ruff`).
+* Prefer f-strings over `format()` or `%` formatting.
+* Use comprehensions over `map`/`filter` with lambdas.
+* Keep functions short — prefer extraction over deep nesting.
 
-* Do not use print-based debugging in committed code; use structured logging
-
-* Do not mix transport concerns with normalization logic in the same function
-
-
-
-Generated by autoharness | Customized for docline
+Generated by autoharness | Template: technology-python.instructions.md.tmpl

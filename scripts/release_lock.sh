@@ -18,12 +18,14 @@ if [ ! -e "$FILEPATH" ]; then
     echo "Warning: Target file does not exist: $FILEPATH" >&2
 fi
 
-TARGET_DIR="$(dirname "$FILEPATH")"
-if [ -d "$TARGET_DIR" ]; then
-    RESOLVED_DIR="$(cd "$TARGET_DIR" && pwd -P)"
+# Canonicalize the parent directory whenever it exists, even if the target
+# itself was deleted: acquire_lock.sh always writes under `pwd -P`, so a
+# lexical fallback would miss the real lock when a parent is a symlink.
+PARENT_DIR="$(dirname "$FILEPATH")"
+if [ -d "$PARENT_DIR" ]; then
+    RESOLVED_DIR="$(cd "$PARENT_DIR" && pwd -P)"
 else
-    echo "Error: Parent directory does not exist: $TARGET_DIR" >&2
-    exit 1
+    RESOLVED_DIR="$PARENT_DIR"
 fi
 
 FILENAME="$(basename "$FILEPATH")"

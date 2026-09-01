@@ -219,6 +219,7 @@ __marimo__/
 
 # autoharness
 .autoharness/backups/
+.autoharness/staging/
 
 # local extract-land-transform staging
 .elt/
@@ -232,6 +233,7 @@ __marimo__/
 .backlogit/telemetry*.jsonl
 .backlogit/hooks_queue.jsonl
 .backlogit/logs/
+.backlogit/runtime/
 
 # local agent/editor state
 .copilot/
@@ -251,6 +253,12 @@ logs/
 # should graduate to docs/memory/, docs/decisions/, or docs/compound/.
 docs/scratch/*
 !docs/scratch/.gitkeep
+
+# Ephemeral experiment logs written by the iterative-experiment skill. The skill
+# treats these as untracked so the loop's clean-tree invariant holds between
+# iterations; opt into committed reproducibility mode to track them instead.
+docs/experiments/*
+!docs/experiments/.gitkeep
 
 # Transient docline run output at repo root (canonical path is .elt/output/).
 /output/

@@ -1,53 +1,20 @@
 # docline Development Guidelines
 
-Last updated: 2026-05-30
+Last updated: 2026-08-31
 
-docline is a document-to-markdown ingestion and normalization pipeline that operates as both a CLI tool and MCP server, converting heterogeneous documents (PDF, DOCX, VTT, HTML) into schema-validated Markdown for downstream RAG and graph database systems.
-
-<!-- engram:start -->
-## Engram Agent Memory — GitHub Copilot Integration
-
-Engram is running as an MCP server at `http://127.0.0.1:7437/mcp`.
-
-### Available Tools
-
-Tool names may be client-prefixed or namespaced by the MCP host (for example,
-`engram-set_workspace` instead of `set_workspace`). Use the workspace-binding,
-memory, code-map, search, and optional task/history tools exposed by the
-connected Engram server.
-
-| Capability | Purpose |
-|------------|---------|
-| Workspace binding | Register this workspace at session start |
-| Memory lookup | Retrieve stored context, tasks, and code knowledge |
-| Task tracking | Create or update workspace task records when those tools are exposed |
-| Code mapping | Index code files for semantic navigation |
-| Unified search | Search across all content types |
-| Change history | Query git commit history by file, symbol, or date when supported |
-
-### Recommended Workflow
-
-1. **Session start**: Call the workspace-binding tool exposed by Engram for the current workspace path.
-2. **Before coding**: Use the memory lookup tool to load relevant context.
-3. **Task tracking**: Use task create/update tools when the connected client exposes them.
-4. **Code navigation**: Use code-map and unified-search tools for codebase exploration.
-5. **Change history**: Use the history/query tool when supported by the connected Engram surface.
-<!-- engram:end -->
+docline is a docline workspace.
 
 ## Technology Stack
 
 | Layer           | Technology                | Notes                                 |
 |-----------------|---------------------------|---------------------------------------|
-| Language        | Python 3.12 | (requires Python 3.12+)          |
+| Language        | Python 3.12 | (3.12)          |
 | Build           | pip            | `python -m build`                   |
 | Test            | pytest           | `pytest`                    |
 | Lint            | ruff                | `ruff check .`                    |
 | Format          | ruff             | `ruff format --check .`                  |
-| CI              | GitHub Actions           | GitHub Actions (not yet configured — greenfield project)                          |
-| Pydantic | Schema validation and runtime typing |
-| FastAPI | MCP server framework |
-| docling | PDF/DOCX layout analysis |
-| markdown-it-py | AST generation and linting |
+| CI              | GitHub Actions           | Uses GitHub Actions for CI validation.                          |
+
 
 ## Project Structure
 
@@ -60,15 +27,16 @@ docs/product-specs/ — product requirements
 
 ## Commands
 
-| Command | Purpose |
-|---|---|
-| `python -m build` | Build distributable artifacts |
-| `pytest` | Run the full pytest suite |
-| `ruff check .` | Run lint gate |
-| `ruff format --check .` | Verify formatting |
-| `docline fetch` | Run the I/O-bound document fetch phase |
-| `docline process` | Run the compute-bound processing phase |
-| `docline --manifest` | Output the JSON Schema tool definition |
+```bash
+python -m build              # Build
+pytest               # Run all tests
+ruff check .               # Lint
+ruff format --check .             # Format check
+pyright src/                   # Type check
+docline fetch                  # Run the I/O-bound document fetch phase
+docline process                # Run the compute-bound processing phase
+docline --manifest             # Output the JSON Schema tool definition
+```
 
 ## Code Style and Conventions
 
@@ -88,17 +56,7 @@ Google-style docstrings on all public functions and classes
 
 * TDD required: write tests first, verify they fail, then implement
 * Test tiers in `tests/` directory:
-  * Unit: `pytest`
-  * Integration: `pytest -m integration`
-* Preserve dual-interface parity: add or update coverage when CLI and MCP behavior diverge
-
-## Session Start Protocol
-
-1. Send an intercom heartbeat / ping at session start; if it fails, declare `INTERCOM_DEGRADED`.
-2. Verify engram workspace binding before discovery and use `unified_search` for pre-planning; if that fails, declare `ENGRAM_DEGRADED` and fall back to targeted `grep`, `glob`, and `view` usage.
-3. Query backlogit first for queue selection and dependency-aware planning rather than inventing task order from prose.
-4. Represent risky work as `ProposedAction` with `ActionRisk` and capture `ActionResult` after execution.
-5. Broadcast phase transitions so operators can observe planning, implementation, review, verification, and closure.
+Primary test command: pytest
 
 ## Search Strategy
 
@@ -154,17 +112,17 @@ When the workspace enabled the `agent-intercom` capability pack:
 * broadcast major workflow transitions so the operator can observe planning, build, review, verification, and closure progress
 * route destructive terminal commands and destructive file operations through the intercom approval workflow
 * use transmit / standby flows when blocked on operator clarification or when intentionally pausing for instructions
-* if the intercom service is unreachable, declare `INTERCOM_DEGRADED`, warn that remote visibility is reduced, and continue only with safe non-destructive work
+* if the intercom service is unreachable, warn that remote visibility is degraded and avoid pretending approval or operator awareness exists
 
 ### agent-engram
 
 When the workspace enabled the `agent-engram` capability pack:
 
 * verify the engram daemon / MCP surface is reachable before depending on indexed lookup
-* verify workspace binding at session start and use `unified_search` during pre-planning before broad file scans
 * prefer engram tools for conceptual search, symbol discovery, call-graph lookup, impact analysis, and workspace-memory retrieval
+* verify the workspace binding state before relying on results; if the daemon auto-binds the workspace, prefer status checks over repeated rebinding
 * use `sync_workspace` or the equivalent freshness operation when code changed outside the expected indexing flow
-* if semantic search is unavailable or degraded, declare `ENGRAM_DEGRADED` and fall back to targeted `grep`, `glob`, and `view` usage
+* if semantic search is unavailable or degraded, fall back to `list_symbols` + `map_code` + `impact_analysis` before resorting to broad file scans
 * treat `.engram/` generated artifacts as tool-managed state rather than files to hand-edit casually
 
 ### backlogit
@@ -172,10 +130,31 @@ When the workspace enabled the `agent-engram` capability pack:
 When the workspace enabled the `backlogit` capability pack:
 
 * verify the backlogit MCP / CLI surface is reachable before depending on queue, dependency, memory, or traceability operations
-* select work from backlogit queue operations first and honor dependency edges rather than inferring order from prose alone
+* prefer backlogit query operations for targeted state lookup instead of reading many backlog markdown files into context
+* use backlogit queue and dependency operations when available rather than inferring execution order from prose alone
 * write concise memory summaries and checkpoints through backlogit operations at task and session boundaries when supported
 * append significant task comments and associate commits with task IDs for execution traceability when those operations are available
 * if backlog content was edited outside the normal mutation flow, refresh the backlogit index before relying on query results
+
+### browser-verification
+
+When the workspace enabled the `browser-verification` capability pack:
+
+* verify the target server or preview environment is reachable before launching browser work
+* choose headed vs headless mode intentionally and record the reason
+* derive browser routes from changed pages, components, or affected user journeys
+* treat OAuth, email, SMS, payments, CAPTCHAs, or other external flows as explicit human checkpoints
+* carry browser findings into runtime verification and operational closure rather than leaving them as informal notes
+
+### continuous-learning
+
+When the workspace enabled the `continuous-learning` capability pack:
+
+* store observation state under `.autoharness/continuous-learning/`
+* keep hook capture optional and environment-specific; manual capture is still valid
+* use `observe` to capture recurring workflow signals, `learn` to infer instincts, and `evolve` to promote mature patterns into `learned-*` artifacts
+* do not harden a rule into a learned instruction or skill until it has enough corroborating observations to justify the promotion
+* treat learned artifacts as explicit repository knowledge rather than invisible prompt-only behavior
 
 ### strict-safety
 
@@ -185,6 +164,39 @@ When the workspace enabled the `strict-safety` capability pack:
 * express risky work as `ProposedAction` entries with `ActionRisk` and `ActionResult`
 * require explicit approval before destructive actions and prefer approval for high-blast-radius actions
 * keep risky action records visible in plan hardening, review, runtime verification, and operational closure
+
+### release-observability
+
+When the workspace enabled the `release-observability` capability pack:
+
+* follow `.github/instructions/release-observability.instructions.md`
+* produce monitoring plans with SLIs, dashboards, baselines, and alert thresholds before merge
+* complete pre-deploy audit checklists for runtime, migration, or rollout-risk changes
+* define explicit post-deploy observation windows with owner and duration
+* declare rollback triggers with named metrics and thresholds
+* carry all release-observability artifacts into operational closure
+
+### adversarial-review
+
+When the workspace enabled the `adversarial-review` capability pack:
+
+* follow `.github/instructions/adversarial-review.instructions.md`
+* escalate from standard review when 3+ P0/P1 findings appear or the work is security-sensitive
+* dispatch parallel reviewer instances across different model tiers for cross-model diversity
+* assemble consensus-weighted findings (HIGH / MEDIUM / LOW confidence)
+* treat HIGH-confidence P0/P1 findings as gate-blocking
+* feed remediation queue entries into backlog
+
+### graphtor-docs
+
+When the workspace enabled the `graphtor-docs` capability pack:
+
+* follow `.github/instructions/graphtor-docs.instructions.md`
+* verify the graphtor-docs server / MCP surface is reachable and sources are indexed before depending on indexed documentation retrieval
+* prefer `search_local_docs`, `search_semantic`, and `research_topic` for conceptual, API-oriented, or documentation questions before broad web search or raw file scans
+* use `traverse_doc_links` to follow related documentation and `list_sources` to confirm indexed coverage
+* if the server is unavailable or sources are not indexed, fall back to grep, glob, or direct file reading and note reduced confidence
+* treat `.graphtor/` generated artifacts as tool-managed state rather than files to hand-edit casually
 
 ## Remote Operator Integration
 
@@ -196,8 +208,6 @@ When `agent-intercom` is available:
 * Broadcast progress at meaningful phase transitions — do not broadcast every trivial step.
 * Route approval for destructive actions through the intercom approval workflow before executing.
 * If intercom becomes unreachable mid-task, warn that operator visibility is degraded and continue only with safe, non-destructive work.
-
-The `ping-loop.prompt.md` prompt is available in `.github/prompts/` for sustained heartbeat sessions when the pack is installed.
 
 ### agent-engram
 

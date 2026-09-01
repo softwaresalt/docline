@@ -1,0 +1,7 @@
+{
+  "filename": "checkpoint-20260828-060622.json",
+  "disposition": "quarantined",
+  "reason": "Legacy pre-CheckpointV1 orchestrator record: missing schema_version, and agent=orchestrator / status are not valid CheckpointV1 values. Superseded by merged PRs #166/#179.",
+  "operator": "REDMOND\\dewilliams",
+  "disposition_at": "2026-08-31T18:59:31.7062625Z"
+}

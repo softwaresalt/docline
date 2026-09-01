@@ -3,12 +3,10 @@ name: Security Sentinel
 description: "User-invocable security audit agent. Performs comprehensive pre-deployment security audits with structured findings, risk matrix, and remediation roadmap."
 maturity: stable
 tools: read, search, terminal, edit
-model_routing: "Tier 3 (Frontier)"  # DEPRECATED — use model_tier
-model_tier: 3
 max_subagent_tier: 3
 reasoning_effort: "high"
 model_provider: "anthropic"
-model_family: "claude-opus-4.6"
+model_family: "claude-opus-4.8"
 subagent_depth: 0
 ---
 
@@ -31,13 +29,7 @@ The audit covers:
 * **OWASP Top 10 Compliance** — Assess coverage across A01-A10 with language-specific patterns
 * **Third-Party Dependency Review** — Known vulnerable dependencies (if package manifest is present)
 
-Language-specific detection uses:
-* `subprocess` / `os.system` / shell interpolation with document- or user-controlled values
-* unsafe archive extraction (`tarfile`, zip-slip), path traversal, or symlink escapes
-* unbounded remote fetches, SSRF-prone URL handling, or missing allowlists for converters/fetchers
-* unsafe YAML/XML parsing, HTML rendering of untrusted content, or missing schema checks
-* credentials, bearer tokens, API keys, or secrets written to logs, errors, or persisted artifacts
-* auth gaps between CLI and MCP entry points, especially tool handlers exposed over stdio transport.
+Language-specific detection uses `Python patterns for subprocess and shell interpolation, unsafe archive extraction and path traversal, SSRF-prone URL handling, unsafe YAML/XML/HTML parsing, secret logging, and auth gaps between the CLI and MCP stdio entry points`.
 
 ## Invocation
 
@@ -60,13 +52,7 @@ Default scope when no argument is provided: `full`.
 ### Phase 2: Input Validation and Injection Analysis
 
 1. Scan source files matching `src/**/*.py` for unvalidated external inputs
-2. Apply injection detection patterns from this checklist:
-   * `subprocess` / `os.system` / shell interpolation with document- or user-controlled values
-   * unsafe archive extraction (`tarfile`, zip-slip), path traversal, or symlink escapes
-   * unbounded remote fetches, SSRF-prone URL handling, or missing allowlists for converters/fetchers
-   * unsafe YAML/XML parsing, HTML rendering of untrusted content, or missing schema checks
-   * credentials, bearer tokens, API keys, or secrets written to logs, errors, or persisted artifacts
-   * auth gaps between CLI and MCP entry points, especially tool handlers exposed over stdio transport
+2. Apply injection detection patterns from `Python patterns for subprocess and shell interpolation, unsafe archive extraction and path traversal, SSRF-prone URL handling, unsafe YAML/XML/HTML parsing, secret logging, and auth gaps between the CLI and MCP stdio entry points`
 3. Check parameterized query usage vs. string-built queries in data access layers
 4. Check template rendering for user-controlled values
 5. Record findings with file, line, severity, and evidence
@@ -90,13 +76,7 @@ Default scope when no argument is provided: `full`.
 
 ### Phase 5: OWASP Top 10 Assessment
 
-Score the workspace against OWASP Top 10 categories using this checklist:
-* `subprocess` / `os.system` / shell interpolation with document- or user-controlled values
-* unsafe archive extraction (`tarfile`, zip-slip), path traversal, or symlink escapes
-* unbounded remote fetches, SSRF-prone URL handling, or missing allowlists for converters/fetchers
-* unsafe YAML/XML parsing, HTML rendering of untrusted content, or missing schema checks
-* credentials, bearer tokens, API keys, or secrets written to logs, errors, or persisted artifacts
-* auth gaps between CLI and MCP entry points, especially tool handlers exposed over stdio transport
+Score the workspace against OWASP Top 10 categories using `Python patterns for subprocess and shell interpolation, unsafe archive extraction and path traversal, SSRF-prone URL handling, unsafe YAML/XML/HTML parsing, secret logging, and auth gaps between the CLI and MCP stdio entry points`:
 
 | Category | Check |
 |---|---|

@@ -25,6 +25,7 @@ CI_WORKFLOW = REPO_ROOT / ".github" / "workflows" / "ci.yml"
 
 EXPECTED_OS_TARGETS = {"ubuntu-latest"}
 UBUNTU_ONLY_JOBS = {"lint", "format", "typecheck", "build"}
+TOPOLOGY_JOB = "topology-check"
 
 
 @pytest.fixture(scope="module")
@@ -93,3 +94,55 @@ def test_non_test_jobs_remain_ubuntu_only(workflow: dict, job_name: str) -> None
     assert "strategy" not in job or "matrix" not in job.get("strategy", {}), (
         f"{job_name} job must not declare an OS matrix"
     )
+
+
+def test_topology_check_job_exists(workflow: dict) -> None:
+    """ci.yml declares the pipeline-topology backstop job."""
+    assert TOPOLOGY_JOB in workflow["jobs"], (
+        f"ci.yml must declare a {TOPOLOGY_JOB} job (autoharness pipeline-topology backstop)"
+    )
+
+
+def test_topology_check_is_ungated_by_changes(workflow: dict) -> None:
+    """The topology backstop runs on every commit, not just code changes.
+
+    The backstop guards harness/pipeline topology, which lives in Markdown and
+    config that the `changes` path filter deliberately classifies as docs-only.
+    Gating it behind `changes` would let a topology regression land unchecked.
+    """
+    job = workflow["jobs"][TOPOLOGY_JOB]
+    needs = job.get("needs", [])
+    if isinstance(needs, str):
+        needs = [needs]
+    assert "changes" not in needs, (
+        f"{TOPOLOGY_JOB} must not depend on the changes job; it must run unconditionally"
+    )
+    assert "if" not in job, (
+        f"{TOPOLOGY_JOB} must not declare an `if` condition; it must run unconditionally"
+    )
+
+
+def test_topology_check_required_by_ci_gate(workflow: dict) -> None:
+    """`ci gate` depends on the topology backstop and aggregates its result."""
+    gate = workflow["jobs"]["ci-gate"]
+    assert TOPOLOGY_JOB in gate["needs"], (
+        f"ci-gate.needs must include {TOPOLOGY_JOB} so the backstop cannot be silently dropped"
+    )
+    steps = gate["steps"]
+    aggregated = "\n".join(step.get("run", "") for step in steps)
+    assert f"needs['{TOPOLOGY_JOB}'].result" in aggregated, (
+        f"ci-gate must aggregate needs['{TOPOLOGY_JOB}'].result; a needs entry alone "
+        "does not fail the gate when the backstop fails"
+    )
+
+
+def test_topology_check_pins_autoharness_version(workflow: dict) -> None:
+    """The backstop installs a pinned autoharness release, not floating latest."""
+    steps = workflow["jobs"][TOPOLOGY_JOB]["steps"]
+    installs = [s.get("run", "") for s in steps if "pip install autoharness" in s.get("run", "")]
+    assert installs, f"{TOPOLOGY_JOB} must install autoharness"
+    for command in installs:
+        assert "autoharness==" in command, (
+            "autoharness must be version-pinned so an upstream release cannot change "
+            f"the topology verdict for an unchanged commit, got {command.strip()!r}"
+        )
