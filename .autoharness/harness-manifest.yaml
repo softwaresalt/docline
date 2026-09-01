@@ -24,6 +24,8 @@ capability_packs:
 - strict-safety
 - graphtor-docs
 - adversarial-review
+- continuous-learning
+- release-observability
 capability_pack_overlays:
 - pack: agent-engram
   overlay_targets:
@@ -86,6 +88,30 @@ capability_pack_overlays:
   - adversarial-review.instructions.md installed at .github/instructions/
   - adversarial-review.agent.md installed under .github/agents/subagents/
   - alternate reviewer provider/family differ from the anchor review route
+- pack: continuous-learning
+  overlay_targets:
+  - foundation-docs
+  - continuous-learning.instructions.md
+  - pipeline-agents
+  - observation-lifecycle-skills
+  verification_checks:
+  - continuous-learning.instructions.md installed at .github/instructions/
+  - observe, learn, and evolve skills installed under .github/skills/
+  - AGENTS.md contains the continuous-learning capability overlay
+  - copilot-instructions.md contains the continuous-learning capability pack section
+  - _stage.agent.md and _ship.agent.md reference continuous-learning
+- pack: release-observability
+  overlay_targets:
+  - foundation-docs
+  - release-observability.instructions.md
+  - operational-closure
+  - runtime-verification
+  verification_checks:
+  - release-observability.instructions.md installed at .github/instructions/
+  - AGENTS.md contains the release-observability capability overlay
+  - copilot-instructions.md contains the release-observability capability pack section
+  - operational-closure/SKILL.md carries monitoring plan and rollback trigger expectations
+  - runtime-verification/SKILL.md references release-observability
 primitives_installed:
 - 1
 - 2
@@ -298,6 +324,11 @@ artifacts:
   primitive: 9
   template: instructions/context-efficiency.instructions.md.tmpl
   checksum: e90a66ebab83ff0b4d6cace14752866be83c26bff88813ef11dbb018e29e9c53
+- path: .github/instructions/continuous-learning.instructions.md
+  artifact_type: instruction
+  primitive: 10
+  template: instructions/continuous-learning.instructions.md.tmpl
+  checksum: 42f5dde5d2a6ec9446e8c8f965b472b3e697d2743d593ac954f6384d3644b55b
 - path: .github/instructions/copilot-code-review.instructions.md
   artifact_type: instruction
   primitive: 1
@@ -348,6 +379,11 @@ artifacts:
   primitive: 1
   template: instructions/pull-request.instructions.md.tmpl
   checksum: 39f13c4648fce30421002fb9704e6996e116cc9f5ae2cea7cec6ad4df2d9c6e5
+- path: .github/instructions/release-observability.instructions.md
+  artifact_type: instruction
+  primitive: 10
+  template: instructions/release-observability.instructions.md.tmpl
+  checksum: 2f8c77791341b66821711b4303de283e8bc83b5a0c33bd4e156235a84dd360f7
 - path: .github/instructions/role-enforcement.instructions.md
   artifact_type: instruction
   primitive: 5
@@ -438,6 +474,11 @@ artifacts:
   primitive: 6
   template: skills/doc-review/SKILL.md.tmpl
   checksum: 76510774aa24aba2cd0b7e890df44429fc85be7dc0aab1492a7c875833b15403
+- path: .github/skills/evolve/SKILL.md
+  artifact_type: skill
+  primitive: 6
+  template: skills/evolve/SKILL.md.tmpl
+  checksum: cfc0ad402117c288651e10a9b4a34ed1a38da1c5a51e4c1865974cd243ef6928
 - path: .github/skills/file-lock/SKILL.md
   artifact_type: skill
   primitive: 6
@@ -473,6 +514,16 @@ artifacts:
   primitive: 6
   template: skills/iterative-experiment/SKILL.md.tmpl
   checksum: d16ee90bdc02c2425f3bdf27ee9d9cd65d71abb7225ef0ff6edff4c98cdc4c86
+- path: .github/skills/learn/SKILL.md
+  artifact_type: skill
+  primitive: 6
+  template: skills/learn/SKILL.md.tmpl
+  checksum: 211a3808294ad1584a51ce403939590f19121621776c66c516c8623acf9524ab
+- path: .github/skills/observe/SKILL.md
+  artifact_type: skill
+  primitive: 6
+  template: skills/observe/SKILL.md.tmpl
+  checksum: 763b621f5098004bcdbeeb04e553b2cd4716171e24a4c57e92e984ca0a902c1c
 - path: .github/skills/operational-closure/SKILL.md
   artifact_type: skill
   primitive: 6

@@ -206,6 +206,8 @@ harness_recommendations:
     - "strict-safety"
     - "graphtor-docs"
     - "adversarial-review"
+    - "continuous-learning"
+    - "release-observability"
   install_layers:
     - "foundation"
     - "instructions"
@@ -249,6 +251,19 @@ harness_recommendations:
         signals:
           - "adversarial-review agent already installed under .github/agents/"
           - "CLI/MCP parity invariants benefit from confidence-weighted consensus findings"
+      - item: "continuous-learning"
+        because: "Operator-directed. The workspace already maintains institutional-knowledge conventions, so recurring practice should be captured as observations and promoted into explicit learned artifacts."
+        signals:
+          - "docs/compound/ present with 24 existing learning records"
+          - "compound and compound-refresh skills already installed"
+          - "default_in_preset includes the selected full preset"
+      - item: "release-observability"
+        because: "Operator-directed. The CLI and MCP runtime surfaces need monitoring plan, observation window, and rollback trigger discipline at closure even though this workspace ships no deployment manifests."
+        signals:
+          - "runtime_surfaces.public_api is true (MCP tool surface consumed by external agents)"
+          - "runtime_surfaces.cli is true"
+          - "default_in_preset includes the selected full preset"
+          - "NOTE: release_observability_signals is empty — no deployment manifests, monitoring, or deploy-stage CI detected; this pack is an explicit operator choice rather than a discovery-driven recommendation"
     install_layers:
       - item: "foundation"
         because: "Constitution, AGENTS.md, and shared instructions anchor every other artifact."
@@ -265,7 +280,7 @@ harness_recommendations:
       - item: "knowledge"
         because: "docs/ already hosts compound learnings, plans, decisions, memory, and closure records."
       - item: "overlays"
-        because: "Five capability packs are enabled and must be woven across foundation, agents, and skills."
+        because: "Seven capability packs are enabled and must be woven across foundation, agents, and skills."
 
 agent_intercom:
   detected: false

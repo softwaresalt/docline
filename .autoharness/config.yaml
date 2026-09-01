@@ -19,7 +19,7 @@ stack_packs: ["cli-tool", "mcp-server"]
 install_layers: ["foundation", "instructions", "workflow", "review", "runtime", "backlog", "knowledge", "overlays"]
 
 # Capability packs enabled for this workspace
-capability_packs: ["agent-engram", "backlogit", "strict-safety", "graphtor-docs", "adversarial-review"]
+capability_packs: ["agent-engram", "backlogit", "strict-safety", "graphtor-docs", "adversarial-review", "continuous-learning", "release-observability"]
 
 # Backlog tool configuration
 backlog:
