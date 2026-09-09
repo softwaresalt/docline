@@ -567,7 +567,11 @@ def execute_fetch(
 
     Only ``http``/``https`` sources are supported; ``FetchRequest.depth`` maps
     to the crawl's maximum discovery depth and the page budget defaults to a
-    bounded :class:`~docline.fetch.crawl.CrawlConfig` limit. Robots, URL-policy,
+    bounded :class:`~docline.fetch.crawl.CrawlConfig` limit.
+    ``FetchRequest.enable_api_discovery`` maps straight through to
+    :class:`~docline.fetch.crawl_models.CrawlConfig.enable_api_discovery`, so a
+    caller may disable API-backed link discovery for a recognized host (e.g.
+    the Terraform Registry) without any other behavior change. Robots, URL-policy,
     and SSRF guards are enforced by the underlying crawler.
 
     Args:
@@ -601,7 +605,11 @@ def execute_fetch(
         )
 
     source = WebCrawlSource(
-        type="web_crawl", url=request.source, depth=request.depth, max_pages=request.max_pages
+        type="web_crawl",
+        url=request.source,
+        depth=request.depth,
+        max_pages=request.max_pages,
+        enable_api_discovery=request.enable_api_discovery,
     )
     try:
         jobs = execute_source_configs(

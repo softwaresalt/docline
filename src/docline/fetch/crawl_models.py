@@ -78,9 +78,16 @@ class CrawlConfig:
 
     Attributes:
         max_pages: Maximum number of pages to fetch before stopping.
-        max_depth: Maximum discovery depth from the start URL.
+        max_depth: Maximum discovery depth via static HTML link traversal from
+            the start URL. A recognized API discovery source (see
+            ``enable_api_discovery``) seeds its full document set
+            independent of this value, since those documents are siblings of
+            the start page rather than deeper-hop traversal targets.
         page_timeout_seconds: Per-page timeout in seconds.
-        max_redirects: Redirect cap per page.
+        max_redirects: Redirect cap per page for the crawl's own page
+            fetches. A discovery source's own internal API fetches forbid
+            redirects entirely, independent of this value (see
+            ``docline.fetch.tf_registry_source``).
         respect_robots: Whether to parse and honour ``robots.txt`` rules.
         domain_lock: Whether discovered links must remain on the start URL host.
         user_agent: User-agent string sent with each request.
@@ -93,7 +100,10 @@ class CrawlConfig:
             Terraform Registry adapter) may seed additional URLs via its API
             instead of relying solely on static anchor-tag extraction. ``True``
             by default; set ``False`` to force pure static-extraction behavior
-            (a disable switch, no other behavioral change).
+            (a disable switch, no other behavioral change). Reachable from
+            every public fetch surface via ``FetchRequest``/``WebCrawlSource``/
+            ``ManifestUrlSource``'s own ``enable_api_discovery`` field, not
+            only by direct ``CrawlConfig`` construction.
     """
 
     max_pages: int = 50

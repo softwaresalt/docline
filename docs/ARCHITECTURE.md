@@ -173,23 +173,33 @@ while every other host is completely unaffected.
 Safety and degradation posture, uniformly enforced at the composition layer
 (not merely trusted from the adapter):
 
-* **Host confinement.** Every adapter fetch — the version lookup, every paged
-  `provider-docs` request, and every constructed document URL — is confined to
-  the recognized registry host. A paginated `links.next` target pointing
-  off-host stops pagination silently (no further fetch, no error) rather than
-  being followed; every fetch's *final* (post-redirect) response URL is also
-  asserted host-confined, since the shared transport's redirect validation
-  rejects private/reserved targets but permits redirecting to any other public
-  host. Every outbound fetch continues to route exclusively through
-  `docline.fetch.http.fetch_page` — the same connect-time address-pinned,
-  budget-aware transport every other crawl path uses, so DNS-rebinding and
-  redirect-target revalidation protections apply identically here.
+* **Host confinement.** Every adapter fetch — the version lookup and every
+  paged `provider-docs` request — forbids redirects outright
+  (`max_redirects=0`, never the crawl's own `max_redirects`): the shared
+  transport's redirect handler rejects private/reserved targets (SSRF) but
+  permits redirecting to any other *public* host, and only validates the
+  *final* URL after the outbound hop already happened, so forbidding
+  redirects entirely closes the gap instead of merely detecting it post-hoc.
+  A paginated `links.next` target pointing off-host stops pagination
+  silently (no further fetch, no error) rather than being followed, and a
+  `links.next` that cycles back to an already-fetched pagination URL also
+  stops pagination immediately rather than looping until the global
+  attempt budget exhausts. Every fetch's final response URL is additionally
+  asserted host-confined as defense-in-depth. Every outbound fetch continues
+  to route exclusively through `docline.fetch.http.fetch_page` — the same
+  connect-time address-pinned, budget-aware transport every other crawl path
+  uses, so DNS-rebinding protections apply identically here.
 * **Path-segment safety.** Namespace, name, version, category, slug, and the
   resolved provider-version id are all charset-validated (an allowlist, plus
   an explicit reject of the bare reserved segments `"."`/`".."`, which the
   charset allowlist alone would not catch) before being percent-encoded into a
   constructed URL; a hostile or malformed entry (for example a path-traversal
   slug) is skipped, never aborts the rest of the enumeration.
+* **`respect_robots` applies to discovery too.** A start URL disallowed by
+  `robots.txt` never triggers the discovery seed's own outbound API requests
+  — discovery is additional traffic made on the start URL's behalf, so it is
+  gated on the same cached robots check the crawl's main loop performs for
+  every page, not exempt from `CrawlConfig.respect_robots`.
 * **Frontier-ceiling efficiency.** The composition point checks the
   `max_frontier` ceiling *before* pulling each item from a discovery source's
   async generator (not after, unlike the existing admit-then-check pattern used
@@ -203,6 +213,15 @@ Safety and degradation posture, uniformly enforced at the composition layer
   other cap, an exact-boundary case (the source's remaining items happen to
   equal the remaining capacity) is a deliberately conservative over-report,
   mirroring the existing depth-zero TOC-script truncation signal.
+* **Independent of `max_depth`/`depth`.** `max_depth`/`depth` bounds *static
+  HTML link traversal* hops only. A recognized discovery source's
+  API-enumerated documents are seeded once at crawl start regardless of this
+  value — they are siblings of the start page (all part of one logical
+  provider's document set), not deeper-hop targets reached by following
+  links, so `depth=0` (the default, meaning "single page only" for static
+  traversal) does not suppress discovery. Set
+  `enable_api_discovery=False` for a host where pure depth-bounded static
+  traversal is required instead.
 * **Fail-open degradation.** A generic adapter failure is logged once (the
   sanitized crawl origin only, never a raw URL or credential-bearing data) and
   the crawl falls back to static-only extraction for the rest of the run — it
@@ -212,10 +231,24 @@ Safety and degradation posture, uniformly enforced at the composition layer
   `CrawlUrlRejectedError`) raised mid-enumeration is never masked as a generic
   adapter failure: it propagates uncaught out of `crawl()`, identical to any
   other budget/SSRF rejection during a crawl.
-* **Disable switch.** `CrawlConfig.enable_api_discovery` (default `True`)
-  disables discovery-seam consultation entirely when set to `False`: the crawl
-  falls back to byte-identical legacy static-extraction-only behavior for a
-  recognized host, with no other behavioral change.
+* **Disable switch, operator-reachable.** `CrawlConfig.enable_api_discovery`
+  (default `True`) disables discovery-seam consultation entirely when set to
+  `False`: the crawl falls back to byte-identical legacy
+  static-extraction-only behavior for a recognized host, with no other
+  behavioral change. Reachable end-to-end from every public fetch surface —
+  `FetchRequest.enable_api_discovery` (MCP `fetch` tool and
+  `docline.app.execute_fetch`), `WebCrawlSource.enable_api_discovery` (flat
+  ELT `type: web_crawl` config), and `ManifestUrlSource.enable_api_discovery`
+  (graphtor-docs manifest `type: url` entries) — not merely a Python-level
+  `CrawlConfig` construction, so an operator can flip it without a code
+  change or revert.
+* **Page/frontier budget still applies.** Discovery only changes what a crawl
+  *can discover* (bounded by `max_frontier`); it does not change how many
+  pages a crawl *fetches* (bounded by `max_pages`, default `50`). Reaching a
+  large provider's full document set (for example all ~1,600 `azurerm`
+  documents) requires an explicit `max_pages` override sized for that
+  provider — the same pre-existing, intentional safety bound every crawl
+  already has, unrelated to this feature.
 
 This design is deliberately browser-free: an investigation into headless
 browser crawling found that the Terraform Registry's sidebar is virtualized

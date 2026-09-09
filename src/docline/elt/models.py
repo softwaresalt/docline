@@ -27,10 +27,16 @@ class WebCrawlSource(BaseModel):
     Attributes:
         type: Discriminator for the web crawl source kind.
         url: Starting URL for the crawl.
-        depth: Maximum crawl depth.
+        depth: Maximum crawl depth via static HTML link traversal. A
+            recognized API discovery source may still enumerate its full
+            document set independent of this value (see
+            ``enable_api_discovery``).
         max_pages: Optional maximum page count.
         domain_lock: Whether discovered links must stay on the start URL host.
         rate_limit_ms: Delay between page fetches in milliseconds.
+        enable_api_discovery: Whether a recognized discovery source may seed
+            additional URLs via its own API in addition to static link
+            traversal. ``True`` by default.
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -41,6 +47,7 @@ class WebCrawlSource(BaseModel):
     max_pages: int | None = None
     domain_lock: bool = True
     rate_limit_ms: int = 0
+    enable_api_discovery: bool = True
 
 
 class GitHubRepoSource(BaseModel):

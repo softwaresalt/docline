@@ -70,8 +70,10 @@ def _fixture(name: str) -> str:
     return (_FIXTURE_DIR / name).read_text(encoding="utf-8")
 
 
-def _json_response(body_text: str, content_type: str = "application/json") -> FetchResponse:
-    return FetchResponse(url="", status=200, content_type=content_type, body=body_text)
+def _json_response(
+    body_text: str, content_type: str = "application/json", url: str = ""
+) -> FetchResponse:
+    return FetchResponse(url=url, status=200, content_type=content_type, body=body_text)
 
 
 def _install_fetch(
@@ -206,6 +208,112 @@ def test_is_safe_path_segment_rejects_bare_relative_segments() -> None:
     assert _is_safe_path_segment("..") is False
     assert _is_safe_path_segment("../../etc") is False
     assert _is_safe_path_segment("a;b") is False
+
+
+# ---------------------------------------------------------------------------
+# Redirect confinement (Copilot review finding): every adapter fetch forbids
+# redirects outright, rather than relying solely on a post-hoc final-URL check
+# ---------------------------------------------------------------------------
+
+
+def test_every_adapter_fetch_forbids_redirects_regardless_of_config(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Every fetch_page call the adapter makes passes max_redirects=0, even when
+    the crawl config's own max_redirects is nonzero -- closing the window
+    where a same-host request could still be redirected off-host by a
+    compromised or misconfigured endpoint before any final-URL check runs.
+    """
+    captured_max_redirects: list[int] = []
+
+    async def fake_fetch_page(
+        url: str,
+        *,
+        timeout_seconds: float = 30.0,
+        max_redirects: int = 5,
+        budget: object = None,
+        **_kwargs: object,
+    ) -> FetchResponse:
+        del timeout_seconds, budget
+        captured_max_redirects.append(max_redirects)
+        if url == _LOOKUP_URL:
+            return _json_response(_fixture("provider_lookup.json"), url=url)
+        if url == _DOCS_PAGE1_URL:
+            return _json_response(_fixture("provider_docs_page1.json"), url=url)
+        if url == _DOCS_PAGE2_URL:
+            return _json_response(_fixture("provider_docs_page2.json"), url=url)
+        raise AssertionError(f"unexpected fetch_page call for {url!r}")
+
+    monkeypatch.setattr("docline.fetch.tf_registry_source.fetch_page", fake_fetch_page)
+    source = TfRegistrySource()
+
+    # A crawl config with a nonzero max_redirects must not leak through.
+    import asyncio
+
+    urls = asyncio.run(
+        _collect(source.discover_doc_urls(_START_URL, CrawlConfig(max_redirects=5), None))
+    )
+
+    assert len(urls) == len(_EXPECTED_URLS)
+    assert captured_max_redirects, "at least one fetch must have occurred"
+    assert all(value == 0 for value in captured_max_redirects), (
+        "every adapter fetch must forbid redirects (max_redirects=0) "
+        "regardless of the crawl config's own max_redirects"
+    )
+
+
+# ---------------------------------------------------------------------------
+# Cyclic pagination (Copilot review finding): a repeated links.next must stop
+# pagination rather than looping until the global attempt budget exhausts
+# ---------------------------------------------------------------------------
+
+
+def test_discover_doc_urls_stops_on_cyclic_links_next(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A links.next that points back to an already-fetched pagination URL stops
+    pagination immediately instead of looping indefinitely.
+    """
+    requested: list[str] = []
+    cyclic_page1 = json.dumps(
+        {
+            "data": {
+                "type": "provider-versions",
+                "id": "107778",
+                "attributes": {"version": "4.1.0"},
+                "relationships": {
+                    "provider-docs": {
+                        "data": [{"type": "provider-docs", "id": "d1"}],
+                        "links": {"next": _DOCS_PAGE1_URL},
+                    }
+                },
+            },
+            "included": [
+                {
+                    "type": "provider-docs",
+                    "id": "d1",
+                    "attributes": {"category": "resources", "slug": "resource_group"},
+                }
+            ],
+        }
+    )
+    _install_fetch(
+        monkeypatch,
+        {
+            _LOOKUP_URL: _json_response(_fixture("provider_lookup.json")),
+            _DOCS_PAGE1_URL: _json_response(cyclic_page1),
+        },
+        requested,
+    )
+    source = TfRegistrySource()
+
+    urls = asyncio_run_collect(source, _START_URL)
+
+    assert urls == [
+        "https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/resources/resource_group"
+    ]
+    assert requested.count(_DOCS_PAGE1_URL) == 1, (
+        "a links.next cycle back to an already-fetched pagination URL must "
+        "stop pagination on first repeat, never re-fetch it"
+    )
 
 
 # ---------------------------------------------------------------------------

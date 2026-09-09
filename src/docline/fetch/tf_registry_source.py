@@ -49,17 +49,32 @@ from docline.schema.models import DoclineError
 REGISTRY_HOST: str = "registry.terraform.io"
 """The recognized origin host for Terraform Registry provider docs (I5)."""
 
+_API_MAX_REDIRECTS: int = 0
+"""Redirect cap for every adapter-internal v2 JSON:API fetch (I5, hardened).
+
+Deliberately ``0`` -- never ``config.max_redirects`` -- for the version-lookup
+and provider-docs-page fetches. The shared transport's redirect handler
+rejects private/reserved redirect targets (SSRF, I3) but permits redirecting
+to any other *public* host, and it only reads the outbound Location header
+after the request has already been dispatched: checking the *final* response
+URL after the fact (:func:`_assert_response_on_registry_host`) cannot prevent
+that outbound hop, only detect it post-hoc. Forbidding all redirects for these
+API endpoints closes the gap entirely without adding a host allow-list to the
+shared transport (an explicitly rejected design per the plan's constraint
+#4). A genuine redirect from either endpoint fails the fetch outright and
+degrades via the same fail-open path as any other adapter failure.
+"""
+
 
 def _assert_response_on_registry_host(response: FetchResponse, context: str) -> None:
     """Raise unless *response*'s final (post-redirect) URL is host-confined (I5).
 
-    ``fetch_page``'s redirect handler rejects private/reserved redirect
-    targets (SSRF, I3) but permits redirecting to any other *public* host --
-    it is not itself host-pinned to :data:`REGISTRY_HOST`. This closes that
-    gap for every adapter fetch (mirroring the explicit check already applied
-    to a followed ``links.next`` target), so a same-host request that is
-    redirected off-host by a compromised or misconfigured endpoint is never
-    silently trusted just because the *request* URL was confined.
+    Defense-in-depth, secondary to :data:`_API_MAX_REDIRECTS`: with redirects
+    forbidden for every adapter fetch, this should only ever observe the
+    original request URL echoed back unchanged. Retained in case a future
+    call site is added that does permit redirects, or the transport's
+    redirect-rejection behavior ever changes, so an off-host response is never
+    silently trusted based on the *request* URL alone.
     """
     final_host = (urlparse(response.url).hostname or "").lower().rstrip(".")
     if final_host != REGISTRY_HOST:
@@ -163,7 +178,7 @@ async def _resolve_provider_version(
         response = await fetch_page(
             lookup_url,
             timeout_seconds=config.page_timeout_seconds,
-            max_redirects=config.max_redirects,
+            max_redirects=_API_MAX_REDIRECTS,
             budget=budget,
         )
     except (AggregateBudgetExceededError, CrawlUrlRejectedError):
@@ -333,13 +348,25 @@ class TfRegistrySource:
             f"https://{REGISTRY_HOST}/v2/provider-versions/"
             f"{quote(version_id, safe='')}?include=provider-docs"
         )
+        # Tracks every pagination URL already fetched (I2 defense-in-depth):
+        # a cyclic links.next (same-host, so the I5 off-host check alone
+        # cannot catch it) would otherwise loop until the global
+        # MAX_FETCH_ATTEMPTS budget exhausts -- potentially a long time
+        # against a fast-responding malicious or buggy server. A repeat stops
+        # pagination immediately, the same graceful-stop shape as an
+        # off-host links.next.
+        seen_docs_urls: set[str] = set()
         first_page = True
         while docs_url is not None:
+            if docs_url in seen_docs_urls:
+                docs_url = None
+                continue
+            seen_docs_urls.add(docs_url)
             try:
                 response = await fetch_page(
                     docs_url,
                     timeout_seconds=config.page_timeout_seconds,
-                    max_redirects=config.max_redirects,
+                    max_redirects=_API_MAX_REDIRECTS,
                     budget=budget,
                 )
             except (AggregateBudgetExceededError, CrawlUrlRejectedError):

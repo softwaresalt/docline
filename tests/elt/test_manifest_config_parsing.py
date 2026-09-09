@@ -162,6 +162,47 @@ class TestManifestUrlSourceParsing:
         assert configs[0].id == "rust-book"
         assert configs[0].domain_lock is True
 
+    def test_manifest_url_source_enable_api_discovery_defaults_true(self, tmp_path: Path) -> None:
+        """ManifestUrlSource.enable_api_discovery defaults to True when unspecified."""
+        from docline.elt.config import discover_configs
+        from docline.elt.manifest_models import ManifestUrlSource
+
+        config_dir = tmp_path / "config"
+        _write_sources_yaml(
+            config_dir,
+            "url.sources.yaml",
+            "sources:\n  - id: minimal-url\n    type: url\n    url: https://example.com\n",
+        )
+
+        configs = discover_configs(config_dir)
+
+        assert isinstance(configs[0], ManifestUrlSource)
+        assert configs[0].enable_api_discovery is True
+
+    def test_manifest_url_source_parses_enable_api_discovery_false(self, tmp_path: Path) -> None:
+        """A manifest may explicitly disable API-backed discovery -- the plan's
+        operator-facing kill switch for a recognized host."""
+        from docline.elt.config import discover_configs
+        from docline.elt.manifest_models import ManifestUrlSource
+
+        config_dir = tmp_path / "config"
+        _write_sources_yaml(
+            config_dir,
+            "url.sources.yaml",
+            (
+                "sources:\n"
+                "  - id: tf-registry\n"
+                "    type: url\n"
+                "    url: https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs\n"
+                "    enable_api_discovery: false\n"
+            ),
+        )
+
+        configs = discover_configs(config_dir)
+
+        assert isinstance(configs[0], ManifestUrlSource)
+        assert configs[0].enable_api_discovery is False
+
 
 class TestManifestGitSourceParsing:
     """Config parsing for manifest git sources."""

@@ -130,18 +130,31 @@ async def crawl(
         # than entering _seed_from_discovery_source only to have its first
         # ceiling check immediately report a false-positive truncation before
         # ever asking the source for a single item.
-        source = find_source(start)
-        if source is not None:
-            await _seed_from_discovery_source(
-                source,
-                start,
-                crawl_config,
-                frontier=frontier,
-                visited=visited,
-                start_host=start_host,
-                section_scope=section_scope,
-                budget=budget,
-            )
+        #
+        # A disallowed start URL must never trigger discovery's own outbound
+        # API requests: check (and cache) robots.txt for the start URL BEFORE
+        # seeding, exactly like the main loop's own per-page check below --
+        # discovery is additional outbound traffic on the start URL's behalf,
+        # not exempt from the crawl's respect_robots policy.
+        robots_allow_start = not crawl_config.respect_robots or await _robots_allow(
+            start,
+            crawl_config,
+            robots_cache,
+            budget,
+        )
+        if robots_allow_start:
+            source = find_source(start)
+            if source is not None:
+                await _seed_from_discovery_source(
+                    source,
+                    start,
+                    crawl_config,
+                    frontier=frontier,
+                    visited=visited,
+                    start_host=start_host,
+                    section_scope=section_scope,
+                    budget=budget,
+                )
 
     while frontier.queue and page_count < crawl_config.max_pages:
         current_url, depth = frontier.queue.popleft()

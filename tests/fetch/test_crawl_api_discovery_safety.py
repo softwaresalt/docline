@@ -464,3 +464,82 @@ def test_enable_api_discovery_false_yields_legacy_static_only_behavior(
 
     assert outcome_disabled.results == outcome_legacy.results
     assert outcome_disabled.frontier_truncated == outcome_legacy.frontier_truncated
+
+
+# ---------------------------------------------------------------------------
+# Robots.txt gating (Copilot review finding): a disallowed start URL must
+# never trigger discovery's own outbound API requests
+# ---------------------------------------------------------------------------
+
+
+def test_robots_disallowed_start_url_never_triggers_discovery(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """When robots.txt disallows the start URL, the discovery seed's own
+    outbound requests must never fire -- discovery is additional traffic on
+    the start URL's behalf, not exempt from respect_robots.
+    """
+    discovered = _discovered_urls(3)
+    source = _FakeDiscoverySource(discovered)
+    link_sources.register(source)
+
+    robots_url = f"https://{_HOST}/robots.txt"
+    disallow_body = "User-agent: *\nDisallow: /providers/\n"
+
+    requested: list[str] = []
+    _install_fetch(
+        monkeypatch,
+        {
+            robots_url: _html(robots_url, disallow_body),
+            _START_URL: _html(_START_URL, "<html><body>shell</body></html>"),
+        },
+        requested,
+    )
+
+    outcome = asyncio.run(
+        crawl(_START_URL, CrawlConfig(max_pages=50, max_frontier=50, respect_robots=True))
+    )
+
+    assert source.pulled == [], (
+        "a robots.txt-disallowed start URL must never drive the discovery source at all"
+    )
+    for discovered_url in discovered:
+        assert discovered_url not in requested
+    assert _START_URL not in [r.url for r in outcome.results if not r.skipped]
+    skipped = [r for r in outcome.results if r.skipped]
+    assert len(skipped) == 1
+    assert skipped[0].skip_reason is not None
+    assert "robots" in skipped[0].skip_reason.lower()
+
+
+def test_robots_allowed_start_url_still_triggers_discovery(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A robots.txt that explicitly allows the start URL still lets discovery
+    run normally -- the gate only blocks the disallowed case, it does not
+    silently disable discovery whenever respect_robots is on.
+    """
+    discovered = _discovered_urls(3)
+    source = _FakeDiscoverySource(discovered)
+    link_sources.register(source)
+
+    robots_url = f"https://{_HOST}/robots.txt"
+    allow_body = "User-agent: *\nAllow: /\n"
+
+    requested: list[str] = []
+    _install_fetch(
+        monkeypatch,
+        {
+            robots_url: _html(robots_url, allow_body),
+            _START_URL: _html(_START_URL, "<html><body>shell</body></html>"),
+        },
+        requested,
+    )
+
+    outcome = asyncio.run(
+        crawl(_START_URL, CrawlConfig(max_pages=50, max_frontier=50, respect_robots=True))
+    )
+
+    assert source.pulled == discovered
+    fetched = {result.url for result in outcome.results if not result.skipped}
+    assert fetched == {_START_URL, *discovered}
