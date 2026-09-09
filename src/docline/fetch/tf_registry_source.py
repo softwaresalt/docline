@@ -28,7 +28,7 @@ from urllib.parse import quote, urlparse
 
 from docline.fetch.crawl_models import CrawlConfig
 from docline.fetch.http import AggregateBudgetExceededError, RemainingByteBudget, fetch_page
-from docline.fetch.url_policy import CrawlUrlRejectedError
+from docline.fetch.url_policy import CrawlUrlRejectedError, validate_crawl_url
 from docline.schema.models import DoclineError
 
 REGISTRY_HOST: str = "registry.terraform.io"
@@ -135,6 +135,73 @@ async def _resolve_provider_version(
     return version_id
 
 
+def _entry_attrs(item: object) -> dict[str, object] | None:
+    """Return an ``attributes`` mapping from a JSON:API resource object, else ``None``."""
+    if not isinstance(item, dict):
+        return None
+    attrs = item.get("attributes")
+    return attrs if isinstance(attrs, dict) else None
+
+
+def _get_next_url(container: dict[str, object]) -> str | None:
+    """Return a validated string ``links.next`` from a JSON:API-shaped mapping."""
+    links = container.get("links")
+    if not isinstance(links, dict):
+        return None
+    next_url = links.get("next")
+    return next_url if isinstance(next_url, str) else None
+
+
+def _extract_docs_page(
+    payload: dict[str, object], *, first_page: bool
+) -> tuple[list[dict[str, object]], str | None]:
+    """Return ``(entries, next_url)`` for one page of a provider-docs response.
+
+    The first page (``GET /v2/provider-versions/{id}?include=provider-docs``)
+    nests refs under ``data.relationships["provider-docs"]`` with the full
+    attributes in a top-level ``included`` array, and paginates via that
+    relationship's own ``links.next``. Every subsequent page (the ``links.next``
+    target) is a plain provider-docs collection: ``data`` is a list of full
+    resource objects directly, and pagination is the top-level ``links.next``.
+    """
+    if first_page:
+        try:
+            relationship = payload["data"]["relationships"]["provider-docs"]  # type: ignore[index]
+        except (KeyError, TypeError) as err:
+            raise TfRegistryAdapterError(
+                "Provider-docs page is missing the provider-docs relationship (schema drift)."
+            ) from err
+        if not isinstance(relationship, dict):
+            raise TfRegistryAdapterError(
+                "Provider-docs page's provider-docs relationship is malformed (schema drift)."
+            )
+        refs = relationship.get("data")
+        refs = refs if isinstance(refs, list) else []
+        next_url = _get_next_url(relationship)
+        included = payload.get("included")
+        included = included if isinstance(included, list) else []
+        attrs_by_id: dict[object, dict[str, object]] = {}
+        for item in included:
+            if isinstance(item, dict) and item.get("type") == "provider-docs":
+                attrs = _entry_attrs(item)
+                if attrs is not None:
+                    attrs_by_id[item.get("id")] = attrs
+        entries: list[dict[str, object]] = []
+        for ref in refs:
+            if not isinstance(ref, dict):
+                continue
+            attrs = attrs_by_id.get(ref.get("id"))
+            if attrs is not None:
+                entries.append(attrs)
+        return entries, next_url
+
+    items = payload.get("data")
+    items = items if isinstance(items, list) else []
+    next_url = _get_next_url(payload)
+    entries = [attrs for item in items if (attrs := _entry_attrs(item)) is not None]
+    return entries, next_url
+
+
 class TfRegistryAdapterError(DoclineError):
     """Raised when the Terraform Registry adapter cannot enumerate provider docs.
 
@@ -160,16 +227,91 @@ class TfRegistrySource:
         config: CrawlConfig,
         budget: RemainingByteBudget | None,
     ) -> AsyncIterator[str]:
-        """Lazily yield every provider-doc URL for the recognized start URL."""
+        """Lazily yield every provider-doc URL for the recognized start URL.
+
+        Follows ``links.next`` pagination across the registry's v2 JSON:API,
+        confining every followed page to :data:`REGISTRY_HOST` (I5) and
+        charset-validating (I6) every ``category``/``slug`` pair before it is
+        interpolated into a constructed doc URL -- a hostile or malformed entry
+        is skipped, never aborts enumeration. Genuinely async and lazy: no page
+        beyond the one a consumer is currently draining is ever fetched.
+        """
         parsed = _parse_start_url(start_url)
         if parsed is None:
             raise TfRegistryAdapterError(
                 f"Unrecognized Terraform Registry start URL: {start_url!r}"
             )
         namespace, name = parsed
-        await _resolve_provider_version(namespace, name, config, budget)
-        raise NotImplementedError("070.006-T implements paged provider-docs enumeration")
-        yield  # pragma: no cover -- unreachable; keeps this an async generator
+        version_id = await _resolve_provider_version(namespace, name, config, budget)
+
+        docs_url: str | None = (
+            f"https://{REGISTRY_HOST}/v2/provider-versions/"
+            f"{quote(version_id, safe='')}?include=provider-docs"
+        )
+        first_page = True
+        while docs_url is not None:
+            try:
+                response = await fetch_page(
+                    docs_url,
+                    timeout_seconds=config.page_timeout_seconds,
+                    max_redirects=config.max_redirects,
+                    budget=budget,
+                )
+            except (AggregateBudgetExceededError, CrawlUrlRejectedError):
+                # I4 carve-out: never wrapped into TfRegistryAdapterError.
+                raise
+            except Exception as err:
+                raise TfRegistryAdapterError(
+                    f"Failed to enumerate provider docs for {namespace}/{name}: {err}"
+                ) from err
+
+            content_type = (response.content_type or "").lower()
+            if "json" not in content_type:
+                raise TfRegistryAdapterError(
+                    f"Provider-docs page for {namespace}/{name} returned non-JSON "
+                    f"content-type {response.content_type!r}."
+                )
+            try:
+                payload = json.loads(response.body)
+            except json.JSONDecodeError as err:
+                raise TfRegistryAdapterError(
+                    f"Provider-docs page for {namespace}/{name} returned invalid JSON."
+                ) from err
+            if not isinstance(payload, dict):
+                raise TfRegistryAdapterError(
+                    f"Provider-docs page for {namespace}/{name} returned a malformed body."
+                )
+
+            entries, next_url = _extract_docs_page(payload, first_page=first_page)
+            first_page = False
+
+            for attrs in entries:
+                category = attrs.get("category")
+                slug = attrs.get("slug")
+                if not isinstance(category, str) or not isinstance(slug, str):
+                    continue
+                if not _SEGMENT_PATTERN.match(category) or not _SEGMENT_PATTERN.match(slug):
+                    # Hostile or malformed entry (e.g. a path-traversal slug):
+                    # skipped, never aborts the rest of the enumeration (I6).
+                    continue
+                doc_url = (
+                    f"https://{REGISTRY_HOST}/providers/{quote(namespace, safe='')}"
+                    f"/{quote(name, safe='')}/latest/docs/"
+                    f"{quote(category, safe='')}/{quote(slug, safe='')}"
+                )
+                yield validate_crawl_url(doc_url)
+
+            if next_url is None:
+                docs_url = None
+                continue
+            next_host = (urlparse(next_url).hostname or "").lower().rstrip(".")
+            if next_host != REGISTRY_HOST:
+                # I5: an off-host links.next stops pagination without ever
+                # fetching it -- a graceful stop preserving every already-
+                # yielded valid item from earlier pages, not a fail-open trigger.
+                docs_url = None
+                continue
+            docs_url = next_url
 
 
 __all__ = ["REGISTRY_HOST", "TfRegistryAdapterError", "TfRegistrySource"]
