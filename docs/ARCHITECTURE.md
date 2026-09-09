@@ -130,3 +130,83 @@ combined: the preflight is still offloaded to the default executor under
 handed to `fetch_page`, even though the preflight itself no longer performs
 any resolution — `fetch_sitemap`'s executor-offload and deadline-arithmetic
 contract is unchanged by this de-duplication.
+
+## SPA/API-aware crawl link discovery
+
+Some documentation sites (for example the Terraform Registry's provider-docs
+pages) render as a JavaScript single-page-application shell: the raw HTML
+response carries no static anchors to the rest of the site's documents, so a
+pure static-extraction crawl (`docline.fetch.crawl_links.extract_links`)
+discovers only the one start page. `docline.fetch.crawl` addresses this with a
+**pluggable, browserless discovery-source seam** rather than a headless
+browser: a recognized start URL can be enumerated through the site's own API,
+while every other host is completely unaffected.
+
+* `docline.fetch.link_sources` defines the generic seam: a `DiscoverySource`
+  protocol (`recognizes(start_url) -> bool`,
+  `discover_doc_urls(start_url, config, budget) -> AsyncIterator[str]`) plus a
+  first-match `register()`/`find_source()` registry. This module never imports
+  a concrete provider adapter — it stays genuinely site-agnostic.
+* `docline.fetch.tf_registry_source.TfRegistrySource` is the first concrete
+  adapter: it recognizes `registry.terraform.io/providers/{namespace}/{name}/
+  (latest|<version>)/docs` start URLs and lazily enumerates every document URL
+  for that provider via the registry's `v2` JSON:API (paginated
+  `provider-docs` relationship), constructing human-readable doc URLs
+  (`/providers/{namespace}/{name}/latest/docs/{category}/{slug}`) without ever
+  loading a browser.
+* `docline.fetch.crawl` is the **composition point**: it registers
+  `TfRegistrySource` into the seam at import time (so the generic seam module
+  still never imports it), and at the start of every crawl — when
+  `CrawlConfig.enable_api_discovery` is `True` and a registered source
+  recognizes the start URL — lazily drains that source and admits each URL
+  through the *same* frontier ceiling, domain-lock/section-scope filter, and
+  visited-dedup rules static anchor links already go through. Discovery is
+  strictly **additive**: the start page's own static anchors are still
+  extracted and admitted normally, and a URL surfaced by both paths is fetched
+  exactly once.
+
+Safety and degradation posture, uniformly enforced at the composition layer
+(not merely trusted from the adapter):
+
+* **Host confinement.** Every adapter fetch — the version lookup, every paged
+  `provider-docs` request, and every constructed document URL — is confined to
+  the recognized registry host. A paginated `links.next` target pointing
+  off-host stops pagination silently (no further fetch, no error) rather than
+  being followed, and every outbound fetch continues to route exclusively
+  through `docline.fetch.http.fetch_page` — the same connect-time
+  address-pinned, budget-aware transport every other crawl path uses, so
+  DNS-rebinding and redirect-target revalidation protections apply identically
+  here.
+* **Path-segment safety.** Namespace, name, category, and slug segments are all
+  charset-validated before being percent-encoded into a constructed URL; a
+  hostile or malformed entry (for example a path-traversal slug) is skipped,
+  never aborts the rest of the enumeration.
+* **Frontier-ceiling efficiency.** The composition point checks the
+  `max_frontier` ceiling *before* pulling each item from a discovery source's
+  async generator (not after, unlike the existing admit-then-check pattern used
+  for already-parsed in-memory anchor links), so a paginated, network-backed
+  source is never driven to fetch one further page just to have it refused.
+  This is what bounds a large provider's enumeration (for example the Terraform
+  Registry's ~1,600 `azurerm` documents) by `max_frontier` rather than by the
+  provider's own document count.
+* **Fail-open degradation.** A generic adapter failure is logged once (the
+  sanitized crawl origin only, never a raw URL or credential-bearing data) and
+  the crawl falls back to static-only extraction for the rest of the run — it
+  never aborts the crawl. A budget or SSRF rejection
+  (`AggregateBudgetExceededError` / `CrawlUrlRejectedError`) raised mid
+  -enumeration is never masked as a generic adapter failure: it propagates
+  uncaught out of `crawl()`, identical to any other budget/SSRF rejection
+  during a crawl.
+* **Disable switch.** `CrawlConfig.enable_api_discovery` (default `True`)
+  disables discovery-seam consultation entirely when set to `False`: the crawl
+  falls back to byte-identical legacy static-extraction-only behavior for a
+  recognized host, with no other behavioral change.
+
+This design is deliberately browser-free: an investigation into headless
+browser crawling found that the Terraform Registry's sidebar is virtualized
+and API-driven, exposing only a small fraction of a provider's documents to
+DOM inspection even after fully expanding every category — so a runtime
+browser dependency would still be structurally incomplete. The API-backed
+adapter, by contrast, discovers the provider's complete, authoritative
+document set.
+
