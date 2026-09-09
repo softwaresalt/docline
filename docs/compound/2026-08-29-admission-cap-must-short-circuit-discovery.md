@@ -71,3 +71,38 @@ So the sharper rule is: **short-circuit the I/O at the cap, but keep the pure pa
 observability signal depends on knowing whether the cap bound.** The `max_frontier=0` no-network
 invariant from the original lesson still holds and is still asserted.
 
+## Refinement (061-S, 2026-09-09)
+
+061-S applied this same lesson to a genuinely different discovery-candidate shape: a **paginated,
+network-backed async generator** (a Terraform Registry API adapter), not the earlier in-memory
+static-HTML candidate list. Two extensions surfaced.
+
+**The check-before-pull ordering generalizes, but the cost model differs.** For an async
+generator, "candidate generation" and "the network I/O" are the same event — pulling the next
+item **is** the fetch (a paginated API call). The existing lesson's "short-circuit before
+candidate generation" becomes, concretely: check the cap **before** calling `__anext__()` again,
+using manual `__aiter__()`/`__anext__()` stepping rather than a plain `async for` (which always
+pulls the next item before the loop body can check anything). This is strictly more expensive to
+get wrong than the static case: an unnecessary "one more pull" here is a real outbound page
+fetch, not a cheap in-memory list access.
+
+**`max_frontier=0` needs an explicit call-site guard, not just a within-loop short-circuit.**
+Checking the cap at the *top* of the seed loop (mirroring the original lesson's "short-circuit at
+the top of the discovery step") still runs the loop's first iteration when the cap is already `0`
+— and that iteration must itself record the drop for the truncation signal, without ever calling
+`__anext__()`. But since the truncation signal here is `frontier_truncated`, and reporting "the
+cap cost the crawl a link" without ever having asked the source for one is a category error
+(there is no cheap in-memory parse to fall back on, unlike the static case's 059-S refinement),
+the correct fix was to guard the **call site**: skip invoking the discovery seed at all when
+`max_frontier == 0`, rather than entering the seed loop and reporting a false-positive truncation
+on its very first check. A second, independent cap (`max_pages`) needed the identical
+check-before-pull treatment for the same reason: with `max_frontier` large but `max_pages` small,
+the seed must stop once the frontier queue already covers the page budget, not continue paginating
+an API for admissions the main crawl loop can never reach.
+
+**Restated rule**: for a network-backed async producer, "the cap" is not one property but two —
+(a) an entry guard for the exactly-disabled case (avoid a false-positive signal from a loop that
+was never truly attempted), and (b) a check-before-pull loop body for the genuinely-bounded case
+(avoid a real network fetch for a candidate the cap will refuse). Both are required; neither
+substitutes for the other.
+
