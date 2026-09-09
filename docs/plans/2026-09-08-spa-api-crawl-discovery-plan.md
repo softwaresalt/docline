@@ -1,6 +1,3 @@
-<!-- plan-review-attempt: 1 -->
-<!-- plan-review-attempt: 2 -->
-<!-- plan-review-attempt: 3 -->
 ---
 title: "Plan: SPA/API-aware crawl link discovery (Terraform Registry provider-docs adapter)"
 date: 2026-09-08
@@ -9,6 +6,10 @@ source_document: docs/decisions/2026-09-08-spa-api-crawl-discovery-deliberation.
 stash_ids: [FC174FA7]
 requires_plan_hardening: yes
 ---
+
+<!-- plan-review-attempt: 1 -->
+<!-- plan-review-attempt: 2 -->
+<!-- plan-review-attempt: 3 -->
 
 ## Objective
 

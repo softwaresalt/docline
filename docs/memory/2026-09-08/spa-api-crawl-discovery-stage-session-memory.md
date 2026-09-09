@@ -29,7 +29,7 @@ harden → review → harvest → shipment).
 ## Investigation evidence (root cause)
 
 - Raw curl of the docs URL = 9,218-byte Ember SPA app-shell: 1 anchor, 0 /docs sublinks, no
-  toc-*.js. docline's httpx-class `fetch_page` executes no JS → discovery finds nothing → 1 page.
+  toc-*.js. docline's stdlib `urllib.request`-based `fetch_page` (address-pinned, no httpx) executes no JS → discovery finds nothing → 1 page.
 - Headless Edge render: 104 anchors but provider resource/data-source links do NOT render as
   static anchors even after 30s + scroll (API-driven, virtualized).
 - Edge-backed Playwright-MCP deep probe (follow-up, recovered route): settled DOM exposes 0

@@ -23,7 +23,10 @@ discovery is static-HTML only:
   response body and collects `<a href>` anchors.
 - `extract_toc_script_urls` / `extract_toc_links` add an mdBook-specific path: fetch
   `toc-*.js` assets and regex their embedded hrefs.
-- `src/docline/fetch/http.py::fetch_page` is an httpx-class fetch — **it does not execute
+- `src/docline/fetch/http.py::fetch_page` is a stdlib `urllib.request`-based fetcher — a
+  `build_opener` pipeline over address-pinned `http.client` connections (`_PinnedHTTPConnection`/
+  `_PinnedHTTPSConnection`) with connect-time SSRF pinning and per-hop redirect re-validation. It
+  is **not** an httpx/requests client, and — decisively for this bug — **it does not execute
   JavaScript**.
 
 The Terraform Registry is an **Ember.js single-page application**. The server returns an app
@@ -53,7 +56,8 @@ mutation of `package.json`/`bun.lock`/`node_modules`.
      provider-version id (observed `107778`).
    - `GET /v2/provider-versions/107778?include=provider-docs` -> the **entire** sidebar doc set.
    - `GET /v2/provider-docs/{id}` -> individual doc content.
-4. **Browserless enumeration proof** — a plain `curl` (stand-in for docline's httpx client) of
+4. **Browserless enumeration proof** — a plain `curl` (stand-in for docline's stdlib
+   `urllib.request` fetch client) of
    `GET /v2/provider-versions/107778?include=provider-docs` returned **1,620** `provider-docs`
    entries: **1104 resources, 396 data-sources, 94 list-resources, 14 guides, 7 actions, 2
    ephemeral-resources, 2 functions, 1 overview**. Every human doc URL is deterministically
@@ -112,8 +116,9 @@ All enumerated URLs pass `validate_crawl_url` / `is_unsafe_resolved_address` and
 through `frontier.admit()` (so `max_frontier`, section-scope, and `visited` still bind). Adapter
 failure degrades gracefully to today's static-anchor extraction.
 
-- Pros: deterministic; **no runtime browser dependency**; reuses httpx + SSRF policy + frontier
-  bound; empirically proven complete (1,620/1,620 links); testable with recorded JSON fixtures;
+- Pros: deterministic; **no runtime browser dependency**; reuses the existing hardened
+  `urllib.request` fetch path (`fetch_page`) + SSRF policy + frontier bound; empirically proven
+  complete (1,620/1,620 links); testable with recorded JSON fixtures;
   the seam generalizes to future SPA doc providers (Cloud provider registries, etc.).
 - Cons: site-specific per provider; needs an extensibility seam and a maintained recognizer;
   depends on a third-party API shape (mitigated: fail-open to static extraction; pin fixtures;
