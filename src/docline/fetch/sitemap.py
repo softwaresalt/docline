@@ -29,7 +29,6 @@ from __future__ import annotations
 
 import asyncio
 import ipaddress
-import socket
 import time
 from dataclasses import dataclass
 from urllib.parse import urlparse
@@ -169,36 +168,20 @@ def discover_sitemaps_from_robots(robots_txt: str) -> tuple[str, ...]:
     return tuple(sitemaps)
 
 
-def _resolve_all_addresses(host: str) -> tuple[str, ...]:
-    """Return every IP address the resolver yields for ``host``.
-
-    Raises:
-        SitemapError: On any DNS lookup failure.
-    """
-    try:
-        infos = socket.getaddrinfo(host, None)
-    except (socket.gaierror, OSError) as exc:
-        raise SitemapError(f"DNS resolution failed for {host!r}: {exc}") from exc
-    addresses: list[str] = []
-    for info in infos:
-        sockaddr = info[4]
-        if isinstance(sockaddr, tuple) and sockaddr:
-            ip = sockaddr[0]
-            if isinstance(ip, str) and ip not in addresses:
-                addresses.append(ip)
-    if not addresses:
-        raise SitemapError(f"DNS returned no addresses for {host!r}")
-    return tuple(addresses)
-
-
 def validate_sitemap_url(url: str) -> str:
-    """Run the synchronous SSRF preflight for ``url`` and return it unchanged.
+    """Run the synchronous, deterministic SSRF preflight for ``url``.
 
-    This is a **preflight only**. Its resolution is advisory and deliberately
-    non-authoritative: the returned value is the original URL, not a resolved
-    address, so callers must not treat a passing preflight as permission to
-    connect. Use :func:`fetch_sitemap` to retrieve a sitemap — it performs the
-    authoritative resolve-validate-pin sequence atomically.
+    This is a **preflight only** and performs no DNS resolution: it checks
+    scheme, host presence, cloud-metadata hostnames, and (for IP-literal
+    hosts) reserved-address classification — all static, resolution-free
+    checks. It returns the original URL unchanged, so callers must not treat
+    a passing preflight as permission to connect. The single authoritative
+    hostname resolution happens inside :func:`fetch_sitemap`, which delegates
+    to :func:`~docline.fetch.http.fetch_page` for the atomic
+    resolve-validate-pin sequence; any hostname (as opposed to IP-literal)
+    that resolves to an unsafe address is rejected there, as
+    :class:`~docline.fetch.url_policy.CrawlUrlRejectedError`, not by this
+    preflight.
 
     Args:
         url: Candidate sitemap URL.
@@ -208,8 +191,9 @@ def validate_sitemap_url(url: str) -> str:
 
     Raises:
         SitemapError: When the URL has a disallowed scheme, missing host,
-            targets a cloud-metadata endpoint, or resolves to one or more
-            unsafe addresses.
+            targets a cloud-metadata endpoint, or is an IP literal that
+            resolves to a reserved address. A hostname that resolves to an
+            unsafe address is not rejected here — see :func:`fetch_sitemap`.
     """
     if not url:
         raise SitemapError("url must be a non-empty string")
@@ -227,8 +211,10 @@ def validate_sitemap_url(url: str) -> str:
         raise SitemapError(f"host {host!r} is a cloud-metadata endpoint")
 
     # IPv6 literals from urlparse arrive without brackets but with the
-    # raw IPv6 form. Try direct classification first to skip DNS for
-    # IP-literal URLs (and to catch IPv6 link-local / unique-local).
+    # raw IPv6 form. Classify directly to skip DNS for IP-literal URLs
+    # (and to catch IPv6 link-local / unique-local) — this is the only
+    # address-safety check this preflight performs; it never resolves a
+    # hostname.
     try:
         literal = ipaddress.ip_address(host)
     except ValueError:
@@ -236,15 +222,6 @@ def validate_sitemap_url(url: str) -> str:
     if literal is not None:
         if is_unsafe_resolved_address(str(literal)):
             raise SitemapError(f"host {host!r} resolves to a reserved address")
-        return url
-
-    addresses = _resolve_all_addresses(host)
-    for addr in addresses:
-        if is_unsafe_resolved_address(addr):
-            raise SitemapError(
-                f"host {host!r} resolves to unsafe address {addr!r} "
-                "(SSRF guard, defense against DNS rebinding)"
-            )
     return url
 
 
