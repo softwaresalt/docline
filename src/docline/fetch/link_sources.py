@@ -65,6 +65,24 @@ class DiscoverySource(Protocol):
             Absolute, policy-validated document URLs. Consumption is lazy: a
             consumer that stops pulling stops the source's own I/O (e.g. API
             pagination) rather than eagerly enumerating everything upfront.
+
+        Raises:
+            DoclineError: Implementations MUST wrap any failure specific to
+                their own enumeration (a fetch error, a schema-drift/parsing
+                failure, an unsupported input shape, etc.) in a
+                :class:`~docline.schema.models.DoclineError` subclass, never
+                let it escape as a bare/builtin exception. ``crawl()``'s
+                composition point catches exactly this base type to degrade to
+                static-only extraction on any adapter failure — an
+                implementation that raises something else breaks that
+                fail-open guarantee and aborts the whole crawl instead of
+                degrading gracefully. Genuinely aggregate-budget or
+                SSRF-policy failures the implementation's own outbound fetches
+                raise (`AggregateBudgetExceededError` /
+                `CrawlUrlRejectedError`, both themselves `DoclineError`
+                subclasses) MUST be re-raised unwrapped rather than caught and
+                rewrapped, so a budget/SSRF stop is never masked as an
+                ordinary adapter failure.
         """
         ...
 
