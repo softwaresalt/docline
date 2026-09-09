@@ -1,5 +1,5 @@
 ---
-title: "shipment ship succeeds from the primary workspace; prefer cascade close to avoid a new archived_status:active predecessor block"
+title: "shipment ship succeeds from the primary workspace; prefer cascade close to avoid a new archived_status: active predecessor block"
 date: 2026-09-09
 agent: ship
 shipment: 060-S
