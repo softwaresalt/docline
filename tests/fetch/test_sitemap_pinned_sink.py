@@ -298,15 +298,25 @@ def test_rebinding_between_redirect_precheck_and_connect_is_rejected(
 def test_fetch_sitemap_ignores_inherited_proxy_environment(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """``HTTP(S)_PROXY`` must not re-resolve or re-route the sitemap fetch."""
+    """``HTTP(S)_PROXY`` must not re-resolve or re-route the sitemap fetch.
+
+    069.005-T: extended to also assert the D4 single-hostname-lookup
+    invariant holds under an inherited proxy environment, making shipment
+    exit criterion 6 falsifiable together with exit criterion 1 rather than
+    only observing the final connection target.
+    """
     monkeypatch.setenv("HTTP_PROXY", "http://proxy.invalid:8080")
     monkeypatch.setenv("HTTPS_PROXY", "http://proxy.invalid:8080")
     monkeypatch.setenv("ALL_PROXY", "http://proxy.invalid:8080")
-    monkeypatch.setattr(
-        socket,
-        "getaddrinfo",
-        _sequenced_getaddrinfo({"example.com": [[_PUBLIC_IP]]}),
-    )
+    base_resolver = _sequenced_getaddrinfo({"example.com": [[_PUBLIC_IP]]})
+    lookup_counts = {"example.com": 0}
+
+    def _counting_resolver(host: str, *args: Any, **kwargs: Any) -> list[tuple[Any, ...]]:
+        if host.lower() == "example.com":
+            lookup_counts["example.com"] += 1
+        return base_resolver(host, *args, **kwargs)
+
+    monkeypatch.setattr(socket, "getaddrinfo", _counting_resolver)
     log: list[tuple[str, int]] = []
     transport = _scripted_transport([_OK_SITEMAP], log)
     monkeypatch.setattr(socket, "create_connection", transport)
@@ -314,6 +324,9 @@ def test_fetch_sitemap_ignores_inherited_proxy_environment(
     asyncio.run(sitemap_module.fetch_sitemap("http://example.com/sitemap.xml"))
 
     assert log == [(_PUBLIC_IP, 80)], "the fetch must reach the origin, never the proxy"
+    assert lookup_counts["example.com"] == 1, (
+        "proxy suppression must not change the D4 single-hostname-lookup invariant"
+    )
     request_line = bytes(transport.sockets[0].sent).split(b"\r\n", 1)[0]  # type: ignore[attr-defined]
     assert request_line == b"GET /sitemap.xml HTTP/1.1", (
         "origin-form request line proves no proxy absolute-form rewrite occurred"
