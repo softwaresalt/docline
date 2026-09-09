@@ -7,7 +7,12 @@ separate test-writing tasks, per the plan. Recorded, trimmed v2 JSON:API
 fixtures live in ``tests/fetch/fixtures/tf_registry/``:
 
 * ``provider_lookup.json`` — ``GET /v2/providers/{ns}/{name}?include=provider-versions``,
-  resolving the latest provider-version id via a ``latest-version`` relationship.
+  resolving the latest provider-version id by comparing every included
+  version's ``published-at`` timestamp (the real API exposes
+  ``provider-versions`` as a plain list of every published version, with no
+  singular "latest" relationship or flag -- verified live against the real
+  API; two entries with distinct timestamps let the fixture assert the
+  correct one, not merely the first or last, is chosen).
 * ``provider_docs_page1.json`` — ``GET /v2/provider-versions/{id}?include=provider-docs``,
   3 entries (2 ``resources`` + 1 ``data-sources``) plus a same-host ``links.next``.
 * ``provider_docs_page2.json`` — the paginated continuation (a plain
@@ -387,7 +392,7 @@ def test_version_resolution_non_json_content_type_raises_adapter_error(
 def test_version_resolution_schema_drift_raises_adapter_error(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """A response missing the ``latest-version`` relationship is schema drift."""
+    """A response missing the ``included`` provider-versions set is schema drift."""
     requested: list[str] = []
     drifted = json.dumps({"data": {"type": "providers", "id": "1440", "attributes": {}}})
     _install_fetch(monkeypatch, {_LOOKUP_URL: _json_response(drifted)}, requested)
@@ -395,6 +400,72 @@ def test_version_resolution_schema_drift_raises_adapter_error(
 
     with pytest.raises(TfRegistryAdapterError):
         asyncio_run_collect(source, _START_URL)
+
+
+def test_version_resolution_picks_max_published_at_not_first_or_last(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The latest version is the one with the maximum published-at timestamp,
+    not merely whichever entry happens to appear first or last in the
+    included array -- the real API's provider-versions relationship is an
+    unordered list with no explicit 'latest' flag.
+    """
+    requested: list[str] = []
+    payload = json.dumps(
+        {
+            "data": {
+                "type": "providers",
+                "id": "1440",
+                "attributes": {"namespace": "hashicorp", "name": "azurerm"},
+                "relationships": {
+                    "provider-versions": {
+                        "data": [
+                            {"type": "provider-versions", "id": "999999"},
+                            {"type": "provider-versions", "id": "1"},
+                            {"type": "provider-versions", "id": "42"},
+                        ]
+                    }
+                },
+            },
+            "included": [
+                # Listed out of both id-order and chronological order.
+                {
+                    "type": "provider-versions",
+                    "id": "999999",
+                    "attributes": {"version": "1.0.0", "published-at": "2020-01-01T00:00:00Z"},
+                },
+                {
+                    "type": "provider-versions",
+                    "id": "42",
+                    "attributes": {"version": "9.9.9", "published-at": "2026-06-01T00:00:00Z"},
+                },
+                {
+                    "type": "provider-versions",
+                    "id": "1",
+                    "attributes": {"version": "2.0.0", "published-at": "2022-03-01T00:00:00Z"},
+                },
+            ],
+        }
+    )
+    docs_page_url = "https://registry.terraform.io/v2/provider-versions/42?include=provider-docs"
+    _install_fetch(
+        monkeypatch,
+        {
+            _LOOKUP_URL: _json_response(payload),
+            docs_page_url: _json_response(_fixture("provider_docs_page1.json")),
+            _DOCS_PAGE2_URL: _json_response(_fixture("provider_docs_page2.json")),
+        },
+        requested,
+    )
+    source = TfRegistrySource()
+
+    asyncio_run_collect(source, _START_URL)
+
+    assert docs_page_url in requested, (
+        "id '42' has the maximum published-at (2026-06-01) despite being "
+        "neither the numerically largest id (999999) nor the first/last "
+        "included entry -- it must be the one resolved and fetched"
+    )
 
 
 def test_version_resolution_budget_error_propagates_unwrapped(

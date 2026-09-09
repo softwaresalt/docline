@@ -153,7 +153,13 @@ while every other host is completely unaffected.
   for that provider via the registry's `v2` JSON:API (paginated
   `provider-docs` relationship), constructing human-readable doc URLs
   (`/providers/{namespace}/{name}/latest/docs/{category}/{slug}`) without ever
-  loading a browser. Only the `"latest"` version segment is actually resolved
+  loading a browser. The latest provider version is determined by comparing
+  every included provider-version's `published-at` timestamp and taking the
+  maximum — the real API's `provider-versions` relationship is a plain list
+  of every published version with no singular "latest" relationship or flag
+  (verified live against the real API; live-verified end-to-end via a
+  bounded real crawl during 061-S's runtime verification). Only the
+  `"latest"` version segment is actually resolved
   and enumerated: a pinned, non-`"latest"` version URL is recognized (so it is
   never treated as an ordinary static-only host) but fails closed with an
   explicit adapter error rather than silently substituting the current latest

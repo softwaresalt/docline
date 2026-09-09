@@ -161,14 +161,22 @@ async def _resolve_provider_version(
     """Resolve the latest provider-version id for ``namespace/name``.
 
     Calls ``GET /v2/providers/{namespace}/{name}?include=provider-versions``
-    through :func:`fetch_page` and reads the ``latest-version`` relationship.
+    through :func:`fetch_page`. The registry's real v2 JSON:API exposes
+    ``relationships["provider-versions"]`` as a plain list of *every*
+    published version -- there is no singular ``latest-version``
+    relationship or explicit "is latest" flag anywhere in this response
+    (verified against the live API; an earlier assumed shape citing such a
+    relationship was never live-verified and was wrong). The latest version
+    is therefore determined by comparing every included provider-version's
+    ``published-at`` timestamp (ISO 8601, lexicographically sortable in this
+    fixed-offset ``Z``-suffixed form) and returning the id of the maximum.
 
     Raises:
         AggregateBudgetExceededError: Propagated unwrapped (I4 carve-out).
         CrawlUrlRejectedError: Propagated unwrapped (I4 carve-out).
         TfRegistryAdapterError: For any other fetch failure, a non-JSON
-            content-type, a JSON-decode failure, or schema drift (a missing or
-            malformed ``latest-version`` relationship).
+            content-type, a JSON-decode failure, or schema drift (a missing,
+            empty, or entirely-malformed ``included`` provider-versions set).
     """
     lookup_url = (
         f"https://{REGISTRY_HOST}/v2/providers/"
@@ -202,22 +210,43 @@ async def _resolve_provider_version(
         raise TfRegistryAdapterError(
             f"Provider lookup for {namespace}/{name} returned invalid JSON."
         ) from err
+    if not isinstance(payload, dict):
+        raise TfRegistryAdapterError(
+            f"Provider lookup for {namespace}/{name} returned a malformed body."
+        )
 
-    try:
-        version_id = payload["data"]["relationships"]["latest-version"]["data"]["id"]
-    except (KeyError, TypeError) as err:
+    included = payload.get("included")
+    if not isinstance(included, list):
         raise TfRegistryAdapterError(
             f"Provider lookup for {namespace}/{name} is missing the "
-            "latest-version relationship (schema drift)."
-        ) from err
-    if not isinstance(version_id, str) or not _is_safe_path_segment(version_id):
+            "included provider-versions set (schema drift)."
+        )
+
+    best_id: str | None = None
+    best_published_at: str = ""
+    for item in included:
+        if not isinstance(item, dict) or item.get("type") != "provider-versions":
+            continue
+        attrs = _entry_attrs(item)
+        version_id = item.get("id")
+        if attrs is None or not isinstance(version_id, str):
+            continue
+        published_at = attrs.get("published-at")
+        if not isinstance(published_at, str):
+            continue
+        if published_at > best_published_at:
+            best_published_at = published_at
+            best_id = version_id
+
+    if best_id is None or not _is_safe_path_segment(best_id):
         # version_id is interpolated into the provider-docs page URL (I6): an
         # attacker-influenced JSON:API response must never smuggle a bad
-        # character or a reserved relative-path segment into that URL.
+        # character or a reserved relative-path segment into that URL, and a
+        # response with no usable provider-version entries is schema drift.
         raise TfRegistryAdapterError(
-            f"Provider lookup for {namespace}/{name} returned a malformed version id."
+            f"Provider lookup for {namespace}/{name} has no usable provider-version entries."
         )
-    return version_id
+    return best_id
 
 
 def _entry_attrs(item: object) -> dict[str, object] | None:
