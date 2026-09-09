@@ -14,7 +14,7 @@ tasks:
     - 070.010-T
     - 070.011-T
 feature_pr: 190
-closure_pr: null
+closure_pr: 191
 merge_commit: b355041a713931db3f8ed06af64a78ea3194e49b
 merged_at: "2026-09-09T18:42:05Z"
 reviewed_head: 3397af4670d55788dc793caf1112f3637d22eeb6
@@ -38,8 +38,10 @@ threaded end-to-end through the public `FetchRequest`/`WebCrawlSource`/`Manifest
 surfaces as an operator-facing kill switch.
 
 Full design/investigation record:
-`docs/plans/2026-09-08-spa-api-crawl-discovery-plan.md` (adversarially reviewed, PASS, attempt 3)
-and `docs/decisions/2026-09-08-spa-api-crawl-discovery-deliberation.md`.
+`docs/plans/2026-09-08-spa-api-crawl-discovery-decided-plan.md` (compacted decided-plan summary,
+current) — the detailed, adversarially-reviewed original (PASS, attempt 3) is preserved at
+`docs/archive/plans/2026-09-08-spa-api-crawl-discovery-plan.md` — and
+`docs/decisions/2026-09-08-spa-api-crawl-discovery-deliberation.md`.
 
 ## Merge Confirmation
 
@@ -70,8 +72,9 @@ attempt live network I/O, a frontier-truncation false-positive, a `.`/`..` path-
 gap, a missing final-response-URL host check, and a missing INFO observability log (commit
 `10bb4a1`).
 
-**Copilot automated review** ran 6 rounds across the PR's lifetime, finding and this PR fixing 14
-total issues, all with regression tests:
+**Copilot automated review** ran 6 rounds across the PR's lifetime, raising 14 total review
+threads. **13 were fixed with regression tests**; **1 was deferred** (see below) — not all 14
+were fixes:
 
 1. Off-host redirect exposure — fixed via `max_redirects=0` for every adapter-internal API fetch.
 2. `max_depth=0` default-contract interaction — clarified in docstrings (discovery is additive to
@@ -148,18 +151,6 @@ web-crawl fields are reached via YAML manifest configs, not `argparse` flags. Pa
   `_resolve_provider_version` real-API-shape defect (see "Live Runtime Verification" above)
   passed every fixture-based test, quality gate, and review round, and was only found by a
   mandatory live query against the real endpoint.
-
-## CLI/MCP Parity
-
-`enable_api_discovery` is a schema addition to `FetchRequest` (MCP `fetch` tool + CLI's
-underlying `execute_fetch`), `WebCrawlSource` (flat YAML `type: web_crawl`), and
-`ManifestUrlSource` (graphtor-docs manifest `type: url`). The MCP tool schema picks up the new
-field automatically via `FetchRequest.model_json_schema()` (Pydantic auto-derivation) — no
-separate hand-maintained MCP schema existed to update. No new CLI flag was needed since CLI
-web-crawl fields are reached via YAML manifest configs, not `argparse` flags. Parity verified by
-`test_manifest_fetch_schema_advertises_enable_api_discovery`,
-`test_manifest_url_source_parses_enable_api_discovery_false`, and
-`test_execute_fetch_maps_enable_api_discovery_false`/`_default_true`.
 
 ## Backlog Reconciliation (P-015)
 
