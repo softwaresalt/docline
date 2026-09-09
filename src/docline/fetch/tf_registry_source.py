@@ -74,6 +74,12 @@ def _is_registry_origin(url: str) -> bool:
     permit a same-host cleartext downgrade (``http://``) or a non-standard
     port, since ``fetch_page``'s own URL policy allows ``http``/``https``
     generically and is not itself scoped to this one origin.
+
+    Never raises: ``ParseResult.port`` raises ``ValueError`` for a
+    non-numeric or out-of-range port, and *url* may be attacker-influenced
+    remote JSON (a ``links.next`` value) -- a malformed port is treated as a
+    fail-closed non-match, not propagated as an exception that would abort
+    the caller (an async generator) with a raw parse error.
     """
     parsed = urlparse(url)
     if parsed.scheme.lower() != "https":
@@ -81,7 +87,11 @@ def _is_registry_origin(url: str) -> bool:
     host = (parsed.hostname or "").lower().rstrip(".")
     if host != REGISTRY_HOST:
         return False
-    return parsed.port is None or parsed.port == 443
+    try:
+        port = parsed.port
+    except ValueError:
+        return False
+    return port is None or port == 443
 
 
 def _assert_response_on_registry_host(response: FetchResponse, context: str) -> None:
@@ -153,10 +163,7 @@ def _parse_start_url(start_url: str) -> tuple[str, str, str] | None:
     current latest version's docs.
     """
     parsed = urlparse(start_url)
-    if parsed.scheme.lower() != "https":
-        return None
-    host = (parsed.hostname or "").lower().rstrip(".")
-    if host != REGISTRY_HOST:
+    if not _is_registry_origin(start_url):
         return None
     match = _PATH_PATTERN.match(parsed.path)
     if not match:

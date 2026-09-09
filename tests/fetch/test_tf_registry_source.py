@@ -194,6 +194,33 @@ def test_recognizes_rejects_bare_relative_segment_in_name() -> None:
     )
 
 
+def test_recognizes_rejects_non_standard_port() -> None:
+    """A start URL on a non-standard port fails recognition even though scheme
+    and hostname both match -- the recognizer must enforce the same origin
+    invariant (_is_registry_origin) as pagination/response-URL confinement,
+    not merely a scheme+hostname subset of it (Copilot review finding)."""
+    source = TfRegistrySource()
+    assert (
+        source.recognizes(
+            "https://registry.terraform.io:8443/providers/hashicorp/azurerm/latest/docs"
+        )
+        is False
+    )
+
+
+def test_recognizes_rejects_malformed_port_without_raising() -> None:
+    """A syntactically malformed port fails recognition and never raises --
+    ParseResult.port raises ValueError for a non-numeric port, which
+    _is_registry_origin must catch rather than let escape."""
+    source = TfRegistrySource()
+    assert (
+        source.recognizes(
+            "https://registry.terraform.io:notaport/providers/hashicorp/azurerm/latest/docs"
+        )
+        is False
+    )
+
+
 # ---------------------------------------------------------------------------
 # Path-segment safety helper (I6, P2 security fix)
 # ---------------------------------------------------------------------------
@@ -213,6 +240,24 @@ def test_is_safe_path_segment_rejects_bare_relative_segments() -> None:
     assert _is_safe_path_segment("..") is False
     assert _is_safe_path_segment("../../etc") is False
     assert _is_safe_path_segment("a;b") is False
+
+
+def test_is_registry_origin_rejects_malformed_port_without_raising() -> None:
+    """``_is_registry_origin`` never raises for a syntactically malformed
+    port -- ``ParseResult.port`` raises ``ValueError`` for a non-numeric or
+    out-of-range port, and *url* may be attacker-influenced remote JSON (a
+    ``links.next`` value), so this must fail closed (return False) rather
+    than let a raw parse error escape an async generator and abort the crawl
+    (Copilot review finding).
+    """
+    from docline.fetch.tf_registry_source import _is_registry_origin
+
+    assert _is_registry_origin("https://registry.terraform.io/v2/providers") is True
+    assert _is_registry_origin("https://registry.terraform.io:443/v2/providers") is True
+    assert _is_registry_origin("https://registry.terraform.io:8443/v2/providers") is False
+    assert _is_registry_origin("http://registry.terraform.io/v2/providers") is False
+    assert _is_registry_origin("https://registry.terraform.io:notaport/v2/providers") is False
+    assert _is_registry_origin("https://registry.terraform.io:99999999/v2/providers") is False
 
 
 # ---------------------------------------------------------------------------
