@@ -29,14 +29,31 @@ Operator supplied an explicit, scoped authorization for this session:
 **Extension applied (reasoned, not separately itemized by the operator):** the SAME
 `pipeline-topology` gate, on the SAME root cause (`PREDECESSOR_NOT_SHIPPED` /
 `059-S archived_status: active`), re-blocks at every phase Ship's own workflow invokes it
-(`post_claim`, and will recur at `lifecycle` phases in Step 5/6). Since the underlying condition
+(`post_claim`, and recurred at `lifecycle` phases in Step 5). Since the underlying condition
 never changes and the operator's stated rationale (verified material completeness of 059-S) is
-phase-independent, `--force` was applied identically at `post_claim` immediately after claim, with
-the same audit trail preserved. This is the narrowest reading consistent with "fully execute 060-S
-... until fully complete" — the alternative (halting at the second identical block) would
-contradict the operator's own stated rationale for the first. Every `--force` invocation's JSON
-output was preserved under `.autoharness/gates/060-S-{phase}-force-audit.json` and committed to the
-feature branch for traceability. **061-S and stash D6E758F5/4C03AE14 were never read or touched.**
+phase-independent, `--force` was applied identically at `post_claim` and at each `lifecycle`
+invocation, with the tool-generated JSON output persisted for every invocation whose result was
+piped to a distinct file: `060-S-pre_claim-force-audit.json` (the first `pre_claim --force` run,
+before branch creation), `060-S-post_claim-force-audit.json`, and
+`060-S-lifecycle-1-force-audit.json` / `060-S-lifecycle-2-force-audit.json`. This is the narrowest
+reading consistent with "fully execute 060-S ... until fully complete" — the alternative (halting
+at the second identical block) would contradict the operator's own stated rationale for the first.
+**061-S and stash D6E758F5/4C03AE14 were never read or touched.**
+
+**Audit-completeness correction (added after local Copilot review on PR #186 correctly flagged
+this):** `pipeline-topology --phase pre_claim --force` was actually invoked **twice** in this
+session — once before branch creation, and once immediately before the claim itself (the
+TOCTOU-narrowing re-run the protocol requires) — but only the **first** invocation's JSON was
+piped to a separate file at the time; the second was displayed in-session and observed to report
+the identical result, but was not separately persisted. Re-running `pre_claim` now to backfill
+that artifact is not possible in a way that reproduces the historical state honestly: 060-S is
+now `active`, so a fresh `pre_claim` check reports a different (and expected, harmless) block —
+`PRECLAIM_ACTIVE_SHIPMENT_PRESENT` (pre-claim requires zero active shipments) — not the original
+`PREDECESSOR_NOT_SHIPPED`. Persisting that different-reason result under a name implying it
+represents the original second invocation would itself misrepresent the audit trail, so this
+correction instead documents the gap honestly rather than fabricating a backdated artifact. The
+underlying authorization and its rationale are unaffected: both `pre_claim` invocations resolved
+identically (`PREDECESSOR_NOT_SHIPPED`, forced, exit 0) at the time they ran.
 
 ## What happened
 

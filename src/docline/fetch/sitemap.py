@@ -25,12 +25,17 @@ Implements the contract pinned by ``tests/fetch/test_sitemap.py``
   the URL was **statically** disqualified (bad scheme, missing host,
   metadata hostname, or an unsafe IP literal), never that a resolved
   address was rejected.
-* the single authoritative hostname resolution happens once per fetch,
-  inside :func:`fetch_sitemap` -> :func:`~docline.fetch.http.fetch_page`,
-  which screens every resolved address through the same canonical
-  predicate and rejects an unsafe one as
+* the single authoritative hostname resolution happens inside
+  :func:`fetch_sitemap` -> :func:`~docline.fetch.http.fetch_page`, which
+  screens every resolved address through the same canonical predicate and
+  rejects an unsafe one as
   :class:`~docline.fetch.url_policy.CrawlUrlRejectedError` — the address
-  gate, distinct from this preflight's static disqualification
+  gate, distinct from this preflight's static disqualification. This
+  resolves the **original hostname exactly once** for a successful,
+  non-redirected fetch; each *followed redirect target* is resolved twice
+  more (a revalidation precheck, then the pinned connection) — see
+  ``docs/ARCHITECTURE.md``'s sitemap section for the full lookup-count
+  table
 
 This module deliberately owns **no** address classifier of its own: it
 delegates to ``url_policy`` so the live crawl path and the sitemap path can

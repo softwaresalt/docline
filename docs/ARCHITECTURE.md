@@ -85,15 +85,20 @@ point.
 
 ## Sitemap preflight de-duplication: single-resolution model
 
-`docline.fetch.sitemap.fetch_sitemap` resolves a sitemap hostname **exactly
-once** per fetch — inside `docline.fetch.http.fetch_page`'s authoritative
-resolve-validate-pin sequence, where the resolved address is pinned for the
-connection — instead of twice. `validate_sitemap_url` is a deterministic,
-resolution-free preflight: it checks scheme, host presence, cloud-metadata
-hostnames, and (for IP-literal hosts only) reserved-address classification
-via the shared `docline.fetch.url_policy.is_unsafe_resolved_address`
-predicate, and never performs DNS resolution for a hostname. `fetch_page`
-remains the sole authoritative resolver and the sole address gate.
+`docline.fetch.sitemap.fetch_sitemap` resolves the **original hostname of a
+successful, non-redirected fetch exactly once** — inside
+`docline.fetch.http.fetch_page`'s authoritative resolve-validate-pin
+sequence, where the resolved address is pinned for the connection — instead
+of twice. This is the initial-hop invariant; a followed redirect target is
+resolved twice more (a revalidation precheck, then the pinned connection —
+see the lookup-count table below), so the total DNS budget for a fetch that
+follows redirects is not "one" overall, only one for the initial hop.
+`validate_sitemap_url` is a deterministic, resolution-free preflight: it
+checks scheme, host presence, cloud-metadata hostnames, and (for IP-literal
+hosts only) reserved-address classification via the shared
+`docline.fetch.url_policy.is_unsafe_resolved_address` predicate, and never
+performs DNS resolution for a hostname. `fetch_page` remains the sole
+authoritative resolver and the sole address gate.
 
 The two exception types are never interchangeable: `SitemapError` from the
 preflight means a **static** disqualification (bad scheme, missing host,
