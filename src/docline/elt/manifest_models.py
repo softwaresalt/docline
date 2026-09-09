@@ -45,11 +45,18 @@ class ManifestUrlSource(BaseModel):
         type: Discriminator literal ``"url"``.
         id: Unique source identifier within the manifest.
         url: Starting URL for the crawl.
-        max_depth: Maximum crawl depth.  Defaults to ``0`` (single page).
+        max_depth: Maximum crawl depth via static HTML link traversal.
+            Defaults to ``0`` (single page for that traversal path). A
+            recognized API discovery source may still enumerate its full
+            document set independent of this value (see
+            ``enable_api_discovery``).
         max_pages: Optional maximum page count.
         domain_lock: Whether discovered links must stay on the start URL host.
         rate_limit_ms: Delay between page fetches in milliseconds.
         formats: Optional list of format hints.  Informational only.
+        enable_api_discovery: Whether a recognized discovery source may seed
+            additional URLs via its own API in addition to static link
+            traversal. ``True`` by default.
     """
 
     model_config = ConfigDict(extra="ignore")
@@ -62,6 +69,7 @@ class ManifestUrlSource(BaseModel):
     domain_lock: bool = True
     rate_limit_ms: int = 0
     formats: list[str] = []
+    enable_api_discovery: bool = True
 
 
 class ManifestGitSource(BaseModel):

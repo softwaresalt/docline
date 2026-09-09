@@ -130,3 +130,152 @@ combined: the preflight is still offloaded to the default executor under
 handed to `fetch_page`, even though the preflight itself no longer performs
 any resolution — `fetch_sitemap`'s executor-offload and deadline-arithmetic
 contract is unchanged by this de-duplication.
+
+## SPA/API-aware crawl link discovery
+
+Some documentation sites (for example the Terraform Registry's provider-docs
+pages) render as a JavaScript single-page-application shell: the raw HTML
+response carries no static anchors to the rest of the site's documents, so a
+pure static-extraction crawl (`docline.fetch.crawl_links.extract_links`)
+discovers only the one start page. `docline.fetch.crawl` addresses this with a
+**pluggable, browserless discovery-source seam** rather than a headless
+browser: a recognized start URL can be enumerated through the site's own API,
+while every other host is completely unaffected.
+
+* `docline.fetch.link_sources` defines the generic seam: a `DiscoverySource`
+  protocol (`recognizes(start_url) -> bool`,
+  `discover_doc_urls(start_url, config, budget) -> AsyncIterator[str]`) plus a
+  first-match `register()`/`find_source()` registry. This module never imports
+  a concrete provider adapter — it stays genuinely site-agnostic.
+* `docline.fetch.tf_registry_source.TfRegistrySource` is the first concrete
+  adapter: it recognizes `registry.terraform.io/providers/{namespace}/{name}/
+  (latest|<version>)/docs` start URLs and lazily enumerates every document URL
+  for that provider via the registry's `v2` JSON:API (paginated
+  `provider-docs` relationship), constructing human-readable doc URLs
+  (`/providers/{namespace}/{name}/latest/docs/{category}/{slug}`) without ever
+  loading a browser. The latest provider version is determined by comparing
+  every included provider-version's `published-at` timestamp and taking the
+  maximum — the real API's `provider-versions` relationship is a plain list
+  of every published version with no singular "latest" relationship or flag
+  (verified live against the real API; live-verified end-to-end via a
+  bounded real crawl during 061-S's runtime verification). Only the
+  `"latest"` version segment is actually resolved
+  and enumerated: a pinned, non-`"latest"` version URL is recognized (so it is
+  never treated as an ordinary static-only host) but fails closed with an
+  explicit adapter error rather than silently substituting the current latest
+  version's docs — degrading to static-only extraction like any other adapter
+  failure. Genuine pinned-version resolution is tracked as follow-up work.
+* `docline.fetch.crawl` is the **composition point**: it registers
+  `TfRegistrySource` into the seam at import time (so the generic seam module
+  still never imports it), and at the start of every crawl — when
+  `CrawlConfig.enable_api_discovery` is `True`, `CrawlConfig.max_frontier > 0`,
+  and a registered source recognizes the start URL — lazily drains that source
+  and admits each URL through the *same* frontier ceiling, domain-lock/section
+  -scope filter, and visited-dedup rules static anchor links already go
+  through. Discovery is strictly **additive**: the start page's own static
+  anchors are still extracted and admitted normally, and a URL surfaced by
+  both paths is fetched exactly once.
+
+Safety and degradation posture, uniformly enforced at the composition layer
+(not merely trusted from the adapter):
+
+* **Host confinement.** Every adapter fetch — the version lookup and every
+  paged `provider-docs` request — forbids redirects outright
+  (`max_redirects=0`, never the crawl's own `max_redirects`): the shared
+  transport's redirect handler rejects private/reserved targets (SSRF) but
+  permits redirecting to any other *public* host, and only validates the
+  *final* URL after the outbound hop already happened, so forbidding
+  redirects entirely closes the gap instead of merely detecting it post-hoc.
+  A paginated `links.next` target pointing off-host stops pagination
+  silently (no further fetch, no error) rather than being followed, and a
+  `links.next` that cycles back to an already-fetched pagination URL also
+  stops pagination immediately rather than looping until the global
+  attempt budget exhausts. Every fetch's final response URL is additionally
+  asserted host-confined as defense-in-depth. Every outbound fetch continues
+  to route exclusively through `docline.fetch.http.fetch_page` — the same
+  connect-time address-pinned, budget-aware transport every other crawl path
+  uses, so DNS-rebinding protections apply identically here.
+* **Path-segment safety.** Namespace, name, version, category, slug, and the
+  resolved provider-version id are all charset-validated (an allowlist, plus
+  an explicit reject of the bare reserved segments `"."`/`".."`, which the
+  charset allowlist alone would not catch) before being percent-encoded into a
+  constructed URL; a hostile or malformed entry (for example a path-traversal
+  slug) is skipped, never aborts the rest of the enumeration.
+* **`respect_robots` applies to discovery too.** A start URL disallowed by
+  `robots.txt` never triggers the discovery seed's own outbound API requests
+  — discovery is additional traffic made on the start URL's behalf, so it is
+  gated on the same cached robots check the crawl's main loop performs for
+  every page, not exempt from `CrawlConfig.respect_robots`. This check covers
+  the start URL's own path; the adapter's internal API endpoints (the
+  version-lookup and provider-docs-page requests) are not individually
+  re-checked against `robots.txt`, matching the existing precedent for other
+  auxiliary discovery fetches (mdBook `toc-*.js` script requests are not
+  individually robots-checked either) — every *user-facing* discovered
+  document URL still receives its own per-URL robots check via the main
+  crawl loop, unchanged.
+* **Seed stops once the page budget is covered.** The seed also stops pulling
+  once the frontier queue already holds `max_pages` items — at seed time
+  (always before the main loop's first iteration) that many admissions are
+  already guaranteed to exhaust the crawl's own page-fetch budget, so
+  continuing to paginate a large provider's API past that point would
+  perform additional network fetches purely to enqueue URLs the main loop
+  will never reach. Distinct from the `max_frontier` ceiling above: this is
+  not a frontier-ceiling refusal and never affects `frontier_truncated`.
+* **Frontier-ceiling efficiency.** The composition point checks the
+  `max_frontier` ceiling *before* pulling each item from a discovery source's
+  async generator (not after, unlike the existing admit-then-check pattern used
+  for already-parsed in-memory anchor links), so a paginated, network-backed
+  source is never driven to fetch one further page just to have it refused.
+  This is what bounds a large provider's enumeration (for example the Terraform
+  Registry's ~1,600 `azurerm` documents) by `max_frontier` rather than by the
+  provider's own document count. `max_frontier == 0` ("disable link discovery
+  entirely") skips the discovery seed outright rather than reporting a
+  false-positive truncation before ever asking the source for an item; for any
+  other cap, an exact-boundary case (the source's remaining items happen to
+  equal the remaining capacity) is a deliberately conservative over-report,
+  mirroring the existing depth-zero TOC-script truncation signal.
+* **Independent of `max_depth`/`depth`.** `max_depth`/`depth` bounds *static
+  HTML link traversal* hops only. A recognized discovery source's
+  API-enumerated documents are seeded once at crawl start regardless of this
+  value — they are siblings of the start page (all part of one logical
+  provider's document set), not deeper-hop targets reached by following
+  links, so `depth=0` (the default, meaning "single page only" for static
+  traversal) does not suppress discovery. Set
+  `enable_api_discovery=False` for a host where pure depth-bounded static
+  traversal is required instead.
+* **Fail-open degradation.** A generic adapter failure is logged once (the
+  sanitized crawl origin only, never a raw URL or credential-bearing data) and
+  the crawl falls back to static-only extraction for the rest of the run — it
+  never aborts the crawl. A completed, error-free seed also logs a single INFO
+  record (sanitized origin plus the count of URLs seeded) for observability. A
+  budget or SSRF rejection (`AggregateBudgetExceededError` /
+  `CrawlUrlRejectedError`) raised mid-enumeration is never masked as a generic
+  adapter failure: it propagates uncaught out of `crawl()`, identical to any
+  other budget/SSRF rejection during a crawl.
+* **Disable switch, operator-reachable.** `CrawlConfig.enable_api_discovery`
+  (default `True`) disables discovery-seam consultation entirely when set to
+  `False`: the crawl falls back to byte-identical legacy
+  static-extraction-only behavior for a recognized host, with no other
+  behavioral change. Reachable end-to-end from every public fetch surface —
+  `FetchRequest.enable_api_discovery` (MCP `fetch` tool and
+  `docline.app.execute_fetch`), `WebCrawlSource.enable_api_discovery` (flat
+  ELT `type: web_crawl` config), and `ManifestUrlSource.enable_api_discovery`
+  (graphtor-docs manifest `type: url` entries) — not merely a Python-level
+  `CrawlConfig` construction, so an operator can flip it without a code
+  change or revert.
+* **Page/frontier budget still applies.** Discovery only changes what a crawl
+  *can discover* (bounded by `max_frontier`); it does not change how many
+  pages a crawl *fetches* (bounded by `max_pages`, default `50`). Reaching a
+  large provider's full document set (for example all ~1,600 `azurerm`
+  documents) requires an explicit `max_pages` override sized for that
+  provider — the same pre-existing, intentional safety bound every crawl
+  already has, unrelated to this feature.
+
+This design is deliberately browser-free: an investigation into headless
+browser crawling found that the Terraform Registry's sidebar is virtualized
+and API-driven, exposing only a small fraction of a provider's documents to
+DOM inspection even after fully expanding every category — so a runtime
+browser dependency would still be structurally incomplete. The API-backed
+adapter, by contrast, discovers the provider's complete, authoritative
+document set.
+

@@ -1,0 +1,26 @@
+{
+  "data": {
+    "type": "provider-versions",
+    "id": "107778",
+    "attributes": {
+      "version": "4.1.0"
+    },
+    "relationships": {
+      "provider-docs": {
+        "data": [
+          { "type": "provider-docs", "id": "d1" }
+        ],
+        "links": {
+          "next": "https://evil.example.com/v2/provider-versions/107778/provider-docs?page%5Bnumber%5D=2"
+        }
+      }
+    }
+  },
+  "included": [
+    {
+      "type": "provider-docs",
+      "id": "d1",
+      "attributes": { "category": "resources", "slug": "resource_group" }
+    }
+  ]
+}

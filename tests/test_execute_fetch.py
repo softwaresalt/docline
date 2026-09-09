@@ -99,6 +99,34 @@ def test_execute_fetch_applies_bounded_max_pages_default(monkeypatch, tmp_path, 
     assert config.max_pages >= 1
 
 
+def test_execute_fetch_maps_enable_api_discovery_default_true(
+    monkeypatch, tmp_path, fake_crawl
+) -> None:
+    """FetchRequest.enable_api_discovery defaults to True and reaches CrawlConfig."""
+    monkeypatch.chdir(tmp_path)
+    execute_fetch(FetchRequest(source="https://example.org/docs/", output_dir="staging"))
+    config = fake_crawl["config"]
+    assert isinstance(config, CrawlConfig)
+    assert config.enable_api_discovery is True
+
+
+def test_execute_fetch_maps_enable_api_discovery_false(monkeypatch, tmp_path, fake_crawl) -> None:
+    """FetchRequest.enable_api_discovery=False reaches CrawlConfig unchanged --
+    the public 'kill switch' the plan's rollback procedure relies on.
+    """
+    monkeypatch.chdir(tmp_path)
+    execute_fetch(
+        FetchRequest(
+            source="https://example.org/docs/",
+            enable_api_discovery=False,
+            output_dir="staging",
+        )
+    )
+    config = fake_crawl["config"]
+    assert isinstance(config, CrawlConfig)
+    assert config.enable_api_discovery is False
+
+
 def test_execute_fetch_rejects_non_http_scheme(monkeypatch, tmp_path) -> None:
     """A non-http(s) source is rejected without staging anything."""
     monkeypatch.chdir(tmp_path)

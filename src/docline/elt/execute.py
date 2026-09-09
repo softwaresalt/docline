@@ -378,11 +378,13 @@ def _crawl_config_from_source(config: WebCrawlSource | ManifestUrlSource) -> Cra
             domain_lock=config.domain_lock,
             rate_limit_ms=config.rate_limit_ms,
             max_pages=config.max_pages,
+            enable_api_discovery=config.enable_api_discovery,
         )
     return CrawlConfig(
         max_depth=max_depth,
         domain_lock=config.domain_lock,
         rate_limit_ms=config.rate_limit_ms,
+        enable_api_discovery=config.enable_api_discovery,
     )
 
 

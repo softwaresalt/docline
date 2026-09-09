@@ -42,3 +42,14 @@ def test_advertised_contract_matches_executor_scheme_rejection() -> None:
     result = execute_fetch(FetchRequest(source="ftp://example.com"))
     assert result.success is False
     assert "http" in (result.error or "").lower()
+
+
+def test_manifest_fetch_schema_advertises_enable_api_discovery() -> None:
+    """The advertised fetch parameter schema exposes enable_api_discovery --
+    Pydantic auto-derives the MCP JSON schema from FetchRequest, so this field
+    reaching operators requires no separate hand-maintained schema edit.
+    """
+    fetch_tool = next(t for t in get_manifest().tools if t.name == "fetch")
+    properties = fetch_tool.parameters["properties"]
+    assert "enable_api_discovery" in properties
+    assert properties["enable_api_discovery"]["default"] is True

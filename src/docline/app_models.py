@@ -22,12 +22,24 @@ class FetchRequest(BaseModel):
 
     Attributes:
         source: URL or file path to fetch.
-        depth: Crawl depth for web sources. 0 means single page only. Bounded
-            above by :data:`MAX_DEPTH_LIMIT` (§H7 item 4b).
+        depth: Crawl depth for web sources via static HTML link traversal.
+            ``0`` means single page only for that traversal path. Bounded
+            above by :data:`MAX_DEPTH_LIMIT` (§H7 item 4b). A recognized API
+            discovery source (see :mod:`docline.fetch.link_sources`) may
+            still enumerate and admit its full document set independent of
+            ``depth`` — those documents are siblings of the start page, not
+            deeper-hop traversal targets reached by following links. Set
+            ``enable_api_discovery=False`` to disable that behavior and
+            restore pure depth-bounded static traversal for every host.
         max_pages: Optional page budget for web crawls. ``None`` uses the
             bounded crawler default; a value raises or lowers that cap, bounded
             above by :data:`MAX_PAGES_LIMIT` (§H7 item 1).
         output_dir: Directory where staged files are written.
+        enable_api_discovery: Whether a recognized discovery source may seed
+            additional URLs via its own API in addition to static link
+            traversal. ``True`` by default; set ``False`` to force pure
+            static-extraction behavior, identical for every host regardless
+            of whether it is recognized.
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -36,6 +48,7 @@ class FetchRequest(BaseModel):
     depth: int = Field(default=0, ge=0, le=MAX_DEPTH_LIMIT)
     max_pages: int | None = Field(default=None, ge=1, le=MAX_PAGES_LIMIT)
     output_dir: str = ".cache/staging"
+    enable_api_discovery: bool = True
 
     @field_validator("output_dir")
     @classmethod

@@ -1,0 +1,37 @@
+{
+  "data": {
+    "type": "providers",
+    "id": "1440",
+    "attributes": {
+      "namespace": "hashicorp",
+      "name": "azurerm",
+      "full-name": "hashicorp/azurerm"
+    },
+    "relationships": {
+      "provider-versions": {
+        "data": [
+          { "type": "provider-versions", "id": "107777" },
+          { "type": "provider-versions", "id": "107778" }
+        ]
+      }
+    }
+  },
+  "included": [
+    {
+      "type": "provider-versions",
+      "id": "107777",
+      "attributes": {
+        "version": "4.0.0",
+        "published-at": "2026-08-01T00:00:00Z"
+      }
+    },
+    {
+      "type": "provider-versions",
+      "id": "107778",
+      "attributes": {
+        "version": "4.1.0",
+        "published-at": "2026-09-01T00:00:00Z"
+      }
+    }
+  ]
+}

@@ -1,0 +1,20 @@
+{
+  "data": [
+    {
+      "type": "provider-docs",
+      "id": "d4",
+      "attributes": { "category": "guides", "slug": "azurerm_provider_guide" }
+    },
+    {
+      "type": "provider-docs",
+      "id": "d5",
+      "attributes": { "category": "data-sources", "slug": "virtual_network" }
+    },
+    {
+      "type": "provider-docs",
+      "id": "d6",
+      "attributes": { "category": "resources", "slug": "../../etc" }
+    }
+  ],
+  "links": {}
+}

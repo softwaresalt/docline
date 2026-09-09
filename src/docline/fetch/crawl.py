@@ -38,10 +38,18 @@ from docline.fetch.http import (
     RemainingByteBudget,
     fetch_page,
 )
+from docline.fetch.link_sources import DiscoverySource, find_source, register
+from docline.fetch.tf_registry_source import TfRegistrySource
 from docline.fetch.url_policy import CrawlUrlRejectedError, validate_crawl_url
 from docline.schema.models import DoclineError
 
 logger = logging.getLogger(__name__)
+
+# Composition point (070.010-T): the concrete Terraform Registry adapter
+# registers itself here, at import time, exactly once per process -- the
+# generic seam (link_sources.py) never imports a concrete provider adapter,
+# so a future site adapter only ever needs a new registration line here.
+register(TfRegistrySource())
 
 
 async def crawl(
@@ -115,6 +123,38 @@ async def crawl(
     # Request-scoped aggregate byte + fetch-attempt budget threaded through every
     # fetch_page call so no auxiliary/retry/redirect traffic bypasses the bound.
     budget = RemainingByteBudget(MAX_TOTAL_FETCH_BYTES, max_attempts=MAX_FETCH_ATTEMPTS)
+
+    if crawl_config.enable_api_discovery and crawl_config.max_frontier > 0:
+        # max_frontier == 0 means "disable link discovery entirely" (see
+        # CrawlConfig's own docstring) -- skip the seed call outright rather
+        # than entering _seed_from_discovery_source only to have its first
+        # ceiling check immediately report a false-positive truncation before
+        # ever asking the source for a single item.
+        #
+        # A disallowed start URL must never trigger discovery's own outbound
+        # API requests: check (and cache) robots.txt for the start URL BEFORE
+        # seeding, exactly like the main loop's own per-page check below --
+        # discovery is additional outbound traffic on the start URL's behalf,
+        # not exempt from the crawl's respect_robots policy.
+        robots_allow_start = not crawl_config.respect_robots or await _robots_allow(
+            start,
+            crawl_config,
+            robots_cache,
+            budget,
+        )
+        if robots_allow_start:
+            source = find_source(start)
+            if source is not None:
+                await _seed_from_discovery_source(
+                    source,
+                    start,
+                    crawl_config,
+                    frontier=frontier,
+                    visited=visited,
+                    start_host=start_host,
+                    section_scope=section_scope,
+                    budget=budget,
+                )
 
     while frontier.queue and page_count < crawl_config.max_pages:
         current_url, depth = frontier.queue.popleft()
@@ -274,6 +314,132 @@ async def crawl(
                 break
 
     return CrawlOutcome(results=results, frontier_truncated=frontier.truncated)
+
+
+async def _seed_from_discovery_source(
+    source: DiscoverySource,
+    start_url: str,
+    crawl_config: CrawlConfig,
+    *,
+    frontier: _Frontier,
+    visited: set[str],
+    start_host: str,
+    section_scope: str | None,
+    budget: "RemainingByteBudget | None",
+) -> None:
+    """Seed the frontier from a recognized discovery source, once, at crawl start.
+
+    Lazily drains *source*'s async generator, admitting each in-scope,
+    not-yet-visited URL through the SAME frontier ceiling, domain-lock/section
+    -scope filter, and dedup rules static links go through (I5/I6
+    defense-in-depth at this composition layer, independent of whatever the
+    concrete adapter itself already guarantees).
+
+    Checks the frontier ceiling *before* pulling each item (not after, unlike
+    the existing admit-then-check pattern used for already-parsed in-memory
+    anchor links) so a paginated, network-backed source is never driven to
+    fetch one further page just to have it refused -- this is what keeps a
+    1,620-document provider's enumeration bounded by ``max_frontier`` rather
+    than by the provider's own document count. Caller guarantees
+    ``crawl_config.max_frontier > 0`` before invoking this function, so its
+    ceiling check is never the *first* check performed (which would otherwise
+    report truncation without ever having asked the source for an item).
+
+    Also stops pulling once the frontier queue already holds
+    ``crawl_config.max_pages`` items: at seed time (always before the main
+    loop's first iteration) that many admissions are already guaranteed to
+    exhaust the crawl's own page-fetch budget, so any further admission is
+    guaranteed-unused work -- continuing to paginate a large provider's API
+    past that point would perform additional network fetches purely to
+    enqueue URLs the main loop will never reach. This mirrors ``max_pages``'s
+    existing, unrelated role of stopping the crawl loop itself; it is not a
+    frontier-ceiling refusal, so it never sets ``frontier.refused_any``.
+
+    This check-before-pull ordering trades a small conservative-over-report
+    risk for that efficiency: if the source's remaining item count happens to
+    exactly equal the remaining frontier capacity, this reports
+    ``frontier_truncated=True`` even though nothing was actually dropped,
+    because confirming otherwise would require pulling one further item --
+    exactly the network cost this ordering exists to avoid. This mirrors the
+    already-documented depth-zero ``toc-*.js`` conservative case (D3):
+    over-reporting is tolerated, under-reporting is not.
+
+    A narrow adapter failure (any other :class:`DoclineError`) is logged once
+    and degrades to static-only extraction for the rest of the crawl.
+    :class:`AggregateBudgetExceededError` and
+    :class:`~docline.fetch.url_policy.CrawlUrlRejectedError` are never masked
+    here (I4 carve-out): they propagate uncaught out of ``crawl()``.
+
+    On any non-error completion (the source exhausts naturally, or the
+    frontier ceiling stops it), a single INFO record reports the sanitized
+    crawl origin plus the number of URLs actually seeded -- observability for
+    what is potentially a large, silent admission of many URLs from a single
+    third-party API response.
+    """
+    seeded_count = 0
+    iterator = source.discover_doc_urls(start_url, crawl_config, budget).__aiter__()
+    while True:
+        if len(frontier.queue) >= crawl_config.max_pages:
+            # Already enough queued to exhaust the crawl's own page-fetch
+            # budget -- stop before performing further guaranteed-unused
+            # pagination fetches. Not a frontier-ceiling refusal.
+            _log_seed_summary(start_url, seeded_count)
+            return
+        if frontier.exhausted:
+            # This early check-before-pull path never calls frontier.admit()
+            # while exhausted, so it must record the drop itself -- admit()'s
+            # own refusal branch is never reached from this loop.
+            frontier.refused_any = True
+            frontier.report_ceiling()
+            _log_seed_summary(start_url, seeded_count)
+            return
+        try:
+            discovered_url = await iterator.__anext__()
+        except StopAsyncIteration:
+            _log_seed_summary(start_url, seeded_count)
+            return
+        except (AggregateBudgetExceededError, CrawlUrlRejectedError):
+            raise
+        except DoclineError:
+            logger.warning(
+                "Discovery source failed for crawl origin %s; falling back to "
+                "static link extraction.",
+                _origin_label(start_url),
+            )
+            return
+
+        try:
+            normalized = _normalize_url(validate_crawl_url(discovered_url))
+        except CrawlUrlRejectedError:
+            # A malformed/invalid discovered URL is skipped, not fatal --
+            # mirrors how an ineligible static anchor is silently dropped.
+            continue
+        if not _link_in_scope(
+            normalized,
+            domain_lock=crawl_config.domain_lock,
+            start_host=start_host,
+            section_scope=section_scope,
+        ):
+            continue
+        link_key = _dedup_key(normalized)
+        if link_key in visited:
+            continue
+        if frontier.admit(normalized, link_key, 1, visited):
+            seeded_count += 1
+
+
+def _log_seed_summary(start_url: str, seeded_count: int) -> None:
+    """Log one INFO record summarizing a completed discovery-source seed.
+
+    Payload is the sanitized crawl origin plus the admitted-URL count -- never
+    the raw start URL or any discovered URL -- matching the same
+    credential-safe logging posture as :meth:`_Frontier.report_ceiling`.
+    """
+    logger.info(
+        "Discovery source seeded %d URL(s) for crawl origin %s.",
+        seeded_count,
+        _origin_label(start_url),
+    )
 
 
 async def _fetch_with_retries(
