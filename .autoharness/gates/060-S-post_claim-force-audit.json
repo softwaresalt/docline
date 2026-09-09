@@ -1,0 +1,28 @@
+{
+  "mode": "agent",
+  "phase": "post_claim",
+  "target_shipment_id": "060-S",
+  "exit_code": 0,
+  "blocked": false,
+  "invalid": false,
+  "message": "PREDECESSOR_NOT_SHIPPED: predecessor 059-S is not in a shipped terminal state (forced)",
+  "checks": [
+    {
+      "name": "shipment_readiness",
+      "status": "blocked",
+      "token": "PREDECESSOR_NOT_SHIPPED",
+      "message": "PREDECESSOR_NOT_SHIPPED: predecessor 059-S is not in a shipped terminal state",
+      "details": {
+        "target_shipment_id": "060-S",
+        "predecessor_id": "059-S",
+        "live_status": null,
+        "archived_status": "active"
+      }
+    }
+  ],
+  "token": "PREDECESSOR_NOT_SHIPPED",
+  "forced": true,
+  "telemetry_log": null,
+  "force_audit_log": ".autoharness\\gates\\pipeline-topology-force-audit.log"
+}
+

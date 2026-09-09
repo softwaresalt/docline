@@ -1,21 +1,26 @@
-"""Sitemap pinned-sink composition harness (066.005-T, red).
+"""Sitemap pinned-sink composition harness (066.005-T).
 
-``validate_sitemap_url`` classifies the addresses a hostname resolves to and
-then hands the caller back the *hostname*. Any HTTP client re-resolves that
-hostname at fetch time, so a TTL-0 attacker can answer public during
-validation and private/CGNAT at connect — every address check is bypassed.
+Since 069-F/069.003-T, ``validate_sitemap_url`` is a deterministic,
+resolution-free preflight: it never resolves a hostname, so it cannot
+itself hand back a validated-then-re-resolvable address. Before that
+change (066.005-T's original security model), ``validate_sitemap_url``
+resolved the addresses a hostname resolved to and then handed the caller
+back the *hostname*, so any HTTP client re-resolving that hostname at
+fetch time opened a validation/connect DNS-rebinding window — every
+address check could be bypassed by a TTL-0 attacker.
 
-These tests pin the fix: sitemap retrieval must go through one authoritative
-entry point, ``sitemap.fetch_sitemap``, that delegates to the already-hardened
-public sink ``http.fetch_page`` so resolution, validation, connect,
-redirect revalidation, and proxy suppression happen as one atomic unit.
+These tests pin the fix that closed that window: sitemap retrieval goes
+through one authoritative entry point, ``sitemap.fetch_sitemap``, that
+delegates to the already-hardened public sink ``http.fetch_page`` so
+resolution, validation, connect, redirect revalidation, and proxy
+suppression happen as one atomic unit. The single authoritative hostname
+resolution now happens exactly there — never inside the preflight.
 
-The whole invariant is exercised end to end against the real ``urllib`` stack:
-DNS is scripted per call (so rebinding is expressible) and the transport is a
-scripted in-memory socket, so the genuine pinned connection classes, the
-validating redirect handler, and the proxy-suppressing opener all run.
-
-Red before 066.006-T: ``sitemap.fetch_sitemap`` does not exist.
+The whole invariant is exercised end to end against the real ``urllib``
+stack: DNS is scripted per call (so rebinding is expressible on the
+redirect path — see 069-F/D5) and the transport is a scripted in-memory
+socket, so the genuine pinned connection classes, the validating redirect
+handler, and the proxy-suppressing opener all run.
 """
 
 from __future__ import annotations
@@ -176,26 +181,50 @@ def test_fetch_sitemap_succeeds_and_pins_the_validated_address(
 
 
 # ---------------------------------------------------------------------------
-# (a) DNS rebinding between validation and connect
+# (a) DNS rebinding — the initial hop has no intra-hop divergence to script
+#
+# 069-F/D5: before 069.003-T, the initial hop had a separate advisory
+# "validation" resolution (in the preflight) followed by a distinct
+# authoritative "connect" resolution, so a rebinding schedule could target
+# the gap between them. After 069.003-T, ``_connect_validated_address``
+# resolves ``host`` exactly ONCE and connects atomically — there is no
+# intra-hop validate/connect divergence left to script for the initial hop.
+# The only observable second resolution within a fetch is now on a
+# **redirect** (``_ValidatingRedirectHandler.redirect_request``'s precheck,
+# then the pinned connection), so the rebinding invariant is re-expressed
+# there — see the parametrized
+# ``test_rebinding_between_redirect_precheck_and_connect_is_rejected`` below,
+# which is never deleted and never weakened, and now covers the same
+# address classes (loopback, private, CGNAT, metadata) the retired
+# initial-hop test covered.
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.parametrize("connect_ip", ["127.0.0.1", "10.0.0.5", "100.64.0.1", "169.254.169.254"])
-def test_rebinding_between_validation_and_connect_is_rejected(
-    monkeypatch: pytest.MonkeyPatch, connect_ip: str
+def test_mixed_dns_answer_is_fully_screened_before_any_connection(
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Public at validation, private/CGNAT/metadata at connect must be rejected."""
-    monkeypatch.setattr(
-        socket,
-        "getaddrinfo",
-        _sequenced_getaddrinfo({"rebind.example.com": [[_PUBLIC_IP], [connect_ip]]}),
-    )
+    """Every address in a single multi-answer resolution is screened before connect.
+
+    The attacker controls DNS and returns one public address followed by one
+    private address in the SAME ``getaddrinfo`` answer (not across separate
+    calls). A naive implementation that only checked the first address
+    would connect; ``resolve_and_validate`` screens the whole answer set
+    before ``_connect_validated_address`` attempts any connection.
+    """
+
+    def _mixed_resolver(host: str, *args: object, **kwargs: object) -> list[tuple[object, ...]]:
+        return [
+            (socket.AF_INET, socket.SOCK_STREAM, 6, "", (_PUBLIC_IP, 0)),
+            (socket.AF_INET, socket.SOCK_STREAM, 6, "", ("10.0.0.9", 0)),
+        ]
+
+    monkeypatch.setattr(socket, "getaddrinfo", _mixed_resolver)
     log: list[tuple[str, int]] = []
     monkeypatch.setattr(socket, "create_connection", _scripted_transport([_OK_SITEMAP], log))
 
     with pytest.raises(CrawlUrlRejectedError):
-        asyncio.run(sitemap_module.fetch_sitemap("http://rebind.example.com/sitemap.xml"))
-    assert log == [], "no connection may be opened to a rebound private address"
+        asyncio.run(sitemap_module.fetch_sitemap("http://mixed.example.com/sitemap.xml"))
+    assert log == [], "no connection may be attempted when any resolved address is unsafe"
 
 
 # ---------------------------------------------------------------------------
@@ -231,17 +260,27 @@ def test_redirect_target_resolving_to_private_is_rejected(
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.parametrize(
+    "evil_ip",
+    ["127.0.0.1", "10.0.0.5", "100.64.0.1", "169.254.169.254"],
+    ids=["loopback", "private", "cgnat", "metadata"],
+)
 def test_rebinding_between_redirect_precheck_and_connect_is_rejected(
-    monkeypatch: pytest.MonkeyPatch,
+    monkeypatch: pytest.MonkeyPatch, evil_ip: str
 ) -> None:
-    """A redirect host that answers public at precheck and private at connect is rejected."""
+    """A redirect host that answers public at precheck and unsafe at connect is rejected.
+
+    069-F/D5: the primary rebinding formulation, now parametrized across the
+    same address classes (loopback, private, CGNAT, metadata) the retired
+    initial-hop rebinding test covered — see the note above (a).
+    """
     monkeypatch.setattr(
         socket,
         "getaddrinfo",
         _sequenced_getaddrinfo(
             {
                 "start.example.com": [[_PUBLIC_IP]],
-                "next.example.com": [[_PUBLIC_IP], ["10.0.0.5"]],
+                "next.example.com": [[_PUBLIC_IP], [evil_ip]],
             }
         ),
     )
@@ -264,15 +303,25 @@ def test_rebinding_between_redirect_precheck_and_connect_is_rejected(
 def test_fetch_sitemap_ignores_inherited_proxy_environment(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """``HTTP(S)_PROXY`` must not re-resolve or re-route the sitemap fetch."""
+    """``HTTP(S)_PROXY`` must not re-resolve or re-route the sitemap fetch.
+
+    069.005-T: extended to also assert the D4 single-hostname-lookup
+    invariant holds under an inherited proxy environment, making shipment
+    exit criterion 6 falsifiable together with exit criterion 1 rather than
+    only observing the final connection target.
+    """
     monkeypatch.setenv("HTTP_PROXY", "http://proxy.invalid:8080")
     monkeypatch.setenv("HTTPS_PROXY", "http://proxy.invalid:8080")
     monkeypatch.setenv("ALL_PROXY", "http://proxy.invalid:8080")
-    monkeypatch.setattr(
-        socket,
-        "getaddrinfo",
-        _sequenced_getaddrinfo({"example.com": [[_PUBLIC_IP]]}),
-    )
+    base_resolver = _sequenced_getaddrinfo({"example.com": [[_PUBLIC_IP]]})
+    lookup_counts = {"example.com": 0}
+
+    def _counting_resolver(host: str, *args: Any, **kwargs: Any) -> list[tuple[Any, ...]]:
+        if host.lower() == "example.com":
+            lookup_counts["example.com"] += 1
+        return base_resolver(host, *args, **kwargs)
+
+    monkeypatch.setattr(socket, "getaddrinfo", _counting_resolver)
     log: list[tuple[str, int]] = []
     transport = _scripted_transport([_OK_SITEMAP], log)
     monkeypatch.setattr(socket, "create_connection", transport)
@@ -280,6 +329,9 @@ def test_fetch_sitemap_ignores_inherited_proxy_environment(
     asyncio.run(sitemap_module.fetch_sitemap("http://example.com/sitemap.xml"))
 
     assert log == [(_PUBLIC_IP, 80)], "the fetch must reach the origin, never the proxy"
+    assert lookup_counts["example.com"] == 1, (
+        "proxy suppression must not change the D4 single-hostname-lookup invariant"
+    )
     request_line = bytes(transport.sockets[0].sent).split(b"\r\n", 1)[0]  # type: ignore[attr-defined]
     assert request_line == b"GET /sitemap.xml HTTP/1.1", (
         "origin-form request line proves no proxy absolute-form rewrite occurred"
@@ -326,21 +378,36 @@ def test_https_sni_and_verification_use_the_hostname_not_the_pinned_ip(
 
 # ---------------------------------------------------------------------------
 # Preflight must not block the event loop and must share the request deadline
+#
+# 069-F/D3 retains this wrapper (loop.run_in_executor + asyncio.wait_for +
+# time.monotonic deadline arithmetic) on SCOPE grounds even though the
+# preflight itself no longer resolves after 069.003-T. 069-F/B.T4 renames
+# and re-asserts these three tests to describe the contract they actually
+# verify — that fetch_sitemap runs the preflight in the executor under
+# asyncio.wait_for, that the wrapper bounds the call, and that elapsed
+# preflight time is deducted from the deadline handed to fetch_page — with
+# delay injected at the preflight EXECUTION SEAM (validate_sitemap_url
+# itself, patched at module level so fetch_sitemap's global lookup picks up
+# the stub), never into socket.getaddrinfo, which the preflight no longer
+# calls.
 # ---------------------------------------------------------------------------
 
 
-def test_preflight_resolution_runs_off_the_event_loop(monkeypatch: pytest.MonkeyPatch) -> None:
-    """The blocking preflight DNS lookup must not run on the event-loop thread."""
-    resolver_threads: list[int] = []
-    base_resolver = _sequenced_getaddrinfo({"example.com": [[_PUBLIC_IP]]})
+def test_preflight_runs_in_the_executor_not_on_the_event_loop(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """``fetch_sitemap`` must offload the preflight call to the executor."""
+    seen_threads: list[int] = []
 
-    def _recording_resolver(host: str, *args: Any, **kwargs: Any) -> list[tuple[Any, ...]]:
-        resolver_threads.append(threading.get_ident())
-        return base_resolver(host, *args, **kwargs)
+    def _recording_validate(url: str) -> str:
+        seen_threads.append(threading.get_ident())
+        return url
 
-    monkeypatch.setattr(socket, "getaddrinfo", _recording_resolver)
-    log: list[tuple[str, int]] = []
-    monkeypatch.setattr(socket, "create_connection", _scripted_transport([_OK_SITEMAP], log))
+    async def _stub_fetch_page(url: str, **kwargs: Any) -> sitemap_module.FetchResponse:
+        return sitemap_module.FetchResponse(url=url, status=200, content_type=None, body="")
+
+    monkeypatch.setattr(sitemap_module, "validate_sitemap_url", _recording_validate)
+    monkeypatch.setattr(sitemap_module, "fetch_page", _stub_fetch_page)
 
     async def _run() -> int:
         loop_thread = threading.get_ident()
@@ -349,24 +416,24 @@ def test_preflight_resolution_runs_off_the_event_loop(monkeypatch: pytest.Monkey
 
     loop_thread = asyncio.run(_run())
 
-    assert resolver_threads, "the preflight must actually resolve"
-    assert loop_thread not in resolver_threads, (
-        "a slow resolver must never block the event loop during the preflight"
+    assert seen_threads, "the preflight must actually run"
+    assert loop_thread not in seen_threads, (
+        "the preflight must run in the executor, never on the event-loop thread"
     )
 
 
 def test_preflight_is_bounded_by_the_request_timeout(monkeypatch: pytest.MonkeyPatch) -> None:
-    """A hanging resolver in the preflight is cut off by ``timeout_seconds``."""
+    """A hanging preflight call is cut off by ``timeout_seconds``."""
     from docline.fetch.http import FetchTimeoutError
 
-    def _hanging_resolver(host: str, *args: Any, **kwargs: Any) -> list[tuple[Any, ...]]:
+    def _hanging_validate(url: str) -> str:
         # Only needs to outlive the 0.5s deadline. Kept short because the
         # abandoned thread is joined at event-loop shutdown, so a long sleep
         # would be charged to every suite run.
         time.sleep(2)
-        raise AssertionError("resolver should have been abandoned")
+        raise AssertionError("preflight should have been abandoned")
 
-    monkeypatch.setattr(socket, "getaddrinfo", _hanging_resolver)
+    monkeypatch.setattr(sitemap_module, "validate_sitemap_url", _hanging_validate)
 
     async def _run() -> float:
         started = time.monotonic()
@@ -376,7 +443,7 @@ def test_preflight_is_bounded_by_the_request_timeout(monkeypatch: pytest.MonkeyP
             )
         return time.monotonic() - started
 
-    # The abandoned resolver thread is not cancellable, so measure the awaited
+    # The abandoned thread is not cancellable, so measure the awaited
     # deadline itself rather than event-loop shutdown, which joins that thread.
     elapsed = asyncio.run(_run())
     assert elapsed < 1.5, "the preflight must honor the request deadline"
@@ -386,13 +453,12 @@ def test_preflight_elapsed_time_is_deducted_from_the_fetch_deadline(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Time spent in the preflight shrinks the deadline handed to the pinned sink."""
-    base_resolver = _sequenced_getaddrinfo({"example.com": [[_PUBLIC_IP]]})
 
-    def _slow_resolver(host: str, *args: Any, **kwargs: Any) -> list[tuple[Any, ...]]:
+    def _slow_validate(url: str) -> str:
         time.sleep(0.35)
-        return base_resolver(host, *args, **kwargs)
+        return url
 
-    monkeypatch.setattr(socket, "getaddrinfo", _slow_resolver)
+    monkeypatch.setattr(sitemap_module, "validate_sitemap_url", _slow_validate)
 
     captured: dict[str, Any] = {}
 
@@ -409,3 +475,27 @@ def test_preflight_elapsed_time_is_deducted_from_the_fetch_deadline(
     assert captured["max_redirects"] == 5
     assert captured["timeout_seconds"] < 5.0, "preflight time must be charged to the deadline"
     assert captured["timeout_seconds"] > 4.0, "the deadline must not collapse"
+
+
+def test_validate_sitemap_url_performs_zero_resolver_calls(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The deterministic preflight must never call ``socket.getaddrinfo``.
+
+    Direct companion to the end-to-end isolation assertion in
+    ``test_sitemap_resolution_count.py`` (069.001-T): here ``getaddrinfo`` is
+    made to fail loudly if invoked at all, for both a hostname URL and a
+    public IP-literal URL, so a regression cannot pass silently.
+    """
+
+    def _fail_if_called(*args: Any, **kwargs: Any) -> list[Any]:
+        raise AssertionError("validate_sitemap_url must not resolve a hostname")
+
+    monkeypatch.setattr(socket, "getaddrinfo", _fail_if_called)
+
+    assert (
+        sitemap_module.validate_sitemap_url("http://example.com/sitemap.xml")
+        == "http://example.com/sitemap.xml"
+    )
+    assert (
+        sitemap_module.validate_sitemap_url(f"http://{_PUBLIC_IP}/sitemap.xml")
+        == f"http://{_PUBLIC_IP}/sitemap.xml"
+    )
