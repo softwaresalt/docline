@@ -221,6 +221,16 @@ def test_recognizes_rejects_malformed_port_without_raising() -> None:
     )
 
 
+def test_recognizes_rejects_malformed_ipv6_authority_without_raising() -> None:
+    """A malformed IPv6-bracket authority fails recognition and never raises --
+    urlparse() itself (not just ParseResult.port) can raise ValueError for an
+    unmatched bracket, and this must be caught before it escapes recognizes()'s
+    boolean, exception-free contract (Copilot review finding)."""
+    source = TfRegistrySource()
+    assert source.recognizes("https://[bad") is False
+    assert source.recognizes("https://[bad/providers/hashicorp/azurerm/latest/docs") is False
+
+
 # ---------------------------------------------------------------------------
 # Path-segment safety helper (I6, P2 security fix)
 # ---------------------------------------------------------------------------
@@ -258,6 +268,17 @@ def test_is_registry_origin_rejects_malformed_port_without_raising() -> None:
     assert _is_registry_origin("http://registry.terraform.io/v2/providers") is False
     assert _is_registry_origin("https://registry.terraform.io:notaport/v2/providers") is False
     assert _is_registry_origin("https://registry.terraform.io:99999999/v2/providers") is False
+
+
+def test_is_registry_origin_rejects_malformed_ipv6_authority_without_raising() -> None:
+    """``_is_registry_origin`` never raises for a malformed IPv6-bracket
+    authority -- ``urlparse()`` itself (not just ``ParseResult.port``) can
+    raise ``ValueError`` for an unmatched bracket, so the entire parse must
+    be guarded, not only the port access (Copilot review finding)."""
+    from docline.fetch.tf_registry_source import _is_registry_origin
+
+    assert _is_registry_origin("https://[bad") is False
+    assert _is_registry_origin("https://[bad/v2/providers") is False
 
 
 # ---------------------------------------------------------------------------

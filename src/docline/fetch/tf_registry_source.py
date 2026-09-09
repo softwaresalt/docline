@@ -75,19 +75,22 @@ def _is_registry_origin(url: str) -> bool:
     port, since ``fetch_page``'s own URL policy allows ``http``/``https``
     generically and is not itself scoped to this one origin.
 
-    Never raises: ``ParseResult.port`` raises ``ValueError`` for a
-    non-numeric or out-of-range port, and *url* may be attacker-influenced
-    remote JSON (a ``links.next`` value) -- a malformed port is treated as a
-    fail-closed non-match, not propagated as an exception that would abort
-    the caller (an async generator) with a raw parse error.
+    Never raises: both ``urlparse()`` itself (e.g. an unmatched IPv6 bracket)
+    and ``ParseResult.port`` (a non-numeric or out-of-range port) can raise
+    ``ValueError`` for a malformed authority, and *url* may be
+    attacker-influenced remote JSON (a ``links.next`` value) or an
+    externally-supplied start URL -- any parse failure is treated as a
+    fail-closed non-match, never propagated as an exception that would abort
+    an async generator or break the ``DiscoverySource.recognizes`` protocol's
+    boolean, exception-free contract.
     """
-    parsed = urlparse(url)
-    if parsed.scheme.lower() != "https":
-        return False
-    host = (parsed.hostname or "").lower().rstrip(".")
-    if host != REGISTRY_HOST:
-        return False
     try:
+        parsed = urlparse(url)
+        if parsed.scheme.lower() != "https":
+            return False
+        host = (parsed.hostname or "").lower().rstrip(".")
+        if host != REGISTRY_HOST:
+            return False
         port = parsed.port
     except ValueError:
         return False
@@ -162,9 +165,14 @@ def _parse_start_url(start_url: str) -> tuple[str, str, str] | None:
     at the crawl-composition layer rather than silently substituting the
     current latest version's docs.
     """
-    parsed = urlparse(start_url)
     if not _is_registry_origin(start_url):
+        # Checked before any local urlparse() call: urlparse() itself can
+        # raise ValueError for a malformed authority (e.g. an unmatched IPv6
+        # bracket), and _is_registry_origin already absorbs that -- calling
+        # it first preserves this function's (and recognizes()'s) fail-closed,
+        # exception-free contract for a malformed start URL.
         return None
+    parsed = urlparse(start_url)
     match = _PATH_PATTERN.match(parsed.path)
     if not match:
         return None
