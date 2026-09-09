@@ -38,9 +38,17 @@ Review remediation landed across `c0f6b2f`, `c142d1d`, `df5f5b1`, `91aa1f0`, `13
 `.backlogit/archive/` with the merge SHA `58ba5c5` recorded. The `backlogit shipment ship` CLI
 deadlocked from the worktree, so archival used the single-artifact fallback (`move` +
 `update --commit` + `archive` + task-commit backfill); the shipment was therefore archived directly
-from `active` and its frontmatter retains `archived_status: active` rather than a shipped lifecycle
-state — a cosmetic difference from the normal ship path, with archive placement and merge
-traceability fully intact (see `docs/compound/2026-08-30-ship-shipment-deadlocks-in-worktree.md`).
+from `active` and its frontmatter **originally** retained `archived_status: active` rather than a
+shipped lifecycle state — a cosmetic difference from the normal ship path, with archive placement
+and merge traceability fully intact (see
+`docs/compound/2026-08-30-ship-shipment-deadlocks-in-worktree.md`).
+
+**Amendment (2026-09-09, PR #184):** the pipeline-topology gate's predecessor-readiness check
+requires a genuine `shipped` terminal state and hard-blocked 060-S (the dependent shipment) on the
+`active` value above. `.backlogit/archive/059-S.md`'s `archived_status` field was normalized from
+`active` to `shipped` to reflect that 059-S is materially complete (merge commit an ancestor of
+`origin/main`, covering feature and all 19 tasks archived with the commit SHA backfilled). No
+manifest, scope, or archive-placement change accompanied this — only the single status field.
 
 ## What shipped
 
