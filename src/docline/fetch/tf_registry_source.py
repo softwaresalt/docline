@@ -66,6 +66,24 @@ degrades via the same fail-open path as any other adapter failure.
 """
 
 
+def _is_registry_origin(url: str) -> bool:
+    """Return whether *url* is same-origin with the recognized registry (I5).
+
+    Confines to the ``https`` scheme, :data:`REGISTRY_HOST` hostname, and the
+    default HTTPS port (``None``/``443``). Host confinement alone would still
+    permit a same-host cleartext downgrade (``http://``) or a non-standard
+    port, since ``fetch_page``'s own URL policy allows ``http``/``https``
+    generically and is not itself scoped to this one origin.
+    """
+    parsed = urlparse(url)
+    if parsed.scheme.lower() != "https":
+        return False
+    host = (parsed.hostname or "").lower().rstrip(".")
+    if host != REGISTRY_HOST:
+        return False
+    return parsed.port is None or parsed.port == 443
+
+
 def _assert_response_on_registry_host(response: FetchResponse, context: str) -> None:
     """Raise unless *response*'s final (post-redirect) URL is host-confined (I5).
 
@@ -73,13 +91,12 @@ def _assert_response_on_registry_host(response: FetchResponse, context: str) -> 
     forbidden for every adapter fetch, this should only ever observe the
     original request URL echoed back unchanged. Retained in case a future
     call site is added that does permit redirects, or the transport's
-    redirect-rejection behavior ever changes, so an off-host response is never
-    silently trusted based on the *request* URL alone.
+    redirect-rejection behavior ever changes, so an off-origin response is
+    never silently trusted based on the *request* URL alone.
     """
-    final_host = (urlparse(response.url).hostname or "").lower().rstrip(".")
-    if final_host != REGISTRY_HOST:
+    if not _is_registry_origin(response.url):
         raise TfRegistryAdapterError(
-            f"{context}: final response URL resolved off-host to {final_host!r}."
+            f"{context}: final response URL resolved off-origin to {response.url!r}."
         )
 
 
@@ -449,11 +466,11 @@ class TfRegistrySource:
             if next_url is None:
                 docs_url = None
                 continue
-            next_host = (urlparse(next_url).hostname or "").lower().rstrip(".")
-            if next_host != REGISTRY_HOST:
-                # I5: an off-host links.next stops pagination without ever
-                # fetching it -- a graceful stop preserving every already-
-                # yielded valid item from earlier pages, not a fail-open trigger.
+            if not _is_registry_origin(next_url):
+                # I5: an off-origin links.next (off-host, non-HTTPS, or a
+                # non-standard port) stops pagination without ever fetching
+                # it -- a graceful stop preserving every already-yielded
+                # valid item from earlier pages, not a fail-open trigger.
                 docs_url = None
                 continue
             docs_url = next_url

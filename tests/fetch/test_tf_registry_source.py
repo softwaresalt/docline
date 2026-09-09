@@ -547,6 +547,110 @@ def test_discover_doc_urls_off_host_next_aborts_pagination_without_fetching(
     )
 
 
+def test_discover_doc_urls_scheme_downgrade_next_aborts_pagination_without_fetching(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A same-host but plain-``http://`` ``links.next`` is treated as
+    off-origin: host confinement alone would not catch a cleartext downgrade,
+    since fetch_page's own URL policy allows http generically."""
+    downgraded_next = (
+        "http://registry.terraform.io/v2/provider-versions/107778/provider-docs?page%5Bnumber%5D=2"
+    )
+    page1 = json.dumps(
+        {
+            "data": {
+                "type": "provider-versions",
+                "id": "107778",
+                "attributes": {"version": "4.1.0"},
+                "relationships": {
+                    "provider-docs": {
+                        "data": [{"type": "provider-docs", "id": "d1"}],
+                        "links": {"next": downgraded_next},
+                    }
+                },
+            },
+            "included": [
+                {
+                    "type": "provider-docs",
+                    "id": "d1",
+                    "attributes": {"category": "resources", "slug": "resource_group"},
+                }
+            ],
+        }
+    )
+    requested: list[str] = []
+    _install_fetch(
+        monkeypatch,
+        {
+            _LOOKUP_URL: _json_response(_fixture("provider_lookup.json")),
+            _DOCS_PAGE1_URL: _json_response(page1),
+        },
+        requested,
+    )
+    source = TfRegistrySource()
+
+    urls = asyncio_run_collect(source, _START_URL)
+
+    assert urls == [
+        "https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/resources/resource_group"
+    ]
+    assert downgraded_next not in requested, (
+        "a same-host cleartext-downgraded links.next must never be fetched"
+    )
+
+
+def test_discover_doc_urls_nonstandard_port_next_aborts_pagination_without_fetching(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A same-host, HTTPS, but non-standard-port ``links.next`` is treated as
+    off-origin, not merely off-host."""
+    odd_port_next = (
+        "https://registry.terraform.io:8443/v2/provider-versions/107778"
+        "/provider-docs?page%5Bnumber%5D=2"
+    )
+    page1 = json.dumps(
+        {
+            "data": {
+                "type": "provider-versions",
+                "id": "107778",
+                "attributes": {"version": "4.1.0"},
+                "relationships": {
+                    "provider-docs": {
+                        "data": [{"type": "provider-docs", "id": "d1"}],
+                        "links": {"next": odd_port_next},
+                    }
+                },
+            },
+            "included": [
+                {
+                    "type": "provider-docs",
+                    "id": "d1",
+                    "attributes": {"category": "resources", "slug": "resource_group"},
+                }
+            ],
+        }
+    )
+    requested: list[str] = []
+    _install_fetch(
+        monkeypatch,
+        {
+            _LOOKUP_URL: _json_response(_fixture("provider_lookup.json")),
+            _DOCS_PAGE1_URL: _json_response(page1),
+        },
+        requested,
+    )
+    source = TfRegistrySource()
+
+    urls = asyncio_run_collect(source, _START_URL)
+
+    assert urls == [
+        "https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/resources/resource_group"
+    ]
+    assert odd_port_next not in requested, (
+        "a same-host, non-standard-port links.next must never be fetched"
+    )
+
+
 def test_discover_doc_urls_enumeration_budget_error_propagates_unwrapped(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
