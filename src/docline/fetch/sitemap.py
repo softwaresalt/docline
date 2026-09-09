@@ -5,20 +5,32 @@ Implements the contract pinned by ``tests/fetch/test_sitemap.py``
 
 * ``<urlset>`` and ``<sitemapindex>`` XML parsing (sitemaps.org protocol)
 * ``Sitemap:`` directive extraction from ``robots.txt``
-* SSRF defense-in-depth on :func:`validate_sitemap_url` per the OWASP
-  SSRF Prevention Cheat Sheet:
+* a deterministic, resolution-free SSRF preflight on
+  :func:`validate_sitemap_url` (069-F):
 
     1. parse with :func:`urllib.parse.urlparse`
     2. reject non-``http``/``https`` schemes
-    3. reject explicit cloud-metadata hostnames before resolution
-    4. resolve hostname with :func:`socket.getaddrinfo` to enumerate
-       **all** addresses (defense against DNS rebinding)
-    5. classify every resolved address with the single canonical predicate
+    3. reject explicit cloud-metadata hostnames — a static string match,
+       performed before any resolution could occur
+    4. for an IP-literal host only, classify it directly with the single
+       canonical predicate
        :func:`docline.fetch.url_policy.is_unsafe_resolved_address`, which
        normalizes IPv4-mapped IPv6 addresses and rejects private, loopback,
        link-local, multicast, reserved, unspecified, cloud-metadata, CGNAT
        (``100.64.0.0/10``), ULA (``fc00::/7``), and site-local
        (``fec0::/10``) addresses
+
+  A **hostname** (as opposed to an IP literal) is never resolved by this
+  preflight; :func:`SitemapError` from :func:`validate_sitemap_url` means
+  the URL was **statically** disqualified (bad scheme, missing host,
+  metadata hostname, or an unsafe IP literal), never that a resolved
+  address was rejected.
+* the single authoritative hostname resolution happens once per fetch,
+  inside :func:`fetch_sitemap` -> :func:`~docline.fetch.http.fetch_page`,
+  which screens every resolved address through the same canonical
+  predicate and rejects an unsafe one as
+  :class:`~docline.fetch.url_policy.CrawlUrlRejectedError` — the address
+  gate, distinct from this preflight's static disqualification
 
 This module deliberately owns **no** address classifier of its own: it
 delegates to ``url_policy`` so the live crawl path and the sitemap path can
@@ -234,7 +246,7 @@ async def fetch_sitemap(
     """Fetch a sitemap through the SSRF-hardened, address-pinned HTTP sink.
 
     This is the single authoritative sitemap retrieval path. It runs the
-    synchronous preflight and then delegates to
+    synchronous, deterministic preflight and then delegates to
     :func:`docline.fetch.http.fetch_page`, so resolution, address validation,
     connect, redirect revalidation, and proxy suppression happen as one atomic
     unit. The validated address is pinned for the outbound TCP connection while
@@ -243,10 +255,15 @@ async def fetch_sitemap(
     (DNS-rebinding) window without weakening HTTPS.
 
     ``timeout_seconds`` bounds the whole operation, not just the HTTP fetch:
-    the preflight performs a blocking :func:`socket.getaddrinfo` lookup, so it
-    runs in the default executor (never on the event loop) under the same
-    deadline, and the time it consumes is deducted from the budget handed to
-    :func:`~docline.fetch.http.fetch_page`.
+    the preflight call runs in the default executor (never on the event
+    loop) under the same deadline, and the time it consumes is deducted from
+    the budget handed to :func:`~docline.fetch.http.fetch_page`. The
+    preflight itself performs no name resolution (it is a static,
+    resolution-free check — see :func:`validate_sitemap_url`); it is still
+    offloaded and bounded this way because ``fetch_sitemap``'s executor
+    offload and deadline arithmetic are unchanged scope for this module.
+    The one authoritative hostname resolution happens inside
+    :func:`~docline.fetch.http.fetch_page` itself.
 
     Args:
         url: The sitemap URL to retrieve.
@@ -257,9 +274,13 @@ async def fetch_sitemap(
         The :class:`~docline.fetch.http.FetchResponse` for the sitemap.
 
     Raises:
-        SitemapError: When the preflight rejects ``url``.
-        CrawlUrlRejectedError: When the URL or any redirect target resolves to
-            an address the canonical predicate rejects.
+        SitemapError: When the preflight statically disqualifies ``url``
+            (bad scheme, missing host, metadata hostname, or an unsafe IP
+            literal) — never for a resolved-address rejection.
+        CrawlUrlRejectedError: When the URL's hostname, or any redirect
+            target, resolves to an address the canonical predicate rejects.
+            This is the address gate, raised from
+            :func:`~docline.fetch.http.fetch_page`, not from the preflight.
         FetchTimeoutError: When the preflight or the request exceeds
             ``timeout_seconds``.
         FetchError: For non-timeout fetch failures or redirect-cap violations.
