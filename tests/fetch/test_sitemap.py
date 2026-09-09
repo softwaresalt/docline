@@ -1,7 +1,8 @@
-"""Red-first sitemap discovery, parsing, and SSRF tests (010-S F6.T5).
+"""Sitemap discovery, parsing, and SSRF tests (010-S F6.T5, extended by 069-F).
 
-These tests pin the contract that F6.T6 (010.030-T) must satisfy when
-implementing ``src/docline/fetch/sitemap.py``:
+These tests pin the contract ``src/docline/fetch/sitemap.py`` implements
+(originally landed by F6.T6 / 010.030-T; the SSRF/resolution contract below
+reflects 069-F's preflight de-duplication):
 
 * expose ``SitemapError(DoclineError)``, ``SitemapEntry``,
   ``parse_sitemap_urlset``, ``parse_sitemap_index``,
@@ -24,10 +25,8 @@ implementing ``src/docline/fetch/sitemap.py``:
   against DNS rebinding) and rejects an unsafe address as
   ``CrawlUrlRejectedError``, by type
 
-These assertions are expected to **fail today** because
-``src/docline/fetch/sitemap.py`` raises ``NotImplementedError`` from every
-public callable. F6.T6 lands the real implementation and turns these red
-tests green.
+These tests exercise the current, completed implementation directly (no
+harness stubs remain for the structural/parsing contract above).
 """
 
 from __future__ import annotations

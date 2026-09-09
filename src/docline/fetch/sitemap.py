@@ -282,10 +282,14 @@ async def fetch_sitemap(
         SitemapError: When the preflight statically disqualifies ``url``
             (bad scheme, missing host, metadata hostname, or an unsafe IP
             literal) — never for a resolved-address rejection.
-        CrawlUrlRejectedError: When the URL's hostname, or any redirect
-            target, resolves to an address the canonical predicate rejects.
-            This is the address gate, raised from
-            :func:`~docline.fetch.http.fetch_page`, not from the preflight.
+        CrawlUrlRejectedError: Raised from
+            :func:`~docline.fetch.http.fetch_page`, never from the
+            preflight, for any crawl-policy or address-gate rejection it
+            enforces: a malformed port or other ``validate_crawl_url``
+            policy failure on the URL or a redirect target, DNS resolution
+            failure or an empty resolver answer, or a resolved address
+            (for the URL's hostname or any redirect target) the canonical
+            predicate rejects.
         FetchTimeoutError: When the preflight or the request exceeds
             ``timeout_seconds``.
         FetchError: For non-timeout fetch failures or redirect-cap violations.

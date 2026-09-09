@@ -105,8 +105,12 @@ that never involves `fetch_page`.
 
 The two exception types are never interchangeable: `SitemapError` from the
 preflight means a **static** disqualification (bad scheme, missing host,
-metadata hostname, or an unsafe IP literal); `CrawlUrlRejectedError` from
-`fetch_page` means a resolved **address** was rejected.
+metadata hostname, or an unsafe IP literal). `CrawlUrlRejectedError` is
+raised only from `fetch_page`, never the preflight, for any crawl-policy or
+address-gate rejection it enforces — not resolved-address rejection alone:
+a malformed port or other `validate_crawl_url` policy failure, DNS
+resolution failure or an empty resolver answer, or a resolved address (for
+the hostname or any redirect target) the canonical predicate rejects.
 
 Hostname-lookup counts (one `getaddrinfo` call whose host argument is the
 original hostname — not a raw count of every `getaddrinfo` call, since
