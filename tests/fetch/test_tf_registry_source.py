@@ -158,11 +158,10 @@ def test_recognizes_rejects_bad_char_namespace() -> None:
 
 
 def test_recognizes_rejects_bad_char_name() -> None:
+    """A name with a disallowed character fails recognition (path shape is otherwise valid)."""
     source = TfRegistrySource()
     assert (
-        source.recognizes(
-            "https://registry.terraform.io/providers/hashicorp/../azurerm/latest/docs"
-        )
+        source.recognizes("https://registry.terraform.io/providers/hashicorp/azure;rm/latest/docs")
         is False
     )
 
