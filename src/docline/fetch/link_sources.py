@@ -15,9 +15,6 @@ change when a new site adapter is added.
 
 Named ``link_sources`` (not ``crawl_discovery*``) to avoid colliding with the
 existing robots/backoff module :mod:`docline.fetch.crawl_discovery`.
-
-Structural stub for 070.002-T's harness: :func:`register` and
-:func:`find_source` are implemented for real by 070.003-T.
 """
 
 from __future__ import annotations
@@ -72,6 +69,11 @@ class DiscoverySource(Protocol):
         ...
 
 
+_sources: list[DiscoverySource] = []
+"""Module-level first-match registry. Populated by concrete adapters at their
+composition point (``crawl.py``), never by this generic seam module."""
+
+
 def register(source: DiscoverySource) -> None:
     """Register a discovery source.
 
@@ -82,7 +84,7 @@ def register(source: DiscoverySource) -> None:
     Args:
         source: The discovery source to register.
     """
-    raise NotImplementedError("070.003-T implements the discovery-source registry")
+    _sources.append(source)
 
 
 def find_source(start_url: str) -> DiscoverySource | None:
@@ -95,7 +97,10 @@ def find_source(start_url: str) -> DiscoverySource | None:
         The first matching :class:`DiscoverySource`, or ``None`` when no
         registered source recognizes *start_url*.
     """
-    raise NotImplementedError("070.003-T implements the discovery-source registry")
+    for source in _sources:
+        if source.recognizes(start_url):
+            return source
+    return None
 
 
 __all__ = ["DiscoverySource", "find_source", "register"]
