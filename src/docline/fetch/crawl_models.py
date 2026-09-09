@@ -89,6 +89,11 @@ class CrawlConfig:
         rate_limit_ms: Delay between page fetches in milliseconds.
         max_frontier: Ceiling on discovered-link admissions to the frontier.
             ``0`` disables link discovery entirely; negative values are rejected.
+        enable_api_discovery: Whether a recognized discovery source (e.g. the
+            Terraform Registry adapter) may seed additional URLs via its API
+            instead of relying solely on static anchor-tag extraction. ``True``
+            by default; set ``False`` to force pure static-extraction behavior
+            (a disable switch, no other behavioral change).
     """
 
     max_pages: int = 50
@@ -102,6 +107,7 @@ class CrawlConfig:
     backoff_base_seconds: float = 1.0
     rate_limit_ms: int = 0
     max_frontier: int = MAX_FRONTIER
+    enable_api_discovery: bool = True
 
 
 @dataclass
