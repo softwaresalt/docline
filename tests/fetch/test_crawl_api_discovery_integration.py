@@ -230,6 +230,45 @@ def test_max_frontier_zero_disables_discovery_without_false_truncation(
     assert fetched == {_START_URL}
 
 
+def test_seed_stops_pulling_once_queue_covers_max_pages_budget(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The seed stops pulling once the frontier queue already holds enough
+    items to exhaust max_pages, even though max_frontier is far larger --
+    a large provider's enumeration must not perform guaranteed-unused
+    pagination fetches for URLs the crawl loop can never reach (Copilot
+    review finding).
+    """
+    discovered = _discovered_urls(20)
+    source = _FakeDiscoverySource(discovered)
+    link_sources.register(source)
+
+    requested: list[str] = []
+    _install_fetch(
+        monkeypatch,
+        {_START_URL: _html(_START_URL, "<html><body>shell</body></html>")},
+        requested,
+    )
+
+    # max_pages=3 (start page + 2 discovered) is far below max_frontier=10_000:
+    # the seed must stop pulling once the queue holds 3 items (== max_pages),
+    # not continue draining toward the much larger frontier ceiling.
+    outcome = asyncio.run(
+        crawl(_START_URL, CrawlConfig(max_pages=3, max_frontier=10_000, max_depth=0))
+    )
+
+    assert len(source.pulled) == 2, (
+        "the seed must stop once the queue already covers the max_pages budget "
+        "(1 start URL + 2 pulled == max_pages), not continue pulling toward "
+        "the far larger max_frontier ceiling"
+    )
+    assert outcome.frontier_truncated is False, (
+        "stopping for the page budget is not a frontier-ceiling refusal"
+    )
+    fetched = {result.url for result in outcome.results if not result.skipped}
+    assert fetched == {_START_URL, *discovered[:2]}
+
+
 # ---------------------------------------------------------------------------
 # AC(c): additive composition with static anchors, no double-fetch
 # ---------------------------------------------------------------------------

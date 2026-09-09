@@ -199,7 +199,22 @@ Safety and degradation posture, uniformly enforced at the composition layer
   `robots.txt` never triggers the discovery seed's own outbound API requests
   — discovery is additional traffic made on the start URL's behalf, so it is
   gated on the same cached robots check the crawl's main loop performs for
-  every page, not exempt from `CrawlConfig.respect_robots`.
+  every page, not exempt from `CrawlConfig.respect_robots`. This check covers
+  the start URL's own path; the adapter's internal API endpoints (the
+  version-lookup and provider-docs-page requests) are not individually
+  re-checked against `robots.txt`, matching the existing precedent for other
+  auxiliary discovery fetches (mdBook `toc-*.js` script requests are not
+  individually robots-checked either) — every *user-facing* discovered
+  document URL still receives its own per-URL robots check via the main
+  crawl loop, unchanged.
+* **Seed stops once the page budget is covered.** The seed also stops pulling
+  once the frontier queue already holds `max_pages` items — at seed time
+  (always before the main loop's first iteration) that many admissions are
+  already guaranteed to exhaust the crawl's own page-fetch budget, so
+  continuing to paginate a large provider's API past that point would
+  perform additional network fetches purely to enqueue URLs the main loop
+  will never reach. Distinct from the `max_frontier` ceiling above: this is
+  not a frontier-ceiling refusal and never affects `frontier_truncated`.
 * **Frontier-ceiling efficiency.** The composition point checks the
   `max_frontier` ceiling *before* pulling each item from a discovery source's
   async generator (not after, unlike the existing admit-then-check pattern used

@@ -345,6 +345,16 @@ async def _seed_from_discovery_source(
     ceiling check is never the *first* check performed (which would otherwise
     report truncation without ever having asked the source for an item).
 
+    Also stops pulling once the frontier queue already holds
+    ``crawl_config.max_pages`` items: at seed time (always before the main
+    loop's first iteration) that many admissions are already guaranteed to
+    exhaust the crawl's own page-fetch budget, so any further admission is
+    guaranteed-unused work -- continuing to paginate a large provider's API
+    past that point would perform additional network fetches purely to
+    enqueue URLs the main loop will never reach. This mirrors ``max_pages``'s
+    existing, unrelated role of stopping the crawl loop itself; it is not a
+    frontier-ceiling refusal, so it never sets ``frontier.refused_any``.
+
     This check-before-pull ordering trades a small conservative-over-report
     risk for that efficiency: if the source's remaining item count happens to
     exactly equal the remaining frontier capacity, this reports
@@ -369,6 +379,12 @@ async def _seed_from_discovery_source(
     seeded_count = 0
     iterator = source.discover_doc_urls(start_url, crawl_config, budget).__aiter__()
     while True:
+        if len(frontier.queue) >= crawl_config.max_pages:
+            # Already enough queued to exhaust the crawl's own page-fetch
+            # budget -- stop before performing further guaranteed-unused
+            # pagination fetches. Not a frontier-ceiling refusal.
+            _log_seed_summary(start_url, seeded_count)
+            return
         if frontier.exhausted:
             # This early check-before-pull path never calls frontier.admit()
             # while exhausted, so it must record the drop itself -- admit()'s
