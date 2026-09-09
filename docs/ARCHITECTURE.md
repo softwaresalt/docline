@@ -82,3 +82,39 @@ a re-run; a false "complete" would hide data loss.
 the ELT path always uses the default. The remedy for a truncated crawl is to
 narrow it with a tighter start URL, a lower `depth`, or a section-scoped entry
 point.
+
+## Sitemap preflight de-duplication: single-resolution model
+
+`docline.fetch.sitemap.fetch_sitemap` resolves a sitemap hostname **exactly
+once** per fetch — inside `docline.fetch.http.fetch_page`'s authoritative
+resolve-validate-pin sequence, where the resolved address is pinned for the
+connection — instead of twice. `validate_sitemap_url` is a deterministic,
+resolution-free preflight: it checks scheme, host presence, cloud-metadata
+hostnames, and (for IP-literal hosts only) reserved-address classification
+via the shared `docline.fetch.url_policy.is_unsafe_resolved_address`
+predicate, and never performs DNS resolution for a hostname. `fetch_page`
+remains the sole authoritative resolver and the sole address gate.
+
+The two exception types are never interchangeable: `SitemapError` from the
+preflight means a **static** disqualification (bad scheme, missing host,
+metadata hostname, or an unsafe IP literal); `CrawlUrlRejectedError` from
+`fetch_page` means a resolved **address** was rejected.
+
+Hostname-lookup counts (one `getaddrinfo` call whose host argument is the
+original hostname — not a raw count of every `getaddrinfo` call, since
+`socket.create_connection` also resolves an already-validated numeric
+address):
+
+| Scenario | Hostname lookups |
+|---|---|
+| Successful initial hop | 1 (`fetch_page`'s connect) |
+| Each followed redirect target | 2 (redirect precheck + pinned connection) |
+| Redirect target rejected at precheck | 1, and no connection attempted |
+| Preflight (`validate_sitemap_url`) | 0 |
+
+`timeout_seconds` continues to bound the preflight call plus the fetch
+combined: the preflight is still offloaded to the default executor under
+`asyncio.wait_for` and its elapsed time is still deducted from the deadline
+handed to `fetch_page`, even though the preflight itself no longer performs
+any resolution — `fetch_sitemap`'s executor-offload and deadline-arithmetic
+contract is unchanged by this de-duplication.
