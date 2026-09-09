@@ -6,7 +6,7 @@ feature: 069-F
 pr: 186
 merge_commit: f278cffc9743d19cae410a9ea7623bfeec0c7649
 status: closed
-compaction_status: pending
+compaction_status: done
 ---
 
 ## Released scope
@@ -204,5 +204,6 @@ and no persisted-artifact schema change. There is no new monitoring signal to ad
 
 ## Compaction status (P-020)
 
-`pending` — finalized by the Ship post-merge closure step immediately following this artifact
-(mandatory `compact-context` invocation, `target: all`).
+`done` — `compact-context` (target: `all`) consolidated this shipment's two session memory files
+into `docs/memory/compacted/2026-09-09-060-s-compacted.md`; verbose originals archived to
+`docs/archive/memory/2026-09-08/`.
