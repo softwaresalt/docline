@@ -1,21 +1,26 @@
-"""Sitemap pinned-sink composition harness (066.005-T, red).
+"""Sitemap pinned-sink composition harness (066.005-T).
 
-``validate_sitemap_url`` classifies the addresses a hostname resolves to and
-then hands the caller back the *hostname*. Any HTTP client re-resolves that
-hostname at fetch time, so a TTL-0 attacker can answer public during
-validation and private/CGNAT at connect — every address check is bypassed.
+Since 069-F/069.003-T, ``validate_sitemap_url`` is a deterministic,
+resolution-free preflight: it never resolves a hostname, so it cannot
+itself hand back a validated-then-re-resolvable address. Before that
+change (066.005-T's original security model), ``validate_sitemap_url``
+resolved the addresses a hostname resolved to and then handed the caller
+back the *hostname*, so any HTTP client re-resolving that hostname at
+fetch time opened a validation/connect DNS-rebinding window — every
+address check could be bypassed by a TTL-0 attacker.
 
-These tests pin the fix: sitemap retrieval must go through one authoritative
-entry point, ``sitemap.fetch_sitemap``, that delegates to the already-hardened
-public sink ``http.fetch_page`` so resolution, validation, connect,
-redirect revalidation, and proxy suppression happen as one atomic unit.
+These tests pin the fix that closed that window: sitemap retrieval goes
+through one authoritative entry point, ``sitemap.fetch_sitemap``, that
+delegates to the already-hardened public sink ``http.fetch_page`` so
+resolution, validation, connect, redirect revalidation, and proxy
+suppression happen as one atomic unit. The single authoritative hostname
+resolution now happens exactly there — never inside the preflight.
 
-The whole invariant is exercised end to end against the real ``urllib`` stack:
-DNS is scripted per call (so rebinding is expressible) and the transport is a
-scripted in-memory socket, so the genuine pinned connection classes, the
-validating redirect handler, and the proxy-suppressing opener all run.
-
-Red before 066.006-T: ``sitemap.fetch_sitemap`` does not exist.
+The whole invariant is exercised end to end against the real ``urllib``
+stack: DNS is scripted per call (so rebinding is expressible on the
+redirect path — see 069-F/D5) and the transport is a scripted in-memory
+socket, so the genuine pinned connection classes, the validating redirect
+handler, and the proxy-suppressing opener all run.
 """
 
 from __future__ import annotations
