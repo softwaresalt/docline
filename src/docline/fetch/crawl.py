@@ -38,10 +38,18 @@ from docline.fetch.http import (
     RemainingByteBudget,
     fetch_page,
 )
+from docline.fetch.link_sources import DiscoverySource, find_source, register
+from docline.fetch.tf_registry_source import TfRegistrySource
 from docline.fetch.url_policy import CrawlUrlRejectedError, validate_crawl_url
 from docline.schema.models import DoclineError
 
 logger = logging.getLogger(__name__)
+
+# Composition point (070.010-T): the concrete Terraform Registry adapter
+# registers itself here, at import time, exactly once per process -- the
+# generic seam (link_sources.py) never imports a concrete provider adapter,
+# so a future site adapter only ever needs a new registration line here.
+register(TfRegistrySource())
 
 
 async def crawl(
@@ -115,6 +123,20 @@ async def crawl(
     # Request-scoped aggregate byte + fetch-attempt budget threaded through every
     # fetch_page call so no auxiliary/retry/redirect traffic bypasses the bound.
     budget = RemainingByteBudget(MAX_TOTAL_FETCH_BYTES, max_attempts=MAX_FETCH_ATTEMPTS)
+
+    if crawl_config.enable_api_discovery:
+        source = find_source(start)
+        if source is not None:
+            await _seed_from_discovery_source(
+                source,
+                start,
+                crawl_config,
+                frontier=frontier,
+                visited=visited,
+                start_host=start_host,
+                section_scope=section_scope,
+                budget=budget,
+            )
 
     while frontier.queue and page_count < crawl_config.max_pages:
         current_url, depth = frontier.queue.popleft()
@@ -274,6 +296,80 @@ async def crawl(
                 break
 
     return CrawlOutcome(results=results, frontier_truncated=frontier.truncated)
+
+
+async def _seed_from_discovery_source(
+    source: DiscoverySource,
+    start_url: str,
+    crawl_config: CrawlConfig,
+    *,
+    frontier: _Frontier,
+    visited: set[str],
+    start_host: str,
+    section_scope: str | None,
+    budget: "RemainingByteBudget | None",
+) -> None:
+    """Seed the frontier from a recognized discovery source, once, at crawl start.
+
+    Lazily drains *source*'s async generator, admitting each in-scope,
+    not-yet-visited URL through the SAME frontier ceiling, domain-lock/section
+    -scope filter, and dedup rules static links go through (I5/I6
+    defense-in-depth at this composition layer, independent of whatever the
+    concrete adapter itself already guarantees).
+
+    Checks the frontier ceiling *before* pulling each item (not after, unlike
+    the existing admit-then-check pattern used for already-parsed in-memory
+    anchor links) so a paginated, network-backed source is never driven to
+    fetch one further page just to have it refused -- this is what keeps a
+    1,620-document provider's enumeration bounded by ``max_frontier`` rather
+    than by the provider's own document count.
+
+    A narrow adapter failure (any other :class:`DoclineError`) is logged once
+    and degrades to static-only extraction for the rest of the crawl.
+    :class:`AggregateBudgetExceededError` and
+    :class:`~docline.fetch.url_policy.CrawlUrlRejectedError` are never masked
+    here (I4 carve-out): they propagate uncaught out of ``crawl()``.
+    """
+    iterator = source.discover_doc_urls(start_url, crawl_config, budget).__aiter__()
+    while True:
+        if frontier.exhausted:
+            # This early check-before-pull path never calls frontier.admit()
+            # while exhausted, so it must record the drop itself -- admit()'s
+            # own refusal branch is never reached from this loop.
+            frontier.refused_any = True
+            frontier.report_ceiling()
+            return
+        try:
+            discovered_url = await iterator.__anext__()
+        except StopAsyncIteration:
+            return
+        except (AggregateBudgetExceededError, CrawlUrlRejectedError):
+            raise
+        except DoclineError:
+            logger.warning(
+                "Discovery source failed for crawl origin %s; falling back to "
+                "static link extraction.",
+                _origin_label(start_url),
+            )
+            return
+
+        try:
+            normalized = _normalize_url(validate_crawl_url(discovered_url))
+        except CrawlUrlRejectedError:
+            # A malformed/invalid discovered URL is skipped, not fatal --
+            # mirrors how an ineligible static anchor is silently dropped.
+            continue
+        if not _link_in_scope(
+            normalized,
+            domain_lock=crawl_config.domain_lock,
+            start_host=start_host,
+            section_scope=section_scope,
+        ):
+            continue
+        link_key = _dedup_key(normalized)
+        if link_key in visited:
+            continue
+        frontier.admit(normalized, link_key, 1, visited)
 
 
 async def _fetch_with_retries(

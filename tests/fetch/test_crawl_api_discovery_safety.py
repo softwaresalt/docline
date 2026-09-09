@@ -42,7 +42,6 @@ from docline.fetch.http import (
     FetchResponse,
     RemainingByteBudget,
 )
-from docline.fetch.http import fetch_page as real_fetch_page
 from docline.fetch.tf_registry_source import TfRegistrySource
 from docline.fetch.url_policy import CrawlUrlRejectedError, is_unsafe_resolved_address
 from docline.schema.models import DoclineError
@@ -142,45 +141,39 @@ def _discovered_urls(count: int) -> list[str]:
 # ---------------------------------------------------------------------------
 
 
-def test_private_loopback_discovery_url_rejected_at_fetch_via_real_transport(
+def test_private_loopback_discovery_url_silently_skipped_never_fetched(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """A discovery-sourced loopback URL is refused by the real, hardened
-    ``fetch_page`` transport, and the rejection propagates uncaught out of
-    ``crawl()`` -- the same fail-closed guarantee already applied uniformly to
-    any admitted URL, regardless of whether it came from static extraction or
-    the discovery seam.
+    """A discovery-sourced URL with a literal loopback host is rejected at
+    admission time -- the *same* ``validate_crawl_url`` check static-anchor
+    extraction already applies (see ``extract_links()``'s own
+    ``except CrawlUrlRejectedError: continue``) -- and is silently skipped,
+    never fetched. Paired with a legitimate in-scope discovered URL so this
+    test cannot pass vacuously before the discovery seam is wired.
     """
     assert is_unsafe_resolved_address("127.0.0.1") is True
 
     malicious_url = "http://127.0.0.1/private-target"
-    source = _FakeDiscoverySource([malicious_url])
+    legit_url = f"https://{_HOST}/providers/x/y/latest/docs/legit-page"
+    source = _FakeDiscoverySource([malicious_url, legit_url])
     link_sources.register(source)
 
     requested: list[str] = []
+    _install_fetch(
+        monkeypatch,
+        {_START_URL: _html(_START_URL, "<html><body>shell</body></html>")},
+        requested,
+    )
 
-    async def fake_fetch_page(
-        url: str,
-        *,
-        timeout_seconds: float = 30.0,
-        max_redirects: int = 5,
-        budget: RemainingByteBudget | None = None,
-        **_kwargs: object,
-    ) -> FetchResponse:
-        del timeout_seconds, max_redirects
-        requested.append(url)
-        if url == _START_URL:
-            return _html(_START_URL, "<html><body>shell</body></html>")
-        # Anything else (the malicious discovered URL) goes through the REAL
-        # transport so its own connect-time SSRF validation applies -- no
-        # network I/O actually occurs since a literal loopback IP is rejected
-        # synchronously in validate_crawl_url before any socket is opened.
-        return await real_fetch_page(url, budget=budget)
+    outcome = asyncio.run(crawl(_START_URL, CrawlConfig(max_pages=50, max_frontier=50)))
 
-    monkeypatch.setattr("docline.fetch.crawl.fetch_page", fake_fetch_page)
-
-    with pytest.raises(CrawlUrlRejectedError):
-        asyncio.run(crawl(_START_URL, CrawlConfig(max_pages=50, max_frontier=50)))
+    assert malicious_url not in requested
+    fetched = {result.url for result in outcome.results if not result.skipped}
+    assert fetched == {_START_URL, legit_url}, (
+        "the legitimate discovered URL must still be fetched -- proving "
+        "discovery genuinely ran and only the private/loopback candidate was "
+        "rejected"
+    )
 
 
 # ---------------------------------------------------------------------------
