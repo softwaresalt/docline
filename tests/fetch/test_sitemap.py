@@ -9,16 +9,18 @@ implementing ``src/docline/fetch/sitemap.py``:
 * parse the ``<urlset>`` and ``<sitemapindex>`` XML grammars from
   ``sitemaps.org/protocol``
 * extract ``Sitemap:`` directives from ``robots.txt``
-* enforce SSRF defense-in-depth on ``validate_sitemap_url`` per the
-  OWASP SSRF Prevention Cheat Sheet:
-    - reject non-``http``/``https`` schemes
-    - reject empty host
-    - resolve the hostname via ``socket.getaddrinfo`` and check **every**
-      resolved address against the private/loopback/link-local/multicast/
-      reserved sets (defense against DNS rebinding)
-    - reject explicit cloud-metadata endpoints
-      (``169.254.169.254``, ``169.254.170.2``, ``fd00:ec2::254``,
-      ``metadata.google.internal``)
+* enforce a deterministic, resolution-free SSRF preflight on
+  ``validate_sitemap_url`` (069-F): reject non-``http``/``https`` schemes,
+  reject empty host, reject explicit cloud-metadata hostnames
+  (``metadata.google.internal``, ``metadata.aws.amazon.com``, ``metadata``)
+  before any DNS lookup, and reject reserved IP literals via the shared
+  ``is_unsafe_resolved_address`` classifier — all with **zero** resolver
+  calls
+* rely on ``fetch_sitemap`` -> ``fetch_page`` for the single authoritative
+  hostname resolution (one lookup per fetch), which checks **every**
+  resolved address against the private/loopback/link-local/multicast/
+  reserved/CGNAT/ULA sets (defense against DNS rebinding) and rejects an
+  unsafe address as ``CrawlUrlRejectedError``, by type
 
 These assertions are expected to **fail today** because
 ``src/docline/fetch/sitemap.py`` raises ``NotImplementedError`` from every
@@ -28,6 +30,9 @@ tests green.
 
 from __future__ import annotations
 
+import asyncio
+import io
+import socket
 from typing import Any
 
 import pytest
@@ -36,11 +41,13 @@ from docline.fetch.sitemap import (
     SitemapEntry,
     SitemapError,
     discover_sitemaps_from_robots,
+    fetch_sitemap,
     is_unsafe_resolved_address,
     parse_sitemap_index,
     parse_sitemap_urlset,
     validate_sitemap_url,
 )
+from docline.fetch.url_policy import CrawlUrlRejectedError
 from docline.schema.models import DoclineError
 
 # ---------------------------------------------------------------------------
@@ -62,6 +69,61 @@ def _mock_resolver(*results: tuple[int, str]) -> Any:
         return [_addrinfo(family, ip) for family, ip in results]
 
     return _fake_getaddrinfo
+
+
+class _ScriptedSocket:
+    """A minimal in-memory socket replaying one canned HTTP response.
+
+    Lets a migrated end-to-end ``fetch_sitemap`` test drive the real pinned
+    HTTP client stack without any real networking.
+    """
+
+    def __init__(self, payload: bytes) -> None:
+        self._payload = payload
+
+    def makefile(self, mode: str = "rb", *args: Any, **kwargs: Any) -> io.BytesIO:
+        return io.BytesIO(self._payload)
+
+    def sendall(self, data: bytes) -> None:
+        return None
+
+    def send(self, data: bytes) -> int:
+        return 0
+
+    def settimeout(self, value: float | None) -> None:
+        return None
+
+    def gettimeout(self) -> float | None:
+        return None
+
+    def setsockopt(self, *args: Any) -> None:
+        return None
+
+    def shutdown(self, *args: Any) -> None:
+        return None
+
+    def close(self) -> None:
+        return None
+
+
+def _http_response(status_line: str, headers: dict[str, str], body: bytes = b"") -> bytes:
+    merged = {"Content-Length": str(len(body)), "Connection": "close", **headers}
+    head = status_line + "\r\n" + "".join(f"{key}: {value}\r\n" for key, value in merged.items())
+    return head.encode("ascii") + b"\r\n" + body
+
+
+_OK_SITEMAP_BODY = (
+    b'<?xml version="1.0"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"/>'
+)
+_OK_SITEMAP_RESPONSE = _http_response(
+    "HTTP/1.1 200 OK", {"Content-Type": "application/xml"}, _OK_SITEMAP_BODY
+)
+
+
+def _create_connection_stub(
+    address: tuple[str, int], timeout: Any = None, source_address: Any = None
+) -> _ScriptedSocket:
+    return _ScriptedSocket(_OK_SITEMAP_RESPONSE)
 
 
 # ---------------------------------------------------------------------------
@@ -232,45 +294,61 @@ def test_validate_sitemap_url_rejects_reserved_ip_literals(url: str) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Behavioral: SSRF — DNS-based defense
+# Behavioral: SSRF — DNS-based defense (end to end through fetch_sitemap)
+#
+# validate_sitemap_url is a deterministic, resolution-free preflight
+# (069-F/D1): it can no longer observe or reject a hostname's resolved
+# addresses. The address gate now lives solely in fetch_page's authoritative
+# resolve-validate-pin sequence, so every hostname-resolution assertion below
+# runs the fetch END TO END through fetch_sitemap and asserts by exception
+# TYPE, not message substring: CrawlUrlRejectedError for an unsafe resolved
+# address AND for a DNS resolution failure — resolve_and_validate maps both
+# classes of address-gate failure to the same exception type.
 # ---------------------------------------------------------------------------
 
 
-def test_validate_sitemap_url_accepts_public_resolved_host(monkeypatch: pytest.MonkeyPatch) -> None:
-    """A hostname that resolves to only public IPs must pass."""
+def test_fetch_sitemap_accepts_a_host_resolving_to_a_public_address(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A hostname that resolves to only public IPs must be fetched successfully."""
     monkeypatch.setattr(
         "socket.getaddrinfo",
         _mock_resolver((2, "93.184.216.34")),  # AF_INET, example.com public IP
     )
-    result = validate_sitemap_url("https://example.com/sitemap.xml")
-    assert result == "https://example.com/sitemap.xml"
+    monkeypatch.setattr(socket, "create_connection", _create_connection_stub)
+
+    result = asyncio.run(fetch_sitemap("http://example.com/sitemap.xml"))
+
+    assert result.status == 200
+    assert "urlset" in result.body
 
 
-def test_validate_sitemap_url_rejects_host_resolving_to_loopback(
+def test_fetch_sitemap_rejects_host_resolving_to_loopback(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr("socket.getaddrinfo", _mock_resolver((2, "127.0.0.1")))
-    with pytest.raises(SitemapError):
-        validate_sitemap_url("https://evil.example/sitemap.xml")
+    with pytest.raises(CrawlUrlRejectedError):
+        asyncio.run(fetch_sitemap("https://evil.example/sitemap.xml"))
 
 
-def test_validate_sitemap_url_rejects_host_resolving_to_private_ip(
+def test_fetch_sitemap_rejects_host_resolving_to_private_ip(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr("socket.getaddrinfo", _mock_resolver((2, "10.1.2.3")))
-    with pytest.raises(SitemapError):
-        validate_sitemap_url("https://intranet.example/sitemap.xml")
+    with pytest.raises(CrawlUrlRejectedError):
+        asyncio.run(fetch_sitemap("https://intranet.example/sitemap.xml"))
 
 
-def test_validate_sitemap_url_rejects_host_resolving_to_metadata_service(
+def test_fetch_sitemap_rejects_host_resolving_to_metadata_service(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    """A hostname resolving to a metadata-service ADDRESS (not name) is rejected."""
     monkeypatch.setattr("socket.getaddrinfo", _mock_resolver((2, "169.254.169.254")))
-    with pytest.raises(SitemapError):
-        validate_sitemap_url("https://meta.example/latest/meta-data/")
+    with pytest.raises(CrawlUrlRejectedError):
+        asyncio.run(fetch_sitemap("https://meta.example/latest/meta-data/"))
 
 
-def test_validate_sitemap_url_rejects_dns_rebinding_mixed_resolution(
+def test_fetch_sitemap_rejects_dns_rebinding_mixed_resolution(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Defense against DNS rebinding: if ANY resolved IP is unsafe, reject.
@@ -282,14 +360,20 @@ def test_validate_sitemap_url_rejects_dns_rebinding_mixed_resolution(
         "socket.getaddrinfo",
         _mock_resolver((2, "8.8.8.8"), (2, "10.0.0.1")),
     )
-    with pytest.raises(SitemapError):
-        validate_sitemap_url("https://rebind.example/sitemap.xml")
+    with pytest.raises(CrawlUrlRejectedError):
+        asyncio.run(fetch_sitemap("https://rebind.example/sitemap.xml"))
 
 
 def test_validate_sitemap_url_rejects_metadata_internal_hostnames(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Cloud metadata hostnames must be rejected even before DNS resolution."""
+    """Cloud metadata hostnames must be rejected even before DNS resolution.
+
+    Unchanged by 069-F: this is a deterministic hostname-STRING rejection in
+    the preflight, never a resolved-address rejection, so it still raises
+    ``SitemapError`` from ``validate_sitemap_url`` directly and still proves
+    no resolution occurs.
+    """
     # Pretend resolver would return a public IP to prove name-based rejection runs first.
     monkeypatch.setattr("socket.getaddrinfo", _mock_resolver((2, "8.8.8.8")))
     for url in (
@@ -300,18 +384,17 @@ def test_validate_sitemap_url_rejects_metadata_internal_hostnames(
             validate_sitemap_url(url)
 
 
-def test_validate_sitemap_url_rejects_when_dns_resolution_fails(
+def test_fetch_sitemap_rejects_when_dns_resolution_fails(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """DNS failure must raise ``SitemapError`` — do not silently fall through."""
-    import socket
+    """DNS failure must raise ``CrawlUrlRejectedError`` — do not silently fall through."""
 
     def _raise(*_args: Any, **_kwargs: Any) -> list[Any]:
         raise socket.gaierror("no such host")
 
     monkeypatch.setattr("socket.getaddrinfo", _raise)
-    with pytest.raises(SitemapError):
-        validate_sitemap_url("https://nonexistent.invalid/sitemap.xml")
+    with pytest.raises(CrawlUrlRejectedError):
+        asyncio.run(fetch_sitemap("https://nonexistent.invalid/sitemap.xml"))
 
 
 # ---------------------------------------------------------------------------
@@ -341,11 +424,22 @@ def test_is_unsafe_address_rejects_cgnat_class(addr: str) -> None:
 
 
 @pytest.mark.parametrize(
+    "url",
+    [
+        "http://100.64.0.1/sitemap.xml",  # IPv4 literal, no DNS
+        "https://100.127.255.255/sitemap.xml",  # IPv4 literal upper boundary
+        "http://[::ffff:100.64.0.1]/sitemap.xml",  # IPv4-mapped IPv6 literal
+    ],
+)
+def test_validate_sitemap_url_rejects_cgnat_ip_literals(url: str) -> None:
+    """``validate_sitemap_url`` rejects CGNAT IP literals — no DNS involved."""
+    with pytest.raises(SitemapError):
+        validate_sitemap_url(url)
+
+
+@pytest.mark.parametrize(
     ("url", "resolver"),
     [
-        ("http://100.64.0.1/sitemap.xml", None),  # IPv4 literal, no DNS
-        ("https://100.127.255.255/sitemap.xml", None),  # IPv4 literal upper boundary
-        ("http://[::ffff:100.64.0.1]/sitemap.xml", None),  # IPv4-mapped IPv6 literal
         ("https://cgnat.example/sitemap.xml", ((2, "100.64.0.1"),)),  # resolves to CGNAT
         (
             "https://rebind-cgnat.example/sitemap.xml",  # rebinding: one of many is CGNAT
@@ -353,16 +447,15 @@ def test_is_unsafe_address_rejects_cgnat_class(addr: str) -> None:
         ),
     ],
 )
-def test_validate_sitemap_url_rejects_cgnat(
+def test_fetch_sitemap_rejects_cgnat_hostname_resolution(
     url: str,
-    resolver: tuple[tuple[int, str], ...] | None,
+    resolver: tuple[tuple[int, str], ...],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """``validate_sitemap_url`` rejects CGNAT literals and CGNAT-resolving hosts."""
-    if resolver is not None:
-        monkeypatch.setattr("socket.getaddrinfo", _mock_resolver(*resolver))
-    with pytest.raises(SitemapError):
-        validate_sitemap_url(url)
+    """A hostname that resolves to a CGNAT address is rejected end to end."""
+    monkeypatch.setattr("socket.getaddrinfo", _mock_resolver(*resolver))
+    with pytest.raises(CrawlUrlRejectedError):
+        asyncio.run(fetch_sitemap(url))
 
 
 @pytest.mark.parametrize(
