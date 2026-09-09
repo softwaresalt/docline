@@ -17,10 +17,12 @@ implementing ``src/docline/fetch/sitemap.py``:
   ``is_unsafe_resolved_address`` classifier — all with **zero** resolver
   calls
 * rely on ``fetch_sitemap`` -> ``fetch_page`` for the single authoritative
-  hostname resolution (one lookup per fetch), which checks **every**
-  resolved address against the private/loopback/link-local/multicast/
-  reserved/CGNAT/ULA sets (defense against DNS rebinding) and rejects an
-  unsafe address as ``CrawlUrlRejectedError``, by type
+  hostname resolution (one lookup for the initial hop of a successful,
+  non-redirected fetch — a followed redirect target is resolved twice
+  more), which checks **every** resolved address against the
+  private/loopback/link-local/multicast/reserved/CGNAT/ULA sets (defense
+  against DNS rebinding) and rejects an unsafe address as
+  ``CrawlUrlRejectedError``, by type
 
 These assertions are expected to **fail today** because
 ``src/docline/fetch/sitemap.py`` raises ``NotImplementedError`` from every

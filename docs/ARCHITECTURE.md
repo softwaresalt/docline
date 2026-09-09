@@ -98,7 +98,10 @@ checks scheme, host presence, cloud-metadata hostnames, and (for IP-literal
 hosts only) reserved-address classification via the shared
 `docline.fetch.url_policy.is_unsafe_resolved_address` predicate, and never
 performs DNS resolution for a hostname. `fetch_page` remains the sole
-authoritative resolver and the sole address gate.
+authoritative hostname resolver, and the sole gate for any address obtained
+through that resolution; an IP-literal host is instead gated directly by
+the preflight, through the same shared classifier — a resolution-free path
+that never involves `fetch_page`.
 
 The two exception types are never interchangeable: `SitemapError` from the
 preflight means a **static** disqualification (bad scheme, missing host,

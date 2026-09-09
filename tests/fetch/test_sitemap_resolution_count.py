@@ -1,22 +1,24 @@
-"""Harness: exactly one hostname resolution per successful ``fetch_sitemap`` (069.001-T, red).
+"""Harness: exactly one hostname resolution per successful ``fetch_sitemap`` (069.001-T).
 
-Today ``fetch_sitemap`` performs **two** hostname lookups for the original
-hostname per successful fetch: one inside ``validate_sitemap_url``'s advisory
-preflight (``_resolve_all_addresses``) and one inside ``fetch_page``'s
+Pins 069-F/D4: ``fetch_sitemap`` must resolve the original hostname exactly
+**once** per successful, non-redirected fetch — inside ``fetch_page``'s
 authoritative ``resolve-validate-pin`` sequence (``_connect_validated_address``).
-069-F/D4 defines "one hostname lookup" as one ``getaddrinfo`` call whose
-``host`` argument equals the **original hostname string** — not a raw count
-of every ``getaddrinfo`` call, because ``socket.create_connection`` also
-resolves an already-validated *numeric* address in production, and a naive
-global counter would conflate the two.
+"One hostname lookup" is defined as one ``getaddrinfo`` call whose ``host``
+argument equals the **original hostname string** — not a raw count of every
+``getaddrinfo`` call, because ``socket.create_connection`` also resolves an
+already-validated *numeric* address in production, and a naive global
+counter would conflate the two.
 
-Red before 069.003-T strips hostname resolution out of the preflight: the
-first test below asserts exactly one hostname lookup and fails today because
-the pre-change count is two. The second test isolates the preflight from
-``fetch_page`` (by patching it out) and asserts the preflight alone performs
-**zero** hostname lookups, for both a hostname URL and a public IP-literal
-URL; it fails today for the hostname case because the current preflight
-still resolves.
+Before 069.003-T, ``fetch_sitemap`` performed **two** hostname lookups: one
+inside ``validate_sitemap_url``'s advisory preflight (the now-deleted
+``_resolve_all_addresses``) and one inside ``fetch_page``'s connect. These
+tests were written and verified red against that pre-change source (the
+first test asserting exactly one lookup, which failed at a count of two;
+the second isolating the preflight from ``fetch_page`` and asserting zero
+preflight-only lookups, which failed for the hostname case because the
+preflight still resolved). 069.003-T stripped the preflight's resolution
+out, turning both green. They now stand as the permanent regression guard
+for the single-resolution invariant.
 
 No source change in this task.
 """
@@ -111,9 +113,10 @@ def test_fetch_sitemap_performs_exactly_one_hostname_lookup(
 ) -> None:
     """``fetch_sitemap`` must resolve the original hostname exactly ONCE.
 
-    D4 accounting: today this is 2 (the advisory preflight resolution plus
-    fetch_page's authoritative connect-time resolution); the target is 1,
-    once 069.003-T stops the preflight from resolving at all.
+    D4 accounting: before 069.003-T this was 2 (the advisory preflight
+    resolution plus fetch_page's authoritative connect-time resolution);
+    069.003-T stopped the preflight from resolving at all, so the target
+    (and now-enforced) count is 1.
     """
     resolver, counts = _counting_getaddrinfo(_HOSTNAME)
     monkeypatch.setattr(socket, "getaddrinfo", resolver)
@@ -144,9 +147,11 @@ def test_preflight_alone_performs_zero_hostname_lookups(
 
     Isolates ``validate_sitemap_url`` from ``fetch_page``: a raw call count
     cannot express this because ``fetch_page`` legitimately resolves — the
-    patch is the isolation seam. Red today for the hostname case: the
-    current preflight still calls ``_resolve_all_addresses``. The IP-literal
-    case already passes today because the IP-literal branch never resolves.
+    patch is the isolation seam. Before 069.003-T this was red for the
+    hostname case (the preflight still called ``_resolve_all_addresses``);
+    the IP-literal case already passed even then, because the IP-literal
+    branch never resolves. Both cases are green now that 069.003-T removed
+    the preflight's resolution entirely.
     """
     resolver, counts = _counting_getaddrinfo(host)
     monkeypatch.setattr(socket, "getaddrinfo", resolver)
