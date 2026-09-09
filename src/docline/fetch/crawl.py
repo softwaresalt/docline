@@ -124,7 +124,12 @@ async def crawl(
     # fetch_page call so no auxiliary/retry/redirect traffic bypasses the bound.
     budget = RemainingByteBudget(MAX_TOTAL_FETCH_BYTES, max_attempts=MAX_FETCH_ATTEMPTS)
 
-    if crawl_config.enable_api_discovery:
+    if crawl_config.enable_api_discovery and crawl_config.max_frontier > 0:
+        # max_frontier == 0 means "disable link discovery entirely" (see
+        # CrawlConfig's own docstring) -- skip the seed call outright rather
+        # than entering _seed_from_discovery_source only to have its first
+        # ceiling check immediately report a false-positive truncation before
+        # ever asking the source for a single item.
         source = find_source(start)
         if source is not None:
             await _seed_from_discovery_source(
@@ -322,14 +327,33 @@ async def _seed_from_discovery_source(
     anchor links) so a paginated, network-backed source is never driven to
     fetch one further page just to have it refused -- this is what keeps a
     1,620-document provider's enumeration bounded by ``max_frontier`` rather
-    than by the provider's own document count.
+    than by the provider's own document count. Caller guarantees
+    ``crawl_config.max_frontier > 0`` before invoking this function, so its
+    ceiling check is never the *first* check performed (which would otherwise
+    report truncation without ever having asked the source for an item).
+
+    This check-before-pull ordering trades a small conservative-over-report
+    risk for that efficiency: if the source's remaining item count happens to
+    exactly equal the remaining frontier capacity, this reports
+    ``frontier_truncated=True`` even though nothing was actually dropped,
+    because confirming otherwise would require pulling one further item --
+    exactly the network cost this ordering exists to avoid. This mirrors the
+    already-documented depth-zero ``toc-*.js`` conservative case (D3):
+    over-reporting is tolerated, under-reporting is not.
 
     A narrow adapter failure (any other :class:`DoclineError`) is logged once
     and degrades to static-only extraction for the rest of the crawl.
     :class:`AggregateBudgetExceededError` and
     :class:`~docline.fetch.url_policy.CrawlUrlRejectedError` are never masked
     here (I4 carve-out): they propagate uncaught out of ``crawl()``.
+
+    On any non-error completion (the source exhausts naturally, or the
+    frontier ceiling stops it), a single INFO record reports the sanitized
+    crawl origin plus the number of URLs actually seeded -- observability for
+    what is potentially a large, silent admission of many URLs from a single
+    third-party API response.
     """
+    seeded_count = 0
     iterator = source.discover_doc_urls(start_url, crawl_config, budget).__aiter__()
     while True:
         if frontier.exhausted:
@@ -338,10 +362,12 @@ async def _seed_from_discovery_source(
             # own refusal branch is never reached from this loop.
             frontier.refused_any = True
             frontier.report_ceiling()
+            _log_seed_summary(start_url, seeded_count)
             return
         try:
             discovered_url = await iterator.__anext__()
         except StopAsyncIteration:
+            _log_seed_summary(start_url, seeded_count)
             return
         except (AggregateBudgetExceededError, CrawlUrlRejectedError):
             raise
@@ -369,7 +395,22 @@ async def _seed_from_discovery_source(
         link_key = _dedup_key(normalized)
         if link_key in visited:
             continue
-        frontier.admit(normalized, link_key, 1, visited)
+        if frontier.admit(normalized, link_key, 1, visited):
+            seeded_count += 1
+
+
+def _log_seed_summary(start_url: str, seeded_count: int) -> None:
+    """Log one INFO record summarizing a completed discovery-source seed.
+
+    Payload is the sanitized crawl origin plus the admitted-URL count -- never
+    the raw start URL or any discovered URL -- matching the same
+    credential-safe logging posture as :meth:`_Frontier.report_ceiling`.
+    """
+    logger.info(
+        "Discovery source seeded %d URL(s) for crawl origin %s.",
+        seeded_count,
+        _origin_label(start_url),
+    )
 
 
 async def _fetch_with_retries(

@@ -28,6 +28,7 @@ Red before 070.005-T/070.006-T: :class:`TfRegistrySource`'s methods raise
 
 from __future__ import annotations
 
+import dataclasses
 import json
 from collections.abc import AsyncIterator
 from pathlib import Path
@@ -95,6 +96,12 @@ def _install_fetch(
             raise AssertionError(f"unexpected fetch_page call for {url!r}")
         if isinstance(result, Exception):
             raise result
+        if not result.url:
+            # Real fetch_page always populates the final (post-redirect) URL;
+            # canned test fixtures built via _json_response() leave it blank,
+            # so backfill it here to keep the host-confinement check (I5)
+            # exercising real same-host responses rather than an empty string.
+            result = dataclasses.replace(result, url=url)
         return result
 
     monkeypatch.setattr("docline.fetch.tf_registry_source.fetch_page", fake_fetch_page)
@@ -164,6 +171,65 @@ def test_recognizes_rejects_bad_char_name() -> None:
         source.recognizes("https://registry.terraform.io/providers/hashicorp/azure;rm/latest/docs")
         is False
     )
+
+
+def test_recognizes_rejects_bare_relative_segment_in_name() -> None:
+    """A bare '.' or '..' namespace/name segment fails recognition (P2 security
+    fix): both match the plain charset allowlist but are reserved
+    relative-path segments that must never reach path construction."""
+    source = TfRegistrySource()
+    assert (
+        source.recognizes("https://registry.terraform.io/providers/hashicorp/../latest/docs")
+        is False
+    )
+    assert (
+        source.recognizes("https://registry.terraform.io/providers/../azurerm/latest/docs") is False
+    )
+
+
+# ---------------------------------------------------------------------------
+# Path-segment safety helper (I6, P2 security fix)
+# ---------------------------------------------------------------------------
+
+
+def test_is_safe_path_segment_rejects_bare_relative_segments() -> None:
+    """``_is_safe_path_segment`` rejects the reserved '.'/'..' segments even
+    though both match the plain charset allowlist -- the gap a category/slug
+    or version id from an attacker-influenced JSON:API response could
+    otherwise exploit to smuggle a literal './'/'../' into a constructed URL.
+    """
+    from docline.fetch.tf_registry_source import _is_safe_path_segment
+
+    assert _is_safe_path_segment("resources") is True
+    assert _is_safe_path_segment("azurerm_provider_guide") is True
+    assert _is_safe_path_segment(".") is False
+    assert _is_safe_path_segment("..") is False
+    assert _is_safe_path_segment("../../etc") is False
+    assert _is_safe_path_segment("a;b") is False
+
+
+# ---------------------------------------------------------------------------
+# Pinned-version recognition vs. enumeration (P1 fix)
+# ---------------------------------------------------------------------------
+
+
+def test_discover_doc_urls_fails_closed_for_pinned_version() -> None:
+    """A recognized pinned-version URL fails closed, never silently substituting
+    the current latest version's docs.
+
+    ``recognizes()`` accepts a pinned version (per the plan's recognizer
+    pattern), but only ``"latest"`` is actually resolved and enumerated:
+    enumeration for any other version raises explicitly so the
+    crawl-composition layer's existing adapter-failure fallback degrades to
+    static-only extraction, rather than the adapter quietly linking to the
+    wrong version's documents.
+    """
+    pinned_url = "https://registry.terraform.io/providers/hashicorp/azurerm/4.1.0/docs"
+    source = TfRegistrySource()
+    assert source.recognizes(pinned_url) is True, "a pinned version is still recognized"
+
+    with pytest.raises(TfRegistryAdapterError):
+        asyncio_run_collect(source, pinned_url)
 
 
 # ---------------------------------------------------------------------------

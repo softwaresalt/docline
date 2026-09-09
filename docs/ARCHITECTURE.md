@@ -153,17 +153,22 @@ while every other host is completely unaffected.
   for that provider via the registry's `v2` JSON:API (paginated
   `provider-docs` relationship), constructing human-readable doc URLs
   (`/providers/{namespace}/{name}/latest/docs/{category}/{slug}`) without ever
-  loading a browser.
+  loading a browser. Only the `"latest"` version segment is actually resolved
+  and enumerated: a pinned, non-`"latest"` version URL is recognized (so it is
+  never treated as an ordinary static-only host) but fails closed with an
+  explicit adapter error rather than silently substituting the current latest
+  version's docs — degrading to static-only extraction like any other adapter
+  failure. Genuine pinned-version resolution is tracked as follow-up work.
 * `docline.fetch.crawl` is the **composition point**: it registers
   `TfRegistrySource` into the seam at import time (so the generic seam module
   still never imports it), and at the start of every crawl — when
-  `CrawlConfig.enable_api_discovery` is `True` and a registered source
-  recognizes the start URL — lazily drains that source and admits each URL
-  through the *same* frontier ceiling, domain-lock/section-scope filter, and
-  visited-dedup rules static anchor links already go through. Discovery is
-  strictly **additive**: the start page's own static anchors are still
-  extracted and admitted normally, and a URL surfaced by both paths is fetched
-  exactly once.
+  `CrawlConfig.enable_api_discovery` is `True`, `CrawlConfig.max_frontier > 0`,
+  and a registered source recognizes the start URL — lazily drains that source
+  and admits each URL through the *same* frontier ceiling, domain-lock/section
+  -scope filter, and visited-dedup rules static anchor links already go
+  through. Discovery is strictly **additive**: the start page's own static
+  anchors are still extracted and admitted normally, and a URL surfaced by
+  both paths is fetched exactly once.
 
 Safety and degradation posture, uniformly enforced at the composition layer
 (not merely trusted from the adapter):
@@ -172,15 +177,19 @@ Safety and degradation posture, uniformly enforced at the composition layer
   `provider-docs` request, and every constructed document URL — is confined to
   the recognized registry host. A paginated `links.next` target pointing
   off-host stops pagination silently (no further fetch, no error) rather than
-  being followed, and every outbound fetch continues to route exclusively
-  through `docline.fetch.http.fetch_page` — the same connect-time
-  address-pinned, budget-aware transport every other crawl path uses, so
-  DNS-rebinding and redirect-target revalidation protections apply identically
-  here.
-* **Path-segment safety.** Namespace, name, category, and slug segments are all
-  charset-validated before being percent-encoded into a constructed URL; a
-  hostile or malformed entry (for example a path-traversal slug) is skipped,
-  never aborts the rest of the enumeration.
+  being followed; every fetch's *final* (post-redirect) response URL is also
+  asserted host-confined, since the shared transport's redirect validation
+  rejects private/reserved targets but permits redirecting to any other public
+  host. Every outbound fetch continues to route exclusively through
+  `docline.fetch.http.fetch_page` — the same connect-time address-pinned,
+  budget-aware transport every other crawl path uses, so DNS-rebinding and
+  redirect-target revalidation protections apply identically here.
+* **Path-segment safety.** Namespace, name, version, category, slug, and the
+  resolved provider-version id are all charset-validated (an allowlist, plus
+  an explicit reject of the bare reserved segments `"."`/`".."`, which the
+  charset allowlist alone would not catch) before being percent-encoded into a
+  constructed URL; a hostile or malformed entry (for example a path-traversal
+  slug) is skipped, never aborts the rest of the enumeration.
 * **Frontier-ceiling efficiency.** The composition point checks the
   `max_frontier` ceiling *before* pulling each item from a discovery source's
   async generator (not after, unlike the existing admit-then-check pattern used
@@ -188,15 +197,21 @@ Safety and degradation posture, uniformly enforced at the composition layer
   source is never driven to fetch one further page just to have it refused.
   This is what bounds a large provider's enumeration (for example the Terraform
   Registry's ~1,600 `azurerm` documents) by `max_frontier` rather than by the
-  provider's own document count.
+  provider's own document count. `max_frontier == 0` ("disable link discovery
+  entirely") skips the discovery seed outright rather than reporting a
+  false-positive truncation before ever asking the source for an item; for any
+  other cap, an exact-boundary case (the source's remaining items happen to
+  equal the remaining capacity) is a deliberately conservative over-report,
+  mirroring the existing depth-zero TOC-script truncation signal.
 * **Fail-open degradation.** A generic adapter failure is logged once (the
   sanitized crawl origin only, never a raw URL or credential-bearing data) and
   the crawl falls back to static-only extraction for the rest of the run — it
-  never aborts the crawl. A budget or SSRF rejection
-  (`AggregateBudgetExceededError` / `CrawlUrlRejectedError`) raised mid
-  -enumeration is never masked as a generic adapter failure: it propagates
-  uncaught out of `crawl()`, identical to any other budget/SSRF rejection
-  during a crawl.
+  never aborts the crawl. A completed, error-free seed also logs a single INFO
+  record (sanitized origin plus the count of URLs seeded) for observability. A
+  budget or SSRF rejection (`AggregateBudgetExceededError` /
+  `CrawlUrlRejectedError`) raised mid-enumeration is never masked as a generic
+  adapter failure: it propagates uncaught out of `crawl()`, identical to any
+  other budget/SSRF rejection during a crawl.
 * **Disable switch.** `CrawlConfig.enable_api_discovery` (default `True`)
   disables discovery-seam consultation entirely when set to `False`: the crawl
   falls back to byte-identical legacy static-extraction-only behavior for a

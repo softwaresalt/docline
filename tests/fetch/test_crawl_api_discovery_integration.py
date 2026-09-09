@@ -24,6 +24,7 @@ dedicated harness in ``test_tf_registry_source.py`` — so this file exercises
 from __future__ import annotations
 
 import asyncio
+import logging
 from collections.abc import AsyncIterator
 
 import pytest
@@ -135,6 +136,40 @@ def test_recognized_start_url_discovers_and_fetches_every_source_url(
     assert outcome.frontier_truncated is False
 
 
+def test_successful_seed_logs_one_info_summary(
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """A completed discovery-source seed logs one INFO summary (origin + count),
+    per the plan's own observability commitment -- a sanitized origin only,
+    never a raw discovered URL.
+    """
+    discovered = _discovered_urls(3)
+    source = _FakeDiscoverySource(discovered)
+    link_sources.register(source)
+
+    requested: list[str] = []
+    _install_fetch(
+        monkeypatch,
+        {_START_URL: _html(_START_URL, "<html><body>shell</body></html>")},
+        requested,
+    )
+
+    with caplog.at_level(logging.INFO, logger="docline.fetch.crawl"):
+        asyncio.run(crawl(_START_URL, CrawlConfig(max_pages=50, max_frontier=50, max_depth=0)))
+
+    info_records = [
+        record
+        for record in caplog.records
+        if record.name == "docline.fetch.crawl" and record.levelname == "INFO"
+    ]
+    assert len(info_records) == 1, "a completed seed must log exactly one INFO summary"
+    message = info_records[0].getMessage()
+    assert "3" in message
+    for url in discovered:
+        assert url not in message, "the seed summary must never embed a raw discovered URL"
+
+
 # ---------------------------------------------------------------------------
 # AC(b): cap-truncation stops both admission AND the source's own pagination
 # ---------------------------------------------------------------------------
@@ -165,6 +200,34 @@ def test_max_frontier_below_discovery_count_truncates_and_stops_pagination(
     )
     fetched = {result.url for result in outcome.results if not result.skipped}
     assert fetched == {_START_URL, *discovered[:2]}
+
+
+def test_max_frontier_zero_disables_discovery_without_false_truncation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """``max_frontier=0`` ("disable link discovery entirely") never even asks
+    the discovery source for an item, and never reports a false-positive
+    ``frontier_truncated`` for a seed that was never attempted.
+    """
+    discovered = _discovered_urls(5)
+    source = _FakeDiscoverySource(discovered)
+    link_sources.register(source)
+
+    requested: list[str] = []
+    _install_fetch(
+        monkeypatch,
+        {_START_URL: _html(_START_URL, "<html><body>shell</body></html>")},
+        requested,
+    )
+
+    outcome = asyncio.run(crawl(_START_URL, CrawlConfig(max_pages=50, max_frontier=0, max_depth=0)))
+
+    assert source.pulled == [], "max_frontier=0 must never drive the discovery source at all"
+    assert outcome.frontier_truncated is False, (
+        "a seed that was never attempted must not report truncation"
+    )
+    fetched = {result.url for result in outcome.results if not result.skipped}
+    assert fetched == {_START_URL}
 
 
 # ---------------------------------------------------------------------------

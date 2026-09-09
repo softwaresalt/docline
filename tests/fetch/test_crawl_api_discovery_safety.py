@@ -56,8 +56,10 @@ def _fixture(name: str) -> str:
     return (_FIXTURE_DIR / name).read_text(encoding="utf-8")
 
 
-def _json_response(body_text: str, content_type: str = "application/json") -> FetchResponse:
-    return FetchResponse(url="", status=200, content_type=content_type, body=body_text)
+def _json_response(
+    body_text: str, content_type: str = "application/json", url: str = ""
+) -> FetchResponse:
+    return FetchResponse(url=url, status=200, content_type=content_type, body=body_text)
 
 
 class _FakeDiscoverySource:
@@ -213,9 +215,9 @@ def test_off_host_links_next_via_real_adapter_never_fetched_end_to_end(
         del timeout_seconds, max_redirects, budget
         adapter_requested.append(url)
         if url == lookup_url:
-            return _json_response(_fixture("provider_lookup.json"))
+            return _json_response(_fixture("provider_lookup.json"), url=url)
         if url == docs_page1_url:
-            return _json_response(_fixture("provider_docs_offhost_next.json"))
+            return _json_response(_fixture("provider_docs_offhost_next.json"), url=url)
         raise AssertionError(f"unexpected adapter fetch: {url!r}")
 
     monkeypatch.setattr("docline.fetch.tf_registry_source.fetch_page", fake_adapter_fetch)

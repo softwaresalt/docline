@@ -5,6 +5,16 @@ Recognizes Terraform Registry provider documentation start URLs
 and enumerates every documentation URL for that provider via the registry's
 v2 JSON:API, without a runtime browser.
 
+Only the ``"latest"`` version segment is actually resolved and enumerated.
+A pinned, non-``"latest"`` version URL is recognized (so it is never treated
+as an ordinary static-only host) but ``discover_doc_urls`` fails closed with
+an explicit :class:`TfRegistryAdapterError` for it, degrading to static-only
+extraction at the crawl-composition layer rather than silently substituting
+the current latest version's docs. Genuine pinned-version resolution (listing
+provider-versions and matching by version string, not just reading the
+``latest-version`` relationship) is tracked as follow-up work, not part of
+this adapter's current scope.
+
 All outbound requests go through :func:`docline.fetch.http.fetch_page` — the
 hardened, connect-time address-pinned, budget-aware transport — never a raw
 HTTP client. This is what makes the SSRF (I3) and budget (I2) invariants hold.
@@ -27,12 +37,36 @@ from collections.abc import AsyncIterator
 from urllib.parse import quote, urlparse
 
 from docline.fetch.crawl_models import CrawlConfig
-from docline.fetch.http import AggregateBudgetExceededError, RemainingByteBudget, fetch_page
+from docline.fetch.http import (
+    AggregateBudgetExceededError,
+    FetchResponse,
+    RemainingByteBudget,
+    fetch_page,
+)
 from docline.fetch.url_policy import CrawlUrlRejectedError, validate_crawl_url
 from docline.schema.models import DoclineError
 
 REGISTRY_HOST: str = "registry.terraform.io"
 """The recognized origin host for Terraform Registry provider docs (I5)."""
+
+
+def _assert_response_on_registry_host(response: FetchResponse, context: str) -> None:
+    """Raise unless *response*'s final (post-redirect) URL is host-confined (I5).
+
+    ``fetch_page``'s redirect handler rejects private/reserved redirect
+    targets (SSRF, I3) but permits redirecting to any other *public* host --
+    it is not itself host-pinned to :data:`REGISTRY_HOST`. This closes that
+    gap for every adapter fetch (mirroring the explicit check already applied
+    to a followed ``links.next`` target), so a same-host request that is
+    redirected off-host by a compromised or misconfigured endpoint is never
+    silently trusted just because the *request* URL was confined.
+    """
+    final_host = (urlparse(response.url).hostname or "").lower().rstrip(".")
+    if final_host != REGISTRY_HOST:
+        raise TfRegistryAdapterError(
+            f"{context}: final response URL resolved off-host to {final_host!r}."
+        )
+
 
 # Path-segment charset (I6): namespace/name/category/slug must all match this
 # before being interpolated into any constructed URL, or trusted from a parsed
@@ -40,21 +74,51 @@ REGISTRY_HOST: str = "registry.terraform.io"
 # -- recognition/construction simply fails for that segment.
 _SEGMENT_PATTERN: re.Pattern[str] = re.compile(r"^[A-Za-z0-9._-]+$")
 
+# The reserved relative-path segments. Both match _SEGMENT_PATTERN (``.`` is an
+# accepted character) but would otherwise produce a literal ``./`` or ``../``
+# path segment once percent-encoded via ``quote(safe="")`` (which does not
+# encode ``.``) -- rejected explicitly, independent of the charset check.
+_RESERVED_RELATIVE_SEGMENTS: frozenset[str] = frozenset({".", ".."})
+
+
+def _is_safe_path_segment(segment: str) -> bool:
+    """Return whether *segment* is safe to percent-encode into a constructed URL.
+
+    Combines the I6 charset allowlist with an explicit rejection of the
+    reserved relative-path segments ``"."``/``".."``.
+    """
+    if not _SEGMENT_PATTERN.match(segment):
+        return False
+    return segment not in _RESERVED_RELATIVE_SEGMENTS
+
+
 # Matches ``/providers/{namespace}/{name}/(latest|<version>)/docs`` and any
-# trailing path. ``namespace``/``name`` are captured as raw path segments here
-# and separately charset-validated (I6) -- the pattern alone does not enforce
-# the charset, only the path *shape*.
+# trailing path. ``namespace``/``name``/the version segment are captured as
+# raw path segments here and separately charset-validated (I6) -- the pattern
+# alone does not enforce the charset, only the path *shape*.
 _PATH_PATTERN: re.Pattern[str] = re.compile(
-    r"^/providers/([^/]+)/([^/]+)/(?:latest|[^/]+)/docs(?:/.*)?$"
+    r"^/providers/([^/]+)/([^/]+)/(latest|[^/]+)/docs(?:/.*)?$"
 )
 
 
-def _parse_start_url(start_url: str) -> tuple[str, str] | None:
-    """Return the ``(namespace, name)`` pair for a recognized start URL, else ``None``.
+def _parse_start_url(start_url: str) -> tuple[str, str, str] | None:
+    """Return ``(namespace, name, version)`` for a recognized start URL, else ``None``.
 
-    Enforces host confinement (I5) and path-segment charset validation (I6)
-    before any network call is made -- an unrecognized or invalid URL never
-    reaches :func:`_resolve_provider_version`.
+    ``version`` is the literal string ``"latest"`` or a pinned version segment
+    (e.g. ``"4.1.0"``) exactly as it appeared in the start URL. Enforces host
+    confinement (I5) and path-segment charset validation (I6) before any
+    network call is made -- an unrecognized or invalid URL never reaches
+    :func:`_resolve_provider_version`.
+
+    Note: recognizing a pinned-version start URL does not imply
+    :func:`_resolve_provider_version`/:meth:`TfRegistrySource.discover_doc_urls`
+    can enumerate docs for it -- only ``"latest"`` is currently resolved (see
+    their own docstrings). A pinned-version URL is recognized (so
+    ``crawl()`` never treats it as an ordinary static-only host) but
+    enumeration for it fails closed with an explicit
+    :class:`TfRegistryAdapterError`, which degrades to static-only extraction
+    at the crawl-composition layer rather than silently substituting the
+    current latest version's docs.
     """
     parsed = urlparse(start_url)
     if parsed.scheme.lower() != "https":
@@ -65,10 +129,12 @@ def _parse_start_url(start_url: str) -> tuple[str, str] | None:
     match = _PATH_PATTERN.match(parsed.path)
     if not match:
         return None
-    namespace, name = match.group(1), match.group(2)
-    if not _SEGMENT_PATTERN.match(namespace) or not _SEGMENT_PATTERN.match(name):
+    namespace, name, version = match.group(1), match.group(2), match.group(3)
+    if not _is_safe_path_segment(namespace) or not _is_safe_path_segment(name):
         return None
-    return namespace, name
+    if version != "latest" and not _is_safe_path_segment(version):
+        return None
+    return namespace, name, version
 
 
 async def _resolve_provider_version(
@@ -107,6 +173,7 @@ async def _resolve_provider_version(
         raise TfRegistryAdapterError(
             f"Failed to resolve provider version for {namespace}/{name}: {err}"
         ) from err
+    _assert_response_on_registry_host(response, f"Provider lookup for {namespace}/{name}")
 
     content_type = (response.content_type or "").lower()
     if "json" not in content_type:
@@ -128,7 +195,10 @@ async def _resolve_provider_version(
             f"Provider lookup for {namespace}/{name} is missing the "
             "latest-version relationship (schema drift)."
         ) from err
-    if not isinstance(version_id, str) or not version_id:
+    if not isinstance(version_id, str) or not _is_safe_path_segment(version_id):
+        # version_id is interpolated into the provider-docs page URL (I6): an
+        # attacker-influenced JSON:API response must never smuggle a bad
+        # character or a reserved relative-path segment into that URL.
         raise TfRegistryAdapterError(
             f"Provider lookup for {namespace}/{name} returned a malformed version id."
         )
@@ -235,13 +305,28 @@ class TfRegistrySource:
         interpolated into a constructed doc URL -- a hostile or malformed entry
         is skipped, never aborts enumeration. Genuinely async and lazy: no page
         beyond the one a consumer is currently draining is ever fetched.
+
+        Raises:
+            TfRegistryAdapterError: When *start_url* is unrecognized, or when
+                it pins a specific, non-``"latest"`` provider version. Only
+                ``"latest"`` is currently resolved and enumerated; a pinned
+                version fails closed here rather than silently substituting
+                the current latest version's docs (see
+                :func:`_parse_start_url`'s docstring). This is caught and
+                degraded to static-only extraction by the crawl-composition
+                layer, the same as any other adapter failure.
         """
         parsed = _parse_start_url(start_url)
         if parsed is None:
             raise TfRegistryAdapterError(
                 f"Unrecognized Terraform Registry start URL: {start_url!r}"
             )
-        namespace, name = parsed
+        namespace, name, version = parsed
+        if version != "latest":
+            raise TfRegistryAdapterError(
+                f"Pinned provider-version enumeration is not supported for "
+                f"{namespace}/{name}@{version!r}; only 'latest' is resolved."
+            )
         version_id = await _resolve_provider_version(namespace, name, config, budget)
 
         docs_url: str | None = (
@@ -264,6 +349,9 @@ class TfRegistrySource:
                 raise TfRegistryAdapterError(
                     f"Failed to enumerate provider docs for {namespace}/{name}: {err}"
                 ) from err
+            _assert_response_on_registry_host(
+                response, f"Provider-docs page for {namespace}/{name}"
+            )
 
             content_type = (response.content_type or "").lower()
             if "json" not in content_type:
@@ -290,9 +378,10 @@ class TfRegistrySource:
                 slug = attrs.get("slug")
                 if not isinstance(category, str) or not isinstance(slug, str):
                     continue
-                if not _SEGMENT_PATTERN.match(category) or not _SEGMENT_PATTERN.match(slug):
-                    # Hostile or malformed entry (e.g. a path-traversal slug):
-                    # skipped, never aborts the rest of the enumeration (I6).
+                if not _is_safe_path_segment(category) or not _is_safe_path_segment(slug):
+                    # Hostile or malformed entry (e.g. a path-traversal slug,
+                    # or a bare "." / ".." segment): skipped, never aborts the
+                    # rest of the enumeration (I6).
                     continue
                 doc_url = (
                     f"https://{REGISTRY_HOST}/providers/{quote(namespace, safe='')}"

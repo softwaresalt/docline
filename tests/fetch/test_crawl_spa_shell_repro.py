@@ -19,6 +19,19 @@ new integration harness (070.008-T) proves the *fixed* behavior for a
 recognized host.
 
 No production code changed in this task.
+
+Hermeticity note (post-070.010-T): this URL is recognized by the real,
+globally-registered :class:`~docline.fetch.tf_registry_source.TfRegistrySource`
+once ``crawl.py``'s composition point exists. This test characterizes the
+**pre-discovery-seam, static-extraction-only** baseline specifically, so it
+passes ``enable_api_discovery=False`` explicitly rather than relying on the
+ambient registration state — otherwise it would non-deterministically attempt
+a real, unmocked network call to the live Terraform Registry through the
+adapter's own ``fetch_page`` import (a separate binding from the
+``crawl.fetch_page`` this file monkeypatches), which only degrades safely by
+accident of this sandbox's fail-open path rather than by test design. The
+*fixed*, discovery-enabled behavior for a recognized host is proven instead by
+the dedicated ``test_crawl_api_discovery_integration.py`` harness.
 """
 
 import asyncio
@@ -70,10 +83,18 @@ def _install_spa_shell_fetch(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def test_spa_app_shell_yields_exactly_one_crawled_page(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Today, crawling an SPA app-shell yields exactly one page (the defect)."""
+    """Today, crawling an SPA app-shell yields exactly one page (the defect).
+
+    Explicitly disables API discovery: this test characterizes the
+    static-extraction-only baseline, independent of whatever discovery source
+    may be registered in the running process (see the module docstring's
+    hermeticity note).
+    """
     _install_spa_shell_fetch(monkeypatch)
 
-    outcome = asyncio.run(crawl(_SPA_SHELL_URL, CrawlConfig(max_pages=50)))
+    outcome = asyncio.run(
+        crawl(_SPA_SHELL_URL, CrawlConfig(max_pages=50, enable_api_discovery=False))
+    )
 
     assert len(outcome.results) == 1, (
         "the SPA app-shell fixture must yield exactly one page under today's "
