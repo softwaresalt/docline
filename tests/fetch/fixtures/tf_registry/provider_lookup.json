@@ -1,0 +1,19 @@
+{
+  "data": {
+    "type": "providers",
+    "id": "1440",
+    "attributes": {
+      "namespace": "hashicorp",
+      "name": "azurerm",
+      "full-name": "hashicorp/azurerm"
+    },
+    "relationships": {
+      "latest-version": {
+        "data": {
+          "type": "provider-versions",
+          "id": "107778"
+        }
+      }
+    }
+  }
+}
