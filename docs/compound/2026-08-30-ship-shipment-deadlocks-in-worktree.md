@@ -82,16 +82,6 @@ Archiving a shipment directly with `archive` records `archived_status: active` r
 `shipped`. The material outcomes — archived scope + merge SHA on every artifact — are satisfied;
 note the cosmetic `archived_status` in the closure record.
 
-**Amendment (2026-09-09):** this cosmetic gap is not merely cosmetic to downstream tooling — the
-`pipeline-topology` gate's predecessor-readiness check requires a genuine `shipped` terminal state,
-and 059-S's `archived_status: active` hard-blocked the pre_claim gate for its dependent shipment
-060-S (`PREDECESSOR_NOT_SHIPPED`). 059-S's archive record was normalized to `archived_status:
-shipped` in PR #184 after independently verifying material completeness (merge commit ancestry,
-feature/task archival, commit-SHA backfill). Until this is fixed at the tool level, **any** shipment
-closed via this single-artifact fallback should have its `archived_status` normalized to `shipped`
-as a follow-up step, not left at `active`, if it has (or may gain) a dependent shipment relying on
-the topology gate.
-
 ## Reusable rule
 
 When `backlogit shipment ship` hangs from a worktree, do not keep retrying it (it will re-wedge and
