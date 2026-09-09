@@ -1,0 +1,101 @@
+"""Discovery-source seam: pluggable per-site link enumeration for ``crawl()``.
+
+Defines the :class:`DiscoverySource` protocol and a minimal first-match
+registry (:func:`register` / :func:`find_source`) that ``crawl()`` (070.010-T)
+consults at the start of a crawl to decide whether a recognized site can be
+enumerated through an API-backed adapter instead of relying solely on static
+HTML link extraction.
+
+This module is deliberately generic: it imports only leaf dependencies
+(:mod:`docline.fetch.crawl_models`, :mod:`docline.fetch.http`) and never
+imports a concrete provider adapter (e.g. the Terraform Registry adapter in
+:mod:`docline.fetch.tf_registry_source`). The concrete adapter registers
+itself at the ``crawl.py`` composition point, so this seam never needs to
+change when a new site adapter is added.
+
+Named ``link_sources`` (not ``crawl_discovery*``) to avoid colliding with the
+existing robots/backoff module :mod:`docline.fetch.crawl_discovery`.
+
+Structural stub for 070.002-T's harness: :func:`register` and
+:func:`find_source` are implemented for real by 070.003-T.
+"""
+
+from __future__ import annotations
+
+from collections.abc import AsyncIterator
+from typing import Protocol, runtime_checkable
+
+from docline.fetch.crawl_models import CrawlConfig
+from docline.fetch.http import RemainingByteBudget
+
+
+@runtime_checkable
+class DiscoverySource(Protocol):
+    """A pluggable, per-site link-enumeration source consulted by ``crawl()``.
+
+    Implementations recognize a start URL by pattern (no network I/O) and, if
+    recognized, lazily enumerate every discoverable document URL for that
+    site through whatever API or protocol the site exposes.
+    """
+
+    def recognizes(self, start_url: str) -> bool:
+        """Return ``True`` when this source can enumerate docs for *start_url*.
+
+        Args:
+            start_url: The crawl's start URL.
+
+        Returns:
+            ``True`` when this source recognizes *start_url*'s shape. Must be
+            pure and synchronous — no network I/O.
+        """
+        ...
+
+    def discover_doc_urls(
+        self,
+        start_url: str,
+        config: CrawlConfig,
+        budget: RemainingByteBudget | None,
+    ) -> AsyncIterator[str]:
+        """Lazily yield every doc URL discoverable from *start_url*.
+
+        Args:
+            start_url: The crawl's start URL (already confirmed recognized).
+            config: The active crawl configuration.
+            budget: The request-scoped byte/attempt budget threaded through
+                every outbound fetch the source performs.
+
+        Yields:
+            Absolute, policy-validated document URLs. Consumption is lazy: a
+            consumer that stops pulling stops the source's own I/O (e.g. API
+            pagination) rather than eagerly enumerating everything upfront.
+        """
+        ...
+
+
+def register(source: DiscoverySource) -> None:
+    """Register a discovery source.
+
+    Registration order is first-match precedence: :func:`find_source` returns
+    the first registered source whose :meth:`DiscoverySource.recognizes`
+    returns ``True`` for a given start URL.
+
+    Args:
+        source: The discovery source to register.
+    """
+    raise NotImplementedError("070.003-T implements the discovery-source registry")
+
+
+def find_source(start_url: str) -> DiscoverySource | None:
+    """Return the first registered source that recognizes *start_url*.
+
+    Args:
+        start_url: The crawl's start URL.
+
+    Returns:
+        The first matching :class:`DiscoverySource`, or ``None`` when no
+        registered source recognizes *start_url*.
+    """
+    raise NotImplementedError("070.003-T implements the discovery-source registry")
+
+
+__all__ = ["DiscoverySource", "find_source", "register"]
