@@ -22,8 +22,9 @@ compaction_status: done
 | `069.006-T` | task — B.T6 reconcile `sitemap.py` docstrings | `5a090a3` |
 | `069.007-T` | task — B.T7 record the single-resolution model in `ARCHITECTURE.md` | `42b01d5` |
 
-Copilot review remediation (4 cycles, all threads resolved) landed across `9dd9af1`, `224bead`,
-`a2524fd`, and `72d5d1b` on the same PR branch — see "Bot review" below.
+Copilot review remediation (4 fix commits across the review cycles, all threads resolved)
+landed across `9dd9af1`, `224bead`, `a2524fd`, and `72d5d1b` on the same PR branch — see "Bot
+review" below.
 
 All 9 artifacts (shipment, feature, 7 tasks) are archived under `.backlogit/archive/` via
 `backlogit shipment ship 060-S --sha f278cff...`, which completed successfully in the primary
