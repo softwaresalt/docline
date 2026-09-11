@@ -37,9 +37,10 @@ class OutputDocumentPart:
             media was extracted. Surfaced as ``media_files`` in the
             per-source ``manifest.json`` entry by the application layer.
         source_frontmatter: Parsed YAML frontmatter from the source file
-            when the source was a ``.md`` or ``.txt`` that began with a
-            ``---`` fence. ``None`` when the source had no frontmatter,
-            had malformed frontmatter, or was not an MD/TXT source.
+            when the source was a ``.md``, ``.markdown``, or ``.txt`` file
+            that began with a ``---`` fence. ``None`` when the source had no
+            frontmatter, had malformed frontmatter, or was not a Markdown/text
+            source.
             Surfaced into the docline ``source_frontmatter`` namespace by
             the application layer so downstream consumers see authorial
             metadata (``ms.author``, ``ms.topic``, etc.) preserved
@@ -47,7 +48,7 @@ class OutputDocumentPart:
         cross_doc_links: Tuple of ``{target_path, anchor, link_text}``
             dicts collected from intra-corpus ``[text](other.md)``
             references in the body. Empty tuple when the source had no
-            cross-doc links or was not an MD/TXT source. Surfaced into
+            cross-doc links or was not a Markdown/text source. Surfaced into
             ``docline.cross_doc_links`` as a list of dicts so downstream
             graph extraction can treat each as a first-class edge
             (024.003-T / 026-S T3).
@@ -287,7 +288,7 @@ def build_output_document_parts(
                 segment_bodies = [extract_main_content(html)]
             except HtmlExtractionError:
                 segment_bodies = [html]
-        elif suffix in {".md", ".txt"}:
+        elif suffix in {".md", ".markdown", ".txt"}:
             # 023.001-T / 025-S: strip YAML frontmatter before passing to the
             # segmenter so the H1/H2 hierarchy validator doesn't see ``title:``
             # YAML keys as misordered headings. Parsed frontmatter flows

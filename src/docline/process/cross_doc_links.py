@@ -1,16 +1,16 @@
 """Cross-doc markdown link resolver (024.003-T / 026-S T3 / 028-S T3).
 
-Scans markdown body content for ``[text](relative/path.md)`` cross-doc
+Scans markdown body content for relative ``.md`` and ``.markdown`` cross-doc
 links and ``[text](/absolute/cross-product-path)`` cross-product links,
-collecting both as graph-edge metadata. The collected list is surfaced
-via the application layer under ``docline.cross_doc_links`` so downstream
-graph extraction can treat each link as a first-class edge
+collecting both as graph-edge metadata. The collected list is surfaced via the
+application layer under ``docline.cross_doc_links`` so downstream graph
+extraction can treat each link as a first-class edge
 ``{target_path, anchor, link_text, cross_product}`` without re-parsing.
 
 Three link categories:
 
-1. **In-corpus cross-doc** (relative ``.md`` paths) — resolved relative
-   to the host file's directory. ``cross_product: False``.
+1. **In-corpus cross-doc** (relative ``.md`` or ``.markdown`` paths) —
+   resolved relative to the host file's directory. ``cross_product: False``.
 2. **Cross-product** (absolute ``/path`` paths, e.g. ``/fabric/admin``,
    ``/dax/abs-function-dax``) — preserved verbatim with leading slash.
    ``cross_product: True``. Microsoft Learn uses these for cross-product
@@ -152,7 +152,7 @@ def resolve_cross_doc_links(
             # distinguish in-corpus targets from cross-product references.
             target_path = path_part
             cross_product = True
-        elif path_part.endswith(".md"):
+        elif path_part.endswith((".md", ".markdown")):
             target_path = _resolve_relative(current_rel_path, path_part)
             cross_product = False
         else:

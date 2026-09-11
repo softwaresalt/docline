@@ -42,7 +42,7 @@ _PUBLISH_CONFIG_NAME = ".openpublishing.publish.config.json"
 _HEADING_RE = re.compile(r"^(#{1,6})(\s+.+)$")
 
 # Supported file extension → reader function name
-_SUPPORTED_EXTENSIONS = {".docx", ".pdf", ".html", ".htm", ".md", ".txt"}
+_SUPPORTED_EXTENSIONS = {".docx", ".pdf", ".html", ".htm", ".md", ".markdown", ".txt"}
 
 # Extensions that MAY carry an OpenAPI/Swagger spec. A file is only treated as a
 # spec after a positive content-sniff (``openapi_file_kind``); this keeps config

@@ -101,6 +101,21 @@ def test_build_output_document_parts_no_frontmatter(tmp_path: Path) -> None:
     assert "Body content." in parts[0].body
 
 
+def test_build_output_document_parts_supports_markdown_extension(tmp_path: Path) -> None:
+    """The long-form .markdown extension follows the Markdown reader path."""
+    from docline.process.output_contract import build_output_document_parts
+
+    source = tmp_path / "sample.markdown"
+    source.write_text(MS_LEARN_SAMPLE, encoding="utf-8")
+
+    parts = build_output_document_parts(source, Path("sample.markdown"))
+
+    assert len(parts) == 1
+    assert parts[0].source_frontmatter is not None
+    assert parts[0].source_frontmatter["title"] == "Sample doc title"
+    assert "# Sample H1 heading" in parts[0].body
+
+
 def test_parse_md_frontmatter_handles_multiline_yaml_values() -> None:
     """YAML block scalar values that span multiple lines parse correctly.
 
@@ -324,6 +339,53 @@ def test_execute_process_no_longer_fails_frontmatter_assembly_on_ms_learn_md(
     # Source frontmatter MUST be nested under docline:source_frontmatter
     assert "source_frontmatter:" in body
     assert "ms.topic" in body or "ms_topic" in body or "ms.author" in body or "ms_author" in body
+
+
+def test_execute_process_accepts_markdown_extension(tmp_path: Path) -> None:
+    """Staged .markdown files are processed like .md files."""
+    import json
+    import os
+
+    from docline.app import execute_process
+    from docline.app_models import ProcessRequest
+
+    staging = tmp_path / "staging"
+    job_dir = staging / "ab" / "abcdef1234567890"
+    files_dir = job_dir / "files"
+    files_dir.mkdir(parents=True)
+    (files_dir / "sample.markdown").write_text(NO_FRONTMATTER_SAMPLE, encoding="utf-8")
+    (job_dir / "metadata.json").write_text(
+        json.dumps(
+            {
+                "job_id": "abcdef1234567890",
+                "metadata": {
+                    "source": "github_repo:https://github.com/org/repo@main:**/*.md",
+                    "fetch_timestamp": "2026-09-11T00:00:00Z",
+                    "http_status": None,
+                    "content_type": "text/markdown",
+                },
+                "cache_path": str(job_dir),
+                "complete": True,
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    output = tmp_path / "output"
+    old_cwd = os.getcwd()
+    try:
+        os.chdir(tmp_path)
+        result = execute_process(
+            ProcessRequest(
+                staging_dir=staging.relative_to(tmp_path).as_posix(),
+                output_dir=output.relative_to(tmp_path).as_posix(),
+            )
+        )
+    finally:
+        os.chdir(old_cwd)
+
+    assert result.success is True
+    assert (output / "abcdef1234567890" / "sample.md").is_file()
 
 
 # ---------------------------------------------------------------------------

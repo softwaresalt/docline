@@ -8,9 +8,10 @@ cross-source key to resolve cross-product links across separately-ingested repos
 
 **v1 scope**: the docset whose ``build_source_folder`` is the longest path-prefix
 of the source path supplies the ``url_path_prefix``; the URL is that prefix joined
-with the path under ``build_source_folder``, with ``.md`` dropped, ``index.md``
-collapsed to its directory, forward slashes, and lowercased. Returns ``None`` when
-no docset matches or the matching docset declares no ``url_path_prefix``.
+with the path under ``build_source_folder``, with the Markdown extension
+dropped, index files collapsed to their directory, forward slashes, and
+lowercased. Returns ``None`` when no docset matches or the matching docset
+declares no ``url_path_prefix``.
 
 **Deferred** (feature 044-F): moniker ranges, redirect maps, documentId
 path-depot mappings, and ``docfx.json`` ``base_path`` fallback when a docset omits
@@ -39,10 +40,13 @@ def _normalize_folder(folder: str) -> str:
 def _build_url(prefix: str, rel: str) -> str:
     """Join a docset ``url_path_prefix`` with the doc's path-under-folder.
 
-    Drops the ``.md`` suffix, collapses ``index.md`` to its directory, and
-    returns a lowercase, leading-slash Learn URL path.
+    Drops the ``.md`` or ``.markdown`` suffix, collapses an ``index`` document
+    to its directory, and returns a lowercase, leading-slash Learn URL path.
     """
-    rel = rel[:-3] if rel.endswith(".md") else rel
+    for suffix in (".markdown", ".md"):
+        if rel.endswith(suffix):
+            rel = rel[: -len(suffix)]
+            break
     if rel == "index" or rel.endswith("/index"):
         rel = rel[: -len("index")].rstrip("/")
     prefix_norm = "/" + posixify_path(prefix).strip("/")
