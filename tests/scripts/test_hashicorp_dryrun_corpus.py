@@ -316,6 +316,107 @@ def test_execute_leaves_partial_dest_in_place_when_write_pass_fails(
     assert call_count["n"] == 2  # preflight (execute=False) + the failing write pass
 
 
+def test_execute_dest_claim_failure_other_than_file_exists_reports_clearly(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """P2 regression (independent re-review of review-fix cycle 2, finding 3):
+    the atomic --dest claim (``mkdir(..., exist_ok=False)``) explicitly
+    caught only ``FileExistsError``; any OTHER ``OSError`` (permission
+    denial, a blocked ancestor path component, disk exhaustion, ...)
+    escaped as a raw, uncontrolled traceback instead of a clear,
+    stable-exit-code CLI failure. Simulated here via a monkeypatched
+    ``Path.mkdir`` that raises ``PermissionError`` only for the exact
+    --dest path under test (with ``exist_ok=False``, i.e. only the real
+    claim call), delegating every other ``mkdir`` call -- including the
+    preflight pass's read-only work and pytest's own fixture
+    machinery -- to the real implementation."""
+    import importlib.util
+    import pathlib
+
+    spec = importlib.util.spec_from_file_location(
+        "docline_hashicorp_mdx_normalize_dest_claim_oserror", _SCRIPT_PATH
+    )
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    sys.modules["docline_hashicorp_mdx_normalize_dest_claim_oserror"] = module
+    spec.loader.exec_module(module)
+
+    dest = tmp_path / "dest"
+    real_mkdir = pathlib.Path.mkdir
+
+    def flaky_mkdir(self: Path, *args: object, **kwargs: object) -> None:
+        if self == dest and kwargs.get("exist_ok") is False:
+            raise PermissionError("simulated permission denial claiming --dest")
+        real_mkdir(self, *args, **kwargs)
+
+    monkeypatch.setattr(pathlib.Path, "mkdir", flaky_mkdir)
+
+    exit_code = module.main(["--source", str(_SYNTHETIC_CORPUS), "--dest", str(dest), "--execute"])
+    captured = capsys.readouterr()
+
+    assert exit_code == module.EXIT_DEST_CLAIM_FAILED
+    assert not dest.exists(), "a failed claim must never leave a partially-created --dest"
+    assert "failed to create --dest" in captured.err
+    assert "permission denial" in captured.err.lower()
+
+
+def test_execute_report_write_failure_after_successful_corpus_write_reports_clearly(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """P2 regression (independent re-review of review-fix cycle 2, finding 2):
+    if the corpus write pass succeeds but the subsequent --report write
+    itself then fails (permission denial, disk exhaustion, ...), that
+    failure must be reported distinctly and clearly -- noting the corpus
+    output already succeeded and was left in place -- rather than
+    escaping as a raw, uncontrolled traceback after --dest has already
+    been fully and successfully populated. Simulated via a monkeypatched
+    ``Path.write_text`` that raises only for the exact resolved --report
+    path, delegating every other write (every corpus file) to the real
+    implementation."""
+    import importlib.util
+    import pathlib
+
+    spec = importlib.util.spec_from_file_location(
+        "docline_hashicorp_mdx_normalize_report_write_oserror", _SCRIPT_PATH
+    )
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    sys.modules["docline_hashicorp_mdx_normalize_report_write_oserror"] = module
+    spec.loader.exec_module(module)
+
+    dest = tmp_path / "dest"
+    report_path = dest / "report.json"
+    real_write_text = pathlib.Path.write_text
+
+    def flaky_write_text(self: Path, *args: object, **kwargs: object) -> int:
+        if self == report_path.resolve():
+            raise OSError("simulated disk failure writing --report")
+        return real_write_text(self, *args, **kwargs)
+
+    monkeypatch.setattr(pathlib.Path, "write_text", flaky_write_text)
+
+    exit_code = module.main(
+        [
+            "--source",
+            str(_SYNTHETIC_CORPUS),
+            "--dest",
+            str(dest),
+            "--execute",
+            "--report",
+            str(report_path),
+        ]
+    )
+    captured = capsys.readouterr()
+
+    assert exit_code == module.EXIT_REPORT_WRITE_FAILED
+    assert not report_path.exists()
+    # The corpus output that succeeded BEFORE the report write failure
+    # must be left in place, not rolled back.
+    assert (dest / "vault" / "v2.x" / "index.md").exists()
+    assert "failed to write --report" in captured.err
+    assert "already written successfully" in captured.err
+
+
 def test_dry_run_may_point_dest_at_a_non_empty_directory_without_creating_it(
     tmp_path: Path,
 ) -> None:

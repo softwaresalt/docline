@@ -35,16 +35,29 @@ HARD CONTAINMENT CONTRACT
   ``Path.resolve()`` cannot atomically bind a check to a subsequent
   write any more than any other check-then-act filesystem sequence can.
 * ``--execute`` requires ``--dest`` to be ABSENT (not merely empty) and
-  claims it atomically with a single ``mkdir(..., exist_ok=False)`` call
-  immediately before any corpus write begins (review-fix cycle 2,
-  finding 3) -- it never deletes, replaces, or overlays a pre-existing
-  destination, empty or not. If two invocations race for the same
-  ``--dest``, the OS-level atomicity of ``mkdir(exist_ok=False)``
-  guarantees exactly one of them wins; the other fails closed instead of
-  silently interleaving output with the winner. If a later step in the
-  same run fails after ``--dest`` was successfully claimed, the partial
-  output is left in place (never auto-deleted) and reported clearly as a
-  failed, partial run. Dry-run is exempt from this check entirely: it
+  claims it with a single ``mkdir(..., exist_ok=False)`` call on
+  ``--dest``'s own final path component, immediately before any corpus
+  write begins (review-fix cycle 2, finding 3) -- it never deletes,
+  replaces, or overlays a pre-existing destination, empty or not. The
+  claim on ``--dest``'s own final component is atomic: if two
+  invocations race for the same ``--dest``, exactly one wins and the
+  other fails closed (``EXIT_DEST_ALREADY_EXISTS``) instead of silently
+  interleaving output with the winner. This atomicity guarantee covers
+  only ``--dest``'s own final path component -- if ``--dest``'s parent
+  directories do not yet exist, ``mkdir(parents=True, ...)`` creates
+  them first via ordinary, non-atomic ``mkdir`` calls before the final,
+  atomic claim on ``--dest`` itself. A claim failure for any reason
+  other than a pre-existing ``--dest`` (permission denial, a blocked
+  ancestor path component, disk exhaustion, etc.) is reported distinctly
+  (``EXIT_DEST_CLAIM_FAILED``) rather than escaping as a raw traceback;
+  no output is written in that case, since the claim itself never
+  succeeded. If a later step in the same run fails after ``--dest`` was
+  successfully claimed, the partial output is left in place (never
+  auto-deleted) and reported clearly as a failed, partial run
+  (``EXIT_EXECUTION_FAILED``); if the corpus write pass succeeds but the
+  subsequent ``--report`` write itself then fails, that is also reported
+  distinctly (``EXIT_REPORT_WRITE_FAILED``) with the already-successful
+  corpus output left in place. Dry-run is exempt from this check entirely: it
   may point ``--dest`` anywhere, including a non-empty directory,
   without ever creating or touching it.
 * ``--execute`` performs a complete READ-ONLY normalization preflight
@@ -103,6 +116,8 @@ EXIT_SOURCE_NOT_FOUND = 4
 EXIT_DEST_ALREADY_EXISTS = 5
 EXIT_UNRESOLVED_MDX_CONSTRUCTS = 6
 EXIT_EXECUTION_FAILED = 7
+EXIT_DEST_CLAIM_FAILED = 8
+EXIT_REPORT_WRITE_FAILED = 9
 
 #: Image-like binary assets copied byte-for-byte, unchanged.
 IMAGE_EXTENSIONS = frozenset({".png", ".jpg", ".jpeg", ".gif", ".svg", ".webp"})
@@ -543,10 +558,15 @@ def main(argv: list[str] | None = None) -> int:
         return EXIT_UNRESOLVED_MDX_CONSTRUCTS
 
     # Atomic claim of --dest -- the FIRST filesystem mutation in this
-    # entire invocation. mkdir(..., exist_ok=False) is a single OS-level
-    # syscall: of two concurrent processes racing on the same --dest,
-    # exactly one succeeds and the other raises FileExistsError here,
-    # instead of both silently interleaving output.
+    # entire invocation on the common path where --dest's own parent
+    # directory already exists (if intermediate ancestors are missing,
+    # ``parents=True`` creates them first via ordinary, non-atomic
+    # ``mkdir`` calls -- see the module docstring's containment-contract
+    # bullet). The claim of --dest's own final path component is a
+    # single OS-level syscall: of two concurrent processes racing on the
+    # same --dest, exactly one succeeds and the other raises
+    # FileExistsError here, instead of both silently interleaving
+    # output.
     try:
         dest.mkdir(parents=True, exist_ok=False)
     except FileExistsError:
@@ -557,6 +577,13 @@ def main(argv: list[str] | None = None) -> int:
             file=sys.stderr,
         )
         return EXIT_DEST_ALREADY_EXISTS
+    except OSError as exc:
+        print(
+            f"error: failed to create --dest: {dest} -- {exc}. No corpus output was "
+            "written; this failure occurred before any write began.",
+            file=sys.stderr,
+        )
+        return EXIT_DEST_CLAIM_FAILED
 
     # The real write pass: identical selection/normalization logic as the
     # preflight above, this time actually writing to disk.
@@ -599,8 +626,17 @@ def main(argv: list[str] | None = None) -> int:
                 file=sys.stderr,
             )
             return EXIT_CONTAINMENT_VIOLATION
-        resolved_report.parent.mkdir(parents=True, exist_ok=True)
-        resolved_report.write_text(payload, encoding="utf-8")
+        try:
+            resolved_report.parent.mkdir(parents=True, exist_ok=True)
+            resolved_report.write_text(payload, encoding="utf-8")
+        except OSError as exc:
+            print(
+                f"error: failed to write --report: {resolved_report} -- {exc}. Corpus "
+                f"output under {dest} was already written successfully and is left in "
+                "place; only the report file failed to write.",
+                file=sys.stderr,
+            )
+            return EXIT_REPORT_WRITE_FAILED
 
     if report["unresolved_constructs"] and not args.allow_unresolved_mdx:
         # Defense-in-depth only: the preflight gate above already aborted

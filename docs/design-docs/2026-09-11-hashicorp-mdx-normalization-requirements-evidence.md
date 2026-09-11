@@ -678,9 +678,9 @@ unstated implementation detail.
 
 * Script: `scripts/hashicorp_mdx_normalize.py`,
   `scripts/_hashicorp_mdx/selection.py`, `scripts/_hashicorp_mdx/normalize.py`
-* Tests: `tests/scripts/test_hashicorp_selection.py` (29 cases),
+* Tests: `tests/scripts/test_hashicorp_selection.py` (30 cases),
   `tests/scripts/test_hashicorp_normalize.py` (43 cases),
-  `tests/scripts/test_hashicorp_dryrun_corpus.py` (21 cases, including the
+  `tests/scripts/test_hashicorp_dryrun_corpus.py` (23 cases, including the
   real-corpus dry-run integration test)
 * Dry-run report (repo-local, git-ignored):
   `build/hashicorp-dryrun-evidence/real-corpus-dry-run-report.json`
@@ -906,3 +906,84 @@ against this live corpus -- both fixes tighten edge-case boundaries that
 this corpus's real content does not happen to trigger, which is the
 expected outcome of a surgical, non-behavior-changing-in-the-common-case
 correctness fix.
+
+### 11.8 Independent local review of the six fixes above (Ship's own review gate)
+
+Per Ship's `review` skill (`mode:report-only`), an independent multi-persona
+local code review (Constitution, Python, Correctness, Maintainability,
+Learnings, Concurrency, and Scope Boundary reviewers) was run against this
+cycle-2 commit before PR readiness was updated. It confirmed no scope
+creep beyond the six numbered findings above, and surfaced four further
+in-scope, same-contract-surface robustness/correctness gaps in the code
+this cycle had just changed. All four were fixed test-first, in the same
+commit, before the review's readiness outcome was finalized:
+
+* **P2** -- the atomic `--dest` claim (`mkdir(exist_ok=False)`, §11.3)
+  caught only `FileExistsError`; any other `OSError` (permission denial, a
+  blocked ancestor path component, disk exhaustion) escaped as an
+  uncontrolled traceback. Fixed by adding an `except OSError` branch
+  reporting a clear, stable-exit-code failure
+  (`EXIT_DEST_CLAIM_FAILED`, new). Test:
+  `test_execute_dest_claim_failure_other_than_file_exists_reports_clearly`
+  (monkeypatched `Path.mkdir` raising `PermissionError` for the exact
+  `--dest` claim call only).
+* **P2** -- the `--report` write (parent `mkdir` + `write_text`, §11.2)
+  was unguarded against `OSError`; a failure there after a successful
+  corpus write pass would escape as a traceback instead of a controlled,
+  clearly-labeled "corpus already written, only the report failed"
+  result. Fixed with an `except OSError` branch reporting
+  `EXIT_REPORT_WRITE_FAILED` (new) and explicitly noting the corpus
+  output is left in place. Test:
+  `test_execute_report_write_failure_after_successful_corpus_write_reports_clearly`
+  (monkeypatched `Path.write_text` raising only for the exact resolved
+  report path).
+* **P3** -- `list_version_entries()`'s documented "ordered latest-first"
+  contract (the same function fixed in finding 6, §11.6) could list a
+  same-version prerelease AHEAD of the stable release it is superseded
+  by, because two entries tied on their numeric sort key fell back to
+  Python's stable-sort input-order preservation. `is_latest` and
+  `select_latest_version()` were unaffected (both scan for the first
+  `stable` entry independently of position), but the returned ORDER
+  itself is part of the function's contract. Fixed by adding a
+  `_stage_priority()` tie-breaker (`stable` outranks any prerelease
+  stage) to both the semver-group and TFE-date-group sort keys. Test:
+  `test_list_version_entries_orders_stable_ahead_of_same_version_prerelease`
+  (asserts the same order regardless of whether the stable or prerelease
+  entry is listed first).
+* **P3 (advisory, documentation only)** -- the atomic-claim wording
+  ("the FIRST filesystem mutation... a single OS-level syscall") slightly
+  overstated the guarantee for a `--dest` whose parent directories do not
+  yet exist, since `mkdir(parents=True, ...)` creates missing ancestors
+  first via ordinary, non-atomic `mkdir` calls before the final, atomic
+  claim on `--dest`'s own path component. Narrowed the module docstring
+  and the inline comment above the claim to state precisely that only
+  `--dest`'s own final path component is claimed atomically; ancestor
+  creation is a separate, non-atomic step that precedes it. No test
+  required (documentation-only).
+
+After these four fixes, the independent review's final readiness outcome
+was `READY` (P0=0, P1=0, P2=0, P3=0 unresolved) for the resulting HEAD.
+The full local quality-gate sequence (ruff check, ruff format --check,
+full pytest suite, and the real external corpus dry-run) was re-run
+afterward and is reported in §11.9 below.
+
+### 11.9 Final quality-gate and real-corpus re-verification (post §11.8 fixes)
+
+* `ruff check .`: all checks passed.
+* `ruff format --check .`: 301 files already formatted.
+* Full local suite (`pytest --basetemp=build/.pytest-tmp -m "not integration"`):
+  **2205 passed, 2 skipped, 16 deselected** (up from 2202 before §11.8's
+  three additional regression tests).
+* Targeted HashiCorp suite (`-m "not integration"`): **95 passed, 1
+  deselected** (up from 92 before §11.8).
+* Real-corpus integration test
+  (`test_real_corpus_dry_run_zero_writes_and_coverage_report`, run
+  explicitly with `-m integration` against
+  `C:\Source\Docs\hashicorp-tf-unified-dev-docs\content`): **PASSED**.
+  Zero writes, `unresolved_constructs == {}` (0/0), and totals identical
+  to every prior run in this cycle (5,566 mdx normalized, 59 md copied,
+  2,139 assets copied, 1,259 partials skipped, 164 generic copied; 23
+  products; unchanged version selections) -- confirming the four §11.8
+  fixes (all error-handling and ordering edge cases the real corpus does
+  not happen to trigger) introduce no behavioral regression against live
+  content.

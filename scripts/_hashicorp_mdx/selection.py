@@ -190,6 +190,22 @@ def _semver_sort_key(base: str) -> tuple[int, int, int]:
     return _coerce_semver(normalized) or (0, 0, 0)
 
 
+def _stage_priority(stage: str) -> int:
+    """Tie-breaker rank for two entries that share an identical version
+    sort key: ``"stable"`` always outranks any prerelease stage
+    (``alpha``/``beta``/``rc``).
+
+    Without this, a same-version stable/prerelease pair (e.g. ``"v3.x"``
+    and ``"v3.x (rc)"``) tied on their numeric sort key and fell back to
+    Python's stable-sort behavior of preserving the CALLER'S input
+    order -- so ``list_version_entries``'s documented "ordered
+    latest-first" contract silently depended on argument order for this
+    case, even though ``is_latest``/``select_latest_version`` were
+    unaffected (review-fix cycle 2 re-review finding).
+    """
+    return 1 if stage == "stable" else 0
+
+
 def _tfe_date_sort_key(base: str) -> tuple[int, int]:
     """Numeric ``(YYYYMM, revision)`` sort key for a ``vYYYYMM-N`` directory name.
 
@@ -266,6 +282,22 @@ def list_version_entries(raw_dir_names: Iterable[str]) -> list[VersionEntry]:
     implementation instead computes the single first-stable-or-fallback
     index up front and marks that ONE index true, guaranteeing exactly
     one ``is_latest`` entry whenever the input is non-empty.
+
+    GROUNDING NOTE (review-fix cycle 2 re-review finding, ordering):
+    two entries that share an identical version sort key (e.g. the same
+    base version at different release stages, ``"v3.x"`` and
+    ``"v3.x (rc)"``) are additionally tie-broken so ``"stable"`` always
+    sorts ahead of any prerelease stage -- see :func:`_stage_priority`.
+    Without this, the tie fell back to Python's stable-sort behavior of
+    preserving the CALLER'S input order, so this function's documented
+    "ordered latest-first" contract could list a same-version
+    prerelease AHEAD of the stable release it is superseded by, purely
+    because the caller happened to pass it first. ``is_latest`` and
+    :func:`select_latest_version` were never affected by this ordering
+    quirk (both already scan for the first ``stable`` entry
+    independently of position), but the returned ORDER itself is part
+    of this function's public contract and must not depend on argument
+    order.
     """
     candidates = [name for name in raw_dir_names if is_valid_version_dirname(name)]
 
@@ -278,10 +310,16 @@ def list_version_entries(raw_dir_names: Iterable[str]) -> list[VersionEntry]:
         else:
             semver_group.append(raw)
 
-    semver_group.sort(key=lambda raw: _semver_sort_key(strip_release_stage(raw)[0]), reverse=True)
-    nonsemver_group.sort(
-        key=lambda raw: _tfe_date_sort_key(strip_release_stage(raw)[0]), reverse=True
-    )
+    def _semver_key_with_stage(raw: str) -> tuple[int, int, int, int]:
+        base, stage = strip_release_stage(raw)
+        return (*_semver_sort_key(base), _stage_priority(stage))
+
+    def _tfe_key_with_stage(raw: str) -> tuple[int, int, int]:
+        base, stage = strip_release_stage(raw)
+        return (*_tfe_date_sort_key(base), _stage_priority(stage))
+
+    semver_group.sort(key=_semver_key_with_stage, reverse=True)
+    nonsemver_group.sort(key=_tfe_key_with_stage, reverse=True)
     ordered = semver_group + nonsemver_group
     parsed = [(raw, *strip_release_stage(raw)) for raw in ordered]
 

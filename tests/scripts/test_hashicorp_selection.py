@@ -230,3 +230,25 @@ def test_list_version_entries_highest_stable_then_lower_prerelease_exactly_one_l
     assert by_raw["v3.x"].is_latest is True
     assert by_raw["v3.x (rc)"].is_latest is False
     assert by_raw["v2.x"].is_latest is False
+
+
+def test_list_version_entries_orders_stable_ahead_of_same_version_prerelease() -> None:
+    """Regression (review-fix cycle 2 re-review finding): ``list_version_entries``'s
+    documented "ordered latest-first" contract must hold for two entries
+    that share the SAME version but differ only in release stage --
+    stable must always sort ahead of a same-version prerelease,
+    regardless of which one the caller happened to list first.
+
+    Before this fix, tied semver sort keys fell back to Python's
+    stable-sort behavior of preserving input order, so passing the
+    prerelease before the stable release (``["v3.x (rc)", "v3.x",
+    "v2.x"]``) returned ``"v3.x (rc)"`` ahead of ``"v3.x"`` in the
+    ordered list -- a same-version prerelease outranking the stable
+    release it is superseded by, purely due to argument order, even
+    though ``is_latest`` itself already correctly pointed at ``"v3.x"``
+    in every input order."""
+    forward = ["v3.x", "v3.x (rc)", "v2.x"]
+    prerelease_listed_first = ["v3.x (rc)", "v3.x", "v2.x"]
+    for dirs in (forward, prerelease_listed_first):
+        entries = selection.list_version_entries(dirs)
+        assert [e.raw_name for e in entries] == ["v3.x", "v3.x (rc)", "v2.x"], dirs
