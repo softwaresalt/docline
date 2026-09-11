@@ -680,7 +680,7 @@ unstated implementation detail.
   `scripts/_hashicorp_mdx/selection.py`, `scripts/_hashicorp_mdx/normalize.py`
 * Tests: `tests/scripts/test_hashicorp_selection.py` (30 cases),
   `tests/scripts/test_hashicorp_normalize.py` (43 cases),
-  `tests/scripts/test_hashicorp_dryrun_corpus.py` (23 cases, including the
+  `tests/scripts/test_hashicorp_dryrun_corpus.py` (27 cases, including the
   real-corpus dry-run integration test)
 * Dry-run report (repo-local, git-ignored):
   `build/hashicorp-dryrun-evidence/real-corpus-dry-run-report.json`
@@ -688,7 +688,8 @@ unstated implementation detail.
 * Deliberation: `docs/decisions/2026-09-11-hashicorp-mdx-normalization-preprocessor-deliberation.md`
 * Shipment: `062-S`; Feature: `071-F`; Tasks: `071.001-T`..`071.011-T`
 * PR: #192; review-fix cycle 1 findings and resolutions: §9; review-fix
-  cycle 2 findings and resolutions: §11
+  cycle 2 findings and resolutions: §11; review-fix cycle 3 findings and
+  resolutions: §12
 
 ## 11. Review-fix cycle 2 (PR #192) -- independent re-review findings
 
@@ -987,3 +988,197 @@ afterward and is reported in §11.9 below.
   fixes (all error-handling and ordering edge cases the real corpus does
   not happen to trigger) introduce no behavioral regression against live
   content.
+
+## 12. Review-fix cycle 3 (PR #192) -- operator-reported usability defect + independent re-review findings
+
+### 12.1 Operator-reported finding -- exact operator command fails against an existing, empty `--dest`
+
+**Problem**: Cycle 2 (§11.3) redesigned `--execute`'s destination claim to
+be atomic (`dest.mkdir(parents=True, exist_ok=False)`), which required
+`--dest` to be strictly ABSENT -- reinstating "existing empty is fine"
+ergonomics from before cycle 2 was explicitly ruled out at the time
+because emptiness could not be verified atomically with `mkdir` alone.
+The operator subsequently attempted the exact documented operator command
+(§7) against the real external destination
+`C:\Source\Docs\tf-unified-dev-docs-normalized`, which already existed
+(created by a prior dry-run/inspection) and was empty. The documented
+exact command failed with `EXIT_DEST_ALREADY_EXISTS`, even though the
+target was safely empty and posed no overwrite risk -- an in-scope
+same-contract usability defect against cycle 2's own atomic-claim
+redesign.
+
+**Fix** (`scripts/hashicorp_mdx_normalize.py`): replaced the single
+`mkdir(exist_ok=False)` claim with an exclusive OS-level sentinel-file
+claim, `claim_destination()`: the mutual-exclusion guarantee now lives in
+an exclusive create of a small marker file
+(`.docline-hashicorp-mdx-normalize.claim`) directly under `--dest`
+(`os.open(..., os.O_CREAT | os.O_EXCL | os.O_WRONLY)`), not in `--dest`'s
+own creation. This decouples "is `--dest` usable" (absent OR empty) from
+"is `--dest` currently claimed" (sentinel present), restoring the
+existing-empty-dest ergonomics while preserving cycle 2's mutual-exclusion
+guarantee: of two invocations racing for the same `--dest`, exactly one
+still wins the sentinel create and the other still fails closed. A new,
+cheap `_dest_precheck()` replaces `_dest_must_be_absent()` for the common,
+non-racing fast-fail case; the authoritative claim happens immediately
+before any write begins, is re-verified immediately after the sentinel is
+created (rejecting if anything besides the sentinel appeared in the
+interim), and the sentinel this invocation creates is always removed via
+a `finally` block in `main()` regardless of success or failure --
+`--dest` itself, and any partial or complete output, is never touched by
+that cleanup. Residual race limitations are documented accurately in both
+the module docstring and `claim_destination()`'s own docstring: this
+guards against races BETWEEN COOPERATING INVOCATIONS OF THIS SAME SCRIPT,
+not against an arbitrary non-cooperating writer.
+
+**Tests** (`tests/scripts/test_hashicorp_dryrun_corpus.py`):
+
+* `test_execute_succeeds_against_existing_empty_dest` -- an existing,
+  empty `--dest` now succeeds (replaces the obsolete
+  `test_execute_rejects_existing_empty_dest_too`, which asserted the
+  cycle-2 rejecting behavior this cycle intentionally reverses).
+* `test_execute_rejects_non_empty_existing_dest` -- unaffected, still
+  passes: an existing `--dest` with real pre-existing content is still
+  rejected.
+* `test_dry_run_leaves_existing_empty_dest_unchanged` -- dry-run against
+  an existing, empty `--dest` never claims it and leaves it empty
+  (dry-run never creates the sentinel).
+* `test_execute_removes_claim_sentinel_after_success` -- the sentinel is
+  removed after a successful run; only real product output remains.
+* `test_claim_destination_two_claims_cannot_coexist` -- direct,
+  function-level proof of mutual exclusion: a second `claim_destination()`
+  call against a `--dest` whose sentinel is still held by a first,
+  unreleased claim raises `DestAlreadyClaimedError`, for both an
+  initially-absent and an initially-existing-empty `--dest`, leaving the
+  first claim's sentinel completely undisturbed.
+* `test_execute_leaves_partial_dest_in_place_when_write_pass_fails` and
+  `test_execute_report_write_failure_after_successful_corpus_write_reports_clearly`
+  -- both updated to additionally assert the sentinel is removed after a
+  failure too, not only after success.
+* `test_execute_dest_claim_failure_other_than_file_exists_reports_clearly`
+  -- message assertion updated (`"failed to claim --dest"`, matching the
+  new wording) with no behavioral change.
+
+### 12.2 Independent local review of the fix above (Ship's own review gate, cycle 3)
+
+Per Ship's `review` skill (`mode:report-only`), an independent
+multi-persona local code review (Constitution, Python, Correctness,
+Maintainability, Learnings, and Concurrency reviewers) was run against
+the §12.1 commit before PR readiness was updated for this, the final
+allowed review-fix cycle. Four of the five applicable reviewers
+independently converged on the same real defect in the code this cycle
+had just changed -- both were fixed test-first, in the same commit,
+before the review's readiness outcome was finalized:
+
+* **P0/P1 (Correctness, Concurrency, and Python reviewers, independently
+  converging on the same root cause)** -- `main()`'s new
+  `_dest_precheck()` gate ran BEFORE `claim_destination()` and, unlike
+  `claim_destination()`'s own internal pre-check, was not sentinel-aware:
+  it rejected ANY pre-existing non-empty `--dest`, including one whose
+  ONLY entry was the reserved claim sentinel (i.e. another invocation
+  genuinely still claiming it), with the generic `EXIT_DEST_NOT_EMPTY`
+  message. This meant the documented, purpose-built exit-code distinction
+  this exact cycle set out to deliver (`EXIT_DEST_ALREADY_EXISTS` for a
+  genuine claim collision vs. `EXIT_DEST_NOT_EMPTY` for ordinary leftover
+  content) was unreachable through the real CLI entry point for the
+  realistic staggered-rerun case -- 100% deterministically, not merely
+  under a rare timing window -- and was previously proven only at the
+  direct-function-call level
+  (`test_claim_destination_two_claims_cannot_coexist`), which bypasses
+  `main()`/`_dest_precheck()`/the CLI entirely. The mutual-exclusion
+  safety invariant itself still held (no double-write was ever possible),
+  but the specific diagnostic contract did not. Fixed by making
+  `_dest_precheck()` sentinel-aware: a `--dest` whose only entry is the
+  reserved sentinel name now falls through (returns `None`) to the
+  authoritative `claim_destination()` check instead of being rejected
+  early, and an `OSError` while inspecting an existing `--dest` is
+  likewise deferred rather than guessed at. Tests: the stale
+  `test_execute_second_claim_attempt_against_already_claimed_dest_fails_closed`
+  (whose docstring claimed to cover the claim-collision path but, since
+  it ran the first invocation to full completion before starting the
+  second, actually only exercised the "rerun after a finished prior run"
+  path, with an assertion loose enough to pass either way) was split into
+  two accurately-named, accurately-asserting tests:
+  `test_execute_rejects_rerun_against_dest_with_existing_output` (asserts
+  the specific `EXIT_DEST_NOT_EMPTY` code for the finished-prior-run case)
+  and new test
+  `test_execute_rejects_dest_actively_claimed_by_another_invocation`
+  (pre-seeds `--dest` with ONLY the sentinel and drives it through the
+  real CLI, asserting the specific `EXIT_DEST_ALREADY_EXISTS` code and the
+  "already claimed by another in-progress invocation" message -- exactly
+  the path the fix corrects).
+* **P2 (Python and Concurrency reviewers, independently converging)** --
+  in `claim_destination()`, the sentinel's `os.open()` (create) and
+  `os.close()` were wrapped in a single `try/except OSError` block: if
+  `os.open()` succeeded (physically creating the sentinel) but the
+  immediately-following `os.close(fd)` then raised `OSError`, the handler
+  raised `DestClaimFailedError` WITHOUT removing the sentinel it had just
+  created -- since the function never returned that sentinel to its
+  caller, `main()`'s `finally`-block cleanup could never learn of or
+  remove it, permanently and silently blocking every subsequent run
+  against that `--dest`. Fixed by separating the `open()`/`close()` calls
+  and calling `release_destination_claim()` before re-raising if the
+  close fails. The sentinel's `os.open()` call also now passes an
+  explicit `0o600` mode (Constitution reviewer, P3 hygiene finding)
+  instead of relying on the platform default. No dedicated new test was
+  added for the rare close-failure path itself (would require
+  monkeypatching `os.close` at the exact sentinel descriptor, judged
+  disproportionate for a narrow OS-level edge case on a disposable tool);
+  the fix was verified by inspection and by confirming the existing
+  sentinel-lifecycle tests (§12.1) still pass unchanged.
+
+After these two fixes, the independent review's readiness outcome was
+`READY_WITH_FOLLOWUPS` for the resulting HEAD: zero unresolved P0/P1
+findings, with four further out-of-scope findings (none touching the
+`claim_destination()`/`_dest_precheck()` contract surface this cycle
+authorized) captured as deferred-scope-expansion stash entries per P-021
+C2 rather than fixed, since this is the final allowed review-fix cycle
+and none of the four are same-contract-surface completions of the
+authorized change:
+
+* `1EDE36E7` (medium) -- pytest's `tmp_path` fixture is not pinned under
+  a repo-local `--basetemp` anywhere in this repo (`pyproject.toml`,
+  outside this cycle's scope); this cycle's new tests increase exposure
+  to that pre-existing, repo-wide gap but do not cause it.
+* `1E7CCBF7` (low) -- pre-existing, untouched-this-cycle
+  `UnicodeDecodeError` (not `OSError`) is uncaught in the corpus write
+  pass's `Path.read_text(encoding="utf-8")` calls.
+* `E3129374` (low) -- two pre-existing, untouched-this-cycle
+  `guard_write_path()` hardening gaps: Windows case-sensitivity in the
+  containment check, and a per-file hot-loop re-resolve of an unchanging
+  `dest_root`.
+* `13F7C7C3` (low) -- residual maintainability debt in the sentinel-claim
+  subsystem itself (duplicated emptiness/sentinel-classification logic
+  between `_dest_precheck()` and `claim_destination()`, and overall
+  subsystem complexity relative to this tool's single-operator usage
+  model) -- advisory, and only actionable if this disposable tool is ever
+  promoted beyond requirements-evidence/single-run status.
+
+### 12.3 Final quality-gate and real-corpus re-verification (post §12.2 fixes)
+
+* `ruff check .`: all checks passed.
+* `ruff format --check .`: 301 files already formatted.
+* Full local suite (`pytest --basetemp=build/.pytest-tmp -m "not integration"`):
+  **2209 passed, 2 skipped, 16 deselected** (up from 2205 at the end of
+  cycle 2; +4 net new tests this cycle: +3 from §12.1's replace-one/add-
+  four round, +1 from §12.2's split-one-into-two round).
+* Targeted HashiCorp suite (`-m "not integration"`): **99 passed, 1
+  deselected** (up from 95 at the end of cycle 2).
+* `uv run pyright src/`: 0 errors, 0 warnings, 0 informations.
+* `uv run python -m build`: succeeded (`docline-0.1.0.tar.gz` and
+  `docline-0.1.0-py3-none-any.whl`); build artifacts are git-ignored and
+  were not committed.
+* Real-corpus integration test
+  (`test_real_corpus_dry_run_zero_writes_and_coverage_report`, run
+  explicitly with `-m integration` against
+  `C:\Source\Docs\hashicorp-tf-unified-dev-docs\content`): **PASSED**.
+* Exact documented operator command (§7), run WITHOUT `--execute`
+  (dry-run only -- this tool is never executed by an agent) against the
+  real external `--source`/`--dest`/`--report` paths, including the real
+  external `--dest`
+  (`C:\Source\Docs\tf-unified-dev-docs-normalized`) that motivated the
+  §12.1 finding: **exit 0**, `execute: false`, `unresolved_constructs: {}`,
+  `containment_violations: []`, 23 products -- identical to every prior
+  cycle's verification. Confirmed the real external `--dest` had exactly
+  0 entries before the run and exactly 0 entries after -- dry-run mode
+  never claims or touches it, and the real external destination was never
+  written to by this cycle's work.

@@ -34,32 +34,46 @@ HARD CONTAINMENT CONTRACT
   best-effort containment check, not a race-free guarantee: Python's
   ``Path.resolve()`` cannot atomically bind a check to a subsequent
   write any more than any other check-then-act filesystem sequence can.
-* ``--execute`` requires ``--dest`` to be ABSENT (not merely empty) and
-  claims it with a single ``mkdir(..., exist_ok=False)`` call on
-  ``--dest``'s own final path component, immediately before any corpus
-  write begins (review-fix cycle 2, finding 3) -- it never deletes,
-  replaces, or overlays a pre-existing destination, empty or not. The
-  claim on ``--dest``'s own final component is atomic: if two
-  invocations race for the same ``--dest``, exactly one wins and the
-  other fails closed (``EXIT_DEST_ALREADY_EXISTS``) instead of silently
-  interleaving output with the winner. This atomicity guarantee covers
-  only ``--dest``'s own final path component -- if ``--dest``'s parent
-  directories do not yet exist, ``mkdir(parents=True, ...)`` creates
-  them first via ordinary, non-atomic ``mkdir`` calls before the final,
-  atomic claim on ``--dest`` itself. A claim failure for any reason
-  other than a pre-existing ``--dest`` (permission denial, a blocked
-  ancestor path component, disk exhaustion, etc.) is reported distinctly
-  (``EXIT_DEST_CLAIM_FAILED``) rather than escaping as a raw traceback;
-  no output is written in that case, since the claim itself never
-  succeeded. If a later step in the same run fails after ``--dest`` was
-  successfully claimed, the partial output is left in place (never
-  auto-deleted) and reported clearly as a failed, partial run
+* ``--execute`` accepts ``--dest`` ABSENT or EXISTING-AND-EMPTY -- never a
+  pre-existing non-empty destination (review-fix cycle 3, reinstating the
+  "existing empty is fine" ergonomics that cycle 2's atomic-claim redesign
+  had incidentally narrowed away, while KEEPING that redesign's mutual-
+  exclusion guarantee). ``--dest`` is claimed via :func:`claim_destination`
+  immediately before any corpus write begins: an absent ``--dest`` is
+  created and then claimed; an existing ``--dest`` must contain no entries
+  before it is claimed. Either way, the actual claim is an exclusive
+  OS-level create (``os.O_CREAT | os.O_EXCL``) of a small sentinel file
+  directly under ``--dest`` -- never a deletion, replacement, or overlay of
+  pre-existing content. Of two invocations racing for the same ``--dest``,
+  exactly one wins the sentinel create and the other fails closed
+  (``EXIT_DEST_ALREADY_EXISTS`` if the sentinel already exists at claim
+  time, ``EXIT_DEST_NOT_EMPTY`` if other content is present) instead of
+  silently interleaving output with the winner. Immediately after the
+  sentinel is created, ``--dest`` is re-listed to confirm the sentinel is
+  the ONLY entry present, rejecting (and releasing the sentinel) if
+  anything else appeared in the interim. This mutual-exclusion guarantee
+  covers races BETWEEN COOPERATING INVOCATIONS OF THIS SAME SCRIPT -- it is
+  not, and does not claim to be, protection against an arbitrary
+  non-cooperating writer dropping content into ``--dest`` at an arbitrary
+  time; see :func:`claim_destination`'s docstring for the precise residual
+  race limitations. The sentinel this invocation creates is always removed
+  when the run finishes, success or failure, via a ``finally`` block in
+  :func:`main` -- but ``--dest`` itself, and any partial or complete
+  corpus/report output, is never removed. A claim failure for any reason
+  other than pre-existing content or a concurrent claim (permission
+  denial, a blocked ancestor path component, disk exhaustion, etc.) is
+  reported distinctly (``EXIT_DEST_CLAIM_FAILED``) rather than escaping as
+  a raw traceback; no output is written in that case, since the claim
+  itself never succeeded. If a later step in the same run fails after
+  ``--dest`` was successfully claimed, the partial output is left in place
+  (never auto-deleted) and reported clearly as a failed, partial run
   (``EXIT_EXECUTION_FAILED``); if the corpus write pass succeeds but the
   subsequent ``--report`` write itself then fails, that is also reported
   distinctly (``EXIT_REPORT_WRITE_FAILED``) with the already-successful
-  corpus output left in place. Dry-run is exempt from this check entirely: it
-  may point ``--dest`` anywhere, including a non-empty directory,
-  without ever creating or touching it.
+  corpus output left in place. Dry-run is exempt from this check, and from
+  claiming ``--dest``, entirely: it may point ``--dest`` anywhere,
+  including a non-empty directory, without ever creating, claiming, or
+  touching it.
 * ``--execute`` performs a complete READ-ONLY normalization preflight
   pass (identical selection/normalization logic, zero writes) BEFORE
   ``--dest`` is created or anything is written (review-fix cycle 2,
@@ -94,6 +108,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import shutil
 import sys
 from collections import Counter
@@ -118,6 +133,14 @@ EXIT_UNRESOLVED_MDX_CONSTRUCTS = 6
 EXIT_EXECUTION_FAILED = 7
 EXIT_DEST_CLAIM_FAILED = 8
 EXIT_REPORT_WRITE_FAILED = 9
+EXIT_DEST_NOT_EMPTY = 10
+
+#: Name of the exclusive claim sentinel file created directly under
+#: ``--dest`` while an ``--execute`` run owns that destination (review-fix
+#: cycle 3). Never collides with corpus output: every corpus/report write
+#: lands under a product subdirectory or at an operator-chosen ``--report``
+#: name, never at this exact reserved filename.
+CLAIM_SENTINEL_NAME = ".docline-hashicorp-mdx-normalize.claim"
 
 #: Image-like binary assets copied byte-for-byte, unchanged.
 IMAGE_EXTENSIONS = frozenset({".png", ".jpg", ".jpeg", ".gif", ".svg", ".webp"})
@@ -175,6 +198,186 @@ def guard_write_path(dest_root: Path, candidate: Path) -> Path:
             f"refusing to write outside --dest: {candidate_resolved} is not under {dest_resolved}"
         ) from exc
     return candidate_resolved
+
+
+class DestClaimError(RuntimeError):
+    """Base class for every way :func:`claim_destination` can fail to claim ``--dest``."""
+
+
+class DestNotEmptyError(DestClaimError):
+    """``--dest`` exists and contains content that is not a live claim of ours.
+
+    Covers a pre-existing non-empty directory, a pre-existing non-directory
+    path, and the (extremely narrow) window where something else appears
+    under ``--dest`` between the emptiness check and the exclusive sentinel
+    claim below.
+    """
+
+
+class DestAlreadyClaimedError(DestClaimError):
+    """Another invocation already holds the exclusive claim sentinel for ``--dest``.
+
+    Raised only when the sentinel file itself already exists at the moment
+    this invocation attempts to create it exclusively -- i.e. two
+    invocations genuinely raced for the same ``--dest`` and this one lost.
+    """
+
+
+class DestClaimFailedError(DestClaimError):
+    """``--dest`` could not be claimed for a reason unrelated to pre-existing
+    content or a concurrent claim (permission denial, a blocked ancestor
+    path component, disk exhaustion, etc.)."""
+
+
+def claim_destination(dest: Path) -> Path:
+    """Atomically claim ``--dest`` for exclusive ``--execute`` use.
+
+    Accepts an ABSENT ``--dest`` (created here) or an EXISTING ``--dest``
+    that contains NO entries -- an existing, non-empty ``--dest`` (or one
+    that exists as a non-directory) is rejected. Returns the claim sentinel
+    :class:`~pathlib.Path` on success; the caller MUST remove exactly this
+    sentinel (via :func:`release_destination_claim`) when the run finishes,
+    whether it succeeds or fails, and must never remove anything else.
+
+    MUTUAL EXCLUSION: the actual claim is an exclusive-create of a sentinel
+    file directly under ``--dest`` (``os.O_CREAT | os.O_EXCL``), an
+    OS-level atomic syscall. Of two invocations racing for the same
+    ``--dest`` -- whether ``--dest`` was absent or already existed and
+    empty for both -- exactly one wins the sentinel create and the other
+    raises :class:`DestAlreadyClaimedError` instead of both proceeding to
+    write. This is checked TWICE: once as a fast, non-atomic pre-check
+    before attempting the claim (an existing ``--dest`` whose ONLY entry
+    is exactly the reserved sentinel NAME is treated as "already claimed"
+    and still proceeds to the authoritative O_EXCL attempt below rather
+    than being rejected outright here; any OTHER pre-existing content
+    rejects immediately as :class:`DestNotEmptyError`), and once again by
+    re-listing ``--dest`` immediately after the sentinel is created,
+    rejecting (and releasing our own sentinel) if anything besides the
+    sentinel is present -- narrowing, without fully eliminating, the
+    window in which a non-cooperating writer could drop content into
+    ``--dest`` between the two checks.
+
+    RESIDUAL RACE LIMITATIONS (documented accurately, not overstated): this
+    guards against races BETWEEN COOPERATING INVOCATIONS OF THIS SAME
+    SCRIPT racing for the same ``--dest`` -- it is not, and does not claim
+    to be, protection against an arbitrary non-cooperating process writing
+    into ``--dest`` at an arbitrary time (e.g. a file appearing after this
+    function returns but before the write pass begins). As with
+    :func:`guard_write_path`, this is a fail-fast sanity/mutual-exclusion
+    check against ordinary, non-adversarial concurrency, not a hardened
+    defense against a concurrently-adversarial filesystem.
+
+    A stale sentinel left behind by a PRIOR run that crashed or was killed
+    before it could remove its own sentinel is indistinguishable, on disk,
+    from a genuinely live, in-progress claim: both look identical (a
+    single file at the reserved sentinel name and nothing else), so both
+    are reported the same way, as :class:`DestAlreadyClaimedError` --
+    never auto-removed. If it truly is stale, the operator must inspect
+    and remove it manually before retrying; this function never deletes
+    anything it did not itself just create in THIS call. Any OTHER
+    pre-existing content (with or without the sentinel alongside it) is
+    reported distinctly as :class:`DestNotEmptyError`.
+    """
+    created_dest = False
+    try:
+        dest.mkdir(parents=True, exist_ok=False)
+        created_dest = True
+    except FileExistsError:
+        pass
+    except OSError as exc:
+        raise DestClaimFailedError(str(exc)) from exc
+
+    if not created_dest:
+        if not dest.is_dir():
+            raise DestNotEmptyError(f"--dest exists and is not a directory: {dest}")
+        try:
+            existing_names = sorted(p.name for p in dest.iterdir())
+        except OSError as exc:
+            raise DestClaimFailedError(str(exc)) from exc
+        if existing_names == [CLAIM_SENTINEL_NAME]:
+            # The ONLY thing present is exactly our reserved claim sentinel
+            # name -- this is a precise, recognizable signal that another
+            # invocation is (or very recently was) actively claiming this
+            # same --dest, distinct from ordinary leftover content. Report
+            # it as such rather than a generic "not empty" rejection. The
+            # O_EXCL create below still performs the actual, authoritative
+            # mutual-exclusion check (this pre-check is advisory/fast-fail
+            # only) -- if the other invocation released its claim in the
+            # interim, the O_EXCL create below will succeed instead.
+            pass
+        elif existing_names:
+            raise DestNotEmptyError(
+                f"--dest already exists and is not empty: {dest} (contains "
+                f"{len(existing_names)} pre-existing entr"
+                f"{'y' if len(existing_names) == 1 else 'ies'}; a stale claim "
+                "sentinel from a killed prior run looks identical to ordinary "
+                "leftover content and is handled the same way -- inspect and "
+                "remove it manually before retrying)"
+            )
+
+    sentinel = dest / CLAIM_SENTINEL_NAME
+    try:
+        fd = os.open(str(sentinel), os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
+    except FileExistsError as exc:
+        raise DestAlreadyClaimedError(
+            f"--dest is already claimed by another in-progress invocation: {dest} "
+            f"(claim sentinel {sentinel.name} is already present)"
+        ) from exc
+    except OSError as exc:
+        raise DestClaimFailedError(str(exc)) from exc
+
+    try:
+        os.close(fd)
+    except OSError as exc:
+        # The sentinel was physically created by the os.open() call above
+        # (review-fix cycle 3, finding 2): if the close itself then fails,
+        # release it here rather than leaving an orphaned sentinel on disk
+        # that main() never learns about (this function never got to
+        # return a sentinel path to its caller) and can therefore never
+        # clean up -- every subsequent run against this --dest would
+        # otherwise be permanently, silently blocked.
+        release_destination_claim(sentinel)
+        raise DestClaimFailedError(str(exc)) from exc
+
+    try:
+        post_claim_names = sorted(p.name for p in dest.iterdir())
+    except OSError as exc:
+        release_destination_claim(sentinel)
+        raise DestClaimFailedError(str(exc)) from exc
+
+    if post_claim_names != [CLAIM_SENTINEL_NAME]:
+        release_destination_claim(sentinel)
+        raise DestNotEmptyError(
+            f"--dest gained unexpected content between the emptiness check and the "
+            f"exclusive claim: {dest} -- rejecting rather than proceeding. This tool "
+            "claims no protection against an arbitrary non-cooperating writer; only "
+            "against races between cooperating invocations of this same script."
+        )
+
+    return sentinel
+
+
+def release_destination_claim(sentinel: Path) -> None:
+    """Best-effort removal of a claim sentinel created by THIS invocation's
+    :func:`claim_destination` call.
+
+    Removes ONLY the sentinel file itself -- never any other file under
+    ``--dest``, and never ``--dest`` itself (partial output and the
+    destination directory are always left in place, per the containment
+    contract). Never raises: intended to run from a ``finally`` block, so
+    a failure to remove the sentinel must never mask or replace the run's
+    real exit code -- it is reported to stderr as a non-fatal warning
+    instead.
+    """
+    try:
+        sentinel.unlink()
+    except OSError as exc:
+        print(
+            f"warning: failed to remove claim sentinel {sentinel} -- {exc}. If left "
+            "behind, a future run against the same --dest will be rejected as "
+            "not-empty until this sentinel is removed manually.",
+            file=sys.stderr,
+        )
 
 
 def _is_partial_path(relative_path: Path) -> bool:
@@ -422,10 +625,11 @@ def _build_arg_parser() -> argparse.ArgumentParser:
         action="store_true",
         default=False,
         help=(
-            "Actually write output (default: dry-run, zero writes). Requires "
-            "--dest to be ABSENT (not merely empty) -- --dest is claimed "
-            "atomically immediately before writes begin; execute mode never "
-            "deletes, replaces, or overlays a pre-existing destination."
+            "Actually write output (default: dry-run, zero writes). Accepts "
+            "--dest that is ABSENT or EMPTY -- never a pre-existing non-empty "
+            "destination. --dest is claimed exclusively via a sentinel file "
+            "immediately before writes begin; execute mode never deletes, "
+            "replaces, or overlays pre-existing content."
         ),
     )
     parser.add_argument(
@@ -457,25 +661,53 @@ def _build_arg_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def _dest_must_be_absent(dest: Path) -> str | None:
-    """Return an error message if ``dest`` already exists, else ``None``.
+def _dest_precheck(dest: Path) -> str | None:
+    """Return an error message if ``dest`` is not in an execute-claimable
+    state, else ``None``.
 
-    Execute mode requires ``dest`` to be ABSENT -- not merely empty
-    (review-fix cycle 2, P2 finding 3): an existence-then-emptiness check
-    like the previous ``_dest_is_execute_ready()`` is inherently
-    non-atomic (two concurrent invocations can both observe an empty
-    directory and both proceed to write). This cheap, early check exists
-    only to fail fast with a clear message in the common (non-racing)
-    case; the actual concurrency-safe claim is the single
-    ``mkdir(..., exist_ok=False)`` call in :func:`main`, performed
-    immediately before any corpus write begins.
+    Execute mode accepts ``dest`` ABSENT or EXISTING-AND-EMPTY (review-fix
+    cycle 3): a pre-existing, empty directory is a legitimate claim target,
+    since the destination is claimed via an exclusive sentinel file rather
+    than via the directory's own creation. This cheap, early,
+    non-authoritative check exists only to fail fast with a clear message
+    in the common (non-racing) case; the actual concurrency-safe claim is
+    :func:`claim_destination`, called immediately before any corpus write
+    begins, which re-verifies emptiness right before -- and again
+    immediately after -- atomically creating the claim sentinel.
+
+    A ``dest`` whose ONLY entry is exactly the reserved claim sentinel name
+    is deliberately NOT rejected here (review-fix cycle 3, finding 1): that
+    state means another invocation is genuinely still claiming -- or very
+    recently claimed -- this same ``--dest``, and only
+    :func:`claim_destination` can distinguish that live-claim case from
+    ordinary stale content and report the specific, documented exit code
+    for it. Rejecting it at this earlier, cheaper check would silently
+    collapse that distinction for the realistic staggered-rerun case (a
+    second invocation started sometime after a first already claimed
+    ``--dest`` but is still writing) -- not just an infinitesimal timing
+    window -- which is exactly the scenario this precheck's own sentinel
+    awareness must not defeat. An ``OSError`` while inspecting an existing
+    ``--dest`` is deferred the same way: this cheap check never guesses at
+    an exit code for a filesystem-level failure it cannot fully diagnose --
+    :func:`claim_destination` performs the same enumeration under its own
+    authoritative error handling and maps any such failure to
+    ``EXIT_DEST_CLAIM_FAILED`` with a clear message.
     """
-    if dest.exists():
+    if not dest.exists():
+        return None
+    if not dest.is_dir():
+        return f"--dest exists and is not a directory: {dest}"
+    try:
+        existing_names = sorted(p.name for p in dest.iterdir())
+    except OSError:
+        return None
+    if existing_names and existing_names != [CLAIM_SENTINEL_NAME]:
         return (
-            f"--dest already exists: {dest} -- execute mode requires --dest to be ABSENT "
-            "(not merely empty); it is created atomically immediately before writes begin. "
-            "Execute mode never deletes, replaces, or overlays a pre-existing destination -- "
-            "point --execute at a path that does not exist yet."
+            f"--dest already exists and is not empty: {dest} -- execute mode accepts an "
+            "ABSENT --dest or an EXISTING, EMPTY --dest; it is claimed exclusively via a "
+            "sentinel file immediately before writes begin. Execute mode never deletes, "
+            "replaces, or overlays pre-existing content -- point --execute at a path that "
+            "is absent or empty."
         )
     return None
 
@@ -512,15 +744,16 @@ def main(argv: list[str] | None = None) -> int:
 
     # ---------------------------------------------------------------
     # --execute mode: every gate below MUST run, in this order, BEFORE
-    # --dest is created or a single byte is written anywhere (review-fix
-    # cycle 2, finding 1). A rejected run at any of these gates leaves
-    # --dest absent and never touches --report.
+    # --dest is created/claimed or a single byte is written anywhere
+    # (review-fix cycle 2, finding 1). A rejected run at any of these
+    # gates leaves --dest untouched (absent, or existing-and-empty exactly
+    # as found) and never touches --report.
     # ---------------------------------------------------------------
 
-    dest_error = _dest_must_be_absent(dest)
+    dest_error = _dest_precheck(dest)
     if dest_error is not None:
         print(f"error: {dest_error}", file=sys.stderr)
-        return EXIT_DEST_ALREADY_EXISTS
+        return EXIT_DEST_NOT_EMPTY
 
     if args.report is not None:
         try:
@@ -562,101 +795,109 @@ def main(argv: list[str] | None = None) -> int:
     # directory already exists (if intermediate ancestors are missing,
     # ``parents=True`` creates them first via ordinary, non-atomic
     # ``mkdir`` calls -- see the module docstring's containment-contract
-    # bullet). The claim of --dest's own final path component is a
-    # single OS-level syscall: of two concurrent processes racing on the
-    # same --dest, exactly one succeeds and the other raises
-    # FileExistsError here, instead of both silently interleaving
-    # output.
+    # bullet). --dest may be ABSENT or an EXISTING, EMPTY directory
+    # (review-fix cycle 3); either way the claim itself is an exclusive
+    # sentinel-file create directly under --dest, so of two invocations
+    # racing for the same --dest exactly one succeeds and the other fails
+    # closed instead of both silently interleaving output. The sentinel
+    # this invocation creates is removed when this run finishes -- success
+    # or failure -- but --dest itself, and any partial or complete
+    # corpus/report output, is never touched by that cleanup.
     try:
-        dest.mkdir(parents=True, exist_ok=False)
-    except FileExistsError:
-        print(
-            f"error: --dest already exists: {dest} -- it was created after the earlier "
-            "absence check (a concurrent run may have just claimed it). Refusing to "
-            "overlay; point --execute at a path that does not exist.",
-            file=sys.stderr,
-        )
+        claim_sentinel = claim_destination(dest)
+    except DestNotEmptyError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return EXIT_DEST_NOT_EMPTY
+    except DestAlreadyClaimedError as exc:
+        print(f"error: {exc}", file=sys.stderr)
         return EXIT_DEST_ALREADY_EXISTS
-    except OSError as exc:
+    except DestClaimFailedError as exc:
         print(
-            f"error: failed to create --dest: {dest} -- {exc}. No corpus output was "
+            f"error: failed to claim --dest: {dest} -- {exc}. No corpus output was "
             "written; this failure occurred before any write began.",
             file=sys.stderr,
         )
         return EXIT_DEST_CLAIM_FAILED
 
-    # The real write pass: identical selection/normalization logic as the
-    # preflight above, this time actually writing to disk.
     try:
-        report = process_corpus(source=source, dest=dest, execute=True)
-    except ContainmentViolation as exc:
-        print(
-            f"error: containment violation: {exc} -- PARTIAL OUTPUT MAY ALREADY HAVE BEEN "
-            f"WRITTEN under {dest} before this failure. It is left in place (never "
-            "auto-deleted); inspect and remove it manually before retrying.",
-            file=sys.stderr,
-        )
-        return EXIT_CONTAINMENT_VIOLATION
-    except OSError as exc:
-        print(
-            f"error: execution failed partway through writing output: {exc}. PARTIAL "
-            f"OUTPUT HAS BEEN LEFT IN PLACE under {dest} (never auto-deleted) -- inspect "
-            "and remove it manually before retrying.",
-            file=sys.stderr,
-        )
-        return EXIT_EXECUTION_FAILED
-
-    payload = json.dumps(report, indent=2, sort_keys=True)
-    print(payload)
-
-    # The report is written ONLY after the write pass above completed
-    # successfully (review-fix cycle 2, finding 1). Re-guard immediately
-    # before writing (finding 2) and write through the RESOLVED path
-    # this call returns -- never the original, possibly-unresolved
-    # args.report -- so the write always targets what was just verified,
-    # not a stale resolution computed earlier in the run.
-    if args.report is not None:
+        # The real write pass: identical selection/normalization logic as the
+        # preflight above, this time actually writing to disk.
         try:
-            resolved_report = guard_write_path(dest, args.report)
+            report = process_corpus(source=source, dest=dest, execute=True)
         except ContainmentViolation as exc:
             print(
-                f"error: containment violation writing report: {exc}. Corpus output "
-                f"under {dest} was already written successfully and is left in place; "
-                "only the report file was rejected.",
+                f"error: containment violation: {exc} -- PARTIAL OUTPUT MAY ALREADY HAVE BEEN "
+                f"WRITTEN under {dest} before this failure. It is left in place (never "
+                "auto-deleted); inspect and remove it manually before retrying.",
                 file=sys.stderr,
             )
             return EXIT_CONTAINMENT_VIOLATION
-        try:
-            resolved_report.parent.mkdir(parents=True, exist_ok=True)
-            resolved_report.write_text(payload, encoding="utf-8")
         except OSError as exc:
             print(
-                f"error: failed to write --report: {resolved_report} -- {exc}. Corpus "
-                f"output under {dest} was already written successfully and is left in "
-                "place; only the report file failed to write.",
+                f"error: execution failed partway through writing output: {exc}. PARTIAL "
+                f"OUTPUT HAS BEEN LEFT IN PLACE under {dest} (never auto-deleted) -- inspect "
+                "and remove it manually before retrying.",
                 file=sys.stderr,
             )
-            return EXIT_REPORT_WRITE_FAILED
+            return EXIT_EXECUTION_FAILED
 
-    if report["unresolved_constructs"] and not args.allow_unresolved_mdx:
-        # Defense-in-depth only: the preflight gate above already aborted
-        # before any write if unresolved constructs were present. This
-        # remains reachable only if --source mutates between the
-        # preflight and write passes (a scenario this tool does not
-        # otherwise guard against), so it is intentionally kept as a
-        # belt-and-suspenders check rather than assumed unreachable.
-        unresolved_summary = ", ".join(
-            f"{name}={count}" for name, count in sorted(report["unresolved_constructs"].items())
-        )
-        print(
-            "error: genuine unresolved MDX/JSX components remain after normalization: "
-            f"{unresolved_summary}. Review the report's 'unresolved_constructs' section; "
-            "pass --allow-unresolved-mdx to proceed anyway once reviewed.",
-            file=sys.stderr,
-        )
-        return EXIT_UNRESOLVED_MDX_CONSTRUCTS
+        payload = json.dumps(report, indent=2, sort_keys=True)
+        print(payload)
 
-    return EXIT_OK
+        # The report is written ONLY after the write pass above completed
+        # successfully (review-fix cycle 2, finding 1). Re-guard immediately
+        # before writing (finding 2) and write through the RESOLVED path
+        # this call returns -- never the original, possibly-unresolved
+        # args.report -- so the write always targets what was just verified,
+        # not a stale resolution computed earlier in the run.
+        if args.report is not None:
+            try:
+                resolved_report = guard_write_path(dest, args.report)
+            except ContainmentViolation as exc:
+                print(
+                    f"error: containment violation writing report: {exc}. Corpus output "
+                    f"under {dest} was already written successfully and is left in place; "
+                    "only the report file was rejected.",
+                    file=sys.stderr,
+                )
+                return EXIT_CONTAINMENT_VIOLATION
+            try:
+                resolved_report.parent.mkdir(parents=True, exist_ok=True)
+                resolved_report.write_text(payload, encoding="utf-8")
+            except OSError as exc:
+                print(
+                    f"error: failed to write --report: {resolved_report} -- {exc}. Corpus "
+                    f"output under {dest} was already written successfully and is left in "
+                    "place; only the report file failed to write.",
+                    file=sys.stderr,
+                )
+                return EXIT_REPORT_WRITE_FAILED
+
+        if report["unresolved_constructs"] and not args.allow_unresolved_mdx:
+            # Defense-in-depth only: the preflight gate above already aborted
+            # before any write if unresolved constructs were present. This
+            # remains reachable only if --source mutates between the
+            # preflight and write passes (a scenario this tool does not
+            # otherwise guard against), so it is intentionally kept as a
+            # belt-and-suspenders check rather than assumed unreachable.
+            unresolved_summary = ", ".join(
+                f"{name}={count}" for name, count in sorted(report["unresolved_constructs"].items())
+            )
+            print(
+                "error: genuine unresolved MDX/JSX components remain after normalization: "
+                f"{unresolved_summary}. Review the report's 'unresolved_constructs' section; "
+                "pass --allow-unresolved-mdx to proceed anyway once reviewed.",
+                file=sys.stderr,
+            )
+            return EXIT_UNRESOLVED_MDX_CONSTRUCTS
+
+        return EXIT_OK
+    finally:
+        # Runs on EVERY exit from this block -- normal return, an early
+        # return on a failure branch above, or an uncaught exception.
+        # Removes ONLY the sentinel this invocation created; --dest and any
+        # partial or complete output are always left exactly as they were.
+        release_destination_claim(claim_sentinel)
 
 
 if __name__ == "__main__":

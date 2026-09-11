@@ -223,20 +223,28 @@ def test_execute_rejects_non_empty_existing_dest(tmp_path: Path) -> None:
     assert not (dest / "vault").exists()
 
 
-def test_execute_rejects_existing_empty_dest_too(tmp_path: Path) -> None:
-    """P2 regression (review-fix cycle 2, finding 3): an existing but EMPTY
-    --dest is NO LONGER a valid execute target -- the contract was
-    simplified to require --dest to be ABSENT (not merely empty), so that
-    the destination can be claimed atomically with a single
-    ``mkdir(..., exist_ok=False)`` immediately before writes begin, closing
-    the check-then-act race window an "absent or empty" check left open."""
+def test_execute_succeeds_against_existing_empty_dest(tmp_path: Path) -> None:
+    """P2 regression / usability fix (review-fix cycle 3): an EXISTING but
+    EMPTY --dest is a valid execute target again. Cycle 2's atomic-claim
+    redesign (finding 3) had incidentally narrowed the contract to require
+    --dest to be ABSENT, which rejected the documented exact operator
+    command whenever the operator's real destination happened to already
+    exist (created ahead of time, or left empty by a prior aborted run)
+    while still being completely empty -- a same-contract-surface
+    usability defect, since the whole point of finding 3 was mutual
+    exclusion, not "must not exist yet". The claim is now performed by
+    :func:`claim_destination` (an exclusive sentinel-file create under
+    --dest) rather than by --dest's own creation, so an existing empty
+    directory can be claimed exactly as safely as a freshly created one."""
     dest = tmp_path / "dest"
     dest.mkdir()
 
     result = _run_cli(["--source", str(_SYNTHETIC_CORPUS), "--dest", str(dest), "--execute"])
-    assert result.returncode != 0
-    assert "already exists" in result.stderr
-    assert list(dest.iterdir()) == []
+    assert result.returncode == 0, result.stderr
+    assert (dest / "vault" / "v2.x" / "index.md").exists()
+    # The claim sentinel is removed once the run finishes successfully --
+    # only real corpus/report output remains under --dest.
+    assert not (dest / ".docline-hashicorp-mdx-normalize.claim").exists()
 
 
 def test_execute_succeeds_against_absent_dest(tmp_path: Path) -> None:
@@ -249,16 +257,116 @@ def test_execute_succeeds_against_absent_dest(tmp_path: Path) -> None:
     assert (dest / "vault" / "v2.x" / "index.md").exists()
 
 
-def test_execute_second_claim_attempt_against_already_claimed_dest_fails_closed(
+def test_dry_run_leaves_existing_empty_dest_unchanged(tmp_path: Path) -> None:
+    """Dry-run never claims --dest, even when it exists and is empty
+    (review-fix cycle 3): claiming (the exclusive sentinel create) only
+    ever happens on the --execute path. An existing, empty --dest must
+    come out of a dry-run run exactly as it went in -- still present,
+    still empty, no sentinel, no report file."""
+    dest = tmp_path / "dest"
+    dest.mkdir()
+
+    result = _run_cli(["--source", str(_SYNTHETIC_CORPUS), "--dest", str(dest)])
+    assert result.returncode == 0, result.stderr
+    assert dest.is_dir()
+    assert list(dest.iterdir()) == []
+
+
+def test_execute_removes_claim_sentinel_after_success(tmp_path: Path) -> None:
+    """Sentinel lifecycle (review-fix cycle 3): the exclusive claim
+    sentinel this invocation creates under --dest is removed once the run
+    finishes successfully, leaving only real corpus/report output behind
+    -- proven here directly against the module's own sentinel-name
+    constant rather than a hardcoded literal, so this test tracks the
+    production constant if it is ever renamed."""
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location(
+        "docline_hashicorp_mdx_normalize_sentinel_success", _SCRIPT_PATH
+    )
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    sys.modules["docline_hashicorp_mdx_normalize_sentinel_success"] = module
+    spec.loader.exec_module(module)
+
+    dest = tmp_path / "dest"
+    exit_code = module.main(["--source", str(_SYNTHETIC_CORPUS), "--dest", str(dest), "--execute"])
+
+    assert exit_code == module.EXIT_OK
+    assert (dest / "vault" / "v2.x" / "index.md").exists()
+    assert not (dest / module.CLAIM_SENTINEL_NAME).exists()
+    # Only real product output remains -- no leftover claim artifact.
+    assert module.CLAIM_SENTINEL_NAME not in {p.name for p in dest.iterdir()}
+
+
+def test_claim_destination_two_claims_cannot_coexist(tmp_path: Path) -> None:
+    """Mutual exclusion (review-fix cycle 3): two claims against the same
+    --dest can never both succeed. This calls :func:`claim_destination`
+    directly (unit level, fully deterministic, no real threading or
+    subprocess timing needed) to prove the invariant: the first claim
+    succeeds and creates the sentinel; a second claim attempted WHILE the
+    first invocation's sentinel is still present (i.e. before that first
+    invocation has finished and released its own claim) must fail closed
+    with :class:`DestAlreadyClaimedError`, leaving the first claim's
+    sentinel completely untouched. Exercised against both an initially
+    absent --dest and an initially existing, empty --dest, since cycle 3
+    accepts both as claim targets."""
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location(
+        "docline_hashicorp_mdx_normalize_claim_mutex", _SCRIPT_PATH
+    )
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    sys.modules["docline_hashicorp_mdx_normalize_claim_mutex"] = module
+    spec.loader.exec_module(module)
+
+    for label, prepare in (
+        ("absent", lambda d: None),
+        ("existing-empty", lambda d: d.mkdir()),
+    ):
+        dest = tmp_path / f"dest-{label}"
+        prepare(dest)
+
+        first_sentinel = module.claim_destination(dest)
+        assert first_sentinel.exists()
+
+        with pytest.raises(module.DestAlreadyClaimedError):
+            module.claim_destination(dest)
+
+        # The rejected second claim must not have disturbed the first
+        # invocation's still-held sentinel in any way.
+        assert first_sentinel.exists()
+        assert [p.name for p in dest.iterdir()] == [module.CLAIM_SENTINEL_NAME]
+
+        # Simulate the first invocation finishing and releasing its claim.
+        module.release_destination_claim(first_sentinel)
+        assert not first_sentinel.exists()
+
+
+def test_execute_rejects_rerun_against_dest_with_existing_output(
     tmp_path: Path,
 ) -> None:
-    """P2 regression (review-fix cycle 2, finding 3): --dest is claimed
-    atomically (``mkdir(..., exist_ok=False)``) immediately before writes.
-    Two SEQUENTIAL claim attempts against the same --dest simulate the
-    concurrent-race outcome without requiring real threading: the first
-    attempt succeeds and claims --dest; the second attempt against the
-    now-existing --dest must fail closed, leaving the first attempt's
-    output completely untouched."""
+    """P2 regression (review-fix cycle 2, finding 3), retitled and
+    re-verified in review-fix cycle 3 (this test was previously named
+    ...already_claimed_dest_fails_closed, but it does NOT exercise a
+    genuine claim collision -- see the note below): once a --dest already
+    holds REAL, complete corpus output from a prior successful --execute
+    run, a second --execute attempt against that same --dest must fail
+    closed with the ordinary non-empty-directory rejection
+    (EXIT_DEST_NOT_EMPTY), leaving the prior run's output completely
+    untouched.
+
+    By the time the second invocation starts here, the first invocation
+    has already finished AND released its own claim sentinel (main()'s
+    finally block ran), so --dest contains real product files, not just
+    the sentinel -- this is the "--dest already has content from a
+    finished prior run" case, distinct from "--dest is actively claimed by
+    a still-running invocation" (covered by
+    test_execute_rejects_dest_actively_claimed_by_another_invocation
+    below, added in review-fix cycle 3 to close a real gap: this test's
+    original loose ``"already exists" in stderr`` assertion happened to
+    pass for either exit code and could not have caught that gap)."""
     dest = tmp_path / "dest"
 
     first = _run_cli(["--source", str(_SYNTHETIC_CORPUS), "--dest", str(dest), "--execute"])
@@ -269,12 +377,62 @@ def test_execute_second_claim_attempt_against_already_claimed_dest_fails_closed(
     first_bytes = vault_index.read_bytes()
 
     second = _run_cli(["--source", str(_SYNTHETIC_CORPUS), "--dest", str(dest), "--execute"])
-    assert second.returncode != 0
-    assert "already exists" in second.stderr
-    # The already-claimed destination is left completely untouched by the
-    # rejected second claim attempt.
+    assert second.returncode == 10  # EXIT_DEST_NOT_EMPTY -- ordinary non-empty rejection
+    assert "already exists and is not empty" in second.stderr
+    # The already-populated destination is left completely untouched by the
+    # rejected second attempt.
     assert vault_index.stat().st_mtime_ns == first_mtime_ns
     assert vault_index.read_bytes() == first_bytes
+
+
+def test_execute_rejects_dest_actively_claimed_by_another_invocation(
+    tmp_path: Path,
+) -> None:
+    """P0 regression (review-fix cycle 3, finding 1, independent review
+    gate): a --dest whose ONLY entry is the reserved claim sentinel --
+    i.e. another invocation is genuinely still claiming it -- must be
+    rejected at the real CLI entry point with the SPECIFIC
+    EXIT_DEST_ALREADY_EXISTS code and an "already claimed by another
+    in-progress invocation" message, never the generic EXIT_DEST_NOT_EMPTY
+    rejection used for ordinary pre-existing content.
+
+    Before this fix, main()'s early _dest_precheck() gate intercepted this
+    exact scenario first and unconditionally reported EXIT_DEST_NOT_EMPTY,
+    because it was not sentinel-aware the way claim_destination()'s own
+    internal pre-check already was -- so the documented claim-collision
+    exit code was unreachable through the real CLI entry point for the
+    realistic staggered-rerun case (a second invocation starting sometime
+    after a first has already claimed --dest but is still writing), and
+    was only ever proven at the direct-function-call level by
+    test_claim_destination_two_claims_cannot_coexist, which bypasses
+    main()/_dest_precheck()/the CLI entirely. This test pre-seeds --dest
+    with ONLY the sentinel (simulating a still-active claim held by
+    another invocation) rather than running a prior invocation to full
+    completion, so it exercises exactly the CLI-level path the fix
+    corrects."""
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location(
+        "docline_hashicorp_mdx_normalize_claimed_dest_cli", _SCRIPT_PATH
+    )
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    sys.modules["docline_hashicorp_mdx_normalize_claimed_dest_cli"] = module
+    spec.loader.exec_module(module)
+
+    dest = tmp_path / "dest"
+    dest.mkdir()
+    live_sentinel = dest / module.CLAIM_SENTINEL_NAME
+    live_sentinel.write_bytes(b"")
+
+    result = _run_cli(["--source", str(_SYNTHETIC_CORPUS), "--dest", str(dest), "--execute"])
+
+    assert result.returncode == module.EXIT_DEST_ALREADY_EXISTS
+    assert "already claimed by another in-progress invocation" in result.stderr
+    # The rejected attempt must not have disturbed the still-live sentinel
+    # or written any corpus output alongside it.
+    assert [p.name for p in dest.iterdir()] == [module.CLAIM_SENTINEL_NAME]
+    assert live_sentinel.read_bytes() == b""
 
 
 def test_execute_leaves_partial_dest_in_place_when_write_pass_fails(
@@ -314,12 +472,17 @@ def test_execute_leaves_partial_dest_in_place_when_write_pass_fails(
     assert dest.exists(), "the atomically-claimed --dest must be left in place, not deleted"
     assert "partial" in captured.err.lower()
     assert call_count["n"] == 2  # preflight (execute=False) + the failing write pass
+    # Sentinel removal (review-fix cycle 3): the claim sentinel THIS
+    # invocation created must be removed on failure too, via main()'s
+    # finally block -- only the sentinel, never the partial output above.
+    assert not (dest / module.CLAIM_SENTINEL_NAME).exists()
 
 
 def test_execute_dest_claim_failure_other_than_file_exists_reports_clearly(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    """P2 regression (independent re-review of review-fix cycle 2, finding 3):
+    """P2 regression (independent re-review of review-fix cycle 2, finding 3;
+    logic relocated into :func:`claim_destination` in review-fix cycle 3):
     the atomic --dest claim (``mkdir(..., exist_ok=False)``) explicitly
     caught only ``FileExistsError``; any OTHER ``OSError`` (permission
     denial, a blocked ancestor path component, disk exhaustion, ...)
@@ -356,7 +519,7 @@ def test_execute_dest_claim_failure_other_than_file_exists_reports_clearly(
 
     assert exit_code == module.EXIT_DEST_CLAIM_FAILED
     assert not dest.exists(), "a failed claim must never leave a partially-created --dest"
-    assert "failed to create --dest" in captured.err
+    assert "failed to claim --dest" in captured.err
     assert "permission denial" in captured.err.lower()
 
 
@@ -415,6 +578,9 @@ def test_execute_report_write_failure_after_successful_corpus_write_reports_clea
     assert (dest / "vault" / "v2.x" / "index.md").exists()
     assert "failed to write --report" in captured.err
     assert "already written successfully" in captured.err
+    # Sentinel removal (review-fix cycle 3): removed on this failure path
+    # too, leaving only the successful corpus output behind.
+    assert not (dest / module.CLAIM_SENTINEL_NAME).exists()
 
 
 def test_dry_run_may_point_dest_at_a_non_empty_directory_without_creating_it(
