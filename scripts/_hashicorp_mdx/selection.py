@@ -247,12 +247,25 @@ def list_version_entries(raw_dir_names: Iterable[str]) -> list[VersionEntry]:
        semver-sortable first -- this reproduces the upstream tool's
        "semver directories are more recent" ordering assumption when a
        product's directories are a mix of both shapes.
-    3. Walk the combined order, incrementing a "latest index" cursor past
-       every non-stable (``alpha``/``beta``/``rc``) entry; the entry
-       whose position matches the cursor is ``is_latest``.
-    4. Fallback: if no entry ends up marked latest (i.e. every candidate
-       is non-stable), the highest-sorted entry (index 0) is latest
-       regardless of release stage.
+    3. Exactly ONE entry is ``is_latest``: the FIRST entry (in the
+       combined descending order above) whose release stage is
+       ``"stable"``. If no entry is stable at all, the first entry in
+       that order (index 0, the highest-sorted candidate regardless of
+       release stage) is ``is_latest`` instead.
+
+    GROUNDING NOTE (review-fix cycle 2, P3 correctness finding): the
+    previous implementation computed ``is_latest`` with a running
+    "latest index" cursor that incremented once per non-stable entry
+    and compared it against the current loop index on every iteration.
+    That could flag a SECOND entry as latest: once the highest-sorted
+    entry was stable (cursor stays at 0, matches index 0), a
+    lower-ranked non-stable entry immediately following it would
+    increment the cursor to 1 and then find ``idx == cursor`` true
+    again at index 1 -- e.g. ``["v3.x" (stable), "v3.x (rc)", "v2.x"]``
+    flagged BOTH ``"v3.x"`` and ``"v3.x (rc)"`` as latest. This
+    implementation instead computes the single first-stable-or-fallback
+    index up front and marks that ONE index true, guaranteeing exactly
+    one ``is_latest`` entry whenever the input is non-empty.
     """
     candidates = [name for name in raw_dir_names if is_valid_version_dirname(name)]
 
@@ -270,31 +283,23 @@ def list_version_entries(raw_dir_names: Iterable[str]) -> list[VersionEntry]:
         key=lambda raw: _tfe_date_sort_key(strip_release_stage(raw)[0]), reverse=True
     )
     ordered = semver_group + nonsemver_group
+    parsed = [(raw, *strip_release_stage(raw)) for raw in ordered]
 
-    entries: list[VersionEntry] = []
-    latest_index = 0
-    any_latest = False
-    for idx, raw in enumerate(ordered):
-        base, stage = strip_release_stage(raw)
-        if stage != "stable":
-            latest_index += 1
-        is_latest = idx == latest_index
-        if is_latest:
-            any_latest = True
-        entries.append(
-            VersionEntry(raw_name=raw, clean_version=base, release_stage=stage, is_latest=is_latest)
+    latest_index: int | None = next(
+        (idx for idx, (_raw, _base, stage) in enumerate(parsed) if stage == "stable"), None
+    )
+    if latest_index is None and parsed:
+        latest_index = 0
+
+    return [
+        VersionEntry(
+            raw_name=raw,
+            clean_version=base,
+            release_stage=stage,
+            is_latest=idx == latest_index,
         )
-
-    if not any_latest and entries:
-        first = entries[0]
-        entries[0] = VersionEntry(
-            raw_name=first.raw_name,
-            clean_version=first.clean_version,
-            release_stage=first.release_stage,
-            is_latest=True,
-        )
-
-    return entries
+        for idx, (raw, base, stage) in enumerate(parsed)
+    ]
 
 
 def select_latest_version(raw_dir_names: Iterable[str]) -> str | None:

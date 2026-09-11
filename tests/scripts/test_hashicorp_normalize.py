@@ -164,6 +164,74 @@ def test_protect_fenced_code_unclosed_fence_runs_to_end_of_document() -> None:
     assert restored == body
 
 
+# ---------------------------------------------------------------------------
+# Regression (review-fix cycle 2, P2, finding 4): bounded raw-line
+# indentation rule for fence open/close matching
+# ---------------------------------------------------------------------------
+
+
+def test_protect_fenced_code_four_space_indented_backtick_cannot_close_top_level_fence() -> None:
+    """A top-level opener (0-3 columns) must NEVER be closed by a
+    four-space-(or-deeper)-indented backtick/tilde line -- CommonMark
+    treats 4+ columns as an indented code block, not a fence boundary.
+    The mis-indented line is preserved as literal content inside the
+    block; the fence closes only at the next VALID (<=3 column) closer.
+    """
+    body = (
+        "Intro.\n\n```text\ncontent <Mystery /> here\n    ```\nstill more content\n```\n\nAfter.\n"
+    )
+    protected, store = normalize.protect_fenced_code(body)
+    assert "<Mystery" not in protected
+    assert len(store) == 1
+    block_text = next(iter(store.values()))
+    # The four-space-indented line never closed the fence -- it is
+    # preserved as literal content INSIDE the single captured block.
+    assert "    ```\n" in block_text
+    assert "still more content" in block_text
+    restored = normalize.restore_fenced_code(protected, store)
+    assert restored == body
+
+
+def test_protect_fenced_code_container_indented_closer_within_three_columns_closes() -> None:
+    """A container/list-indented opener (4+ columns) is closed by a line
+    within THREE visual columns of the opener's own indentation -- the
+    closer need not match the opener's indentation exactly (preserves
+    real corpus list-continuation shapes already seen)."""
+    body = "10. Step ten:\n\n    ```shell-session\n    $ command <TYPE>\n  ```\n\nMore text.\n"
+    protected, store = normalize.protect_fenced_code(body)
+    assert "```" not in protected
+    assert "<TYPE>" not in protected
+    assert len(store) == 1
+    restored = normalize.restore_fenced_code(protected, store)
+    assert restored == body
+
+
+def test_protect_fenced_code_container_indented_closer_beyond_three_columns_skipped() -> None:
+    """A container/list-indented opener's closer-search must SKIP a
+    candidate closing line whose indentation drifts MORE than three
+    visual columns from the opener -- it is preserved as literal content
+    and the scan continues to the next candidate closer."""
+    body = (
+        "10. Step ten:\n\n"
+        "    ```shell-session\n"
+        "    $ command <TYPE>\n"
+        "        ```\n"
+        "    ```\n"
+        "\nMore text.\n"
+    )
+    protected, store = normalize.protect_fenced_code(body)
+    assert "```" not in protected
+    assert "<TYPE>" not in protected
+    assert len(store) == 1
+    block_text = next(iter(store.values()))
+    # The over-indented (8-column) candidate closer never matched -- it
+    # is preserved as literal content inside the single captured block,
+    # and the correctly-close-enough (4-column) line closed it instead.
+    assert "        ```\n" in block_text
+    restored = normalize.restore_fenced_code(protected, store)
+    assert restored == body
+
+
 def test_normalize_mdx_to_md_fence_variants_never_leak_mdx_looking_text() -> None:
     """End-to-end: construct-like text inside any of the above fence
     variants must never be tallied as unhandled nor transformed, and the

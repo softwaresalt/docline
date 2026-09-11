@@ -208,3 +208,25 @@ def test_list_version_entries_reports_release_stage_and_flags() -> None:
     assert by_raw["v0.2.x (beta)"].clean_version == "v0.2.x"
     assert by_raw["v0.2.x (beta)"].is_latest is True
     assert by_raw["v0.1.x (beta)"].is_latest is False
+
+
+def test_list_version_entries_highest_stable_then_lower_prerelease_exactly_one_latest() -> None:
+    """Regression (review-fix cycle 2, P3): a stable entry ranked highest
+    must be the SOLE ``is_latest`` even when a lower-ranked prerelease of
+    the same base version immediately follows it in sort order.
+
+    The previous cursor-increment algorithm could flag a SECOND entry as
+    latest whenever a non-stable entry landed exactly at the
+    post-increment cursor position right after an already-matched stable
+    entry: ``"v3.x"`` (idx 0, stable) matches cursor 0 and is flagged
+    latest; ``"v3.x (rc)"`` (idx 1, non-stable) increments the cursor to
+    1, and ``idx == cursor`` (``1 == 1``) is ALSO true, flagging a second
+    "latest" entry. Exactly one entry must ever be ``is_latest``.
+    """
+    dirs = ["v3.x", "v3.x (rc)", "v2.x"]
+    entries = selection.list_version_entries(dirs)
+    assert sum(1 for entry in entries if entry.is_latest) == 1
+    by_raw = {e.raw_name: e for e in entries}
+    assert by_raw["v3.x"].is_latest is True
+    assert by_raw["v3.x (rc)"].is_latest is False
+    assert by_raw["v2.x"].is_latest is False

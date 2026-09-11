@@ -350,12 +350,16 @@ Omit `--execute` (and point `--report` anywhere convenient, or omit it to see
 the plan on stdout only) to preview the identical plan with zero writes --
 this is the default mode and is safe to run repeatedly, and never writes the
 `--report` file even when `--report` is given (see §9.1 -- dry-run prints
-the report to stdout and a stderr note instead). In `--execute` mode,
-`--report` must resolve strictly under `--dest` or the run fails closed
-before any corpus write begins (`EXIT_CONTAINMENT_VIOLATION`); `--dest` must
-also be absent or empty before `--execute` proceeds
-(`EXIT_DEST_NOT_EMPTY`, see §9.2). This exact command is also reproduced in
-the script's own `--help` epilog.
+the report to stdout and a stderr note instead). In `--execute` mode, a
+complete read-only normalization preflight pass runs first: `--dest` must
+not exist, and is claimed atomically immediately before any write begins
+(`EXIT_DEST_ALREADY_EXISTS` otherwise, see §9.2/§11.3); `--report` must
+resolve strictly under `--dest` or the run fails closed before `--dest` is
+even created (`EXIT_CONTAINMENT_VIOLATION`, see §11.2); and any genuine
+unresolved MDX construct aborts the run before any write begins unless
+`--allow-unresolved-mdx` is passed (`EXIT_UNRESOLVED_MDX_CONSTRUCTS`, see
+§11.1). This exact command is also reproduced in the script's own `--help`
+epilog.
 
 ## 8. Numbered requirements for a first-class docline MDX ingestion capability
 
@@ -489,9 +493,19 @@ and is a non-empty directory. No deletion or replacement logic was added
 check entirely and may point `--dest` at any existing, non-empty directory
 without ever creating or touching it.
 
+**Superseded by review-fix cycle 2** (§11.3): this check-then-act sequence
+was itself non-atomic (a P2 finding). It was replaced by a simplified
+"`--dest` must be ABSENT" contract with an atomic
+`mkdir(..., exist_ok=False)` claim immediately before writes
+(`EXIT_DEST_ALREADY_EXISTS`, superseding `EXIT_DEST_NOT_EMPTY`). This
+section is left as the historical record of the original finding and fix.
+
 **Tests**: `test_execute_rejects_non_empty_existing_dest`,
-`test_execute_succeeds_against_existing_empty_dest`,
 `test_dry_run_may_point_dest_at_a_non_empty_directory_without_creating_it`.
+(The original `test_execute_succeeds_against_existing_empty_dest` no longer
+exists -- it was replaced in cycle 2 by
+`test_execute_rejects_existing_empty_dest_too`, reflecting the tightened
+"absent, not merely empty" contract; see §11.3.)
 
 ### 9.3 Finding 3 (P2) -- calendar version lexical sort
 
@@ -664,13 +678,231 @@ unstated implementation detail.
 
 * Script: `scripts/hashicorp_mdx_normalize.py`,
   `scripts/_hashicorp_mdx/selection.py`, `scripts/_hashicorp_mdx/normalize.py`
-* Tests: `tests/scripts/test_hashicorp_selection.py` (28 cases),
-  `tests/scripts/test_hashicorp_normalize.py` (40 cases),
-  `tests/scripts/test_hashicorp_dryrun_corpus.py` (16 cases, including the
+* Tests: `tests/scripts/test_hashicorp_selection.py` (29 cases),
+  `tests/scripts/test_hashicorp_normalize.py` (43 cases),
+  `tests/scripts/test_hashicorp_dryrun_corpus.py` (21 cases, including the
   real-corpus dry-run integration test)
 * Dry-run report (repo-local, git-ignored):
   `build/hashicorp-dryrun-evidence/real-corpus-dry-run-report.json`
 * Plan: `docs/plans/2026-09-11-hashicorp-mdx-normalization-preprocessor-plan.md`
 * Deliberation: `docs/decisions/2026-09-11-hashicorp-mdx-normalization-preprocessor-deliberation.md`
 * Shipment: `062-S`; Feature: `071-F`; Tasks: `071.001-T`..`071.011-T`
-* PR: #192; review-fix cycle 1 findings and resolutions: §9
+* PR: #192; review-fix cycle 1 findings and resolutions: §9; review-fix
+  cycle 2 findings and resolutions: §11
+
+## 11. Review-fix cycle 2 (PR #192) -- independent re-review findings
+
+A second independent correctness review of PR #192 (post cycle-1 fixes)
+found six more in-scope findings. All six were fixed test-first with
+surgical, targeted changes; no scope expansion beyond the findings
+occurred. This section is the traceable record of each finding, its fix,
+and its regression coverage.
+
+### 11.1 Finding 1 (P1) -- unresolved-construct gate ran AFTER execute writes
+
+**Problem**: `main()` ran `process_corpus(..., execute=args.execute)` --
+performing every corpus write -- and only checked `report["unresolved_constructs"]`
+afterward. A rejected run (unresolved constructs present, no
+`--allow-unresolved-mdx`) had therefore already written the full corpus
+(and, if `--report` was given, the report file) to `--dest` before the
+gate ever fired -- exactly the class of "fail closed" gate the finding-5
+fix in cycle 1 was meant to provide, but applied too late to prevent the
+writes it was supposed to prevent.
+
+**Fix** (`scripts/hashicorp_mdx_normalize.py`): `--execute` now runs a
+complete READ-ONLY normalization preflight pass first --
+`process_corpus(source=source, dest=dest, execute=False)`, identical
+selection/normalization logic, guaranteed zero writes -- and inspects
+*that* pass's `unresolved_constructs`. The run aborts before `--dest` is
+even created (`EXIT_UNRESOLVED_MDX_CONSTRUCTS`) unless the result is
+empty or `--allow-unresolved-mdx` was passed. Only after this gate
+passes does the real write pass run (`process_corpus(..., execute=True)`),
+and the JSON report is written to `--report` only AFTER that write pass
+completes successfully -- never before, and never at all if the write
+pass fails. A second, defense-in-depth check after the real write pass is
+kept (in case `--source` mutates between the two passes) but is expected
+to be unreachable in the normal case, since both passes share identical
+logic.
+
+**Tests**: `test_execute_unresolved_input_leaves_dest_absent_and_report_absent`
+(asserts both `--dest` and `--report` are absent when the preflight finds
+unresolved constructs); the pre-existing
+`test_execute_fails_closed_when_unresolved_mdx_constructs_remain`,
+`test_execute_succeeds_with_explicit_allow_unresolved_mdx_override`, and
+`test_dry_run_never_fails_on_unresolved_mdx_constructs` continue to pass
+unmodified against the new preflight-based control flow.
+
+### 11.2 Finding 2 (P1) -- report containment preflight discarded resolved path
+
+**Problem**: `guard_write_path(dest, args.report)` was called to validate
+containment, but its RETURN VALUE (the resolved path) was discarded; the
+actual write later used `args.report` -- the original, possibly-unresolved
+argument -- for both `args.report.parent.mkdir(...)` and
+`args.report.write_text(...)`. The containment check and the write target
+could diverge (e.g. a symlink component resolved differently at
+write time than at check time).
+
+**Fix** (`scripts/hashicorp_mdx_normalize.py`): the report write now calls
+`guard_write_path(dest, args.report)` AGAIN immediately before the actual
+write (narrowing, not eliminating, the check-to-write window) and writes
+through the RESOLVED path this second call returns, never the original
+`args.report`. `guard_write_path`'s docstring now explicitly documents
+this as a BEST-EFFORT containment check, not a race-free guarantee --
+Python's `Path.resolve()` has no atomic "check and open" primitive, so a
+symlink swap between the check and the write can never be fully closed
+by this or any check-then-act sequence in the standard library.
+
+**Tests**: `test_execute_report_written_using_resolved_guard_path_not_original`.
+A real symlink/junction substitution was considered for this regression
+test but rejected as unreliable cross-platform coverage: Windows symlink
+creation requires Developer Mode or elevated privileges that cannot be
+assumed in CI, and a `..`-segment path (the alternative non-symlink
+"unresolved path" shape) resolves to the identical on-disk file via
+ordinary OS path traversal regardless of whether the code uses the
+resolved or literal form, so it would not actually distinguish the two
+code paths. Instead, the test monkeypatches `guard_write_path` to return
+a deliberately different (but still `--dest`-contained) path for the
+report candidate only, and asserts the report is written at THAT
+returned path -- not the original `--report` argument -- while also
+asserting the function is called exactly twice (the pre-check plus the
+write-time re-guard this finding requires).
+
+### 11.3 Finding 3 (P2) -- non-atomic destination check
+
+**Problem**: `_dest_is_execute_ready()` performed `dest.exists()` /
+`dest.iterdir()` as a check-then-act sequence, then later code created
+`--dest` and wrote into it. Two concurrent invocations could both observe
+an absent-or-empty `--dest`, both pass the check, and then both proceed to
+write -- interleaving or corrupting each other's output.
+
+**Fix** (`scripts/hashicorp_mdx_normalize.py`): the execute contract is
+simplified to require `--dest` to be ABSENT (not merely empty); a cheap
+`_dest_must_be_absent()` check runs early for a fast, clear operator-facing
+error message, but the actual concurrency-safe claim is a single
+`dest.mkdir(parents=True, exist_ok=False)` call immediately before the
+real write pass begins -- an atomic OS-level syscall, so of two racing
+invocations exactly one succeeds and the other fails closed with
+`EXIT_DEST_ALREADY_EXISTS` instead of silently overlaying. If the write
+pass fails partway through AFTER `--dest` was successfully claimed, the
+partial output is deliberately left in place (never auto-deleted) and
+reported as a distinct, clearly-labeled partial-output failure
+(`EXIT_EXECUTION_FAILED`).
+
+**Tests**: `test_execute_rejects_existing_empty_dest_too` (an existing
+empty `--dest` is no longer accepted -- contract simplification),
+`test_execute_succeeds_against_absent_dest`,
+`test_execute_second_claim_attempt_against_already_claimed_dest_fails_closed`
+(two SEQUENTIAL claim attempts against the same `--dest` -- the first
+succeeds and claims it, the second fails closed, without requiring real
+threading), `test_execute_leaves_partial_dest_in_place_when_write_pass_fails`
+(monkeypatches `process_corpus` to fail partway through the write pass and
+asserts `--dest` is left in place with a partial-output-labeled error, not
+deleted).
+
+### 11.4 Finding 4 (P2) -- fence scanner accepted unlimited indentation
+
+**Problem**: the cycle-1 fix for finding 4 (§9.4) removed indentation
+matching from the fence closer search ENTIRELY to fix a different bug (an
+overly strict same-indentation requirement) -- but over-corrected: a
+closing-fence-shaped line at ANY indentation could close ANY opener,
+including a top-level (0-3 column) opener being "closed" by an unrelated
+four-or-more-space-indented backtick/tilde line that CommonMark would
+treat as an indented code block, never a fence boundary.
+
+**Fix** (`scripts/_hashicorp_mdx/normalize.py`): a new
+`_leading_indent_columns()` helper measures a line's leading whitespace in
+visual columns (tabs expand to the next multiple-of-4 stop, per
+CommonMark's own tab-handling rule for block structure). `protect_fenced_code()`
+now applies a bounded, two-class rule keyed off the OPENER's own
+indentation: a **top-level** opener (0-3 columns) can only be closed by a
+line ALSO indented 0-3 columns; a **container/list-indented** opener (4+
+columns -- the shape already seen in this corpus under numbered-list
+continuations) can only be closed by a line within **three visual columns**
+of the opener's own indentation (not necessarily equal -- preserving the
+cycle-1 "closing indentation independent of the opener" behavior within a
+bound, instead of unboundedly). A same-character run shorter than the
+opener, or one at a disallowed indentation, is preserved as literal
+content inside the block and the scan continues to the next candidate
+line, exactly as before.
+
+**Tests**: `test_protect_fenced_code_four_space_indented_backtick_cannot_close_top_level_fence`
+(a top-level fence's four-space-indented "closer" never closes it and is
+preserved as literal content),
+`test_protect_fenced_code_container_indented_closer_within_three_columns_closes`
+(a container-indented opener's closer within 3 columns still closes, not
+requiring exact equality),
+`test_protect_fenced_code_container_indented_closer_beyond_three_columns_skipped`
+(a candidate closer drifting more than 3 columns from a container-indented
+opener is skipped, preserved as literal content, and the scan finds the
+next valid closer instead). All pre-existing fence tests (§9.4) continue
+to pass unmodified -- every previously-tested indented-list fence in this
+corpus uses indentation within the new bounds.
+
+### 11.5 Finding 5 (P3) -- live-corpus test only type-checked `unresolved_constructs`
+
+**Problem**: `test_real_corpus_dry_run_zero_writes_and_coverage_report`
+asserted `isinstance(report["unresolved_constructs"], dict)` -- true for
+ANY dict, including one full of genuine unresolved constructs -- rather
+than asserting the actual "zero unresolved constructs on the live corpus"
+bar that cycle 1's finding-5 fix (§9.5) was built to satisfy.
+
+**Fix** (`tests/scripts/test_hashicorp_dryrun_corpus.py`): the assertion is
+now `report["unresolved_constructs"] == {}`, precisely. Re-run against the
+real external corpus (`C:\Source\Docs\hashicorp-tf-unified-dev-docs\content`)
+after all cycle-2 fixes: still **0 distinct / 0 occurrences**, confirming
+the fence and version-selection fixes in this cycle introduce no
+regression against the live corpus (full totals in §11.7 below).
+
+### 11.6 Finding 6 (P3) -- `list_version_entries` could flag multiple `is_latest` entries
+
+**Problem**: the cursor-increment algorithm computed `is_latest` per entry
+independently as it walked the sorted list, incrementing the cursor once
+per non-stable entry and comparing `idx == cursor` on every iteration. If
+the highest-sorted entry was stable (matching cursor 0), a lower-ranked
+non-stable entry immediately following it could increment the cursor to 1
+and ALSO satisfy `idx == cursor` at index 1 -- flagging a SECOND entry as
+latest. `select_latest_version()` itself was unaffected (it returns the
+first `is_latest` match found), but any caller inspecting the full
+`list_version_entries()` result directly could observe more than one
+`is_latest is True` entry, violating the documented "exactly one latest"
+contract.
+
+**Fix** (`scripts/_hashicorp_mdx/selection.py`): `list_version_entries()`
+now computes the single "latest index" up front -- the first entry (in
+the combined descending sort order) whose release stage is `"stable"`, or
+index 0 if none is stable -- and marks exactly that one index
+`is_latest=True`. This guarantees exactly one `is_latest` entry whenever
+the input is non-empty, matching the documented contract precisely
+instead of incidentally.
+
+**Tests**: `test_list_version_entries_highest_stable_then_lower_prerelease_exactly_one_latest`
+(`["v3.x", "v3.x (rc)", "v2.x"]` -- asserts `sum(is_latest for ...) == 1`
+and that only `"v3.x"` is flagged). All pre-existing `list_version_entries`
+/ `select_latest_version` tests (§9.3, §9.7) continue to pass unmodified.
+
+### 11.7 Full real-corpus dry-run re-run (post cycle-2 fixes)
+
+Re-ran the complete dry-run against the real external corpus
+(`C:\Source\Docs\hashicorp-tf-unified-dev-docs\content`, read-only, zero
+writes) after all six cycle-2 fixes above:
+
+* 23 products total (19 versioned + 4 unversioned); `global` excluded --
+  unchanged from cycle 1.
+* Selected versions unchanged from cycle 1: `vault` -> `v2.x`,
+  `terraform` -> `v1.16.x`, `terraform-policy` -> `v0.2.x (beta)`,
+  `terraform-enterprise` -> `2.0.x`.
+* Totals unchanged from cycle 1: 5,566 `.mdx` normalized, 59 `.md`
+  copied, 2,139 assets copied, 1,259 partials skipped, 164 generic
+  (non-Markdown, non-image) files copied byte-for-byte.
+* Construct classification unchanged from cycle 1: `fallback_constructs`
+  14 distinct / 152 occurrences; `ambiguous_tokens` 75 distinct / 255
+  occurrences; `unresolved_constructs` **0 distinct / 0 occurrences**
+  (finding 5, §11.5, now asserted precisely rather than type-checked).
+* `containment_violations`: `[]` (unchanged).
+
+The fence-scanner bound (finding 4) and the `is_latest` uniqueness fix
+(finding 6) produce byte-identical selection and normalization results
+against this live corpus -- both fixes tighten edge-case boundaries that
+this corpus's real content does not happen to trigger, which is the
+expected outcome of a surgical, non-behavior-changing-in-the-common-case
+correctness fix.

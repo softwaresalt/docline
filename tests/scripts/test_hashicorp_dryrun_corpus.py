@@ -216,22 +216,104 @@ def test_execute_rejects_non_empty_existing_dest(tmp_path: Path) -> None:
 
     result = _run_cli(["--source", str(_SYNTHETIC_CORPUS), "--dest", str(dest), "--execute"])
     assert result.returncode != 0
-    assert "not empty" in result.stderr
+    assert "already exists" in result.stderr
     # Nothing new was written; the stale file is untouched and no product
     # trees were created.
     assert list(dest.iterdir()) == [dest / "stale-leftover.txt"]
     assert not (dest / "vault").exists()
 
 
-def test_execute_succeeds_against_existing_empty_dest(tmp_path: Path) -> None:
-    """An existing but EMPTY --dest is a valid execute target (not just an
-    absent one)."""
+def test_execute_rejects_existing_empty_dest_too(tmp_path: Path) -> None:
+    """P2 regression (review-fix cycle 2, finding 3): an existing but EMPTY
+    --dest is NO LONGER a valid execute target -- the contract was
+    simplified to require --dest to be ABSENT (not merely empty), so that
+    the destination can be claimed atomically with a single
+    ``mkdir(..., exist_ok=False)`` immediately before writes begin, closing
+    the check-then-act race window an "absent or empty" check left open."""
     dest = tmp_path / "dest"
     dest.mkdir()
 
     result = _run_cli(["--source", str(_SYNTHETIC_CORPUS), "--dest", str(dest), "--execute"])
+    assert result.returncode != 0
+    assert "already exists" in result.stderr
+    assert list(dest.iterdir()) == []
+
+
+def test_execute_succeeds_against_absent_dest(tmp_path: Path) -> None:
+    """An absent --dest is claimed atomically and populated normally."""
+    dest = tmp_path / "dest"
+    assert not dest.exists()
+
+    result = _run_cli(["--source", str(_SYNTHETIC_CORPUS), "--dest", str(dest), "--execute"])
     assert result.returncode == 0, result.stderr
     assert (dest / "vault" / "v2.x" / "index.md").exists()
+
+
+def test_execute_second_claim_attempt_against_already_claimed_dest_fails_closed(
+    tmp_path: Path,
+) -> None:
+    """P2 regression (review-fix cycle 2, finding 3): --dest is claimed
+    atomically (``mkdir(..., exist_ok=False)``) immediately before writes.
+    Two SEQUENTIAL claim attempts against the same --dest simulate the
+    concurrent-race outcome without requiring real threading: the first
+    attempt succeeds and claims --dest; the second attempt against the
+    now-existing --dest must fail closed, leaving the first attempt's
+    output completely untouched."""
+    dest = tmp_path / "dest"
+
+    first = _run_cli(["--source", str(_SYNTHETIC_CORPUS), "--dest", str(dest), "--execute"])
+    assert first.returncode == 0, first.stderr
+    vault_index = dest / "vault" / "v2.x" / "index.md"
+    assert vault_index.exists()
+    first_mtime_ns = vault_index.stat().st_mtime_ns
+    first_bytes = vault_index.read_bytes()
+
+    second = _run_cli(["--source", str(_SYNTHETIC_CORPUS), "--dest", str(dest), "--execute"])
+    assert second.returncode != 0
+    assert "already exists" in second.stderr
+    # The already-claimed destination is left completely untouched by the
+    # rejected second claim attempt.
+    assert vault_index.stat().st_mtime_ns == first_mtime_ns
+    assert vault_index.read_bytes() == first_bytes
+
+
+def test_execute_leaves_partial_dest_in_place_when_write_pass_fails(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """P2 regression (review-fix cycle 2, finding 3): if --dest is
+    successfully atomically claimed but the subsequent write pass then
+    fails partway through, the partial destination is left in place
+    (NEVER auto-deleted) and the failure is reported clearly as a
+    partial-output failure, not silently swallowed or cleaned up."""
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location(
+        "docline_hashicorp_mdx_normalize_partial_failure", _SCRIPT_PATH
+    )
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    sys.modules["docline_hashicorp_mdx_normalize_partial_failure"] = module
+    spec.loader.exec_module(module)
+
+    dest = tmp_path / "dest"
+    real_process_corpus = module.process_corpus
+    call_count = {"n": 0}
+
+    def flaky_process_corpus(*, source, dest, execute):
+        call_count["n"] += 1
+        if execute:
+            raise OSError("simulated disk failure partway through writing")
+        return real_process_corpus(source=source, dest=dest, execute=execute)
+
+    monkeypatch.setattr(module, "process_corpus", flaky_process_corpus)
+
+    exit_code = module.main(["--source", str(_SYNTHETIC_CORPUS), "--dest", str(dest), "--execute"])
+    captured = capsys.readouterr()
+
+    assert exit_code == module.EXIT_EXECUTION_FAILED
+    assert dest.exists(), "the atomically-claimed --dest must be left in place, not deleted"
+    assert "partial" in captured.err.lower()
+    assert call_count["n"] == 2  # preflight (execute=False) + the failing write pass
 
 
 def test_dry_run_may_point_dest_at_a_non_empty_directory_without_creating_it(
@@ -299,6 +381,74 @@ def test_execute_report_outside_dest_fails_closed_before_any_corpus_write(
     assert not dest.exists(), "no corpus write may occur when the report path is rejected"
 
 
+def test_execute_report_written_using_resolved_guard_path_not_original(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """P1 regression (review-fix cycle 2, finding 2): the report file MUST
+    be written using the RESOLVED path returned by ``guard_write_path`` at
+    actual write time, not the original ``--report`` argument that was
+    merely checked earlier in the run. Verified by monkeypatching
+    ``guard_write_path`` so that -- only for the report candidate -- it
+    returns a deliberately DIFFERENT (but still --dest-contained) path,
+    and asserting the report lands there, never at the literal, unresolved
+    ``--report`` path. A real symlink/junction substitution was considered
+    but is not reliably creatable cross-platform without elevated
+    privileges on Windows, so this test proves the same contract (the
+    code always writes through guard_write_path's RETURN VALUE) at the
+    call-site level instead."""
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location(
+        "docline_hashicorp_mdx_normalize_report_redirect", _SCRIPT_PATH
+    )
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    sys.modules["docline_hashicorp_mdx_normalize_report_redirect"] = module
+    spec.loader.exec_module(module)
+
+    dest = tmp_path / "dest"
+    requested_report_path = dest / "requested-report.json"
+    redirected_report_path = dest / "actually-written-report.json"
+
+    real_guard_write_path = module.guard_write_path
+    report_guard_calls = {"n": 0}
+
+    def fake_guard_write_path(dest_root: Path, candidate: Path) -> Path:
+        if Path(candidate) == requested_report_path:
+            report_guard_calls["n"] += 1
+            # Still exercise the real containment logic (so a genuine
+            # violation would still raise), but return a different,
+            # still-valid resolved path -- exactly what a symlink
+            # retargeting the last path component would produce.
+            real_guard_write_path(dest_root, candidate)
+            return redirected_report_path.resolve()
+        return real_guard_write_path(dest_root, candidate)
+
+    monkeypatch.setattr(module, "guard_write_path", fake_guard_write_path)
+
+    exit_code = module.main(
+        [
+            "--source",
+            str(_SYNTHETIC_CORPUS),
+            "--dest",
+            str(dest),
+            "--execute",
+            "--report",
+            str(requested_report_path),
+        ]
+    )
+
+    assert exit_code == module.EXIT_OK
+    # Called once for the pre-write containment probe and once again
+    # immediately before the actual write (finding 2's explicit
+    # "call guard_write_path again" requirement).
+    assert report_guard_calls["n"] == 2
+    assert redirected_report_path.exists()
+    assert not requested_report_path.exists()
+    report = json.loads(redirected_report_path.read_text(encoding="utf-8"))
+    assert report["execute"] is True
+
+
 # ---------------------------------------------------------------------------
 # P2 regression (review-fix cycle 1, finding 5): execute fails closed on
 # genuine unresolved MDX components unless explicitly overridden
@@ -327,6 +477,38 @@ def test_execute_fails_closed_when_unresolved_mdx_constructs_remain(tmp_path: Pa
     assert result.returncode != 0
     assert "unresolved" in result.stderr.lower()
     assert "BrandNewWidget" in result.stderr
+
+
+def test_execute_unresolved_input_leaves_dest_absent_and_report_absent(tmp_path: Path) -> None:
+    """P1 regression (review-fix cycle 2, finding 1): the unresolved-MDX
+    gate is now a READ-ONLY PREFLIGHT that runs BEFORE --dest is created or
+    anything is written -- not a check applied after execute has already
+    written the corpus (and the report). Proves both halves of the
+    contract: --dest must never even be created, AND a --report path (also
+    guarded, inside --dest) must never be written either, when the
+    preflight finds unresolved constructs and --allow-unresolved-mdx was
+    not passed."""
+    source = _write_unresolved_construct_source(tmp_path / "source")
+    dest = tmp_path / "dest"
+    report_path = dest / "_normalize-report.json"
+
+    result = _run_cli(
+        [
+            "--source",
+            str(source),
+            "--dest",
+            str(dest),
+            "--execute",
+            "--report",
+            str(report_path),
+        ]
+    )
+    assert result.returncode != 0
+    assert "unresolved" in result.stderr.lower()
+    assert not dest.exists(), (
+        "--dest must never be created when the preflight finds unresolved constructs"
+    )
+    assert not report_path.exists(), "the report must never be written when execution never ran"
 
 
 def test_execute_succeeds_with_explicit_allow_unresolved_mdx_override(tmp_path: Path) -> None:
@@ -423,7 +605,12 @@ def test_real_corpus_dry_run_zero_writes_and_coverage_report(tmp_path: Path) -> 
     assert "global" in report["excluded_top_level_dirs"]
     assert isinstance(report["fallback_constructs"], dict)
     assert isinstance(report["ambiguous_tokens"], dict)
-    assert isinstance(report["unresolved_constructs"], dict)
+    # P3 regression (review-fix cycle 2, finding 5): the live corpus must
+    # have ZERO genuine unresolved MDX constructs, not merely "some dict" --
+    # this is the actual "aim for zero" bar the review-fix cycle 1 grounded
+    # registry expansion was meant to satisfy (requirements-evidence doc §9.5),
+    # and it must be asserted precisely, not just type-checked.
+    assert report["unresolved_constructs"] == {}
     assert report["containment_violations"] == []
 
     # Persist the real coverage report to a repo-local, git-ignored path so it

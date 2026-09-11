@@ -99,9 +99,39 @@ def split_frontmatter(text: str) -> tuple[str, str]:
 # Fenced-code protection
 # ---------------------------------------------------------------------------
 
-_FENCE_OPEN_RE = re.compile(r"^[ \t]*(?P<fencechar>`{3,}|~{3,})(?P<info>.*)$")
-_FENCE_CLOSE_RE = re.compile(r"^[ \t]*(?P<fencechar>`+|~+)[ \t]*$")
+_FENCE_OPEN_CORE_RE = re.compile(r"^(?P<fencechar>`{3,}|~{3,})(?P<info>.*)$")
+_FENCE_CLOSE_CORE_RE = re.compile(r"^(?P<fencechar>`+|~+)[ \t]*$")
 _FENCE_TOKEN_FMT = "\x00FENCE{index}\x00"
+
+#: CommonMark's own top-level threshold: a fence opener/closer indented 0-3
+#: visual columns from the left margin is "top-level" (unindented, or
+#: indented only enough to still count as flush-left prose); 4+ columns is
+#: an indented code block in CommonMark terms, never a plain top-level
+#: fence. Review-fix cycle 2, finding 4.
+_TOP_LEVEL_MAX_INDENT = 3
+
+
+def _leading_indent_columns(line: str) -> tuple[int, int]:
+    """Return ``(visual_column_width, char_length)`` of the run of leading
+    spaces/tabs at the start of ``line``.
+
+    Tabs expand to the next multiple-of-4 column stop (CommonMark's tab
+    -handling rule for block-structure purposes) rather than counting as a
+    single column, so a tab-indented fence is measured the same way a
+    real Markdown renderer would measure it.
+    """
+    col = 0
+    length = 0
+    for ch in line:
+        if ch == " ":
+            col += 1
+            length += 1
+        elif ch == "\t":
+            col += 4 - (col % 4)
+            length += 1
+        else:
+            break
+    return col, length
 
 
 def protect_fenced_code(body: str) -> tuple[str, dict[str, str]]:
@@ -124,14 +154,32 @@ def protect_fenced_code(body: str) -> tuple[str, dict[str, str]]:
     documented CommonMark feature used to let a *shorter* same-character
     run appear, unclosed, as literal content nested inside the block).
 
-    This implementation instead scans line-by-line (so it can compare
-    fence *lengths* rather than only literal string equality, which a
-    single regex backreference cannot express): an opening fence line is
-    any line matching ``^[ \\t]*(`{3,}|~{3,})`` (optionally followed by an
-    info string); the matching close is the FIRST SUBSEQUENT line whose
-    entire (whitespace-trimmed) content is one or more of the SAME fence
-    character, with length >= the opener's length, and nothing else. A
-    same-character run that is SHORTER than the opener never closes it
+    GROUNDING NOTE (review-fix cycle 2, P2 correctness finding): the
+    cycle-1 fix above removed indentation matching entirely, which
+    over-corrected -- it let a closing-fence-shaped line at ANY
+    indentation close ANY opener, including a top-level (unindented)
+    opener being "closed" by an unrelated four-space-indented backtick
+    line that CommonMark would treat as an indented code block, not a
+    fence boundary at all. This implementation now applies a bounded,
+    raw-line rule with two classes, both keyed off the OPENER's own
+    visual indentation (:func:`_leading_indent_columns`, tab-aware):
+
+    * **Top-level opener** (indented 0-3 columns): only a closing line
+      ALSO indented 0-3 columns can close it (same marker character,
+      length >= the opener's) -- a four-space-or-more-indented
+      backtick/tilde line can never close a top-level fence.
+    * **Container/list-indented opener** (indented 4+ columns -- the
+      shape routinely seen in this real corpus under numbered-list
+      continuations): a closing line is accepted when it is within
+      **three visual columns** of the OPENER's own indentation (not
+      necessarily equal), with the same marker character and length >=
+      the opener's. This preserves every previously-recognized
+      indented-list fence in the corpus (closing indentation was never
+      required to match the opener's exactly) while still bounding how
+      far the closer's indentation may drift from the opener before it
+      is no longer considered "the same list continuation."
+
+    A same-character run that is SHORTER than the opener never closes it
     (it is preserved as ordinary content inside the block, exactly as
     CommonMark requires) and a fence with no valid closing line at all
     runs through the end of the document. The entire matched span --
@@ -148,7 +196,9 @@ def protect_fenced_code(body: str) -> tuple[str, dict[str, str]]:
     i = 0
     while i < total:
         line = lines[i]
-        open_match = _FENCE_OPEN_RE.match(line.rstrip("\r\n"))
+        stripped_line = line.rstrip("\r\n")
+        indent_col, indent_len = _leading_indent_columns(stripped_line)
+        open_match = _FENCE_OPEN_CORE_RE.match(stripped_line[indent_len:])
         if open_match is None:
             output.append(line)
             i += 1
@@ -157,17 +207,26 @@ def protect_fenced_code(body: str) -> tuple[str, dict[str, str]]:
         fence_run = open_match.group("fencechar")
         fence_char = fence_run[0]
         fence_len = len(fence_run)
+        opener_is_top_level = indent_col <= _TOP_LEVEL_MAX_INDENT
 
         close_index: int | None = None
         for j in range(i + 1, total):
-            close_match = _FENCE_CLOSE_RE.match(lines[j].rstrip("\r\n"))
-            if (
-                close_match is not None
-                and close_match.group("fencechar")[0] == fence_char
-                and len(close_match.group("fencechar")) >= fence_len
-            ):
-                close_index = j
-                break
+            close_stripped = lines[j].rstrip("\r\n")
+            close_col, close_len = _leading_indent_columns(close_stripped)
+            close_match = _FENCE_CLOSE_CORE_RE.match(close_stripped[close_len:])
+            if close_match is None:
+                continue
+            if close_match.group("fencechar")[0] != fence_char:
+                continue
+            if len(close_match.group("fencechar")) < fence_len:
+                continue
+            if opener_is_top_level:
+                if close_col > _TOP_LEVEL_MAX_INDENT:
+                    continue
+            elif abs(close_col - indent_col) > _TOP_LEVEL_MAX_INDENT:
+                continue
+            close_index = j
+            break
 
         end_index = close_index if close_index is not None else total - 1
         block_text = "".join(lines[i : end_index + 1])

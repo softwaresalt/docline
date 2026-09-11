@@ -27,17 +27,36 @@ HARD CONTAINMENT CONTRACT
   :class:`ContainmentViolation`), including the ``--report`` file itself
   when one is supplied. A resolved write path outside ``--dest`` is
   refused and the process exits non-zero BEFORE any corpus write begins
-  (fail-fast).
-* ``--execute`` refuses to run against a ``--dest`` that already exists
-  and is non-empty (fail closed) -- it never deletes, replaces, or
-  overlays an existing destination. Point ``--execute`` at an absent or
-  empty directory. Dry-run is exempt from this check entirely: it may
-  point ``--dest`` anywhere, including a non-empty directory, without
-  ever creating or touching it.
-* ``--execute`` fails closed (non-zero exit) if genuine unresolved MDX/
-  JSX-shaped constructs remain anywhere in the normalized output, unless
-  the operator passes the explicit ``--allow-unresolved-mdx`` override
-  after reviewing the report's ``unresolved_constructs`` section.
+  (fail-fast). The guard is re-applied again immediately before the
+  report is actually written (review-fix cycle 2, finding 2) so the
+  write always targets the freshly re-resolved path, never a
+  possibly-stale resolution computed earlier in the run -- this is a
+  best-effort containment check, not a race-free guarantee: Python's
+  ``Path.resolve()`` cannot atomically bind a check to a subsequent
+  write any more than any other check-then-act filesystem sequence can.
+* ``--execute`` requires ``--dest`` to be ABSENT (not merely empty) and
+  claims it atomically with a single ``mkdir(..., exist_ok=False)`` call
+  immediately before any corpus write begins (review-fix cycle 2,
+  finding 3) -- it never deletes, replaces, or overlays a pre-existing
+  destination, empty or not. If two invocations race for the same
+  ``--dest``, the OS-level atomicity of ``mkdir(exist_ok=False)``
+  guarantees exactly one of them wins; the other fails closed instead of
+  silently interleaving output with the winner. If a later step in the
+  same run fails after ``--dest`` was successfully claimed, the partial
+  output is left in place (never auto-deleted) and reported clearly as a
+  failed, partial run. Dry-run is exempt from this check entirely: it
+  may point ``--dest`` anywhere, including a non-empty directory,
+  without ever creating or touching it.
+* ``--execute`` performs a complete READ-ONLY normalization preflight
+  pass (identical selection/normalization logic, zero writes) BEFORE
+  ``--dest`` is created or anything is written (review-fix cycle 2,
+  finding 1): if genuine unresolved MDX/JSX-shaped constructs remain
+  anywhere in the preflight's output, the run aborts with a non-zero
+  exit and ``--dest`` is never created, unless the operator passes the
+  explicit ``--allow-unresolved-mdx`` override after reviewing the
+  report's ``unresolved_constructs`` section. Only after this gate
+  passes does the real write pass run, and the JSON report is written to
+  ``--report`` only AFTER that write pass completes successfully.
   Dry-run is never gated by this check -- it only reports, so the
   operator can decide whether to override.
 * This script never hardcodes or defaults to the operator's real external
@@ -81,8 +100,9 @@ SCHEMA_VERSION = 1
 EXIT_OK = 0
 EXIT_CONTAINMENT_VIOLATION = 3
 EXIT_SOURCE_NOT_FOUND = 4
-EXIT_DEST_NOT_EMPTY = 5
+EXIT_DEST_ALREADY_EXISTS = 5
 EXIT_UNRESOLVED_MDX_CONSTRUCTS = 6
+EXIT_EXECUTION_FAILED = 7
 
 #: Image-like binary assets copied byte-for-byte, unchanged.
 IMAGE_EXTENSIONS = frozenset({".png", ".jpg", ".jpeg", ".gif", ".svg", ".webp"})
@@ -108,6 +128,28 @@ def guard_write_path(dest_root: Path, candidate: Path) -> Path:
     Returns the resolved candidate path on success. Raises
     :class:`ContainmentViolation` -- WITHOUT touching the filesystem --
     when the resolved candidate is not contained by ``dest_root``.
+
+    CALLERS MUST WRITE USING THE RETURNED RESOLVED PATH, never the
+    original ``candidate`` argument (review-fix cycle 2, finding 2): a
+    caller that checks the resolved path here but later performs the
+    actual write against the original, unresolved argument re-opens
+    exactly the gap this guard exists to close. Callers that write at a
+    meaningfully later point in the control flow should also call this
+    function again immediately before that write, to narrow (not
+    eliminate -- see below) the window between the check and the write.
+
+    BEST-EFFORT CONTAINMENT, NOT A RACE-FREE GUARANTEE: ``Path.resolve()``
+    is a plain filesystem read; nothing prevents a component of
+    ``candidate`` from being replaced (e.g. a symlink retargeted, a
+    directory swapped for a symlink) between the moment this function
+    resolves and validates the path and the moment the caller actually
+    opens the file for writing. Calling this function again right before
+    the write narrows that TOCTOU window but cannot close it -- Python's
+    standard library offers no atomic "open only if the fully-resolved
+    path stays under this root" primitive. This guard is a fail-fast
+    sanity check against operator/configuration error and ordinary
+    non-adversarial races, not a hardened defense against a
+    concurrently-adversarial filesystem.
     """
     dest_resolved = dest_root.resolve()
     candidate_resolved = candidate.resolve()
@@ -366,8 +408,9 @@ def _build_arg_parser() -> argparse.ArgumentParser:
         default=False,
         help=(
             "Actually write output (default: dry-run, zero writes). Requires "
-            "--dest to be absent or an empty directory -- execute mode never "
-            "deletes, replaces, or overlays an existing destination."
+            "--dest to be ABSENT (not merely empty) -- --dest is claimed "
+            "atomically immediately before writes begin; execute mode never "
+            "deletes, replaces, or overlays a pre-existing destination."
         ),
     )
     parser.add_argument(
@@ -399,27 +442,25 @@ def _build_arg_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def _dest_is_execute_ready(dest: Path) -> str | None:
-    """Return an error message if ``dest`` is not execute-ready, else ``None``.
+def _dest_must_be_absent(dest: Path) -> str | None:
+    """Return an error message if ``dest`` already exists, else ``None``.
 
-    Execute mode requires ``dest`` to be either absent or an existing,
-    empty directory (review-fix cycle 1, P1 finding): execute mode never
-    deletes or replaces files, so overlaying an existing non-empty
-    destination would silently leave stale versions/files behind. This
-    check runs before any corpus write begins (fail-fast).
+    Execute mode requires ``dest`` to be ABSENT -- not merely empty
+    (review-fix cycle 2, P2 finding 3): an existence-then-emptiness check
+    like the previous ``_dest_is_execute_ready()`` is inherently
+    non-atomic (two concurrent invocations can both observe an empty
+    directory and both proceed to write). This cheap, early check exists
+    only to fail fast with a clear message in the common (non-racing)
+    case; the actual concurrency-safe claim is the single
+    ``mkdir(..., exist_ok=False)`` call in :func:`main`, performed
+    immediately before any corpus write begins.
     """
-    if not dest.exists():
-        return None
-    if not dest.is_dir():
+    if dest.exists():
         return (
-            f"--dest exists and is not a directory: {dest} -- execute mode requires --dest "
-            "to be either absent or an empty directory."
-        )
-    if any(dest.iterdir()):
-        return (
-            f"--dest already exists and is not empty: {dest} -- refusing to overlay an "
-            "existing destination. Execute mode never deletes or replaces files; point "
-            "--dest at an absent or empty directory instead."
+            f"--dest already exists: {dest} -- execute mode requires --dest to be ABSENT "
+            "(not merely empty); it is created atomically immediately before writes begin. "
+            "Execute mode never deletes, replaces, or overlays a pre-existing destination -- "
+            "point --execute at a path that does not exist yet."
         )
     return None
 
@@ -435,44 +476,139 @@ def main(argv: list[str] | None = None) -> int:
         print(f"error: --source is not a directory: {source}", file=sys.stderr)
         return EXIT_SOURCE_NOT_FOUND
 
-    if args.execute:
-        # Fail-fast checks: run BEFORE any corpus write begins, so a
-        # rejected run never leaves partial output on disk.
-        dest_error = _dest_is_execute_ready(dest)
-        if dest_error is not None:
-            print(f"error: {dest_error}", file=sys.stderr)
-            return EXIT_DEST_NOT_EMPTY
+    if not args.execute:
+        # Dry run: a single read-only pass, zero writes, ever -- process_corpus
+        # never touches the filesystem for writes when execute is False.
+        try:
+            report = process_corpus(source=source, dest=dest, execute=False)
+        except ContainmentViolation as exc:
+            print(f"error: containment violation: {exc}", file=sys.stderr)
+            return EXIT_CONTAINMENT_VIOLATION
 
+        print(json.dumps(report, indent=2, sort_keys=True))
         if args.report is not None:
-            try:
-                guard_write_path(dest, args.report)
-            except ContainmentViolation as exc:
-                print(f"error: containment violation: {exc}", file=sys.stderr)
-                return EXIT_CONTAINMENT_VIOLATION
-
-    try:
-        report = process_corpus(source=source, dest=dest, execute=args.execute)
-    except ContainmentViolation as exc:
-        print(f"error: containment violation: {exc}", file=sys.stderr)
-        return EXIT_CONTAINMENT_VIOLATION
-
-    payload = json.dumps(report, indent=2, sort_keys=True)
-    print(payload)
-
-    if args.report is not None:
-        if args.execute:
-            # Already guarded above; safe to write under --dest.
-            args.report.parent.mkdir(parents=True, exist_ok=True)
-            args.report.write_text(payload, encoding="utf-8")
-        else:
             print(
                 "note: --report is ignored in dry-run mode (zero-write contract) -- "
                 "the plan is only printed to stdout. Pass --execute to also persist "
                 "the report file (guarded under --dest).",
                 file=sys.stderr,
             )
+        return EXIT_OK
 
-    if args.execute and report["unresolved_constructs"] and not args.allow_unresolved_mdx:
+    # ---------------------------------------------------------------
+    # --execute mode: every gate below MUST run, in this order, BEFORE
+    # --dest is created or a single byte is written anywhere (review-fix
+    # cycle 2, finding 1). A rejected run at any of these gates leaves
+    # --dest absent and never touches --report.
+    # ---------------------------------------------------------------
+
+    dest_error = _dest_must_be_absent(dest)
+    if dest_error is not None:
+        print(f"error: {dest_error}", file=sys.stderr)
+        return EXIT_DEST_ALREADY_EXISTS
+
+    if args.report is not None:
+        try:
+            guard_write_path(dest, args.report)
+        except ContainmentViolation as exc:
+            print(f"error: containment violation: {exc}", file=sys.stderr)
+            return EXIT_CONTAINMENT_VIOLATION
+
+    # Complete READ-ONLY normalization preflight: the SAME selection and
+    # per-file normalization logic as the real write pass below, but
+    # with execute=False so process_corpus is guaranteed to perform zero
+    # writes. This is the only way to inspect unresolved_constructs
+    # before anything is written -- the alternative (checking the report
+    # only after execute writes have already happened) is exactly the
+    # cycle-2 finding-1 bug this preflight fixes.
+    try:
+        preflight_report = process_corpus(source=source, dest=dest, execute=False)
+    except ContainmentViolation as exc:
+        print(f"error: containment violation: {exc}", file=sys.stderr)
+        return EXIT_CONTAINMENT_VIOLATION
+
+    if preflight_report["unresolved_constructs"] and not args.allow_unresolved_mdx:
+        unresolved_summary = ", ".join(
+            f"{name}={count}"
+            for name, count in sorted(preflight_report["unresolved_constructs"].items())
+        )
+        print(
+            "error: genuine unresolved MDX/JSX components remain after normalization: "
+            f"{unresolved_summary}. Review the report's 'unresolved_constructs' section; "
+            "pass --allow-unresolved-mdx to proceed anyway once reviewed. This is a "
+            "read-only preflight check -- --dest was never created and nothing was "
+            "written.",
+            file=sys.stderr,
+        )
+        return EXIT_UNRESOLVED_MDX_CONSTRUCTS
+
+    # Atomic claim of --dest -- the FIRST filesystem mutation in this
+    # entire invocation. mkdir(..., exist_ok=False) is a single OS-level
+    # syscall: of two concurrent processes racing on the same --dest,
+    # exactly one succeeds and the other raises FileExistsError here,
+    # instead of both silently interleaving output.
+    try:
+        dest.mkdir(parents=True, exist_ok=False)
+    except FileExistsError:
+        print(
+            f"error: --dest already exists: {dest} -- it was created after the earlier "
+            "absence check (a concurrent run may have just claimed it). Refusing to "
+            "overlay; point --execute at a path that does not exist.",
+            file=sys.stderr,
+        )
+        return EXIT_DEST_ALREADY_EXISTS
+
+    # The real write pass: identical selection/normalization logic as the
+    # preflight above, this time actually writing to disk.
+    try:
+        report = process_corpus(source=source, dest=dest, execute=True)
+    except ContainmentViolation as exc:
+        print(
+            f"error: containment violation: {exc} -- PARTIAL OUTPUT MAY ALREADY HAVE BEEN "
+            f"WRITTEN under {dest} before this failure. It is left in place (never "
+            "auto-deleted); inspect and remove it manually before retrying.",
+            file=sys.stderr,
+        )
+        return EXIT_CONTAINMENT_VIOLATION
+    except OSError as exc:
+        print(
+            f"error: execution failed partway through writing output: {exc}. PARTIAL "
+            f"OUTPUT HAS BEEN LEFT IN PLACE under {dest} (never auto-deleted) -- inspect "
+            "and remove it manually before retrying.",
+            file=sys.stderr,
+        )
+        return EXIT_EXECUTION_FAILED
+
+    payload = json.dumps(report, indent=2, sort_keys=True)
+    print(payload)
+
+    # The report is written ONLY after the write pass above completed
+    # successfully (review-fix cycle 2, finding 1). Re-guard immediately
+    # before writing (finding 2) and write through the RESOLVED path
+    # this call returns -- never the original, possibly-unresolved
+    # args.report -- so the write always targets what was just verified,
+    # not a stale resolution computed earlier in the run.
+    if args.report is not None:
+        try:
+            resolved_report = guard_write_path(dest, args.report)
+        except ContainmentViolation as exc:
+            print(
+                f"error: containment violation writing report: {exc}. Corpus output "
+                f"under {dest} was already written successfully and is left in place; "
+                "only the report file was rejected.",
+                file=sys.stderr,
+            )
+            return EXIT_CONTAINMENT_VIOLATION
+        resolved_report.parent.mkdir(parents=True, exist_ok=True)
+        resolved_report.write_text(payload, encoding="utf-8")
+
+    if report["unresolved_constructs"] and not args.allow_unresolved_mdx:
+        # Defense-in-depth only: the preflight gate above already aborted
+        # before any write if unresolved constructs were present. This
+        # remains reachable only if --source mutates between the
+        # preflight and write passes (a scenario this tool does not
+        # otherwise guard against), so it is intentionally kept as a
+        # belt-and-suspenders check rather than assumed unreachable.
         unresolved_summary = ", ".join(
             f"{name}={count}" for name, count in sorted(report["unresolved_constructs"].items())
         )
