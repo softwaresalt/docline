@@ -107,6 +107,85 @@ def test_protect_and_restore_indented_fenced_code_round_trips_exactly() -> None:
     assert restored == body
 
 
+# ---------------------------------------------------------------------------
+# Regression (review-fix cycle 1, P2): Markdown-correct fence-closing rules
+# ---------------------------------------------------------------------------
+
+
+def test_protect_fenced_code_closing_fence_may_be_longer_than_opening() -> None:
+    """CommonMark: a closing fence needs the SAME character with length >=
+    the opener's -- a longer closing run (4 backticks closing a 3-backtick
+    opener) is a valid, correct close, not a mismatch."""
+    body = "Intro.\n\n```text\ncontent line with <MysteryWidget /> inside\n````\n\nAfter.\n"
+    protected, store = normalize.protect_fenced_code(body)
+    assert "````" not in protected
+    assert "<MysteryWidget" not in protected
+    assert len(store) == 1
+    restored = normalize.restore_fenced_code(protected, store)
+    assert restored == body
+
+
+def test_protect_fenced_code_shorter_run_inside_does_not_terminate_block() -> None:
+    """A same-character run SHORTER than the opener's length must never
+    terminate the fence -- it is literal content nested inside the block
+    (e.g. real corpus docs illustrating nested fenced examples)."""
+    body = (
+        "Intro.\n\n````text\nNested example:\n```\ninner <AlsoMysterious />\n```\n````\n\nAfter.\n"
+    )
+    protected, store = normalize.protect_fenced_code(body)
+    assert "````" not in protected
+    assert "<AlsoMysterious" not in protected
+    assert len(store) == 1  # the whole span is ONE block, not split at the inner ``` lines
+    restored = normalize.restore_fenced_code(protected, store)
+    assert restored == body
+
+
+def test_protect_fenced_code_closing_indentation_independent_of_opener() -> None:
+    """The closing fence's own indentation is never required to match the
+    opener's indentation."""
+    body = "1. Step one:\n\n  ```shell-session\n  $ command <TYPE>\n```\n\nMore text.\n"
+    protected, store = normalize.protect_fenced_code(body)
+    assert "```" not in protected
+    assert "<TYPE>" not in protected
+    assert len(store) == 1
+    restored = normalize.restore_fenced_code(protected, store)
+    assert restored == body
+
+
+def test_protect_fenced_code_unclosed_fence_runs_to_end_of_document() -> None:
+    """An opener with no valid closing line anywhere preserves everything
+    through end-of-document as one opaque block (CommonMark's own rule for
+    an unterminated fence), rather than leaking un-masked content."""
+    body = "Intro.\n\n```text\nunterminated <Mystery /> content\nmore lines\n"
+    protected, store = normalize.protect_fenced_code(body)
+    assert "<Mystery" not in protected
+    assert len(store) == 1
+    restored = normalize.restore_fenced_code(protected, store)
+    assert restored == body
+
+
+def test_normalize_mdx_to_md_fence_variants_never_leak_mdx_looking_text() -> None:
+    """End-to-end: construct-like text inside any of the above fence
+    variants must never be tallied as unhandled nor transformed, and the
+    fenced block must survive byte-for-byte."""
+    text = (
+        "---\n"
+        "page_title: Example\n"
+        "---\n"
+        "Real unknown construct: <MysteryWidget>\n\n"
+        "````text\n"
+        "```\n"
+        "<AlsoUnknown> nested example </AlsoUnknown>\n"
+        "```\n"
+        "````\n"
+    )
+    result = normalize.normalize_mdx_to_md(text)
+    assert result.unresolved["MysteryWidget"] == 1
+    assert "AlsoUnknown" not in result.unresolved
+    assert "AlsoUnknown" not in result.fallback
+    assert "```\n<AlsoUnknown> nested example </AlsoUnknown>\n```" in result.text
+
+
 def test_protect_and_restore_placeholders_round_trips_exactly() -> None:
     body = "Set the mount to <PATH> and the type to <TYPE> with value <VALUE>."
     protected, store = normalize.protect_placeholders(body)
@@ -134,6 +213,38 @@ def test_known_construct_tag_not_mistaken_for_placeholder() -> None:
     protected, store = normalize.protect_placeholders(body)
     assert protected == body
     assert store == {}
+
+
+def test_protect_placeholders_skips_masking_when_a_matching_close_tag_exists_later() -> None:
+    """Regression (review-fix cycle 1, P2 finding 5): a single ALL-CAPS
+    bracket token that has a genuine matching closing tag elsewhere in the
+    document (grounded in the real corpus's all-caps
+    ``<TIP>...</TIP>`` callout) is a real paired MDX component, not a
+    literal placeholder -- it must not be masked away before the generic
+    fallback pass gets a chance to structurally resolve it. An ordinary
+    placeholder with no matching close (e.g. ``<PATH>``) is unaffected."""
+    body = "Before.\n\n<TIP>\n\nDo not do the thing.\n\n</TIP>\n\nAfter <PATH> unaffected."
+    protected, store = normalize.protect_placeholders(body)
+    assert "<TIP>" in protected  # left unmasked -- a real paired component
+    assert "</TIP>" in protected
+    assert "<PATH>" not in protected  # ordinary placeholder still masked
+    assert len(store) == 1
+    restored = normalize.restore_placeholders(protected, store)
+    assert restored == body
+
+
+def test_normalize_mdx_to_md_all_caps_paired_callout_resolved_not_orphaned() -> None:
+    """End-to-end: the all-caps <TIP>...</TIP> callout must be resolved by
+    the generic fallback pass (unwrapped, body preserved) rather than
+    leaving an orphaned, genuinely-unresolved </TIP> closing tag."""
+    text = "---\npage_title: Example\n---\n<TIP>\n\nDo not remove providers.\n\n</TIP>\n"
+    result = normalize.normalize_mdx_to_md(text)
+    assert result.fallback["TIP"] == 1
+    assert result.unresolved == {}
+    assert result.ambiguous == {}
+    assert "Do not remove providers." in result.text
+    assert "<TIP>" not in result.text
+    assert "</TIP>" not in result.text
 
 
 def test_normalize_preserves_placeholders_end_to_end() -> None:
@@ -278,25 +389,108 @@ def test_transform_video_embed_renders_markdown_link() -> None:
 
 
 # ---------------------------------------------------------------------------
-# Unhandled-construct tally
+# Generic fallback pass (review-fix cycle 1, P2 finding): paired unwrap,
+# self-closing annotation, and ambiguous/unresolved classification
 # ---------------------------------------------------------------------------
 
 
-def test_scan_unhandled_constructs_flags_unknown_capitalized_tags() -> None:
-    body = 'Some text <MysteryWidget foo="bar" /> and more <Note>known</Note>.'
+def test_apply_fallback_pass_unwraps_generic_paired_tag_preserving_body() -> None:
+    """Real corpus shape: <ImageConfig width={624}>...markdown image...</ImageConfig>."""
+    body = (
+        "Before.\n\n<ImageConfig width={624}>\n\n![Diagram](/img/diagram.png)"
+        "\n\n</ImageConfig>\n\nAfter.\n"
+    )
+    transformed, fallback = normalize.apply_fallback_pass(body)
+    assert fallback["ImageConfig"] == 1
+    assert "<ImageConfig" not in transformed
+    assert "</ImageConfig>" not in transformed
+    assert "![Diagram](/img/diagram.png)" in transformed
+
+
+def test_apply_fallback_pass_self_closing_with_only_expr_attr_renders_bare_annotation() -> None:
+    """Real corpus shape: <Placement global={true} /> -- its only attribute is
+    a JSX expression, which must never be evaluated or rendered."""
+    body = "Some text <Placement global={true} /> more text."
+    transformed, fallback = normalize.apply_fallback_pass(body)
+    assert fallback["Placement"] == 1
+    assert "*(Placement)*" in transformed
+    assert "global" not in transformed
+    assert "{true}" not in transformed
+
+
+def test_apply_fallback_pass_self_closing_with_quoted_attr_renders_scalar_annotation() -> None:
+    """Real corpus shape: <PluginBadge type="official" />."""
+    body = 'Badges: <PluginBadge type="official" />'
+    transformed, fallback = normalize.apply_fallback_pass(body)
+    assert fallback["PluginBadge"] == 1
+    assert '*(PluginBadge: type="official")*' in transformed
+
+
+def test_apply_fallback_pass_nested_paired_and_self_closing_resolves_both() -> None:
+    """Real corpus shape: <BadgesHeader><PluginBadge type="official" /></BadgesHeader>."""
+    body = '<BadgesHeader>\n<PluginBadge type="official" />\n</BadgesHeader>\n'
+    transformed, fallback = normalize.apply_fallback_pass(body)
+    assert fallback["BadgesHeader"] == 1
+    assert fallback["PluginBadge"] == 1
+    assert "<BadgesHeader>" not in transformed
+    assert '*(PluginBadge: type="official")*' in transformed
+
+
+def test_apply_fallback_pass_leaves_known_handled_tags_untouched() -> None:
+    body = '<Note title="Heads up">Still here.</Note>'
+    transformed, fallback = normalize.apply_fallback_pass(body)
+    assert fallback == {}
+    assert transformed == body
+
+
+def test_classify_remaining_constructs_flags_unknown_capitalized_tags_as_unresolved() -> None:
+    body = "Some text <MysteryWidget> and more <Note>known</Note>."
     body = normalize.transform_callouts(body)
-    tally = normalize.scan_unhandled_constructs(body)
-    assert tally["MysteryWidget"] == 1
-    assert "Note" not in tally
+    ambiguous, unresolved = normalize.classify_remaining_constructs(body)
+    assert unresolved["MysteryWidget"] == 1
+    assert "Note" not in unresolved
+    assert ambiguous == {}
 
 
-def test_scan_unhandled_constructs_ignores_lowercase_html_passthrough() -> None:
+def test_classify_remaining_constructs_treats_known_ambiguous_tags_as_non_blocking() -> None:
+    """Real corpus shape: <TFE HOSTNAME> / <TFE hostname (DNS) e.g. ...> --
+    grounded, documented prose notation, never a real component."""
+    body = "Set the URL to <TFE HOSTNAME> in your configuration."
+    ambiguous, unresolved = normalize.classify_remaining_constructs(body)
+    assert ambiguous["TFE"] == 1
+    assert "TFE" not in unresolved
+
+
+def test_classify_remaining_constructs_treats_review_fix_cycle1_grounded_tags() -> None:
+    """Review-fix cycle 1, finding 5 "aim for zero" bar: every name in the
+    full live-corpus `unresolved_constructs` pass (Consul/Nomad API-doc
+    backtick generic-type notation, plus additional prose placeholders)
+    was individually grounded as never a real component and added to the
+    registry so it is reported as non-blocking `ambiguous`, never
+    `unresolved`."""
+    body = (
+        "Policies `(array<PolicyLink>)` and node identity "
+        "`(array<NodeIdentity>)` are optional. Set the URL to "
+        "`https://<ADFS hostname>/<HOSTNAME>` accordingly. "
+        "Generic notation: Map<String, String>."
+    )
+    ambiguous, unresolved = normalize.classify_remaining_constructs(body)
+    assert ambiguous["PolicyLink"] == 1
+    assert ambiguous["NodeIdentity"] == 1
+    assert ambiguous["ADFS"] == 1
+    assert ambiguous["HOSTNAME"] == 1
+    assert ambiguous["String"] == 1
+    assert unresolved == {}
+
+
+def test_classify_remaining_constructs_ignores_lowercase_html_passthrough() -> None:
     body = 'Click <a href="https://example.com">here</a> or press <b>enter</b>.'
-    tally = normalize.scan_unhandled_constructs(body)
-    assert tally == {}
+    ambiguous, unresolved = normalize.classify_remaining_constructs(body)
+    assert ambiguous == {}
+    assert unresolved == {}
 
 
-def test_scan_unhandled_constructs_does_not_span_lines_to_a_distant_unrelated_bracket() -> None:
+def test_classify_remaining_constructs_does_not_span_lines_to_a_distant_unrelated_bracket() -> None:
     """Regression: a heredoc-like '<<EOF' on one line must not spuriously match
     an unrelated '>' character many lines later (e.g. a blockquote marker),
     which would otherwise mis-tally a large intervening span as attributes of
@@ -308,24 +502,27 @@ def test_scan_unhandled_constructs_does_not_span_lines_to_a_distant_unrelated_br
         "more unrelated prose on its own line\n"
         "> this is an unrelated blockquote far below\n"
     )
-    tally = normalize.scan_unhandled_constructs(body)
-    assert "EOF" not in tally
+    ambiguous, unresolved = normalize.classify_remaining_constructs(body)
+    assert "EOF" not in unresolved
+    assert "EOF" not in ambiguous
 
 
-def test_normalize_mdx_to_md_excludes_fenced_example_code_from_unhandled_tally() -> None:
-    """A construct-like tag INSIDE a fenced code sample must not be tallied as unhandled."""
+def test_normalize_mdx_to_md_excludes_fenced_example_code_from_construct_tallies() -> None:
+    """A construct-like tag INSIDE a fenced code sample must not be tallied at all."""
     text = (
         "---\n"
         "page_title: Example\n"
         "---\n"
-        "Real unknown construct: <MysteryWidget />\n\n"
+        "Real unknown construct: <MysteryWidget>\n\n"
         "```mdx\n"
         "<AlsoUnknown />\n"
         "```\n"
     )
     result = normalize.normalize_mdx_to_md(text)
-    assert result.unhandled["MysteryWidget"] == 1
-    assert "AlsoUnknown" not in result.unhandled
+    assert result.unresolved["MysteryWidget"] == 1
+    assert "AlsoUnknown" not in result.unresolved
+    assert "AlsoUnknown" not in result.fallback
+    assert "AlsoUnknown" not in result.ambiguous
     assert "<AlsoUnknown />" in result.text  # fenced example preserved verbatim
 
 
@@ -353,4 +550,30 @@ def test_normalize_mdx_to_md_full_pipeline_end_to_end() -> None:
     assert "#### CLI" in result.text
     assert "[Video](https://example.com/demo.mp4)" in result.text
     assert "<NAMESPACE>" in result.text
-    assert result.unhandled == {}
+    assert result.fallback == {}
+    assert result.ambiguous == {}
+    assert result.unresolved == {}
+
+
+def test_normalize_mdx_to_md_golden_fallback_and_ambiguous_end_to_end() -> None:
+    """Golden end-to-end case combining a real paired component
+    (ImageConfig), a real self-closing component (PluginBadge), a known
+    ambiguous prose token (TFE), and a genuinely unresolved bare tag."""
+    text = (
+        "---\n"
+        "page_title: Golden Example\n"
+        "---\n"
+        "<ImageConfig width={624}>\n\n![Diagram](/img/diagram.png)\n\n</ImageConfig>\n\n"
+        'Badge: <PluginBadge type="official" />\n\n'
+        "Point the agent at <TFE HOSTNAME> to continue.\n\n"
+        "This is <BrandNewWidget> still unresolved.\n"
+    )
+    result = normalize.normalize_mdx_to_md(text)
+    assert "![Diagram](/img/diagram.png)" in result.text
+    assert '*(PluginBadge: type="official")*' in result.text
+    assert "<TFE HOSTNAME>" in result.text
+    assert "<BrandNewWidget>" in result.text
+    assert result.fallback["ImageConfig"] == 1
+    assert result.fallback["PluginBadge"] == 1
+    assert result.ambiguous["TFE"] == 1
+    assert result.unresolved["BrandNewWidget"] == 1

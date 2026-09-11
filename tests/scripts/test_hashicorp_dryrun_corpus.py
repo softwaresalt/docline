@@ -83,8 +83,12 @@ def test_dry_run_emits_json_plan_with_expected_shape(tmp_path: Path) -> None:
     )
     assert result.returncode == 0, result.stderr
     assert not dest.exists()
-    assert report_path.exists()
-    report = json.loads(report_path.read_text(encoding="utf-8"))
+    # P1 regression (review-fix cycle 1): dry-run must NEVER write the
+    # report file, even when --report is supplied. The plan is only ever
+    # available on stdout in dry-run mode.
+    assert not report_path.exists()
+    assert "ignored in dry-run mode" in result.stderr
+    report = json.loads(result.stdout)
 
     assert report["execute"] is False
     assert report["schema_version"] == 1
@@ -104,7 +108,9 @@ def test_dry_run_emits_json_plan_with_expected_shape(tmp_path: Path) -> None:
     assert terraform_counts["mdx_normalized"] == 1
     assert terraform_counts["assets_copied"] == 1
     assert terraform_counts["md_copied"] == 1
-    assert terraform_counts["skipped_other"] == 1  # config.json
+    # P2 regression (review-fix cycle 1): config.json is no longer silently
+    # dropped -- it is copied byte-for-byte and reported as such.
+    assert terraform_counts["generic_copied"] == 1
 
     assert "mystery-product" in report["excluded_top_level_dirs"]
     assert "global" in report["excluded_top_level_dirs"]
@@ -168,7 +174,12 @@ def test_execute_writes_expected_tree_and_never_materializes_mdx(tmp_path: Path)
         .read_text(encoding="utf-8")
         .startswith("# Ordinary Markdown Notes")
     )
-    assert not (dest / "terraform" / "v1.16.x" / "config.json").exists()
+    # P2 regression (review-fix cycle 1): generic non-md/image files (JSON
+    # data, PDFs, videos, etc.) are copied byte-for-byte, not dropped.
+    dest_config = dest / "terraform" / "v1.16.x" / "config.json"
+    assert dest_config.exists()
+    source_config = _SYNTHETIC_CORPUS / "terraform" / "v1.16.x" / "config.json"
+    assert dest_config.read_bytes() == source_config.read_bytes()
 
     # Unversioned product: whole tree copied, not just a "latest" subdirectory.
     assert (dest / "hcp-docs" / "index.md").exists()
@@ -186,6 +197,158 @@ def test_execute_required_flag_is_not_default() -> None:
     # checked-in fixture. A zero-write dry-run leaves it untouched.
     assert result.returncode == 0, result.stderr
     assert not (_SYNTHETIC_CORPUS / "vault" / "v2.x" / "index.md").exists()
+
+
+# ---------------------------------------------------------------------------
+# P1/P2 regressions (review-fix cycle 1): report containment + non-empty
+# --dest rejection under --execute
+# ---------------------------------------------------------------------------
+
+
+def test_execute_rejects_non_empty_existing_dest(tmp_path: Path) -> None:
+    """P1 regression: execute must fail closed against a pre-existing,
+    non-empty --dest rather than overlaying it (which would leave stale
+    versions/files behind). No deletion/replacement logic is implemented --
+    the run simply refuses to proceed."""
+    dest = tmp_path / "dest"
+    dest.mkdir()
+    (dest / "stale-leftover.txt").write_text("stale", encoding="utf-8")
+
+    result = _run_cli(["--source", str(_SYNTHETIC_CORPUS), "--dest", str(dest), "--execute"])
+    assert result.returncode != 0
+    assert "not empty" in result.stderr
+    # Nothing new was written; the stale file is untouched and no product
+    # trees were created.
+    assert list(dest.iterdir()) == [dest / "stale-leftover.txt"]
+    assert not (dest / "vault").exists()
+
+
+def test_execute_succeeds_against_existing_empty_dest(tmp_path: Path) -> None:
+    """An existing but EMPTY --dest is a valid execute target (not just an
+    absent one)."""
+    dest = tmp_path / "dest"
+    dest.mkdir()
+
+    result = _run_cli(["--source", str(_SYNTHETIC_CORPUS), "--dest", str(dest), "--execute"])
+    assert result.returncode == 0, result.stderr
+    assert (dest / "vault" / "v2.x" / "index.md").exists()
+
+
+def test_dry_run_may_point_dest_at_a_non_empty_directory_without_creating_it(
+    tmp_path: Path,
+) -> None:
+    """Dry-run is exempt from the non-empty --dest check entirely: it may
+    point anywhere, including a pre-existing non-empty directory, without
+    ever creating or touching it."""
+    dest = tmp_path / "dest"
+    dest.mkdir()
+    (dest / "pre-existing.txt").write_text("pre-existing", encoding="utf-8")
+
+    result = _run_cli(["--source", str(_SYNTHETIC_CORPUS), "--dest", str(dest)])
+    assert result.returncode == 0, result.stderr
+    assert list(dest.iterdir()) == [dest / "pre-existing.txt"]
+
+
+def test_execute_report_guarded_under_dest_succeeds(tmp_path: Path) -> None:
+    """P1: in --execute mode, a --report path resolving INSIDE --dest is
+    written normally, guarded by the same containment check as every other
+    write."""
+    dest = tmp_path / "dest"
+    report_path = dest / "_normalize-report.json"
+
+    result = _run_cli(
+        [
+            "--source",
+            str(_SYNTHETIC_CORPUS),
+            "--dest",
+            str(dest),
+            "--execute",
+            "--report",
+            str(report_path),
+        ]
+    )
+    assert result.returncode == 0, result.stderr
+    assert report_path.exists()
+    report = json.loads(report_path.read_text(encoding="utf-8"))
+    assert report["execute"] is True
+
+
+def test_execute_report_outside_dest_fails_closed_before_any_corpus_write(
+    tmp_path: Path,
+) -> None:
+    """P1 regression: a --report path resolving OUTSIDE --dest in --execute
+    mode must fail closed with a containment violation BEFORE any corpus
+    write begins -- --dest must never even be created."""
+    dest = tmp_path / "dest"
+    outside_report = tmp_path / "sibling" / "report.json"
+
+    result = _run_cli(
+        [
+            "--source",
+            str(_SYNTHETIC_CORPUS),
+            "--dest",
+            str(dest),
+            "--execute",
+            "--report",
+            str(outside_report),
+        ]
+    )
+    assert result.returncode != 0
+    assert "containment violation" in result.stderr
+    assert not outside_report.exists()
+    assert not dest.exists(), "no corpus write may occur when the report path is rejected"
+
+
+# ---------------------------------------------------------------------------
+# P2 regression (review-fix cycle 1, finding 5): execute fails closed on
+# genuine unresolved MDX components unless explicitly overridden
+# ---------------------------------------------------------------------------
+
+
+def _write_unresolved_construct_source(root: Path) -> Path:
+    """Build a tiny unversioned-product source tree with one genuinely
+    unresolved (bare, non-self-closing, non-paired, non-registry) MDX-shaped
+    tag, using a recognized unversioned product name (``hcp-docs``)."""
+    product_dir = root / "hcp-docs"
+    product_dir.mkdir(parents=True)
+    (product_dir / "index.mdx").write_text(
+        "---\npage_title: Unresolved Example\n---\n"
+        "This mentions <BrandNewWidget> which nothing understands.\n",
+        encoding="utf-8",
+    )
+    return root
+
+
+def test_execute_fails_closed_when_unresolved_mdx_constructs_remain(tmp_path: Path) -> None:
+    source = _write_unresolved_construct_source(tmp_path / "source")
+    dest = tmp_path / "dest"
+
+    result = _run_cli(["--source", str(source), "--dest", str(dest), "--execute"])
+    assert result.returncode != 0
+    assert "unresolved" in result.stderr.lower()
+    assert "BrandNewWidget" in result.stderr
+
+
+def test_execute_succeeds_with_explicit_allow_unresolved_mdx_override(tmp_path: Path) -> None:
+    source = _write_unresolved_construct_source(tmp_path / "source")
+    dest = tmp_path / "dest"
+
+    result = _run_cli(
+        ["--source", str(source), "--dest", str(dest), "--execute", "--allow-unresolved-mdx"]
+    )
+    assert result.returncode == 0, result.stderr
+    assert (dest / "hcp-docs" / "index.md").exists()
+    assert "<BrandNewWidget>" in (dest / "hcp-docs" / "index.md").read_text(encoding="utf-8")
+
+
+def test_dry_run_never_fails_on_unresolved_mdx_constructs(tmp_path: Path) -> None:
+    source = _write_unresolved_construct_source(tmp_path / "source")
+    dest = tmp_path / "dest"
+
+    result = _run_cli(["--source", str(source), "--dest", str(dest)])
+    assert result.returncode == 0, result.stderr
+    report = json.loads(result.stdout)
+    assert report["unresolved_constructs"]["BrandNewWidget"] == 1
 
 
 def test_guard_write_path_rejects_paths_outside_dest(tmp_path: Path) -> None:
@@ -235,8 +398,11 @@ def test_real_corpus_dry_run_zero_writes_and_coverage_report(tmp_path: Path) -> 
     )
     assert result.returncode == 0, result.stderr
     assert not dest.exists(), "dry-run must perform zero writes, including against the real corpus"
+    # P1 regression (review-fix cycle 1): dry-run never writes the --report
+    # file either -- the JSON plan is only ever available on stdout.
+    assert not report_path.exists()
 
-    report = json.loads(report_path.read_text(encoding="utf-8"))
+    report = json.loads(result.stdout)
     assert report["execute"] is False
 
     products = report["products"]
@@ -255,7 +421,9 @@ def test_real_corpus_dry_run_zero_writes_and_coverage_report(tmp_path: Path) -> 
     assert unversioned_count == 4
 
     assert "global" in report["excluded_top_level_dirs"]
-    assert isinstance(report["unhandled_constructs"], dict)
+    assert isinstance(report["fallback_constructs"], dict)
+    assert isinstance(report["ambiguous_tokens"], dict)
+    assert isinstance(report["unresolved_constructs"], dict)
     assert report["containment_violations"] == []
 
     # Persist the real coverage report to a repo-local, git-ignored path so it

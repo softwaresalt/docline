@@ -20,12 +20,23 @@ Pipeline (see :func:`normalize_mdx_to_md`):
 4. Run the ordered transform pipeline (:data:`TRANSFORM_PIPELINE`) over
    the now-inert body: callouts, EnterpriseAlert, HCPCallout, Tabs,
    CodeTabs, CodeBlockConfig, VideoEmbed.
-5. Scan the transformed body for any remaining unhandled
-   CapitalizedComponent-style tag (:func:`scan_unhandled_constructs`) --
-   this MUST happen before fence/placeholder restoration so that
-   look-alike tags inside fenced example code or inside placeholder
-   tokens are never mis-tallied as live unhandled constructs.
-6. Restore fenced code and placeholders verbatim, then prepend the
+5. Run a conservative generic fallback pass
+   (:func:`apply_fallback_pass`) over whatever CapitalizedComponent-style
+   tag the named pipeline above did not already understand: a genuinely
+   paired tag (``<Foo ...>body</Foo>``) is unwrapped in place, and a
+   genuinely self-closing tag (``<Foo .../>``) is rendered as a short
+   readable Markdown annotation. This ensures ``--execute`` never
+   silently emits raw, un-rendered custom JSX into ``.md`` output.
+6. Classify whatever tag-shaped token still remains after the fallback
+   pass (:func:`classify_remaining_constructs`) into either a known
+   ambiguous/prose-notation token (see :data:`_KNOWN_AMBIGUOUS_TAGS`,
+   preserved verbatim, never execute-blocking) or a genuinely unresolved
+   construct (preserved verbatim, execute-blocking unless the operator
+   passes the documented override) -- this MUST happen before
+   fence/placeholder restoration so that look-alike tags inside fenced
+   example code or inside placeholder tokens are never mis-tallied as
+   live constructs.
+7. Restore fenced code and placeholders verbatim, then prepend the
    preserved frontmatter.
 
 Known, deliberately simplified renderings (documented as such, since
@@ -88,49 +99,85 @@ def split_frontmatter(text: str) -> tuple[str, str]:
 # Fenced-code protection
 # ---------------------------------------------------------------------------
 
-_FENCE_RE = re.compile(
-    r"^(?P<indent>[ \t]*)(?P<fence>`{3,}|~{3,})[^\n]*\n"
-    r"(?P<body>.*?)\n"
-    r"(?P=indent)(?P=fence)[ \t]*$",
-    re.DOTALL | re.MULTILINE,
-)
+_FENCE_OPEN_RE = re.compile(r"^[ \t]*(?P<fencechar>`{3,}|~{3,})(?P<info>.*)$")
+_FENCE_CLOSE_RE = re.compile(r"^[ \t]*(?P<fencechar>`+|~+)[ \t]*$")
 _FENCE_TOKEN_FMT = "\x00FENCE{index}\x00"
 
 
 def protect_fenced_code(body: str) -> tuple[str, dict[str, str]]:
     """Replace every fenced code block with an opaque token; return the token map.
 
-    GROUNDING NOTE (live-corpus correction): fences are matched with
-    their own leading indentation captured and required to match again
-    on the closing line (``^(?P<indent>[ \\t]*)(?P<fence>...)`` ...
-    ``(?P=indent)(?P=fence)``). This was NOT the first working
-    implementation -- the real corpus routinely nests fenced code under
-    numbered-list continuations (e.g. ``  ```shell-session`` / ``  ``` ``
-    indented by the list item's continuation width, seen throughout
-    ``vault/v2.x/content/docs/auth/jwt/oidc-providers/adfs.mdx`` and
-    many similar files). An indentation-blind fence matcher fails to
-    close the fence at its true boundary, letting placeholder-bearing
-    code content (e.g. ``<YOUR_OIDC_MOUNT_PATH>``) leak past masking
-    into subsequent transform regexes and the unhandled-construct scan.
+    GROUNDING NOTE (review-fix cycle 1, P2 correctness finding): the
+    original implementation used a single combined regex requiring the
+    closing fence to reuse the opener's exact indentation
+    (``(?P=indent)``) AND the opener's exact fence-character run
+    (``(?P=fence)`` -- an equal-length backreference). Real, valid
+    CommonMark permits a closing fence that (a) uses the same fence
+    character (backtick or tilde) with length >= the opener's length
+    (not necessarily equal), and (b) is indented independently of the
+    opener (up to CommonMark's own list-continuation rules) -- a closing
+    fence's indentation is never required to match the opener's. A
+    same-length-only, same-indentation-only matcher therefore both (1)
+    fails to close fences whose closing line is legitimately indented
+    differently than the opener, and (2) fails to close fences whose
+    closing run is deliberately longer than the opener's (a real,
+    documented CommonMark feature used to let a *shorter* same-character
+    run appear, unclosed, as literal content nested inside the block).
 
-    Known, documented simplification: a closing fence must reuse the
-    exact same fence-character run as its opener (e.g. ` ``` ` closed by
-    ` ``` `). CommonMark technically permits a longer closing fence of the
-    same character; this simpler exact-match rule holds for every
-    fenced block observed in the real corpus during grounding.
+    This implementation instead scans line-by-line (so it can compare
+    fence *lengths* rather than only literal string equality, which a
+    single regex backreference cannot express): an opening fence line is
+    any line matching ``^[ \\t]*(`{3,}|~{3,})`` (optionally followed by an
+    info string); the matching close is the FIRST SUBSEQUENT line whose
+    entire (whitespace-trimmed) content is one or more of the SAME fence
+    character, with length >= the opener's length, and nothing else. A
+    same-character run that is SHORTER than the opener never closes it
+    (it is preserved as ordinary content inside the block, exactly as
+    CommonMark requires) and a fence with no valid closing line at all
+    runs through the end of the document. The entire matched span --
+    opener line through closer line inclusive, or through end-of-document
+    -- is preserved byte-for-byte in the token store, so restoration is
+    always an exact round trip regardless of what construct-like text
+    (including MDX-looking tags) the block's content contains.
     """
     store: dict[str, str] = {}
     counter = 0
+    lines = body.splitlines(keepends=True)
+    output: list[str] = []
+    total = len(lines)
+    i = 0
+    while i < total:
+        line = lines[i]
+        open_match = _FENCE_OPEN_RE.match(line.rstrip("\r\n"))
+        if open_match is None:
+            output.append(line)
+            i += 1
+            continue
 
-    def _replace(match: re.Match[str]) -> str:
-        nonlocal counter
+        fence_run = open_match.group("fencechar")
+        fence_char = fence_run[0]
+        fence_len = len(fence_run)
+
+        close_index: int | None = None
+        for j in range(i + 1, total):
+            close_match = _FENCE_CLOSE_RE.match(lines[j].rstrip("\r\n"))
+            if (
+                close_match is not None
+                and close_match.group("fencechar")[0] == fence_char
+                and len(close_match.group("fencechar")) >= fence_len
+            ):
+                close_index = j
+                break
+
+        end_index = close_index if close_index is not None else total - 1
+        block_text = "".join(lines[i : end_index + 1])
         token = _FENCE_TOKEN_FMT.format(index=counter)
-        store[token] = match.group(0)
+        store[token] = block_text
         counter += 1
-        return token
+        output.append(token)
+        i = end_index + 1
 
-    protected = _FENCE_RE.sub(_replace, body)
-    return protected, store
+    return "".join(output), store
 
 
 def restore_fenced_code(body: str, store: dict[str, str]) -> str:
@@ -158,12 +205,38 @@ _PLACEHOLDER_TOKEN_FMT = "\x00PLACEHOLDER{index}\x00"
 
 
 def protect_placeholders(body: str) -> tuple[str, dict[str, str]]:
-    """Mask bare literal placeholder tokens; return the token map."""
+    """Mask bare literal placeholder tokens; return the token map.
+
+    GROUNDING NOTE (review-fix cycle 1, P2 finding 5): live-corpus
+    grounding surfaced one file (``terraform/.../tfcomponent/removed.mdx``)
+    authoring a real, paired callout component in all-caps --
+    ``<TIP>...body...</TIP>`` -- structurally identical to the normal
+    mixed-case ``Tip`` callout ``transform_callouts`` already handles,
+    but spelled the same way a placeholder is spelled. Because this mask
+    runs BEFORE the generic fallback pass, masking ``<TIP>`` away here
+    would silently orphan the later ``</TIP>`` (which never matches this
+    ALL-CAPS-only pattern, since it starts with ``/``), leaving it to be
+    mis-tallied as a genuinely unresolved construct.
+
+    A single ALL-CAPS bracket token is therefore only masked as a
+    placeholder when NO matching closing tag (``</NAME>``) exists later
+    in the document. When a matching close does exist, this is
+    structurally a real paired MDX/JSX component (never a literal
+    placeholder -- a placeholder is never "closed"), so it is left
+    unmasked here and falls through to :func:`apply_fallback_pass`,
+    which resolves it the same conservative way as any other unknown
+    paired tag. This is a purely structural test (does the matching
+    close exist), not a name-based special case, so it generalizes to
+    any other all-caps-authored component variant without enumeration.
+    """
     store: dict[str, str] = {}
     counter = 0
 
     def _replace(match: re.Match[str]) -> str:
         nonlocal counter
+        name = match.group(1)
+        if f"</{name}>" in body[match.end() :]:
+            return match.group(0)
         token = _PLACEHOLDER_TOKEN_FMT.format(index=counter)
         store[token] = match.group(0)
         counter += 1
@@ -337,7 +410,7 @@ def transform_video_embed(body: str) -> str:
 
 
 # ---------------------------------------------------------------------------
-# Unhandled-construct tally
+# Generic MDX-component fallback pass (review-fix cycle 1, P2 finding)
 # ---------------------------------------------------------------------------
 
 _KNOWN_HANDLED_TAGS = {
@@ -353,11 +426,250 @@ _KNOWN_HANDLED_TAGS = {
     "CodeTabs",
     "VideoEmbed",
 }
-_TAG_SCAN_RE = re.compile(r"</?([A-Z][A-Za-z0-9]*)\b[^>\n]*/?>")
+
+_GENERIC_SELF_CLOSING_RE = re.compile(r"<(?P<tag>[A-Z][A-Za-z0-9]*)(?P<attrs>[^>\n]*)/>")
+_GENERIC_PAIRED_RE = re.compile(
+    r"<(?P<tag>[A-Z][A-Za-z0-9]*)(?P<attrs>[^>\n]*?)(?<!/)>(?P<body>.*?)</(?P=tag)>",
+    re.DOTALL,
+)
+#: Matches one attribute token, tried in priority order per position:
+#: a double-quoted string value (``name="value"``, a "useful scalar"),
+#: a JSX expression value (``name={...}`` -- deliberately matched but
+#: NEVER rendered/evaluated, so it can be skipped rather than
+#: mis-captured by the bare-attribute alternative), or a bare
+#: boolean-style attribute name alone.
+_ATTR_TOKEN_RE = re.compile(
+    r'(?P<quoted_name>[A-Za-z_][\w-]*)="(?P<quoted_value>[^"]*)"'
+    r"|(?P<expr_name>[A-Za-z_][\w-]*)=\{[^{}]*\}"
+    r"|(?P<bare_name>[A-Za-z_][\w-]*)"
+)
+_MAX_PAIRED_UNWRAP_PASSES = 5
 
 
-def scan_unhandled_constructs(body: str) -> Counter[str]:
-    """Tally any remaining CapitalizedComponent-style tag not in the known-handled set.
+def _extract_scalar_attrs(attrs_text: str) -> list[tuple[str, str | None]]:
+    """Extract "useful scalar" attributes for a fallback annotation.
+
+    A double-quoted string attribute is rendered with its value; a bare
+    (no ``=``) attribute is rendered as a boolean flag. A JSX expression
+    attribute (``name={...}``) is matched only so it is correctly SKIPPED
+    (never rendered, never evaluated) rather than accidentally treated as
+    a bare attribute by a looser pattern.
+    """
+    scalars: list[tuple[str, str | None]] = []
+    for match in _ATTR_TOKEN_RE.finditer(attrs_text):
+        if match.group("quoted_name"):
+            scalars.append((match.group("quoted_name"), match.group("quoted_value")))
+        elif match.group("expr_name"):
+            continue
+        elif match.group("bare_name"):
+            scalars.append((match.group("bare_name"), None))
+    return scalars
+
+
+def _render_fallback_annotation(tag: str, attrs_text: str) -> str:
+    """Render a self-closing unknown component as a readable Markdown annotation."""
+    scalars = _extract_scalar_attrs(attrs_text)
+    if not scalars:
+        return f"*({tag})*"
+    rendered = ", ".join(
+        f'{name}="{value}"' if value is not None else name for name, value in scalars
+    )
+    return f"*({tag}: {rendered})*"
+
+
+def apply_fallback_pass(body: str) -> tuple[str, Counter[str]]:
+    """Conservative final pass: resolve any CapitalizedComponent-style tag not
+    already handled by the named :data:`TRANSFORM_PIPELINE`, so ``--execute``
+    never silently emits raw, unrendered custom JSX into ``.md`` output.
+
+    Two structurally unambiguous shapes are resolved generically, by
+    construction, regardless of the specific tag name:
+
+    * A genuinely PAIRED tag (``<Foo ...>body</Foo>`` -- a real matching
+      close tag exists) is unwrapped: the tags are dropped and the body
+      is preserved (stripped only of leading/trailing blank lines, never
+      interior whitespace/indentation), e.g. HashiCorp's real
+      ``<ImageConfig width={624}>`` wrapping a bare Markdown image
+      reference becomes just that image reference.
+    * A genuinely SELF-CLOSING tag (``<Foo .../>``) is rendered as a
+      short, readable Markdown annotation naming the component plus any
+      "useful scalar" attributes (double-quoted string values, or bare
+      boolean-style attributes). JSX EXPRESSION attributes
+      (``name={...}``) are never evaluated or rendered, per the
+      containment/conservatism contract -- e.g. HashiCorp's real
+      ``<Placement global={true} />`` becomes ``*(Placement)*`` (its
+      only attribute is a JSX expression, so it has no scalar to show),
+      while ``<PluginBadge type="official" />`` becomes
+      ``*(PluginBadge: type="official")*``.
+
+    Paired tags are resolved in a small, bounded fixed-point loop (at
+    most :data:`_MAX_PAIRED_UNWRAP_PASSES` re-scans) so that different-
+    tag-name nesting (e.g. a real ``<BadgesHeader>`` wrapping self-closed
+    ``<PluginBadge />`` children -- resolved directly by the
+    self-closing pass afterwards -- or, in principle, nested distinct
+    PAIRED tags) converges without an unbounded loop. Same-tag-name
+    self-nesting is a known, accepted limitation of a regex-based (not a
+    real parser) approach; live-corpus grounding found no such case.
+
+    Anything left over after this pass is, by construction, neither a
+    valid self-closing tag nor a valid paired tag -- i.e. not
+    well-formed MDX/JSX at all. See :func:`classify_remaining_constructs`
+    for how that residue is further split into "known ambiguous prose
+    notation" vs. "genuinely unresolved".
+    """
+    fallback: Counter[str] = Counter()
+
+    def _replace_paired(match: re.Match[str]) -> str:
+        tag = match.group("tag")
+        if tag in _KNOWN_HANDLED_TAGS:
+            return match.group(0)
+        fallback[tag] += 1
+        return match.group("body").strip("\n")
+
+    for _ in range(_MAX_PAIRED_UNWRAP_PASSES):
+        new_body = _GENERIC_PAIRED_RE.sub(_replace_paired, body)
+        if new_body == body:
+            break
+        body = new_body
+
+    def _replace_self_closing(match: re.Match[str]) -> str:
+        tag = match.group("tag")
+        if tag in _KNOWN_HANDLED_TAGS:
+            return match.group(0)
+        fallback[tag] += 1
+        return _render_fallback_annotation(tag, match.group("attrs") or "")
+
+    body = _GENERIC_SELF_CLOSING_RE.sub(_replace_self_closing, body)
+
+    return body, fallback
+
+
+#: Tag-shaped tokens grounded against the real HashiCorp unified-docs
+#: corpus (see the requirements-evidence doc's live-corpus evidence
+#: section) as ALWAYS being prose / generic-type notation rather than a
+#: real MDX/JSX component -- none of these ever appears with a matching
+#: close tag or a self-closing ``/>`` anywhere in the corpus. They are
+#: preserved verbatim (never stripped, never fabricated as an
+#: annotation) and reported separately from genuinely unresolved
+#: constructs, per the finding's explicit instruction to "explicitly
+#: handle ambiguous known uppercase components such as TFE rather than
+#: treating them as placeholders" (the existing placeholder mask is
+#: deliberately narrow -- a single ALL-CAPS word with no spaces -- and
+#: is NOT broadened here, since several of these are multi-word bracket
+#: content, e.g. ``<TFE hostname (DNS) e.g. terraform.example.com>``).
+#:
+#: Grouped by the grounded shape each name was confirmed against:
+#:   * multi-word / spaced bracket placeholders (original TFE-style seed
+#:     plus a full pass over the live-corpus ``unresolved_constructs``
+#:     bucket for review-fix cycle 1, finding 5's "aim for zero" bar);
+#:   * Consul/Nomad API-reference "``(array<Name>)``" / "`` `<Name>` ``"
+#:     backtick-wrapped generic-type notation -- these read as HTML/JSX
+#:     tags but are always literal type references inside inline code
+#:     spans, never rendered components;
+#:   * generic prose/code type-parameter notation (e.g. ``Map<String,
+#:     String>``, ``Test<Provider>Config``) sharing the same shape.
+_KNOWN_AMBIGUOUS_TAGS = frozenset(
+    {
+        # Original seed (multi-word bracket placeholders).
+        "TFE",
+        "ACLLink",
+        "Optional",
+        "Expression",
+        "Provider",
+        "YOUR",
+        "GITHUB",
+        "SOURCE",
+        "ORG",
+        "PLUGIN",
+        "UNIQUE",
+        "BITBUCKET",
+        "GITLAB",
+        # Review-fix cycle 1, finding 5: full live-corpus pass over the
+        # `unresolved_constructs` bucket -- multi-word / prose bracket
+        # placeholders (same shape as TFE/YOUR above).
+        "ADFS",
+        "ATTR",
+        "Allowed",
+        "AuthMethod",
+        "CI",
+        "CONTEXT",
+        "DATA",
+        "DIRECTORY",
+        "DOCKER0",
+        "FALSE",
+        "FILTER",
+        "HCP",
+        "HOSTNAME",
+        "Hostname",
+        "IP",
+        "JWT",
+        "LOCAL",
+        "MODULE",
+        "Namespace",
+        "OUTPUT",
+        "PASSWORD",
+        "PATH",
+        "PLAN",
+        "PROJECT",
+        "PROVIDER",
+        "Path",
+        "REPO",
+        "RESOURCE",
+        "STATE",
+        "Subfolder",
+        "TIME",
+        "TRUE",
+        "URL",
+        "WORKSPACE",
+        "Your",
+        # Consul/Nomad API-reference backtick-wrapped generic-type
+        # notation, e.g. `` `(array<PolicyLink>)` ``.
+        "ACLRolePolicyLink",
+        "ACLTemplatedPolicyVariables",
+        "Check",
+        "DiscoveryRoute",
+        "DiscoverySplit",
+        "ExtraVolume",
+        "IntentionPermission",
+        "Job",
+        "LinkedService",
+        "NamespaceRule",
+        "Node",
+        "NodeIdentity",
+        "PolicyLink",
+        "Port",
+        "RoleLink",
+        "ServiceCheck",
+        "ServiceIdentity",
+        "StatPrefix",
+        "Target",
+        "Toleration",
+        "TopologySpreadConstraint",
+        "VaultAccessor",
+        "VolumeItem",
+        # Generic prose/code type-parameter notation, e.g.
+        # ``Map<String, String>`` or ``Test<Provider>Config``.
+        "Object",
+        "String",
+        "Test",
+        "Type",
+    }
+)
+
+_REMAINING_TAG_SCAN_RE = re.compile(r"</?([A-Z][A-Za-z0-9]*)\b[^>\n]*/?>")
+
+
+def classify_remaining_constructs(body: str) -> tuple[Counter[str], Counter[str]]:
+    """Classify every tag-shaped token remaining after :func:`apply_fallback_pass`.
+
+    Returns ``(ambiguous_tokens, unresolved_constructs)``. A token whose
+    leading tag name is in :data:`_KNOWN_AMBIGUOUS_TAGS` is grounded,
+    documented prose notation -- it is tallied as ``ambiguous`` and NEVER
+    blocks ``--execute``. Everything else remaining is tallied as
+    ``unresolved`` -- a genuinely unhandled MDX/JSX-shaped construct,
+    which DOES block ``--execute`` (see
+    ``hashicorp_mdx_normalize.py``'s execute-mode gate) unless the
+    operator passes the documented override flag.
 
     Standard lowercase inline HTML (``<a>``, ``<b>``, ``<br />``, ...) is
     never tallied here: the scan pattern only matches tag names beginning
@@ -372,17 +684,21 @@ def scan_unhandled_constructs(body: str) -> Counter[str]:
     ``>`` character anywhere later in the document (e.g. an unrelated
     blockquote marker), mis-tallying names like ``EOF``/``YOUR``/
     ``GITHUB`` as fabricated "unhandled constructs". This is purely a
-    reporting-precision fix -- :func:`scan_unhandled_constructs` never
-    mutates ``body``, so it cannot affect the actual transformed output,
-    only the accuracy of the unhandled-construct tally in the CLI's
-    coverage report.
+    reporting-precision property -- :func:`classify_remaining_constructs`
+    never mutates ``body``, so it cannot affect the actual transformed
+    output, only the accuracy of the coverage report.
     """
-    tally: Counter[str] = Counter()
-    for match in _TAG_SCAN_RE.finditer(body):
+    ambiguous: Counter[str] = Counter()
+    unresolved: Counter[str] = Counter()
+    for match in _REMAINING_TAG_SCAN_RE.finditer(body):
         name = match.group(1)
-        if name not in _KNOWN_HANDLED_TAGS:
-            tally[name] += 1
-    return tally
+        if name in _KNOWN_HANDLED_TAGS:
+            continue
+        if name in _KNOWN_AMBIGUOUS_TAGS:
+            ambiguous[name] += 1
+        else:
+            unresolved[name] += 1
+    return ambiguous, unresolved
 
 
 # ---------------------------------------------------------------------------
@@ -392,10 +708,23 @@ def scan_unhandled_constructs(body: str) -> Counter[str]:
 
 @dataclass(frozen=True)
 class NormalizeResult:
-    """Result of :func:`normalize_mdx_to_md`: final Markdown text + unhandled tally."""
+    """Result of :func:`normalize_mdx_to_md`.
+
+    * ``fallback`` -- tags resolved generically by :func:`apply_fallback_pass`
+      (structurally paired-unwrapped or self-closing-annotated). These
+      ARE present, transformed, in ``text``.
+    * ``ambiguous`` -- known prose/type-notation tokens (see
+      :data:`_KNOWN_AMBIGUOUS_TAGS`) preserved verbatim in ``text``.
+      Never blocks ``--execute``.
+    * ``unresolved`` -- genuinely unhandled MDX/JSX-shaped constructs
+      preserved verbatim in ``text``. Blocks ``--execute`` unless the
+      operator passes the documented override flag.
+    """
 
     text: str
-    unhandled: Counter[str]
+    fallback: Counter[str]
+    ambiguous: Counter[str]
+    unresolved: Counter[str]
 
 
 #: Ordered transform-pipeline seam (B.T1): :func:`normalize_mdx_to_md` runs
@@ -424,12 +753,21 @@ def normalize_mdx_to_md(text: str) -> NormalizeResult:
     for transform in TRANSFORM_PIPELINE:
         body = transform(body)
 
-    # Unhandled-construct scan MUST run before restoration: fenced example
-    # code and placeholder tokens are still masked/opaque here, so
-    # look-alike tags inside them are never mis-tallied as live constructs.
-    unhandled = scan_unhandled_constructs(body)
+    # Generic fallback pass runs after the named pipeline so every named
+    # transform gets first refusal at a construct it understands
+    # specifically; only what remains falls through to the generic,
+    # structural (shape-only) resolution.
+    body, fallback = apply_fallback_pass(body)
+
+    # Remaining-construct classification MUST run before restoration:
+    # fenced example code and placeholder tokens are still masked/opaque
+    # here, so look-alike tags inside them are never mis-tallied as live
+    # constructs.
+    ambiguous, unresolved = classify_remaining_constructs(body)
 
     body = restore_fenced_code(body, fence_store)
     body = restore_placeholders(body, placeholder_store)
 
-    return NormalizeResult(text=frontmatter + body, unhandled=unhandled)
+    return NormalizeResult(
+        text=frontmatter + body, fallback=fallback, ambiguous=ambiguous, unresolved=unresolved
+    )

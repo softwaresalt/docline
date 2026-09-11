@@ -138,6 +138,7 @@ def classify_products(top_level_names: Iterable[str]) -> ProductClassification:
 
 _RELEASE_STAGE_RE = re.compile(r"^(?P<base>.+?)\s*\((?P<stage>alpha|beta|rc)\)$", re.IGNORECASE)
 _TFE_DATE_RE = re.compile(r"^v[0-9]{6}-\d+$", re.IGNORECASE)
+_TFE_DATE_PARSE_RE = re.compile(r"^v(?P<yyyymm>[0-9]{6})-(?P<rev>\d+)$", re.IGNORECASE)
 _TRAILING_X_RE = re.compile(r"\.x$", re.IGNORECASE)
 _COERCE_RE = re.compile(r"(\d{1,6})(?:\.(\d{1,6}))?(?:\.(\d{1,6}))?")
 
@@ -189,6 +190,31 @@ def _semver_sort_key(base: str) -> tuple[int, int, int]:
     return _coerce_semver(normalized) or (0, 0, 0)
 
 
+def _tfe_date_sort_key(base: str) -> tuple[int, int]:
+    """Numeric ``(YYYYMM, revision)`` sort key for a ``vYYYYMM-N`` directory name.
+
+    GROUNDING NOTE (live-corpus correction): the previous implementation
+    sorted this group with a plain descending *alphabetical* comparison
+    on the raw string (``strip_release_stage(raw)[0].lower()``). That is
+    lexical, not numeric: the string ``"v202507-9"`` sorts ABOVE
+    ``"v202507-10"`` alphabetically (``"9" > "1"`` at the first
+    differing character), even though ``-10`` is the later revision
+    numerically. Terraform Enterprise's real ``vYYYYMM-N`` history
+    accumulates well past nine same-month revisions, so this bug is a
+    live correctness defect, not a synthetic edge case. Parsing both the
+    ``YYYYMM`` and revision components as integers and comparing the
+    resulting tuple sorts every revision count correctly regardless of
+    digit-length, while leaving the deliberate semver-group-sorts-first
+    mixed-family rule (see the module docstring's terraform-enterprise
+    ``2.0.x`` finding) completely untouched -- this only changes how the
+    date-pattern group orders *itself* internally.
+    """
+    match = _TFE_DATE_PARSE_RE.match(base)
+    if not match:
+        return (0, 0)
+    return (int(match.group("yyyymm")), int(match.group("rev")))
+
+
 # ---------------------------------------------------------------------------
 # Latest-version selection
 # ---------------------------------------------------------------------------
@@ -214,10 +240,13 @@ def list_version_entries(raw_dir_names: Iterable[str]) -> list[VersionEntry]:
        (excludes ``templates``, ``global``, ``releases``, ``scripts``,
        ``partials``, and any other non-version directory generically).
     2. Split into a semver-sortable group (descending numeric sort) and a
-       Terraform-Enterprise-date-pattern group (descending alphabetical
-       sort), then concatenate semver-sortable first -- this reproduces
-       the upstream tool's "semver directories are more recent" ordering
-       assumption when a product's directories are a mix of both shapes.
+       Terraform-Enterprise-date-pattern group (descending NUMERIC sort
+       on the parsed ``(YYYYMM, revision)`` pair -- see
+       :func:`_tfe_date_sort_key`; a lexical string sort would rank
+       ``v202507-9`` above ``v202507-10``), then concatenate
+       semver-sortable first -- this reproduces the upstream tool's
+       "semver directories are more recent" ordering assumption when a
+       product's directories are a mix of both shapes.
     3. Walk the combined order, incrementing a "latest index" cursor past
        every non-stable (``alpha``/``beta``/``rc``) entry; the entry
        whose position matches the cursor is ``is_latest``.
@@ -237,7 +266,9 @@ def list_version_entries(raw_dir_names: Iterable[str]) -> list[VersionEntry]:
             semver_group.append(raw)
 
     semver_group.sort(key=lambda raw: _semver_sort_key(strip_release_stage(raw)[0]), reverse=True)
-    nonsemver_group.sort(key=lambda raw: strip_release_stage(raw)[0].lower(), reverse=True)
+    nonsemver_group.sort(
+        key=lambda raw: _tfe_date_sort_key(strip_release_stage(raw)[0]), reverse=True
+    )
     ordered = semver_group + nonsemver_group
 
     entries: list[VersionEntry] = []

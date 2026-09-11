@@ -151,6 +151,34 @@ def test_select_latest_version_order_independent() -> None:
     )
 
 
+def test_select_latest_version_tfe_date_pattern_numeric_not_lexical() -> None:
+    """Regression (P1 correctness review, review-fix cycle 1): the TFE
+    date-pattern group must sort ``(YYYYMM, revision)`` numerically, not
+    lexically. ``v202507-10`` is a LATER revision than ``v202507-9``, but a
+    plain descending string sort ranks ``"v202507-9"`` above
+    ``"v202507-10"`` (``"9" > "1"`` at the first differing character).
+    """
+    dirs = ["v202507-1", "v202507-9", "v202507-10", "v202401-1"]
+    assert selection.select_latest_version(dirs) == "v202507-10"
+
+
+def test_list_version_entries_tfe_date_pattern_numeric_order_independent() -> None:
+    dirs = ["v202507-9", "v202507-10", "v202507-2"]
+    entries_forward = selection.list_version_entries(dirs)
+    entries_reversed = selection.list_version_entries(list(reversed(dirs)))
+    assert [e.raw_name for e in entries_forward] == ["v202507-10", "v202507-9", "v202507-2"]
+    assert [e.raw_name for e in entries_reversed] == ["v202507-10", "v202507-9", "v202507-2"]
+
+
+def test_select_latest_version_mixed_semver_and_nonsemver_still_prefers_semver_after_fix() -> None:
+    """The numeric TFE-date sort fix must not disturb the evidence-backed
+    mixed-family rule: semver-coercible directories still sort ahead of every
+    TFE date-pattern directory, even when the date-pattern group itself now
+    contains a numerically-larger-looking revision like ``-10``."""
+    dirs = ["1.0.x", "1.1.x", "1.2.x", "2.0.x", "v202507-10", "v202507-9", "v202206-1"]
+    assert selection.select_latest_version(dirs) == "2.0.x"
+
+
 def test_select_latest_version_mixed_semver_and_nonsemver_prefers_semver() -> None:
     """Faithful port of the real terraform-enterprise mixed shape.
 

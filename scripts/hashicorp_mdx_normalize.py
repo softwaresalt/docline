@@ -15,14 +15,31 @@ for the full rationale, scope boundary, and live-verification findings.
 
 HARD CONTAINMENT CONTRACT
 =========================
-* Dry-run is the default mode: the tool performs ZERO writes and prints a
-  JSON plan (per-product selected version, file counts, unhandled
-  MDX-construct tally, warnings) to stdout. ``--execute`` is REQUIRED to
-  write anything to disk.
+* Dry-run is the default mode: the tool performs ZERO writes -- including
+  the ``--report`` file -- and prints a JSON plan (per-product selected
+  version, file counts, fallback/ambiguous/unresolved MDX-construct
+  tallies, warnings) to stdout only. ``--execute`` is REQUIRED to write
+  anything to disk. If ``--report`` is supplied in dry-run mode, it is
+  silently ignored for writing purposes (a note is printed to stderr);
+  the plan is still available on stdout.
 * Every write, in ``--execute`` mode, is guarded to resolve strictly
   inside ``--dest`` (:func:`guard_write_path` /
-  :class:`ContainmentViolation`). A resolved write path outside
-  ``--dest`` is refused and the process exits non-zero.
+  :class:`ContainmentViolation`), including the ``--report`` file itself
+  when one is supplied. A resolved write path outside ``--dest`` is
+  refused and the process exits non-zero BEFORE any corpus write begins
+  (fail-fast).
+* ``--execute`` refuses to run against a ``--dest`` that already exists
+  and is non-empty (fail closed) -- it never deletes, replaces, or
+  overlays an existing destination. Point ``--execute`` at an absent or
+  empty directory. Dry-run is exempt from this check entirely: it may
+  point ``--dest`` anywhere, including a non-empty directory, without
+  ever creating or touching it.
+* ``--execute`` fails closed (non-zero exit) if genuine unresolved MDX/
+  JSX-shaped constructs remain anywhere in the normalized output, unless
+  the operator passes the explicit ``--allow-unresolved-mdx`` override
+  after reviewing the report's ``unresolved_constructs`` section.
+  Dry-run is never gated by this check -- it only reports, so the
+  operator can decide whether to override.
 * This script never hardcodes or defaults to the operator's real external
   destination; ``--source`` and ``--dest`` are always explicit,
   operator-supplied arguments.
@@ -62,8 +79,10 @@ from _hashicorp_mdx import normalize, selection  # noqa: E402
 SCHEMA_VERSION = 1
 
 EXIT_OK = 0
-EXIT_SOURCE_NOT_FOUND = 4
 EXIT_CONTAINMENT_VIOLATION = 3
+EXIT_SOURCE_NOT_FOUND = 4
+EXIT_DEST_NOT_EMPTY = 5
+EXIT_UNRESOLVED_MDX_CONSTRUCTS = 6
 
 #: Image-like binary assets copied byte-for-byte, unchanged.
 IMAGE_EXTENSIONS = frozenset({".png", ".jpg", ".jpeg", ".gif", ".svg", ".webp"})
@@ -71,6 +90,12 @@ IMAGE_EXTENSIONS = frozenset({".png", ".jpg", ".jpeg", ".gif", ".svg", ".webp"})
 ORDINARY_MD_EXTENSIONS = frozenset({".md", ".markdown"})
 #: MDX files are normalized in-flight (read -> transform -> write .md).
 MDX_EXTENSIONS = frozenset({".mdx"})
+#: Everything else that is not a partial and not one of the extensions above
+#: (PDFs, videos, JSON/YAML data files, etc.) is copied byte-for-byte too
+#: (review-fix cycle 1, P2 finding) -- see ``generic_copied`` below. There is
+#: deliberately no allow-list here: any suffix not already claimed by MDX/MD/
+#: image handling falls through to the generic copy branch in
+#: :func:`_process_one_product_tree`.
 
 
 class ContainmentViolation(RuntimeError):
@@ -110,24 +135,24 @@ class ProductCounts:
     mdx_normalized: int = 0
     md_copied: int = 0
     assets_copied: int = 0
+    generic_copied: int = 0
     skipped_partials: int = 0
-    skipped_other: int = 0
 
     def as_dict(self) -> dict[str, int]:
         return {
             "mdx_normalized": self.mdx_normalized,
             "md_copied": self.md_copied,
             "assets_copied": self.assets_copied,
+            "generic_copied": self.generic_copied,
             "skipped_partials": self.skipped_partials,
-            "skipped_other": self.skipped_other,
         }
 
     def add(self, other: ProductCounts) -> None:
         self.mdx_normalized += other.mdx_normalized
         self.md_copied += other.md_copied
         self.assets_copied += other.assets_copied
+        self.generic_copied += other.generic_copied
         self.skipped_partials += other.skipped_partials
-        self.skipped_other += other.skipped_other
 
 
 @dataclass
@@ -150,7 +175,9 @@ class ReportBuilder:
     dest: Path
     execute: bool
     products: dict[str, ProductReport] = field(default_factory=dict)
-    unhandled_constructs: Counter[str] = field(default_factory=Counter)
+    fallback_constructs: Counter[str] = field(default_factory=Counter)
+    ambiguous_tokens: Counter[str] = field(default_factory=Counter)
+    unresolved_constructs: Counter[str] = field(default_factory=Counter)
     excluded_top_level_dirs: list[str] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
     containment_violations: list[str] = field(default_factory=list)
@@ -167,7 +194,9 @@ class ReportBuilder:
             "generated_at": datetime.now(UTC).isoformat(),
             "products": {name: pr.as_dict() for name, pr in sorted(self.products.items())},
             "totals": totals.as_dict(),
-            "unhandled_constructs": dict(sorted(self.unhandled_constructs.items())),
+            "fallback_constructs": dict(sorted(self.fallback_constructs.items())),
+            "ambiguous_tokens": dict(sorted(self.ambiguous_tokens.items())),
+            "unresolved_constructs": dict(sorted(self.unresolved_constructs.items())),
             "excluded_top_level_dirs": sorted(self.excluded_top_level_dirs),
             "warnings": self.warnings,
             "containment_violations": self.containment_violations,
@@ -187,7 +216,9 @@ def _process_one_product_tree(
     dest_root: Path,
     execute: bool,
     counts: ProductCounts,
-    unhandled_tally: Counter[str],
+    fallback_tally: Counter[str],
+    ambiguous_tally: Counter[str],
+    unresolved_tally: Counter[str],
 ) -> None:
     """Streaming walk: for each file under ``product_root``, read -> (normalize) -> write.
 
@@ -206,7 +237,9 @@ def _process_one_product_tree(
         if suffix in MDX_EXTENSIONS:
             text = source_path.read_text(encoding="utf-8")
             result = normalize.normalize_mdx_to_md(text)
-            unhandled_tally.update(result.unhandled)
+            fallback_tally.update(result.fallback)
+            ambiguous_tally.update(result.ambiguous)
+            unresolved_tally.update(result.unresolved)
             counts.mdx_normalized += 1
             dest_relative = relative_path.with_suffix(".md")
             if execute:
@@ -226,7 +259,17 @@ def _process_one_product_tree(
                 dest_path.parent.mkdir(parents=True, exist_ok=True)
                 shutil.copyfile(source_path, dest_path)
         else:
-            counts.skipped_other += 1
+            # Generic byte-for-byte copy (review-fix cycle 1, P2 finding):
+            # any remaining non-partial, non-MDX file -- linked PDFs,
+            # videos, JSON/YAML data files, and any other repository data
+            # -- survives in the selected-tree output instead of being
+            # silently dropped. There is no allow-list; only "partials"
+            # and MDX get special treatment.
+            counts.generic_copied += 1
+            if execute:
+                dest_path = guard_write_path(dest_root, dest_product_root / relative_path)
+                dest_path.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copyfile(source_path, dest_path)
 
 
 def process_corpus(source: Path, dest: Path, execute: bool) -> dict[str, Any]:
@@ -268,7 +311,9 @@ def process_corpus(source: Path, dest: Path, execute: bool) -> dict[str, Any]:
             dest_root=dest,
             execute=execute,
             counts=product_report.counts,
-            unhandled_tally=builder.unhandled_constructs,
+            fallback_tally=builder.fallback_constructs,
+            ambiguous_tally=builder.ambiguous_tokens,
+            unresolved_tally=builder.unresolved_constructs,
         )
 
     for product in classification.unversioned:
@@ -281,7 +326,9 @@ def process_corpus(source: Path, dest: Path, execute: bool) -> dict[str, Any]:
             dest_root=dest,
             execute=execute,
             counts=product_report.counts,
-            unhandled_tally=builder.unhandled_constructs,
+            fallback_tally=builder.fallback_constructs,
+            ambiguous_tally=builder.ambiguous_tokens,
+            unresolved_tally=builder.unresolved_constructs,
         )
 
     return builder.to_dict()
@@ -317,15 +364,64 @@ def _build_arg_parser() -> argparse.ArgumentParser:
         "--execute",
         action="store_true",
         default=False,
-        help="Actually write output (default: dry-run, zero writes)",
+        help=(
+            "Actually write output (default: dry-run, zero writes). Requires "
+            "--dest to be absent or an empty directory -- execute mode never "
+            "deletes, replaces, or overlays an existing destination."
+        ),
     )
     parser.add_argument(
         "--report",
         type=Path,
         default=None,
-        help="Optional path to also write the JSON report (always printed to stdout)",
+        help=(
+            "Optional path to also persist the JSON report (always printed to "
+            "stdout regardless). In --execute mode, this path MUST resolve "
+            "inside --dest (guarded the same way as every other write) or the "
+            "process fails closed before any corpus write begins. In dry-run "
+            "mode this flag is accepted but never written to disk -- dry-run "
+            "performs zero writes, full stop."
+        ),
+    )
+    parser.add_argument(
+        "--allow-unresolved-mdx",
+        action="store_true",
+        default=False,
+        help=(
+            "Explicit operator override: proceed with --execute even when "
+            "genuine unresolved MDX/JSX-shaped components remain after "
+            "normalization (see the report's 'unresolved_constructs' section). "
+            "Without this flag, --execute fails closed (non-zero exit) when any "
+            "unresolved construct remains anywhere in the corpus. Dry-run is "
+            "never affected by this flag -- it only reports."
+        ),
     )
     return parser
+
+
+def _dest_is_execute_ready(dest: Path) -> str | None:
+    """Return an error message if ``dest`` is not execute-ready, else ``None``.
+
+    Execute mode requires ``dest`` to be either absent or an existing,
+    empty directory (review-fix cycle 1, P1 finding): execute mode never
+    deletes or replaces files, so overlaying an existing non-empty
+    destination would silently leave stale versions/files behind. This
+    check runs before any corpus write begins (fail-fast).
+    """
+    if not dest.exists():
+        return None
+    if not dest.is_dir():
+        return (
+            f"--dest exists and is not a directory: {dest} -- execute mode requires --dest "
+            "to be either absent or an empty directory."
+        )
+    if any(dest.iterdir()):
+        return (
+            f"--dest already exists and is not empty: {dest} -- refusing to overlay an "
+            "existing destination. Execute mode never deletes or replaces files; point "
+            "--dest at an absent or empty directory instead."
+        )
+    return None
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -339,6 +435,21 @@ def main(argv: list[str] | None = None) -> int:
         print(f"error: --source is not a directory: {source}", file=sys.stderr)
         return EXIT_SOURCE_NOT_FOUND
 
+    if args.execute:
+        # Fail-fast checks: run BEFORE any corpus write begins, so a
+        # rejected run never leaves partial output on disk.
+        dest_error = _dest_is_execute_ready(dest)
+        if dest_error is not None:
+            print(f"error: {dest_error}", file=sys.stderr)
+            return EXIT_DEST_NOT_EMPTY
+
+        if args.report is not None:
+            try:
+                guard_write_path(dest, args.report)
+            except ContainmentViolation as exc:
+                print(f"error: containment violation: {exc}", file=sys.stderr)
+                return EXIT_CONTAINMENT_VIOLATION
+
     try:
         report = process_corpus(source=source, dest=dest, execute=args.execute)
     except ContainmentViolation as exc:
@@ -347,9 +458,31 @@ def main(argv: list[str] | None = None) -> int:
 
     payload = json.dumps(report, indent=2, sort_keys=True)
     print(payload)
+
     if args.report is not None:
-        args.report.parent.mkdir(parents=True, exist_ok=True)
-        args.report.write_text(payload, encoding="utf-8")
+        if args.execute:
+            # Already guarded above; safe to write under --dest.
+            args.report.parent.mkdir(parents=True, exist_ok=True)
+            args.report.write_text(payload, encoding="utf-8")
+        else:
+            print(
+                "note: --report is ignored in dry-run mode (zero-write contract) -- "
+                "the plan is only printed to stdout. Pass --execute to also persist "
+                "the report file (guarded under --dest).",
+                file=sys.stderr,
+            )
+
+    if args.execute and report["unresolved_constructs"] and not args.allow_unresolved_mdx:
+        unresolved_summary = ", ".join(
+            f"{name}={count}" for name, count in sorted(report["unresolved_constructs"].items())
+        )
+        print(
+            "error: genuine unresolved MDX/JSX components remain after normalization: "
+            f"{unresolved_summary}. Review the report's 'unresolved_constructs' section; "
+            "pass --allow-unresolved-mdx to proceed anyway once reviewed.",
+            file=sys.stderr,
+        )
+        return EXIT_UNRESOLVED_MDX_CONSTRUCTS
 
     return EXIT_OK
 

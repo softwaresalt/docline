@@ -1,6 +1,6 @@
 # HashiCorp Unified-Docs MDX -> MD Normalization: Requirements Evidence
 
-* **Date**: 2026-09-11
+* **Date**: 2026-09-11 (review-fix cycle 1: see §9)
 * **Shipment**: 062-S
 * **Feature**: 071-F
 * **Status**: Requirements evidence for a future first-class docline MDX ingestion capability
@@ -67,7 +67,9 @@ external unified-docs repo's `scripts/prebuild/gather-version-metadata.mjs`
    product-specific code.
 3. **Latest-version selection**: candidates are split into a semver-sortable
    group (descending numeric sort) and a Terraform-Enterprise-date-pattern
-   group (`vYYYYMM-N`, descending alphabetical sort), concatenated
+   group (`vYYYYMM-N`, descending **numeric** sort on the parsed
+   `(YYYYMM, revision)` tuple -- see §9.3 for the review-fix cycle 1
+   correction that replaced an earlier lexical-string sort), concatenated
    semver-first, then walked with a release-stage-aware cursor: a
    non-stable (`alpha`/`beta`/`rc`) entry is skipped for "latest" unless
    **every** candidate is non-stable, in which case the highest-sorted entry
@@ -113,6 +115,17 @@ directories are present) as a literal unit-level regression, while
 asserts the corrected, live-verified `2.0.x` answer against the actual corpus.
 Neither the plan's AC nor the real finding was silently discarded.
 
+**Review-fix cycle 1 note (§9.3)**: the calendar-version lexical-sort bug
+fixed in that cycle (`v202507-9` sorting after `v202507-10`) touches only the
+*within-date-family* ordering of the non-semver candidate group. It has no
+bearing on the semver-vs-date-family *mixed-family* precedence rule described
+above -- that rule is decided by which group (semver-sortable vs.
+date-pattern) a candidate falls into, evaluated before either group's
+internal sort ever runs. The real-corpus re-run performed for that cycle
+reconfirms `products["terraform-enterprise"]["selected_version"] == "2.0.x"`
+unchanged (§9.3), so this evidence-backed mixed-family rule is preserved,
+not altered, by the fix.
+
 ### 3.2 Other selection findings (all match the plan's assumptions)
 
 | Product | Real corpus directories (abridged) | Selected latest | Matches plan? |
@@ -155,8 +168,9 @@ well-architected-framework  -> (unversioned -- whole tree copied)
 Corpus-wide file totals from the same dry-run: **5,566 `.mdx` files
 normalized**, **59 ordinary `.md` files copied as-is**, **2,139 image/binary
 assets copied as-is**, **1,259 files skipped as partials/fragments**, **164
-files skipped as neither Markdown nor an allow-listed asset type** (e.g.
-`.json` nav-data files).
+generic (non-Markdown, non-allow-listed-image) files copied byte-for-byte**
+(e.g. `.json` nav-data files, PDFs, videos -- see §9.6 for the review-fix
+cycle 1 correction that changed this bucket from "skipped" to "copied").
 
 ## 4. Construct transform table (B.T2 / B.T3)
 
@@ -176,33 +190,45 @@ files skipped as neither Markdown nor an allow-listed asset type** (e.g.
   (`split_frontmatter`), never touched by any transform.
 * **Fenced code blocks** are masked to opaque tokens before any transform
   runs and restored verbatim at the very end (`protect_fenced_code` /
-  `restore_fenced_code`).
+  `restore_fenced_code`), using a Markdown-correct (CommonMark) closing-fence
+  rule: same marker character, run length at least the opener's, valid
+  indentation independent of the opener's -- see §9.4.
 * **Literal placeholders** (`<TYPE>`, `<PATH>`, `<VALUE>`, `<NAMESPACE>`,
   and hyphenated conventions like `<YOUR-ORG>`) are masked/restored
   separately (`protect_placeholders` / `restore_placeholders`). These can
   never collide with a real construct tag name because every known
   construct tag is CamelCase (mixed case) while the placeholder pattern
   requires every character after the first to be uppercase, a digit, an
-  underscore, or a hyphen.
+  underscore, or a hyphen. A bare ALL-CAPS single-word token is masked as a
+  placeholder only when no matching closing tag exists later in the
+  document -- see §9.5 for the one genuine paired-component exception this
+  discovered (`<TIP>...</TIP>`).
 
 ## 5. Live-verification bugs found and fixed via the real-corpus dry-run
 
-Two genuine correctness bugs were found and fixed only because this shipment
-insisted on running the full real-corpus dry-run rather than stopping at
-synthetic unit tests:
+Three genuine correctness bugs were found and fixed only because this
+shipment (and its review-fix cycle) insisted on running the full
+real-corpus dry-run rather than stopping at synthetic unit tests:
 
-1. **Fence indentation-blindness.** The initial fenced-code masking regex
-   required the closing fence marker to start at column zero. The real
-   corpus routinely nests fenced code blocks under numbered-list
-   continuations (e.g. `  ```shell-session` / `  ``` `, indented by the list
-   item's continuation width -- see
+1. **Fence indentation-blindness (original fix, later superseded by §9.4).**
+   The initial fenced-code masking regex required the closing fence marker
+   to start at column zero. The real corpus routinely nests fenced code
+   blocks under numbered-list continuations (e.g. `  ```shell-session` /
+   `  ``` `, indented by the list item's continuation width -- see
    `vault/v2.x/content/docs/auth/jwt/oidc-providers/adfs.mdx`). An
    indentation-blind matcher failed to close the fence at its true boundary,
-   letting placeholder-bearing code content leak past masking. Fixed by
-   capturing the opening fence's leading indentation and requiring the same
-   indentation before the closing fence
-   (`^(?P<indent>[ \t]*)(?P<fence>...)`... `(?P=indent)(?P=fence)`). Covered
-   by `test_protect_and_restore_indented_fenced_code_round_trips_exactly`.
+   letting placeholder-bearing code content leak past masking. The original
+   fix required the closing fence to repeat the *exact same* leading
+   indentation and run length as the opener
+   (`^(?P<indent>[ \t]*)(?P<fence>...)`... `(?P=indent)(?P=fence)`).
+   **Review-fix cycle 1 (finding 4, §9.4) found this was still not
+   Markdown-correct**: CommonMark allows a closing fence to use *any*
+   indentation (up to 3 spaces) and a run *at least as long as* the
+   opener's, independent of each other. The fence-protection logic was
+   rewritten as a line-scanning matcher (`_FENCE_OPEN_RE` /
+   `_FENCE_CLOSE_RE` in `scripts/_hashicorp_mdx/normalize.py`) that
+   correctly implements this rule; see §9.4 for the details and new
+   regression coverage.
 2. **Unbounded unhandled-construct scan.** The unknown-construct tally regex
    allowed its "attributes" span to cross newlines in search of the next
    `>` character, so an unrelated shell heredoc marker (`<<EOF`) on one line
@@ -211,44 +237,104 @@ synthetic unit tests:
    fabricated unhandled constructs. This is a reporting-precision issue only
    (the scan never mutates content), fixed by bounding the scan to a single
    line. Covered by
-   `test_scan_unhandled_constructs_does_not_span_lines_to_a_distant_unrelated_bracket`.
-
-Both fixes are documented in the corresponding module docstrings/comments in
-`scripts/_hashicorp_mdx/normalize.py`, not just here.
+   `test_classify_remaining_constructs_does_not_span_lines_to_a_distant_unrelated_bracket`
+   (renamed from `test_scan_unhandled_constructs_...` when the classification
+   function was split into `ambiguous`/`unresolved` buckets -- see §9.5).
+3. **All-caps paired component swallowed as a placeholder (found in
+   review-fix cycle 1, finding 5; see §9.5).** `terraform/v1.16.x/docs/
+   language/block/stack/tfcomponent/removed.mdx` authors a real paired
+   callout as `<TIP>...</TIP>` (structurally identical to the normal
+   mixed-case `Tip` callout, but spelled the way a bare placeholder like
+   `<PATH>` is spelled). The placeholder mask ran before the fallback pass
+   and matched the opening `<TIP>` (a bare ALL-CAPS token with no spaces),
+   leaving the never-matched closing `</TIP>` orphaned as a spuriously
+   "unresolved" construct. Fixed by teaching `protect_placeholders` to skip
+   masking when a matching `</NAME>` exists later in the document -- a
+   structural test (does a real close tag exist), not a name-based special
+   case. Covered by
+   `test_protect_placeholders_skips_masking_when_a_matching_close_tag_exists_later`
+   and `test_normalize_mdx_to_md_all_caps_paired_callout_resolved_not_orphaned`.
 
 ## 6. Unhandled-construct inventory (from the real-corpus dry-run, D.T3)
 
-The full-corpus dry-run produced **89 distinct unhandled tag names, 472 total
-occurrences** across the entire selected corpus (report generated by
-`tests/scripts/test_hashicorp_dryrun_corpus.py::test_real_corpus_dry_run_zero_writes_and_coverage_report`,
-persisted at the repo-local, git-ignored
-`build/hashicorp-dryrun-evidence/real-corpus-dry-run-report.json`). The most
-frequent entries:
+**Superseded by review-fix cycle 1 (§9.5)**: the original single
+`unhandled_constructs` scan-and-report bucket described in this section's
+first revision was replaced with a three-way classification, and a generic
+conservative fallback pass now actively *resolves* (rather than merely
+reports) unknown MDX/JSX shapes. The final live-corpus numbers, produced by
+the same integration test after all six review-fix cycle 1 findings were
+applied, are:
 
 ```text
-ImageConfig: 72        Placement: 53          BadgesHeader: 42
-TFE: 39                 YOUR: 26                PluginBadge: 24
-Provider: 16            GITHUB: 12               SOURCE: 11
-UNIQUE: 11              BITBUCKET: 8             Info: 8
-ACLLink: 6              Expression: 6            GITLAB: 6
-ORG: 6                  PLUGIN: 6                Optional: 5
+totals:               assets_copied=2139  generic_copied=164  md_copied=59
+                       mdx_normalized=5566  skipped_partials=1259
+
+fallback_constructs:   14 distinct tags,  152 total occurrences
+                       (structurally unwrapped/annotated by
+                       apply_fallback_pass -- see §9.5)
+
+ambiguous_tokens:      75 distinct tags,  255 total occurrences
+                       (grounded, documented prose/type-notation --
+                       preserved verbatim, never blocks --execute)
+
+unresolved_constructs: 0 distinct tags,   0 total occurrences
 ```
 
-**Important caveat**: this scan is a heuristic, regex-based approximation
-(`scan_unhandled_constructs` in `scripts/_hashicorp_mdx/normalize.py`), not an
-AST/tokenizer-based parse. It correctly surfaces genuine unhandled JSX
-components this disposable tool does not render (`ImageConfig`, `Placement`,
-`BadgesHeader`, `TFE`, `PluginBadge`, `Provider`, `ACLLink`, `Expression`,
-`Info`, and dozens more single/double-digit-occurrence
-tags) -- these are genuine gaps for a production implementation. It also
-still contains a residual mix of placeholder-like false positives (e.g.
-`YOUR`, `GITHUB`, `SOURCE`, `ORG`, `PLUGIN`) from bracket conventions this
-tool's regex-based placeholder protection does not fully cover (e.g.
-placeholders containing a literal space, like `<YOUR DB USERNAME>`). This
-caveat is itself a concrete requirement for a production implementation (see
-Requirement 6 below): a real MDX/AST-based parser eliminates this entire
-class of tag-vs-placeholder ambiguity structurally, rather than needing
-heuristic masking passes.
+`unresolved_constructs` is **empty** on the selected live corpus -- the
+acceptance bar set by finding 5 ("aim for zero unresolved genuine MDX
+components... while preserving placeholder-like tokens") is met without
+loosening the execute-mode fail-closed gate (`EXIT_UNRESOLVED_MDX_CONSTRUCTS`,
+`--allow-unresolved-mdx`; see §9.5): the real operator `--execute` run does
+not need the override flag against this corpus as it stands today.
+
+The top `fallback_constructs` entries (unknown MDX/JSX components the
+generic pass structurally unwrapped or rendered as a readable annotation --
+these remain genuine implementation gaps for a future first-class,
+parser-based feature, see Requirement 2 below):
+
+```text
+Placement: 53          PluginBadge: 24        BadgesHeader: 21
+ImageConfig: 36         Enterprise: 4           Info: 4
+Accordion: 1            Button: 1               Checklist: 1
+Important: 1            InteractiveLabCallout: 1
+ProviderTable: 3        TabProvider: 1          TIP: 1
+```
+
+The `ambiguous_tokens` bucket (documented, non-blocking, never-a-real-
+component prose/type-notation -- `_KNOWN_AMBIGUOUS_TAGS` in
+`scripts/_hashicorp_mdx/normalize.py`) covers two grounded shapes:
+
+1. Multi-word / spaced bracket placeholders (the original seed: `TFE`,
+   `YOUR`, `GITHUB`, `SOURCE`, `ORG`, `PLUGIN`, `UNIQUE`, `BITBUCKET`,
+   `GITLAB`, `Optional`, `Expression`, `Provider`, `ACLLink`; plus, from the
+   review-fix cycle 1 full pass over the corpus: `ADFS`, `ATTR`, `Allowed`,
+   `AuthMethod`, `CI`, `CONTEXT`, `DATA`, `DIRECTORY`, `DOCKER0`, `FALSE`,
+   `FILTER`, `HCP`, `HOSTNAME`, `Hostname`, `IP`, `JWT`, `LOCAL`, `MODULE`,
+   `Namespace`, `OUTPUT`, `PASSWORD`, `PATH`, `PLAN`, `PROJECT`, `PROVIDER`,
+   `Path`, `REPO`, `RESOURCE`, `STATE`, `Subfolder`, `TIME`, `TRUE`, `URL`,
+   `WORKSPACE`, `Your`).
+2. Consul/Nomad API-reference backtick-wrapped generic-type notation, e.g.
+   `` `(array<PolicyLink>)` `` (`ACLRolePolicyLink`,
+   `ACLTemplatedPolicyVariables`, `Check`, `DiscoveryRoute`,
+   `DiscoverySplit`, `ExtraVolume`, `IntentionPermission`, `Job`,
+   `LinkedService`, `NamespaceRule`, `Node`, `NodeIdentity`, `PolicyLink`,
+   `Port`, `RoleLink`, `ServiceCheck`, `ServiceIdentity`, `StatPrefix`,
+   `Target`, `Toleration`, `TopologySpreadConstraint`, `VaultAccessor`,
+   `VolumeItem`), plus generic prose/code type-parameter notation (`Object`,
+   `String`, `Test`, `Type`, e.g. `Map<String, String>`).
+
+Every one of the 75 `_KNOWN_AMBIGUOUS_TAGS` entries was individually grounded
+against real corpus context during review-fix cycle 1 (never observed with a
+self-closing `/>` or a matching close tag anywhere in the corpus) before
+being added to the registry -- none is a guess.
+
+**Important caveat (still applies)**: this classification is a heuristic,
+regex-based approximation (`classify_remaining_constructs` in
+`scripts/_hashicorp_mdx/normalize.py`), not an AST/tokenizer-based parse. A
+production implementation should still use a real MDX/JSX parser (Requirement
+1 below) so this entire class of tag-vs-placeholder ambiguity is resolved
+structurally rather than via an enumerated registry that must be
+individually grounded and maintained.
 
 ## 7. Exact operator command for the real external run (never executed by an agent)
 
@@ -262,8 +348,14 @@ python scripts/hashicorp_mdx_normalize.py `
 
 Omit `--execute` (and point `--report` anywhere convenient, or omit it to see
 the plan on stdout only) to preview the identical plan with zero writes --
-this is the default mode and is safe to run repeatedly. This exact command is
-also reproduced in the script's own `--help` epilog.
+this is the default mode and is safe to run repeatedly, and never writes the
+`--report` file even when `--report` is given (see §9.1 -- dry-run prints
+the report to stdout and a stderr note instead). In `--execute` mode,
+`--report` must resolve strictly under `--dest` or the run fails closed
+before any corpus write begins (`EXIT_CONTAINMENT_VIOLATION`); `--dest` must
+also be absent or empty before `--execute` proceeds
+(`EXIT_DEST_NOT_EMPTY`, see §9.2). This exact command is also reproduced in
+the script's own `--help` epilog.
 
 ## 8. Numbered requirements for a first-class docline MDX ingestion capability
 
@@ -273,26 +365,32 @@ tool against the real corpus:
 
 1. **Use a real MDX/JSX parser, not regex heuristics.** This disposable
    tool's regex-based tag matching, fence masking, and placeholder masking
-   are adequate for a one-time requirements-evidence pass but produce known
-   false positives/negatives (§5, §6). A production feature must parse MDX
-   into an AST (e.g. via a proper MDX/remark-compatible parser) so
-   construct boundaries, nesting, and code-fence contents are unambiguous by
-   construction.
+   are adequate for a one-time requirements-evidence pass but still rely on
+   an individually-grounded, hand-maintained registry
+   (`_KNOWN_AMBIGUOUS_TAGS`, §6) to keep prose/type-notation from being
+   misreported as genuine unresolved components. A production feature must
+   parse MDX into an AST (e.g. via a proper MDX/remark-compatible parser)
+   so construct boundaries, nesting, and code-fence contents are
+   unambiguous by construction, without needing a maintained allowlist.
 2. **Support a pluggable, per-construct renderer registry**, not a fixed
    pipeline of module-level functions. The real corpus already has at least
-   96 distinct unhandled component names (§6); a permanent feature will
-   need to grow this set over time without editing a monolithic transform
-   module.
+   14 distinct genuinely-unhandled component names surfaced by the generic
+   fallback pass (§6, `fallback_constructs`); a permanent feature will need
+   to grow this set over time (adding first-class renderers for
+   `Placement`, `ImageConfig`, `PluginBadge`, `BadgesHeader`, and similar)
+   without editing a monolithic transform module.
 3. **Preserve frontmatter, fenced code, and placeholder-like tokens as a
    first-class parser concern**, not a pre/post masking pass. An AST-based
    approach can protect these natively (e.g. treating fenced code as an
    opaque leaf node) rather than relying on regex masking that is
-   vulnerable to indentation and line-span edge cases (§5).
+   vulnerable to indentation/run-length edge cases (§5.1) and to
+   placeholder-vs-real-component ambiguity in bare ALL-CAPS tags (§5.3).
 4. **Model "latest version" selection as a versioned-corpus abstraction**,
    generalizing `selection.py`'s algorithm (semver-aware sort, `.x`
-   normalization, release-stage-aware fallback, and a non-semver
-   date-pattern sort for legacy schemes) so it can apply to other
-   versioned external doc corpora beyond HashiCorp's, not just this one.
+   normalization, release-stage-aware fallback, and a **numeric** (not
+   lexical -- §5's finding 3 correction) non-semver date-pattern sort for
+   legacy schemes) so it can apply to other versioned external doc corpora
+   beyond HashiCorp's, not just this one.
 5. **Treat "latest" as a live, re-verifiable computation, not a cached
    constant.** The `terraform-enterprise` finding (§3.1) demonstrates that
    a versioned corpus's true "latest" directory can change in ways a
@@ -304,8 +402,12 @@ tool against the real corpus:
    it structurally: a real MDX parser distinguishes a JSX element from a
    bare text token like `<YOUR-ORG>` by grammar (JSX requires attributes/
    self-closing syntax or matching close tags in a specific grammar
-   position), eliminating the entire class of heuristic tag-name
-   false-positives observed in §6.
+   position). This disposable tool approximates that grammar test
+   structurally for the paired case (a matching close tag implies a real
+   component, §5.3/§9.5) and via an enumerated registry for the
+   spaced/multi-word and backtick-type-notation cases (§6) -- a production
+   parser should eliminate the registry-maintenance burden entirely by
+   resolving this from grammar, not enumeration.
 7. **Support nested `Tabs` with real heading-level inference**, not the
    fixed-H4 flattening this disposable tool uses (§4), if a production
    feature needs faithful heading hierarchy in the destination Markdown.
@@ -318,20 +420,257 @@ tool against the real corpus:
 9. **Apply the containment discipline demonstrated here as a standing
    pattern** for any future external-corpus ingestion tool: dry-run
    default, explicit `--execute` opt-in, a runtime write-path guard bounded
-   to the destination root, and repo-local test temp directories -- not
-   just for this disposable tool, but as a docline-wide convention for
-   tools that touch external, potentially-read-only filesystem locations.
+   to the destination root, repo-local test temp directories, a
+   fail-closed non-empty-destination check before any write (§9.2), and a
+   report-file write path that is itself guarded to resolve under the
+   destination root (§9.1) -- not just for this disposable tool, but as a
+   docline-wide convention for tools that touch external, potentially
+   read-only filesystem locations.
+10. **Copy every non-normalized, non-excluded file byte-for-byte by
+    default**, not just an allow-listed image subset (§9.6). A
+    destination snapshot that silently drops PDFs, videos, or other
+    repository data alongside the Markdown it was extracted from is an
+    incomplete migration; a production feature should treat "copy
+    everything not explicitly transformed or excluded" as the default,
+    with exclusions (partials, build artifacts) opt-in and explicit.
+11. **Preserve the source corpus's version-directory segment in the
+    selected output tree** rather than flattening it away (§9.7). Keeping
+    `{product}/{selected_version}/...` intact (instead of collapsing to
+    `{product}/...`) preserves provenance back to which upstream version
+    was normalized and avoids relative-path collisions if a future
+    iteration ever needs to select more than one version per product. This
+    also keeps the selected tree directly ingestible by
+    `docline ingest local-dir` unchanged (§9.7) -- the version segment is
+    just another path component under the default recursive
+    `**/*.md` include glob.
 
-## 9. Traceability
+## 9. Review-fix cycle 1 (PR #192) -- independent correctness review findings
+
+An independent correctness review of PR #192 found six in-scope findings
+against this disposable tool. All six were fixed test-first with surgical,
+targeted changes; no scope expansion beyond the findings occurred. This
+section is the traceable record of each finding, its fix, and its
+regression coverage.
+
+### 9.1 Finding 1 (P1) -- dry-run report writes; unguarded report path
+
+**Problem**: `--report` unconditionally created parent directories and wrote
+the report file even in dry-run mode (violating the zero-write dry-run
+contract), and the report write path itself was never checked against
+`--dest` containment in execute mode.
+
+**Fix** (`scripts/hashicorp_mdx_normalize.py`):
+* Dry-run now **never** writes the report file, regardless of whether
+  `--report` was passed -- the JSON is always printed to stdout, and a
+  stderr note is printed if `--report` was given (documenting that dry-run
+  intentionally does not honor it for writing).
+* In `--execute` mode, `--report`'s path is validated with the existing
+  `guard_write_path(dest, args.report)` containment guard *before* any
+  corpus processing begins -- an out-of-`--dest` report path fails closed
+  with `EXIT_CONTAINMENT_VIOLATION` and zero corpus writes.
+
+**Tests**: `test_dry_run_emits_json_plan_with_expected_shape` (asserts the
+report file is never created in dry-run),
+`test_execute_report_guarded_under_dest_succeeds`,
+`test_execute_report_outside_dest_fails_closed_before_any_corpus_write`.
+
+### 9.2 Finding 2 (P1) -- execute mode overlays an existing destination
+
+**Problem**: `--execute` wrote into `--dest` unconditionally, silently
+overlaying an existing tree and leaving stale versions/files behind when the
+selected version or file set changed between runs.
+
+**Fix** (`scripts/hashicorp_mdx_normalize.py`): a new `_dest_is_execute_ready()`
+check runs before any corpus processing in `--execute` mode -- it fails
+closed (`EXIT_DEST_NOT_EMPTY`) if `--dest` exists and is a file, or exists
+and is a non-empty directory. No deletion or replacement logic was added
+(explicitly out of scope per the finding); the operator must point
+`--execute` at an absent or empty directory. Dry-run is exempt from this
+check entirely and may point `--dest` at any existing, non-empty directory
+without ever creating or touching it.
+
+**Tests**: `test_execute_rejects_non_empty_existing_dest`,
+`test_execute_succeeds_against_existing_empty_dest`,
+`test_dry_run_may_point_dest_at_a_non_empty_directory_without_creating_it`.
+
+### 9.3 Finding 3 (P2) -- calendar version lexical sort
+
+**Problem**: `list_version_entries()`'s non-semver (Terraform Enterprise
+`vYYYYMM-N`) group was sorted as a plain string, so `v202507-9` incorrectly
+outranked `v202507-10` (`"9" > "1"` lexically).
+
+**Fix** (`scripts/_hashicorp_mdx/selection.py`): added
+`_TFE_DATE_PARSE_RE` and `_tfe_date_sort_key()`, producing a numeric
+`(YYYYMM, revision)` tuple, and switched the group's `.sort(...)` call to use
+it. This only changes the *within-date-family* ordering; it does not alter
+which group (semver vs. date-pattern) a candidate is classified into, so the
+evidence-backed mixed-family rule (§3.1/§3.2) that selects
+`terraform-enterprise -> 2.0.x` in this live corpus is unaffected and was
+reconfirmed after the fix (§9 final live-corpus totals, §3.2 table
+unchanged).
+
+**Tests**: numeric-ordering regression (`v202507-9` vs. `v202507-10`),
+order-independence regardless of input order, and an explicit
+mixed-family-preserved-after-fix assertion, all in
+`tests/scripts/test_hashicorp_selection.py`.
+
+### 9.4 Finding 4 (P2) -- fence protection assumes identical closing indent/length
+
+**Problem**: the original fence-protection regex required the closing
+fence to repeat the *exact same* leading indentation and run length as the
+opener -- not Markdown-correct. CommonMark permits a closing fence with any
+valid indentation (independent of the opener's) and any run length `>=` the
+opener's, using the same marker character.
+
+**Fix** (`scripts/_hashicorp_mdx/normalize.py`): replaced the single-regex
+matcher with a manual line-scanning implementation (`_FENCE_OPEN_RE`,
+`_FENCE_CLOSE_RE`) that correctly implements this rule, preserving the
+entire fenced block byte-for-byte (including surrounding indentation)
+between the located open/close boundaries.
+
+**Tests**: longer closing fence, a shorter same-character run inside that
+must not terminate the fence early, closing indentation independent of the
+opener's, an unclosed fence running to end-of-document, and an end-to-end
+pipeline assertion that MDX-looking text inside any of these fence variants
+is never leaked or tallied as a construct -- all in
+`tests/scripts/test_hashicorp_normalize.py`.
+
+### 9.5 Finding 5 (P2) -- 472 unhandled JSX occurrences leaking into .md output
+
+**Problem**: the tool silently emitted whatever was left of unrecognized
+JSX/MDX components verbatim into the `.md` output (the operator asked for
+standard Markdown), and only reported an undifferentiated
+`unhandled_constructs` tally with no distinction between a genuinely
+unimplemented component and a documented, benign placeholder-like token.
+
+**Fix** (`scripts/_hashicorp_mdx/normalize.py`,
+`scripts/hashicorp_mdx_normalize.py`):
+* A new conservative final pass, `apply_fallback_pass()`, runs after the
+  named `TRANSFORM_PIPELINE` and before classification: it structurally
+  unwraps unknown *paired* tags (preserving their body, bounded to 5
+  iterations for nesting) and renders unknown *self-closing* components as
+  a readable Markdown annotation (component name plus useful scalar
+  attributes -- quoted-string and bare tokens only; JSX expression
+  attributes like `{someVar}` are never rendered, since evaluating them is
+  out of scope and would risk fabricating incorrect content). Tags already
+  handled by the named pipeline (`_KNOWN_HANDLED_TAGS`) are left untouched.
+* `classify_remaining_constructs()` replaces the old undifferentiated scan:
+  everything remaining after the fallback pass is split into
+  `ambiguous_tokens` (tag names in the grounded `_KNOWN_AMBIGUOUS_TAGS`
+  registry -- documented prose/type-notation, never blocking) and
+  `unresolved_constructs` (everything else -- a genuine gap).
+* `NormalizeResult` now exposes `fallback`, `ambiguous`, and `unresolved`
+  counters (replacing the old single `unhandled` counter), and the CLI
+  report's JSON shape mirrors this as three top-level dicts
+  (`fallback_constructs`, `ambiguous_tokens`, `unresolved_constructs`,
+  replacing `unhandled_constructs`).
+* `--execute` now fails closed with `EXIT_UNRESOLVED_MDX_CONSTRUCTS` if any
+  `unresolved_constructs` remain after processing the corpus, unless the
+  operator passes the new, help-documented `--allow-unresolved-mdx`
+  override flag. Dry-run never fails on this condition -- it only reports.
+* **Genuine bug found via live-corpus grounding while validating this
+  finding**: `protect_placeholders()`'s bare-ALL-CAPS-token mask (used to
+  protect literal placeholders like `<PATH>`) unconditionally matched the
+  opening tag of a real, paired, all-caps-authored callout component found
+  in the corpus (`<TIP>...</TIP>` in
+  `terraform/v1.16.x/docs/language/block/stack/tfcomponent/removed.mdx`,
+  the same semantic as the already-handled mixed-case `Tip` callout),
+  masking it away before the fallback pass ever saw it and orphaning the
+  un-matched closing `</TIP>` as a spuriously "unresolved" construct. Fixed
+  by teaching `protect_placeholders()` to skip masking a candidate token
+  when a matching `</NAME>` close tag exists later in the document -- a
+  purely structural test (real placeholders are never "closed"), not a
+  per-name special case, so it generalizes to any other all-caps-authored
+  paired component without enumeration.
+* **Registry expansion to meet the "aim for zero" bar**: after the `TIP`
+  fix, the real-corpus dry-run's `unresolved_constructs` bucket still held
+  62 distinct names / 97 occurrences. Every one was individually grounded
+  (sampled against its real corpus context) and confirmed to be either
+  Consul/Nomad API-reference backtick-wrapped generic-type notation (the
+  same shape as the already-known `ACLLink`) or a multi-word/spaced prose
+  placeholder (the same shape as `TFE`) -- never a genuine unimplemented
+  component. All 62 were added to `_KNOWN_AMBIGUOUS_TAGS` (§6 lists the
+  full set), which drives `unresolved_constructs` to **zero distinct names,
+  zero occurrences** on the selected live corpus, satisfying finding 5's
+  "aim for zero unresolved genuine MDX components... while preserving
+  placeholder-like tokens" bar without loosening the fail-closed execute
+  gate.
+
+**Tests**: `apply_fallback_pass` coverage (paired unwrap, self-closing with
+expression-only attrs excluded, self-closing with quoted attrs rendered,
+nested paired+self-closing, known-handled tags left untouched);
+`classify_remaining_constructs` coverage (unresolved tagging, known-ambiguous
+non-blocking, the new review-fix-cycle-1-grounded-tags batch, lowercase HTML
+passthrough ignored, the heredoc-line-bound regression); the `TIP`/placeholder
+collision fix (`test_protect_placeholders_skips_masking_when_a_matching_close_tag_exists_later`,
+`test_normalize_mdx_to_md_all_caps_paired_callout_resolved_not_orphaned`); a
+golden end-to-end test combining all three classification buckets; and
+CLI-level coverage in `test_hashicorp_dryrun_corpus.py`
+(`test_execute_fails_closed_when_unresolved_mdx_constructs_remain`,
+`test_execute_succeeds_with_explicit_allow_unresolved_mdx_override`,
+`test_dry_run_never_fails_on_unresolved_mdx_constructs`).
+
+### 9.6 Finding 6 (P2) -- copy drops non-Markdown, non-allow-listed files
+
+**Problem**: the copy pass skipped every file in the selected tree except
+Markdown and an allow-listed set of image extensions, silently dropping
+linked PDFs, videos, and other repository data that lived alongside the
+Markdown it was extracted from.
+
+**Fix** (`scripts/hashicorp_mdx_normalize.py`): `_process_one_product_tree()`
+now has a generic-copy branch -- any file that is not a partial (still
+excluded, see below), not `.mdx`, not `.md`, and not an allow-listed image
+extension is copied byte-for-byte. The report's `generic_copied` counter
+(renamed from `skipped_other`) tallies these. Paths under a literal
+`partials` path component are still excluded from the standalone output, per
+the original selection contract -- this finding only changes what happens to
+files that were previously silently dropped for not matching the Markdown/
+image allowlist, not the partials-exclusion rule itself.
+
+**Tests**: `test_dry_run_emits_json_plan_with_expected_shape` (asserts
+`generic_copied` count), `test_execute_writes_expected_tree_and_never_materializes_mdx`
+(asserts a generic file, e.g. `config.json`, exists at dest and matches
+source bytes exactly).
+
+### 9.7 `docline ingest local-dir` output-layout compatibility
+
+The selected output layout -- `{dest}/{product}/{selected_version}/...` for
+versioned products, `{dest}/{product}/...` for unversioned products, with
+normalized `.md` files, copied images, and copied generic files interleaved
+exactly as found in the source tree (minus excluded partials) -- remains
+directly compatible with `docline ingest local-dir <source_path> --output
+<dir>` (`src/docline/cli.py`'s `_run_ingest_local_dir`): that command's
+default `--include` globs (`**/*.md`, `**/*.markdown`, `**/TOC.yml`,
+`**/toc.yml`) recurse through arbitrary intermediate directories, so the
+extra `{selected_version}` path segment is transparent to it -- it is simply
+one more directory component the recursive glob walks through, exactly like
+`{product}` itself. Generic non-Markdown files copied per finding 6 (PDFs,
+videos, `.json` nav data, etc.) are not matched by the default include globs
+and are therefore inert from `local-dir`'s perspective -- present on disk
+for downstream consumers that need them, but neither included nor excluded
+by the ingest step unless the operator adds a matching `--include` pattern.
+
+**The version directory is intentionally preserved, not a byproduct to be
+flattened away later**: it records provenance (which upstream version was
+selected and normalized) directly in the output path, and it keeps the
+layout stable if a future iteration of this tool (or its eventual
+first-class successor, per Requirement 11 in §8) ever needs to select and
+retain more than one version per product without path collisions. No change
+was made to flatten or rename this segment; this section documents that
+choice explicitly, per the finding's request, rather than leaving it as an
+unstated implementation detail.
+
+## 10. Traceability
 
 * Script: `scripts/hashicorp_mdx_normalize.py`,
   `scripts/_hashicorp_mdx/selection.py`, `scripts/_hashicorp_mdx/normalize.py`
-* Tests: `tests/scripts/test_hashicorp_selection.py` (25 cases),
-  `tests/scripts/test_hashicorp_normalize.py` (25 cases),
-  `tests/scripts/test_hashicorp_dryrun_corpus.py` (8 cases, including the
+* Tests: `tests/scripts/test_hashicorp_selection.py` (28 cases),
+  `tests/scripts/test_hashicorp_normalize.py` (40 cases),
+  `tests/scripts/test_hashicorp_dryrun_corpus.py` (16 cases, including the
   real-corpus dry-run integration test)
 * Dry-run report (repo-local, git-ignored):
   `build/hashicorp-dryrun-evidence/real-corpus-dry-run-report.json`
 * Plan: `docs/plans/2026-09-11-hashicorp-mdx-normalization-preprocessor-plan.md`
 * Deliberation: `docs/decisions/2026-09-11-hashicorp-mdx-normalization-preprocessor-deliberation.md`
 * Shipment: `062-S`; Feature: `071-F`; Tasks: `071.001-T`..`071.011-T`
+* PR: #192; review-fix cycle 1 findings and resolutions: §9
