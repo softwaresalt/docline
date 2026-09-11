@@ -1182,3 +1182,23 @@ authorized change:
   0 entries before the run and exactly 0 entries after -- dry-run mode
   never claims or touches it, and the real external destination was never
   written to by this cycle's work.
+
+### 12.4 Post-push CI observation (out of scope, deferred)
+
+After pushing this cycle's commit (`eae28b0`) and updating PR #192's
+readiness block, `gh pr checks 192` surfaced one non-passing job:
+`pipeline-topology (ambient)` -- `BLOCK: BRANCH_MISMATCH: current branch
+feat/github-markdown-extension does not match target 062-S`. This is out
+of scope per P-021 C1 (fixing it would mean renaming the already-open PR
+branch or reconfiguring the pipeline-topology gate's shipment-to-branch
+naming convention, neither of which is part of this cycle's authorized
+existing-empty-`--dest` sentinel-claim fix) and is not a regression:
+job-level inspection confirmed the identical `BRANCH_MISMATCH` failure at
+both the prior HEAD (`ebce8d5`) and the HEAD before it (`408dbba`). It is
+also confirmed non-blocking: `main` has no branch protection rules (`gh
+api .../branches/main/protection` → 404 `Branch not protected`), and the
+enclosing CI workflow run's overall conclusion is `success` despite this
+one job's individual `failure` conclusion, consistent with an advisory
+/ `continue-on-error` ambient check rather than a required gate. Captured
+as deferred stash entry `ADE96404` (P-021, threadless path -- an ambient
+CI signal, not a GitHub review thread) rather than fixed.
