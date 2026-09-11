@@ -23,7 +23,7 @@ from pathlib import Path
 
 
 def _write_fixture(root: Path) -> None:
-    """Build a small repo fixture: 3 .md files + 1 file to exclude."""
+    """Build a small repo fixture with both Markdown extensions."""
     (root / "guide").mkdir(parents=True, exist_ok=True)
     (root / "guide" / "getting-started.md").write_text(
         "---\ntitle: Getting Started\nms.topic: how-to\n---\n# Getting Started\n\nIntro text.\n",
@@ -35,6 +35,10 @@ def _write_fixture(root: Path) -> None:
     )
     (root / "reference.md").write_text(
         "---\ntitle: Reference\nms.topic: reference\n---\n# Reference\n\nReference content.\n",
+        encoding="utf-8",
+    )
+    (root / "long-form.markdown").write_text(
+        "---\ntitle: Long Form\n---\n# Long Form\n\nLong-form extension content.\n",
         encoding="utf-8",
     )
     (root / "DRAFT-notes.md").write_text(
@@ -55,7 +59,7 @@ def _run_cli(argv: list[str], cwd: Path) -> subprocess.CompletedProcess[str]:
 
 
 def test_ingest_local_dir_smoke(tmp_path: Path) -> None:
-    """A directory with 3 .md files produces 3 output .md files via the new CLI."""
+    """Default local ingestion includes .md and .markdown source files."""
     src = tmp_path / "src-repo"
     src.mkdir()
     _write_fixture(src)
@@ -69,9 +73,9 @@ def test_ingest_local_dir_smoke(tmp_path: Path) -> None:
     )
     assert result.returncode == 0, f"stderr: {result.stderr}\nstdout: {result.stdout}"
     output_files = list(out.rglob("*.md"))
-    # 4 fixture .md files (3 in guide+root + DRAFT-notes), all match default include
-    assert len(output_files) == 4, (
-        f"expected 4 outputs from default --include '**/*.md', got {len(output_files)}: "
+    # Five Markdown files use the .md or .markdown extension.
+    assert len(output_files) == 5, (
+        f"expected 5 outputs from default Markdown includes, got {len(output_files)}: "
         f"{[p.name for p in output_files]}"
     )
 
@@ -97,8 +101,8 @@ def test_ingest_local_dir_exclude_filter(tmp_path: Path) -> None:
     )
     assert result.returncode == 0, f"stderr: {result.stderr}"
     output_files = list(out.rglob("*.md"))
-    # 4 - 1 excluded = 3 outputs
-    assert len(output_files) == 3
+    # Five Markdown files minus the excluded draft.
+    assert len(output_files) == 4
     assert not any("DRAFT" in p.name for p in output_files)
 
 
@@ -263,8 +267,8 @@ def test_ingest_local_dir_output_on_unrelated_cwd(tmp_path: Path) -> None:
     )
     assert result.returncode == 0, f"stderr: {result.stderr}\nstdout: {result.stdout}"
     output_files = list(out_root.rglob("*.md"))
-    assert len(output_files) == 4, (
-        f"expected 4 outputs from default include, got {len(output_files)}: "
+    assert len(output_files) == 5, (
+        f"expected 5 outputs from default include, got {len(output_files)}: "
         f"{[p.name for p in output_files]}"
     )
 

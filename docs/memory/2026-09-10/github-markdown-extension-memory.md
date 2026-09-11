@@ -7,12 +7,14 @@ date: 2026-09-10
 
 GitHub repository ingestion now treats `.markdown` files as Markdown alongside
 `.md` files. The default `**/*.md` GitHub filter includes both extensions, and
-the processing pipeline accepts, parses, links, orders, and derives canonical
-URLs for `.markdown` sources.
+the default cloned-repository `local-dir` intake explicitly includes both
+extensions. The processing pipeline accepts, parses, links, orders, and derives
+canonical URLs for `.markdown` sources.
 
 ## Changes
 
 * Updated GitHub glob matching in `src/docline/readers/github.py`
+* Updated CLI and shared manifest defaults to include `**/*.markdown`
 * Added `.markdown` to staged-file processing in `src/docline/app.py`
 * Routed `.markdown` through Markdown parsing in
   `src/docline/process/output_contract.py`

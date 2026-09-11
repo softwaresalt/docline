@@ -40,6 +40,12 @@ _log = logging.getLogger(__name__)
 _CRAWL_MANIFEST_NAME = "crawl-manifest.json"
 _PUBLISH_CONFIG_NAME = ".openpublishing.publish.config.json"
 _HEADING_RE = re.compile(r"^(#{1,6})(\s+.+)$")
+DEFAULT_LOCAL_INCLUDE_PATTERNS: tuple[str, ...] = (
+    "**/*.md",
+    "**/*.markdown",
+    "**/TOC.yml",
+    "**/toc.yml",
+)
 
 # Supported file extension → reader function name
 _SUPPORTED_EXTENSIONS = {".docx", ".pdf", ".html", ".htm", ".md", ".markdown", ".txt"}
@@ -510,7 +516,7 @@ def get_manifest() -> Manifest:
                         "include": {
                             "type": "array",
                             "items": {"type": "string"},
-                            "default": ["**/*.md", "**/TOC.yml", "**/toc.yml"],
+                            "default": list(DEFAULT_LOCAL_INCLUDE_PATTERNS),
                         },
                         "exclude": {
                             "type": "array",
