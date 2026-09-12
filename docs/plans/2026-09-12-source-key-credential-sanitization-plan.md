@@ -51,19 +51,27 @@ metadata/log representation may be sanitized.
 
 ## Constitution Check
 
-Mapped against `.github/instructions/constitution.instructions.md`:
+Mapped against `.github/instructions/constitution.instructions.md` (actual principle names):
 
-- **I (Spec-first / traceability):** satisfied — plan traces to decision doc + stash D6E758F5.
-- **II (Test-first + task granularity + width isolation):** satisfied — redaction test (Unit 2)
+- **I. Safety-First Python:** satisfied — pure helper + call-site swap; reuses the vetted
+  `sanitize_source()` primitive; no unsafe constructs.
+- **II. Test-First Development (NON-NEGOTIABLE):** satisfied — the failing redaction test (Unit 2)
   precedes production wiring (Unit 3); each unit is single-domain and within the 2-hour rule.
-- **III (Security / no secret leakage):** central purpose — remove credential leak from logs and
-  persisted metadata; verified against full log text and `metadata.json`.
-- **IV (Simplicity / YAGNI):** satisfied — smallest 3-unit set; credential-list expansion and
-  github_repo handling explicitly deferred.
-- **V–VI (Observability / versioning):** n/a — no public contract or schema change.
-- **VII (Determinism):** satisfied — `job_id` raw-key hashing invariant pinned by characterization.
-- **VIII–IX (Migration / destructive ops):** n/a — no data migration; historical `metadata.json`
-  not rewritten.
+- **III. Workspace Isolation and Security Boundaries:** central purpose — remove the credential
+  leak from logs (incl. traceback) and persisted `metadata.json`; verified against full
+  `caplog.text` and the written file.
+- **IV. CLI Workspace Containment (NON-NEGOTIABLE):** n/a — no path/containment change.
+- **V. Structured Observability:** preserved — ERROR log keeps `source_key`/`job_id` context in
+  sanitized form and retains `exc_info` (traceback kept, not dropped).
+- **VI. Single Responsibility:** satisfied — dedicated `sanitize_source_key()`; `sanitize_source()`
+  semantics untouched.
+- **VII. Destructive Command Approval (NON-NEGOTIABLE):** n/a — no destructive/irreversible step;
+  historical `metadata.json` not rewritten.
+- **VIII. Explicit Safety Modes:** applied — strict-safety enabled; plan hardened (see `## Plan
+  Hardening`).
+- **IX. Git-Friendly Persistence:** n/a — no schema/serialization change.
+- **Determinism (Technical Constraint):** `job_id` raw-key hashing invariant pinned by an explicit
+  raw-key recomputation assertion (Unit 2) plus the parity characterization (Unit 3).
 
 ## Implementation Units
 
@@ -102,8 +110,12 @@ Mapped against `.github/instructions/constitution.instructions.md`:
   the persisted `metadata.source` equals `sanitize_source_key(source_key)`; (c) add a
   credential-bearing crawl URL (userinfo + `?token=SECRET`) and assert the literal `SECRET` /
   userinfo substrings are ABSENT from `caplog.text` (the FULL rendered record incl. traceback)
-  AND from the written `metadata.json` text; (d) assert `job_id` equals the byte-value computed
-  from the raw key (determinism).
+  AND from the written `metadata.json` text — the injected crawl failure MUST raise an exception
+  whose message embeds the credentialed `config.url` (e.g. an error carrying `start_url`), so the
+  `caplog.text` traceback assertion is a genuine RED and is NOT vacuously satisfied by a URL-free
+  message like `OSError("Network down")`; (d) assert `job_id == make_job_id(build_source_key(config))`
+  recomputed independently from the raw credentialed key — this pin, NOT the credential-free parity
+  test, is the raw-hash oracle: an impl that hashes the SANITIZED key MUST fail this assertion.
 - **Files:** `tests/elt/test_elt_real_execution.py`.
 - **Tests:** the updated test itself; authored to FAIL (RED) against current code.
 - **Posture:** test-first RED — locks redaction + traceback + determinism contract before wiring.
@@ -114,9 +126,10 @@ Mapped against `.github/instructions/constitution.instructions.md`:
   `_log.exception(...)` argument from `source_key` to `sanitize_source_key(source_key)`. Keep
   `job_id = make_job_id(source_key)` on the raw key. If Unit 2's `caplog.text` assertion reveals
   the `exc_info` traceback re-leaks the raw URL (a crawl exception embedding `config.url`), close
-  it within this same ERROR sink — scrub the exception message or drop `exc_info` for credentialed
-  crawl failures — to make the test green. This decision is bounded to this file and this ERROR
-  path (still D6E758F5 scope).
+  it within this same ERROR sink by SCRUBBING the raw URL out of the logged exception (sanitize or
+  wrap the exception message so the rendered traceback carries no credential). Do NOT drop
+  `exc_info`: Unit 2 keeps asserting `exc_info is not None`, so the traceback MUST remain present
+  but credential-free. Bounded to this file and this ERROR path (still D6E758F5 scope).
 - **Files:** `src/docline/elt/execute.py`.
 - **Tests:** Units 1 + 2 turn green; existing `test_web_crawl_orchestrate_and_execute_share_job_key`
   stays green (job-key parity / determinism).
@@ -146,7 +159,15 @@ Mapped against `.github/instructions/constitution.instructions.md`:
 - **Risk:** manifest_url URL mis-isolation. **Mitigation:** scheme anchor + explicit
   token-absence test with a colon-bearing id (Unit 1 scenario 2).
 - **Risk:** URL path/query legitimately contains `:key=` colliding with the option grammar.
-  **Mitigation:** right-anchored peel of the known trailing `_CRAWL_OPTION_KEYS` grammar only.
+  **Mitigation:** right-anchored peel of the known trailing `_CRAWL_OPTION_KEYS` grammar only; a
+  mis-peeled non-option suffix is re-appended verbatim and carries no credential (fidelity-only,
+  not a leak).
+- **Risk:** scheme anchor mis-fires if a `manifest_url:<id>` id itself contains `http(s)://`, or a
+  URL uses an uppercase scheme. **Mitigation:** anchor on the FIRST scheme occurrence AFTER the
+  known prefix and match schemes case-insensitively; add Unit 1 scenarios for a scheme-bearing id
+  and an uppercase-scheme URL. Robust alternative (Ship may adopt without re-review, strengthens
+  the same contract): sanitize `config.url` from the typed `SourceConfig` and recompose via the
+  existing builder grammar instead of re-parsing the composed key string.
 - **Risk:** `exc_info` traceback re-leaks the URL. **Mitigation:** Unit 2 asserts absence against
   `caplog.text` (full record incl. traceback), forcing Unit 3 to close the traceback path.
 - **Risk:** silently changing `job_id`. **Mitigation:** determinism assertion + parity test.
@@ -155,6 +176,12 @@ Mapped against `.github/instructions/constitution.instructions.md`:
   redact path-embedded secrets. Expanding that shared list would alter the 059-S WARNING-path
   sanitizer too, widening blast radius beyond D6E758F5 -> **deferred** and recorded as a P-021
   watch; carried to closure as a known partial-redaction limitation.
+- **Documented residual — parallel default-fetch sink (NOT fixed here, holds scope):** the
+  non-`--execute` `docline fetch` path (`orchestrate_fetch` -> `create_staging_job`,
+  `src/docline/fetch/staging.py:161`) has the IDENTICAL `sanitize_source()` no-op leak, persisting
+  the raw credentialed key to `metadata.json` and stdout (`cli.py:381`). This shipment fixes only
+  `_execute_single_source` per strict D6E758F5 scope -> **deferred**, captured as stash **0F1A653C**
+  (high). Surfaced by the Stage adversarial multi-model review (2026-09-12).
 - **Caveat:** `github_repo:` tokens are OUT OF SCOPE -> P-021 deferral watch, pass-through only.
 - **Caveat:** pre-existing `metadata.json` files are not rewritten (historical-artifact note to
   closure).
@@ -293,3 +320,32 @@ Gate: PASS — no P0/P1 remain. Residual P2 (credential-list expansion, path-emb
 an explicitly documented out-of-scope residual + P-021 deferral watch, not a blocking gap for the
 D6E758F5 leak fix. P3 advisories incorporated. Runtime verification and operational closure
 expectations are present. Plan is harvest-ready.
+
+## Adversarial Multi-Model Review (Stage, pre-staging-PR gate 2)
+
+Operator requires, before every PR, BOTH (1) standard multi-persona review and (2) explicit
+adversarial multi-model review. Gate (1) = plan-review rounds 1–2 above (FAIL -> PASS). Gate (2)
+recorded here: Stage-owned adversarial review of the exact local staging diff `origin/main..HEAD`
+(reviewed HEAD `bd93a406`, pre-remediation).
+
+- **Reviewers (independent models/providers, parallel):** Anthropic `claude-opus-4.8`, OpenAI
+  `gpt-5.6-sol`, Google `gemini-3.8-flash`, xAI `grok-4.6`. Verdicts: 3 BLOCK, 1 PASS. All
+  findings adjudicated by Stage against the actual source (`source_keys.py`, `staging.py`,
+  `execute.py`, `orchestrate.py`, tests) before disposition.
+- **Consensus findings resolved in Stage-owned artifacts (this diff):**
+  - P1 — unacknowledged second live leak sink (`orchestrate_fetch`/`create_staging_job` default
+    `docline fetch` path). VERIFIED against source. Disposition: closure claims scoped to
+    `_execute_single_source`; sink captured as deferral stash `0F1A653C` (NOT triaged into 063-S).
+  - P1 — determinism test net too weak (parity test uses a credential-free URL). Disposition:
+    Unit 2 AC(d) strengthened to an independent raw-key `make_job_id` recomputation oracle.
+  - P1 — traceback re-leak under-specified + Unit 2/Unit 3 `exc_info` contradiction. Disposition:
+    Unit 3 mandates SCRUB (keep `exc_info`); Unit 2 requires a credentialed-URL-bearing exception.
+  - P2 — decision `P-021 Deferral Watch` said "None" vs plan/memory. Disposition: reconciled;
+    three deferrals captured as stash `0F1A653C`/`79BF0AEC`/`06A59B1D`.
+  - P2 — `## Constitution Check` mapped invented principle names. Disposition: remapped to the
+    actual constitution (I Safety-First Python … VII Destructive Approval …).
+  - P3 — stale "splits a prefixed key" (decision Option B), sub-epic prose, 063-S EOF blank line,
+    archive `harvested_artifact_id`, scheme-in-id/uppercase robustness. Disposition: all fixed.
+- **Residual after remediation:** the three captured deferrals (`0F1A653C` high, `79BF0AEC`,
+  `06A59B1D`) remain out-of-scope for 063-S by operator P-017 scope freeze; no P0/P1 remain in the
+  staged artifacts. Gate (2): PASS.

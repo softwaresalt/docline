@@ -62,9 +62,11 @@ embedded URL. Rejected: `sanitize_source` is a general primitive also used by
 concerns and risks regressions on the bare-URL callers.
 
 ### Option B — New source-key-aware sanitizer `sanitize_source_key()` (CHOSEN)
-Add a dedicated helper (co-located with `build_source_key` in `source_keys.py`) that splits a
-prefixed key, applies the existing `sanitize_source()` URL logic to the embedded URL segment,
-preserves the prefix and non-URL option suffixes (`depth=`, `max_pages=`, ...), and is a
+Add a dedicated helper (co-located with `build_source_key` in `source_keys.py`) that (per plan-review R2) isolates the
+embedded URL by **scheme anchor** (`http(s)://`) — not a positional colon split — restricted to
+the `web_crawl:` / `manifest_url:` prefixes, applies the existing `sanitize_source()` URL logic
+to that URL segment, right-anchor-peels and preserves the trailing crawl-option suffixes (`depth=`,
+`max_pages=`, ...), and is a
 pass-through for non-URL keys (`local_file:`, `github_repo:`, `manifest_local:`,
 `manifest_git:`). `job_id` still hashes the raw key. Chosen: smallest blast radius, reuses the
 vetted URL sanitizer, keeps `sanitize_source` semantics intact, single clear seam.
@@ -84,7 +86,10 @@ assert the sanitized representation appears and that a credential token does NOT
 ## Done Looks Like
 
 - No raw URL credential (userinfo or credential query param) reaches `metadata.json` or the
-  ERROR log for `web_crawl:` / `manifest_url:` keys.
+  ERROR log written by `_execute_single_source` (incl. the `exc_info` traceback) for
+  `web_crawl:` / `manifest_url:` keys. NOTE: the separate `orchestrate_fetch` /
+  `create_staging_job` default-fetch sink is a distinct, out-of-scope leak captured as a P-021
+  deferral (see below) — NOT closed by this shipment.
 - `job_id` for identical inputs is byte-identical before and after the fix (determinism proof).
 - Non-URL source keys are unchanged by the sanitizer.
 - `test_url_fetch_failure_logs_source_key_and_job_id` updated and green; a credential-bearing
@@ -93,8 +98,9 @@ assert the sanitized representation appears and that a credential token does NOT
 ## Covering Feature Synthesis
 
 Single task-shaped bug -> solo group -> synthesize one covering top-level **chore** release unit
-(security remediation / internal hardening, not a net-new user capability). Decomposes into one
-sub-epic and three atomic single-domain tasks.
+(security remediation / internal hardening, not a net-new user capability). Decomposes directly
+into three atomic single-domain tasks (backlogit WIT defines no sub-epic type; tasks attach
+directly to the covering feature 072-F).
 
 ## Open Questions
 
@@ -102,5 +108,18 @@ None blocking. Security-sensitive + persistence path => plan hardening required 
 
 ## P-021 Deferral Watch
 
-None discovered during this scoped analysis. If Ship later finds adjacent leak sinks (e.g.
-`github_repo:` tokens), those are separate findings and MUST NOT expand this shipment.
+Adjacent, out-of-scope leak sinks identified during scoped analysis and the Stage adversarial
+multi-model review (2026-09-12). Each is captured as a separate stash entry for future triage and
+MUST NOT expand shipment 063-S:
+
+- **`orchestrate_fetch` / `create_staging_job` default-fetch sink** (`src/docline/fetch/staging.py:161`):
+  the non-`--execute` `docline fetch` path also routes a prefixed crawl `source_key` through the
+  no-op `sanitize_source()`, leaking the raw credentialed key to `metadata.json` and stdout
+  (`cli.py:381`). Same leak class as D6E758F5 but a distinct function/path (this shipment fixes only
+  `_execute_single_source`). Captured as stash **0F1A653C** (high).
+- **`github_repo:` token leak**: `github_repo:{repo_url}` may embed tokens; `sanitize_source_key()`
+  is pass-through for this prefix in 063-S. Captured as stash **79BF0AEC** (medium).
+- **`_CREDENTIAL_PARAM_PREFIXES` expansion + path-embedded secrets**: the shared param list omits
+  `password`/`pwd`/`passwd`/`client_secret`/`refresh_token`/`code` and `_sanitize_url` does not
+  redact path-embedded secrets; expanding it would alter the 059-S WARNING path, widening blast
+  radius beyond D6E758F5. Captured as stash **06A59B1D** (medium).
