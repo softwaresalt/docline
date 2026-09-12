@@ -1194,6 +1194,32 @@ def test_process_corpus_rejects_case_insensitive_destination_collision(tmp_path:
     assert not dest.exists(), "a rejected collision must never create --dest, even in dry-run"
 
 
+def test_case_folded_path_set_is_case_insensitive_membership_o1() -> None:
+    """Unit regression for Copilot review follow-up round 7 (finding at
+    scripts/hashicorp_mdx_normalize.py:716): the case-insensitive
+    collision key used to be a fresh ``casefold()`` projection scanned
+    across the whole ``planned_dest_paths`` set on every single lookup
+    (O(n) per check, O(n^2) overall -- ~63 million comparisons across
+    the documented ~7,900 real-corpus outputs, two passes). ``_CaseFoldedPathSet``
+    replaces that with an incrementally-maintained case-folded index, so
+    ``in`` is an O(1) hash lookup regardless of how many paths have
+    already been recorded, while ``planned_dest_paths``'s PUBLIC
+    contract (storing and iterating ORIGINAL casing) is unchanged.
+    """
+    paths = hashicorp_mdx_normalize._CaseFoldedPathSet()
+    paths.add("hcp-docs/Foo.md")
+    # Case-insensitive membership: a differently-cased query string
+    # matches the recorded entry.
+    assert "hcp-docs/foo.md" in paths
+    assert "hcp-docs/FOO.MD" in paths
+    assert "hcp-docs/bar.md" not in paths
+    # Original casing is preserved for iteration/reporting (existing
+    # ``planned_dest_paths`` public contract, relied on by --report
+    # output and test_process_corpus_collects_full_planned_dest_paths_when_requested).
+    assert list(paths) == ["hcp-docs/Foo.md"]
+    assert len(paths) == 1
+
+
 def test_process_corpus_collects_full_planned_dest_paths_when_requested(tmp_path: Path) -> None:
     """The uncapped ``planned_dest_paths`` out-parameter (used by
     ``main()``'s --report collision check, finding qAsu) is populated

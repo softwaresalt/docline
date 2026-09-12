@@ -228,6 +228,39 @@ class DestinationCollisionError(RuntimeError):
     output with no diagnostic."""
 
 
+class _CaseFoldedPathSet(set[str]):
+    """A drop-in ``set[str]`` that also maintains an O(1) case-folded
+    membership index (Copilot review cycle 4, follow-up round 7: the
+    straightforward case-insensitive collision check -- re-scanning
+    every already-recorded path with a fresh ``casefold()`` projection
+    on each lookup -- is O(n) per check, which is O(n^2) overall across
+    a run; with the documented ~7,900 real-corpus outputs, execute
+    mode's two passes (preflight + write) perform roughly 63 million
+    path comparisons). This subclass keeps the exact same public
+    surface as a plain ``set[str]`` -- iteration, ``len()``, and the
+    original-casing entries themselves are completely unchanged (the
+    documented ``planned_dest_paths`` contract of storing ORIGINAL
+    casing, relied on by ``main()``'s ``--report`` output and existing
+    tests, is untouched) -- it only changes ``in`` / ``add()`` to also
+    consult and update a parallel case-folded key set, so every
+    membership check becomes a single hash lookup regardless of how
+    many paths have already been recorded.
+    """
+
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        super().__init__(*args, **kwargs)
+        self._folded: set[str] = {s.casefold() for s in self}
+
+    def __contains__(self, item: object) -> bool:
+        if isinstance(item, str):
+            return item.casefold() in self._folded
+        return super().__contains__(item)
+
+    def add(self, item: str) -> None:  # type: ignore[override]
+        super().add(item)
+        self._folded.add(item.casefold())
+
+
 def guard_write_path(dest_root: Path, candidate: Path) -> Path:
     """Resolve ``candidate`` and verify it falls strictly inside ``dest_root``.
 
@@ -692,28 +725,24 @@ def _process_one_product_tree(
 
     def _record_planned_path(dest_candidate: Path) -> None:
         dest_relative = dest_candidate.relative_to(dest_root).as_posix()
-        # Collision detection compares a case-folded key (Copilot review
-        # cycle 4, follow-up round 3, finding htTX0; case-fold fix in
-        # follow-up round 5, finding htcWC's sibling CI-failure comment),
-        # not the raw posix-relative string: the documented operator
-        # target is Windows, whose filesystems are normally case-
-        # INSENSITIVE, so ``Foo.mdx`` -> ``Foo.md`` and an existing
-        # ``foo.md`` are the SAME destination on disk even though they
-        # are different Python strings. ``os.path.normcase()`` is a
-        # no-op on POSIX (it only lowercases and folds slashes on
-        # Windows), so it silently failed to fold case on Linux CI --
-        # ``str.casefold()`` is used instead because it performs
-        # Unicode-aware case folding on every platform, matching the
-        # documented case-insensitive-filesystem contract regardless of
-        # the host OS. ``dest_relative`` is already posix-formatted via
-        # ``.as_posix()`` above, so no separate slash normalization is
-        # needed. ``planned_dest_paths`` itself keeps storing the
-        # ORIGINAL-casing strings (unchanged public contract, relied on
-        # by ``main()``'s --report checks and by existing tests) -- only
-        # the membership *comparison* is normalized, via a fresh
-        # case-folded projection of the same shared set.
-        dest_key = dest_relative.casefold()
-        if any(existing.casefold() == dest_key for existing in planned_dest_paths):
+        # Collision detection uses case-folded membership (Copilot
+        # review cycle 4, follow-up round 3, finding htTX0; case-fold
+        # correctness fix in follow-up round 5, finding htcWC's sibling
+        # CI-failure comment; O(1)-lookup fix in follow-up round 7,
+        # finding at line 716): the documented operator target is
+        # Windows, whose filesystems are normally case-INSENSITIVE, so
+        # ``Foo.mdx`` -> ``Foo.md`` and an existing ``foo.md`` are the
+        # SAME destination on disk even though they are different Python
+        # strings. ``planned_dest_paths`` is a :class:`_CaseFoldedPathSet`
+        # (or, for an external caller that supplies a plain ``set[str]``,
+        # falls back to that set's own exact-match ``in``), so this ``in``
+        # check is a single case-folded hash lookup rather than a fresh
+        # O(n) re-scan of every previously recorded path on every call.
+        # ``planned_dest_paths`` itself keeps storing the ORIGINAL-casing
+        # strings (unchanged public contract, relied on by ``main()``'s
+        # --report checks and by existing tests) -- only the membership
+        # *comparison* is case-folded.
+        if dest_relative in planned_dest_paths:
             raise DestinationCollisionError(
                 f"planned destination path collision under --dest: '{dest_relative}' would "
                 "be written by more than one source file -- refusing to proceed. This "
@@ -839,7 +868,7 @@ def process_corpus(
     full set back.
     """
     if planned_dest_paths is None:
-        planned_dest_paths = set()
+        planned_dest_paths = _CaseFoldedPathSet()
     builder = ReportBuilder(source=source, dest=dest, execute=execute)
 
     top_level_dirs = sorted(p.name for p in source.iterdir() if p.is_dir())
@@ -1110,7 +1139,7 @@ def main(argv: list[str] | None = None) -> int:
     # --report collision check below (finding qAsu) can consult it, and
     # duplicate-destination detection (finding p8PN) runs as a side
     # effect of the preflight call itself.
-    planned_dest_paths: set[str] = set()
+    planned_dest_paths: set[str] = _CaseFoldedPathSet()
     try:
         preflight_report = process_corpus(
             source=source, dest=dest, execute=False, planned_dest_paths=planned_dest_paths
@@ -1130,10 +1159,7 @@ def main(argv: list[str] | None = None) -> int:
             ).as_posix()
         except ValueError:
             report_relative_to_dest = None
-        if report_relative_to_dest is not None and any(
-            planned.casefold() == report_relative_to_dest.casefold()
-            for planned in planned_dest_paths
-        ):
+        if report_relative_to_dest is not None and report_relative_to_dest in planned_dest_paths:
             print(
                 f"error: --report resolves to a planned corpus output path: "
                 f"{resolved_report_precheck} -- choose a different --report path. Writing "
@@ -1262,9 +1288,9 @@ def main(argv: list[str] | None = None) -> int:
                 ).as_posix()
             except ValueError:
                 report_relative_to_dest_final = None
-            if report_relative_to_dest_final is not None and any(
-                planned.casefold() == report_relative_to_dest_final.casefold()
-                for planned in planned_dest_paths
+            if (
+                report_relative_to_dest_final is not None
+                and report_relative_to_dest_final in planned_dest_paths
             ):
                 # Defense-in-depth only, same rationale as the reserved-
                 # sentinel re-check immediately above: the early
