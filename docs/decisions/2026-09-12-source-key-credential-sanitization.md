@@ -61,7 +61,7 @@ embedded URL. Rejected: `sanitize_source` is a general primitive also used by
 `create_staging_job` on bare sources; overloading it with source-key grammar couples two
 concerns and risks regressions on the bare-URL callers.
 
-### Option B — New source-config-aware sanitizer `sanitize_source_key()` (CHOSEN; contract amended R3/R4/R5)
+### Option B — New source-config-aware sanitizer `sanitize_source_key()` (CHOSEN; contract amended R3/R4/R5/R6)
 Add a dedicated helper (co-located with `build_source_key` in `source_keys.py`) that consumes the
 **typed `SourceConfig`** (not the composed key string): for the two leak-scoped crawl configs
 (`WebCrawlSource` / `ManifestUrlSource`) it sanitizes the typed `config.url` via the existing
@@ -107,6 +107,22 @@ not documented as an accepted exception. A non-URL credential-bearing-id regress
 to Unit 1 (unit) and Unit 2 (integration). `job_id` still hashes the raw `build_source_key(config)` (determinism invariant
 unchanged).
 
+**R6 refinement (Copilot review, PR #195 cycle 3, threads `PRRT_kwDOSsAX4c6h0dUG` (plan line 129) /
+`PRRT_kwDOSsAX4c6h0dUO` (plan line 142)):** two same-contract-surface findings on the R5 helper.
+(1) `sanitize_source()` / `_sanitize_url()` reads `parsed.port`, which raises `ValueError` on a
+malformed value such as `https://host:notaport`; because `sanitize_source_key(config)` is called
+while building `metadata` before the fetch `try` and inside the exception logger, a raising sanitizer
+would crash `_execute_single_source` or mask the original fetch failure. (2) the R5 "preserved
+byte-for-byte" claim for a credential-free `id` contradicts routing the id through `sanitize_source()`,
+which rewrites absolute-path/`file://` ids to `<local-path-redacted>` and drops URL fragments. The
+contract is refined so `sanitize_source_id()` is TOTAL, non-throwing, and MARKER-GATED: it no longer
+delegates to `sanitize_source()`; it detects credential markers with a non-throwing scan, returns a
+credential-free id VERBATIM regardless of shape, redacts only recognized credential fragments/userinfo
+when present, and FAILS CLOSED to `<source-id-redacted>` for a marker-bearing input it cannot
+surgically redact. `sanitize_source_key()` wraps the `config.url` sanitize fail-closed
+(`<source-url-redacted>` on a malformed URL), so the whole helper is total. `job_id` still hashes the
+raw `build_source_key(config)` (determinism invariant unchanged).
+
 ### Option C — Redact by not logging / not persisting the key at all
 Drop `source_key` from the log and store only `job_id` in metadata. Rejected: loses
 operator-facing diagnostic value (sanitized host/path is useful) and changes the metadata
@@ -114,7 +130,7 @@ contract more than necessary; the existing test depends on a source field being 
 
 ## Chosen Direction
 
-**Option B (typed-config contract, R5).** Introduce
+**Option B (typed-config contract, R6).** Introduce
 `sanitize_source_key(config: SourceConfig) -> str` that sanitizes the typed `config.url` (via
 `sanitize_source()`) AND, for `ManifestUrlSource`, credential-redacts the `config.id` segment via a
 `sanitize_source_id()` helper that redacts INDEPENDENT of URL detection (strip userinfo + redact
@@ -125,6 +141,10 @@ via `_build_crawl_source_key`; route `metadata.source` and the ERROR log through
 unchanged. Update the affected test to assert the sanitized representation appears and that a
 credential token does NOT appear (including for a manifest_url config whose `id` is itself a
 credential-bearing string (URL-shaped or non-URL-form such as `srcA?token=SECRET`), with `config.id` credential-redacted independent of URL detection before recompose (R5)), while `job_id` continues to be asserted against the raw-key recomputation.
+The R6 refinement makes both `sanitize_source_id()` and `sanitize_source_key()` TOTAL and
+non-throwing (fail-closed to `<source-id-redacted>` / `<source-url-redacted>` on malformed input,
+never raising into the pre-`try` metadata build or the exception logger) and preserves a
+credential-free `id` verbatim (byte-for-byte, no `sanitize_source()` path/fragment mangling).
 
 ## Done Looks Like
 
@@ -137,6 +157,11 @@ credential-bearing string (URL-shaped or non-URL-form such as `srcA?token=SECRET
 - Non-URL source keys are unchanged by the sanitizer.
 - `test_url_fetch_failure_logs_source_key_and_job_id` updated and green; a credential-bearing
   case proves redaction.
+- `sanitize_source_key()` / `sanitize_source_id()` are TOTAL and never raise for any config (a
+  malformed URL/id yields a redacted `<source-url-redacted>` / `<source-id-redacted>` fallback, not a
+  `ValueError`), so metadata construction before the fetch `try` and the exception logger cannot
+  crash or mask a fetch failure; and a credential-free `id` (absolute path, `file://`, or
+  fragment-bearing URL such as `/source-a`) is preserved verbatim (R6).
 
 ## Covering Feature Synthesis
 

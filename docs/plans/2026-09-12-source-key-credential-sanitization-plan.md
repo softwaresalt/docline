@@ -6,7 +6,7 @@ kind: implementation-plan
 source: docs/decisions/2026-09-12-source-key-credential-sanitization.md
 stash_id: D6E758F5
 covering_release_unit: chore
-revision: R5
+revision: R6
 ---
 
 # Implementation Plan: Source-key credential sanitization (stash D6E758F5)
@@ -61,6 +61,27 @@ Source document: `docs/decisions/2026-09-12-source-key-credential-sanitization.m
 > `_build_crawl_source_key`/`_crawl_option_parts` builder directly, so the separate parse path that
 > the shared constant guarded no longer exists (plan/task/source realigned).
 
+> **Revision R6** -- revised after Copilot review on PR #195 cycle 3 (unresolved threads
+> `PRRT_kwDOSsAX4c6h0dUG`, plan line 129, and `PRRT_kwDOSsAX4c6h0dUO`, plan line 142). Two
+> same-contract-surface findings on the R5 `sanitize_source_id` / `sanitize_source_key` contract:
+> (1) the helper is NOT total for an unrestricted `str` -- `sanitize_source()` / `_sanitize_url()`
+> reads `parsed.port`, which raises `ValueError` for a malformed URL-shaped value such as
+> `https://host:notaport`; because Unit 3 calls `sanitize_source_key(config)` while building
+> `metadata` BEFORE the fetch `try` (and again in the exception logger), a raising sanitizer would
+> crash `_execute_single_source` or mask the original fetch failure; (2) the R5 "preserved
+> byte-for-byte" guarantee for a credential-free `id` CONTRADICTS step (a) "apply `sanitize_source()`",
+> which rewrites absolute-path/`file://` ids to `<local-path-redacted>` and drops URL fragments, so a
+> credential-free id such as `/source-a` cannot be preserved. The contract is refined so
+> `sanitize_source_id()` is TOTAL, non-throwing, and MARKER-GATED: it no longer delegates to
+> `sanitize_source()`; it detects credential markers with a non-throwing string/regex scan, returns a
+> credential-free id VERBATIM (byte-for-byte) regardless of shape, redacts only recognized credential
+> fragments/userinfo when a marker is present, and FAILS CLOSED to `<source-id-redacted>` for a
+> marker-bearing input it cannot surgically redact. `sanitize_source_key()` wraps the `config.url`
+> sanitize fail-closed (a malformed URL yields `<source-url-redacted>` rather than raising), so the
+> whole helper is total and safe to call before the fetch `try` and inside the logger. `job_id` still
+> hashes the raw `build_source_key(config)` (determinism invariant unchanged). The decision doc,
+> feature card 072-F, and tasks 072.001-T/072.002-T/072.003-T are updated to match.
+
 ## Problem Frame
 
 `_execute_single_source` (`src/docline/elt/execute.py:203`) computes
@@ -83,7 +104,9 @@ metadata/log representation may be sanitized.
 |---|---|
 | Sanitize embedded URL inside prefixed source keys | Add `sanitize_source_key()` in `source_keys.py` (Unit 1) |
 | Correctly isolate the URL for BOTH web_crawl and manifest_url | Sanitize the typed `config.url` and recompose via `_build_crawl_source_key`; no string parse (Unit 1) |
-| No credential in the manifest_url `id` segment (URL-shaped OR non-URL-form) | ID-specific credential redaction of `config.id` independent of URL detection before recompose; scheme-bearing AND non-URL credential-bearing-id cases (Unit 1, R5) |
+| No credential in the manifest_url `id` segment (URL-shaped OR non-URL-form) | Marker-gated `sanitize_source_id(config.id)` credential redaction independent of URL detection before recompose; scheme-bearing AND non-URL credential-bearing-id cases (Unit 1, R6) |
+| Helper is TOTAL / fail-closed -- never raises for arbitrary unrestricted `str` (malformed URL/id yields a redacted fallback, not an exception) | Fail-closed wrapper around the `config.url` sanitize + non-throwing marker-gated `sanitize_source_id`; malformed-input unit + integration regression (Units 1, 2, R6) |
+| Credential-free IDs preserved verbatim (absolute paths, `file://`, fragment-bearing URLs) | `sanitize_source_id` returns the id byte-for-byte when no credential marker is present -- no `sanitize_source()` path/fragment mangling (Unit 1, R6) |
 | Do not change `job_id` determinism | Keep `make_job_id(source_key)` on raw key; sanitize only metadata/log (Unit 3) |
 | No credential in `metadata.source` or ERROR log (incl. traceback) | Route both sinks through helper; assert against `caplog.text` (Units 2, 3) |
 | Redaction observed before production change | Author failing redaction test first (Unit 2 before Unit 3) |
@@ -124,24 +147,48 @@ Mapped against `.github/instructions/constitution.instructions.md` (actual princ
      `_CRAWL_OPTION_KEYS` constant was meant to guard, so it is unnecessary):
      - For the two leak-scoped crawl configs (`WebCrawlSource`, `ManifestUrlSource`), sanitize the
        typed `config.url` via the existing public `sanitize_source()` (import from
-       `docline.fetch.staging`; reuse — do not duplicate `_CREDENTIAL_PARAM_PREFIXES`), then
-       **recompose** the key through the same `_build_crawl_source_key(prefix, sanitized_url, ...)`
-       path that `build_source_key` uses, so the sanitized key is grammar-identical to the raw key
-       except for the URL segment. This is immune to the `manifest_url:<id>:<url>` ambiguity even
-       when `<id>` itself contains a URL scheme, because no composed string is parsed.
-     - **`ManifestUrlSource.id` ID-specific credential redaction (R5):** the recomposed manifest_url
+       `docline.fetch.staging`; reuse -- do not duplicate `_CREDENTIAL_PARAM_PREFIXES`) inside a
+       **fail-closed wrapper (R6):** `sanitize_source()` / `_sanitize_url()` reads `parsed.port`,
+       which raises `ValueError` for a malformed URL-shaped value such as `https://host:notaport`, so
+       the call is guarded -- on any `ValueError` (or other parse failure) it yields a fully-redacted
+       URL sentinel `<source-url-redacted>` instead of propagating. Then **recompose** the key
+       through the same `_build_crawl_source_key(prefix, sanitized_url, ...)` path that
+       `build_source_key` uses, so the sanitized key is grammar-identical to the raw key except for
+       the URL segment. This is immune to the `manifest_url:<id>:<url>` ambiguity even when `<id>`
+       itself contains a URL scheme, because no composed string is parsed.
+     - **`sanitize_source_key()` is TOTAL / fail-closed (R6):** because both the URL-sanitize step
+       above and the id-sanitize step below never raise, `sanitize_source_key(config)` NEVER raises
+       for any config, including a malformed URL-shaped `config.url` or `config.id`. This is required
+       because Unit 3 calls `sanitize_source_key(config)` while constructing `metadata` BEFORE the
+       fetch `try`, and again inside the exception logger: a raising sanitizer would otherwise crash
+       `_execute_single_source` (instead of producing the normal incomplete-staging-job / fetch
+       failure) or mask an original fetch failure in the logger. (Closes PR #195 Copilot finding
+       `PRRT_kwDOSsAX4c6h0dUG`.)
+     - **`ManifestUrlSource.id` marker-gated credential redaction (R6):** the recomposed manifest_url
        prefix is `manifest_url:<id>` and `id` is an unrestricted `str` that may be scheme-bearing OR
        a non-URL-form string carrying credentials (userinfo or `?token=...`, e.g. `srcA?token=SECRET`).
        Build the prefix from a credential-redacted id (`f"manifest_url:{sanitize_source_id(config.id)}"`)
-       where `sanitize_source_id()` redacts credentials INDEPENDENT of URL detection: (a) apply
-       `sanitize_source()` so URL/path-shaped ids are handled, and (b) regardless of URL scheme,
-       strip `user:pass@` userinfo and redact any `key=value` fragment whose key matches the EXISTING
-       `_CREDENTIAL_PARAM_PREFIXES` vocabulary (reuse — do NOT expand the list; that expansion
-       stays deferred as stash `06A59B1D`), so `srcA?token=SECRET` -> `srcA?token=<redacted>`. This
-       CLOSES the R4 non-URL-form-id gap — no accepted residual remains. A credential-free `id`
-       with no credential markers is preserved byte-for-byte. Only the RAW `build_source_key(config)`
-       (unsanitized id + url) is fed to `make_job_id`, so `job_id` determinism is unchanged. (Closes
-       PR #195 Copilot findings `PRRT_kwDOSsAX4c6h0OMq` / `PRRT_kwDOSsAX4c6h0OM1`.)
+       where `sanitize_source_id(raw_id: str) -> str` is TOTAL, non-throwing, and MARKER-GATED. It
+       does NOT delegate to `sanitize_source()` (whose absolute-path/`file://` redaction and fragment
+       drop would mangle a credential-free id, and whose `_sanitize_url()` can raise). Instead:
+       (a) **detect credential markers** with a non-throwing string/regex scan only -- `user:pass@`
+       (or `user@`) userinfo before a host, and any `key=value` fragment whose key (case-insensitive)
+       matches the EXISTING `_CREDENTIAL_PARAM_PREFIXES` vocabulary (reuse -- do NOT expand the list;
+       that expansion stays deferred as stash `06A59B1D`); detection never calls `urllib` `.port`;
+       (b) **no marker -> return `raw_id` byte-for-byte** (verbatim), so a credential-free id of ANY
+       shape -- an absolute path such as `/source-a`, a `file://` value, or a fragment-bearing URL
+       such as `https://host/x#frag` -- is preserved exactly (Closes PR #195 Copilot finding
+       `PRRT_kwDOSsAX4c6h0dUO`); (c) **marker present -> surgical, non-throwing redaction** via pure
+       regex over the raw string: strip `user:pass@` userinfo and rewrite each recognized credential
+       `key=value` to `key=<redacted>`, preserving all other bytes, so `srcA?token=SECRET` ->
+       `srcA?token=<redacted>` and `https://u:p@host/x?token=T#frag` ->
+       `https://host/x?token=<redacted>#frag`; (d) **marker present but redaction cannot complete
+       (any internal error) -> FAIL CLOSED** to the fully-redacted sentinel `<source-id-redacted>`
+       -- never the raw value, never raising. This CLOSES the R4/R5 gaps (non-URL-form-id no-op AND
+       the throwing-parser and byte-preservation contradictions) with no accepted residual. Only the
+       RAW `build_source_key(config)` (unsanitized id + url) is fed to `make_job_id`, so `job_id`
+       determinism is unchanged. (Closes PR #195 Copilot findings `PRRT_kwDOSsAX4c6h0dUG` /
+       `PRRT_kwDOSsAX4c6h0dUO`.)
      - For ALL other config types (`LocalFileSource`, `GitHubRepoSource`, `ManifestLocalSource`,
        `ManifestGitSource`) return `build_source_key(config)` **byte-identical** (github_repo token
        handling is DEFERRED, not implemented here).
@@ -151,16 +198,21 @@ Mapped against `.github/instructions/constitution.instructions.md` (actual princ
        Add `sanitize_source_key` and `sanitize_source_id` to `__all__`; update the module docstring
        to reflect the added safe-representation role.
 - **Files:** `src/docline/elt/source_keys.py`, `tests/elt/test_source_keys.py` (new).
-- **Tests (<= 3 scenarios):** (1) `web_crawl:` key with userinfo + `?token=SECRET` + options ->
-  token + userinfo ABSENT, prefix + option suffixes preserved; (2) a `ManifestUrlSource`
-  credential-bearing-`id` redaction scenario, parametrized over (a) a scheme-bearing `id` (userinfo
-  + `?token=IDSECRET`) and (b) a NON-URL-form `id` (`srcA?token=IDSECRET`, no scheme), each with a
-  `url` carrying `?token=SECRET` -> in BOTH cases `SECRET`, `IDSECRET`, and any userinfo are ABSENT
-  from the recomposed key while the non-credential prefix/id structure and option suffixes are
-  preserved (proves ID-specific redaction is independent of URL detection — closing both the
-  scheme-in-id case R2 could not handle AND the non-URL-form-id case R4's `sanitize_source()`-only
-  path no-opped on); (3) non-crawl configs (`GitHubRepoSource`, `LocalFileSource`) returned
-  byte-identical AND an empty-option credentialed `WebCrawlSource` sanitized.
+- **Tests (3 scenario groups, parametrized):** (1) crawl URL redaction + fail-closed: a `web_crawl:`
+  config with userinfo + `?token=SECRET` + options -> token + userinfo ABSENT, prefix + option
+  suffixes preserved; AND [R6] a MALFORMED URL (`https://host:notaport?token=SECRET`, where
+  `_sanitize_url`'s `parsed.port` would raise) -> `sanitize_source_key()` returns WITHOUT raising,
+  `SECRET` ABSENT, URL segment is the `<source-url-redacted>` sentinel. (2) `ManifestUrlSource.id`
+  handling, parametrized over: (a) a scheme-bearing credential `id` (userinfo + `?token=IDSECRET`),
+  (b) a NON-URL-form credential `id` (`srcA?token=IDSECRET`, no scheme) -- in both, `IDSECRET` +
+  userinfo ABSENT while the non-credential id/prefix/options are preserved (proves redaction is
+  independent of URL detection); (c) [R6] a MALFORMED credential-bearing `id`
+  (`https://u:p@host:notaport?token=IDSECRET`) -> `sanitize_source_id()` FAILS CLOSED to
+  `<source-id-redacted>` without raising, `IDSECRET` ABSENT; (d) [R6] a credential-free
+  absolute-path `id` (`/source-a`) and (e) [R6] a credential-free fragment-bearing URL `id`
+  (`https://host/x#frag`) each returned VERBATIM (byte-for-byte, no path-redaction, fragment
+  retained). (3) non-crawl configs (`GitHubRepoSource`, `LocalFileSource`) returned byte-identical
+  AND an empty-option credentialed `WebCrawlSource` sanitized.
 - **Posture:** test-first. Reuses vetted `sanitize_source` without altering it.
 
 ### Unit 2 — Author failing redaction test (tests; test-first RED)
@@ -173,7 +225,7 @@ Mapped against `.github/instructions/constitution.instructions.md` (actual princ
   AND from the written `metadata.json` text — the injected crawl failure MUST raise an exception
   whose message embeds the credentialed `config.url` (e.g. an error carrying `start_url`), so the
   `caplog.text` traceback assertion is a genuine RED and is NOT vacuously satisfied by a URL-free
-  message like `OSError("Network down")`; (c2) add a `ManifestUrlSource` whose `id` is a NON-URL-form credential-bearing string (`srcA?token=IDSECRET`, no scheme) and assert `IDSECRET` is ABSENT from both `caplog.text` and the written `metadata.json` (R5 regression for the non-URL-form-id closure); (d) assert `job_id == make_job_id(build_source_key(config))`
+  message like `OSError("Network down")`; (c2) add a `ManifestUrlSource` whose `id` is a NON-URL-form credential-bearing string (`srcA?token=IDSECRET`, no scheme) and assert `IDSECRET` is ABSENT from both `caplog.text` and the written `metadata.json` (R5 regression for the non-URL-form-id closure); (c3) [R6] add a MALFORMED credentialed config whose URL would make `_sanitize_url` raise (`https://host:notaport?token=SECRET`) and assert `_execute_single_source` does NOT crash with a sanitizer `ValueError` (it proceeds to the normal fetch-failure path) and `SECRET` is ABSENT from both `caplog.text` and `metadata.json` (R6 totality/fail-closed regression); (d) assert `job_id == make_job_id(build_source_key(config))`
   recomputed independently from the raw credentialed key — this pin, NOT the credential-free parity
   test, is the raw-hash oracle: an impl that hashes the SANITIZED key MUST fail this assertion.
 - **Files:** `tests/elt/test_elt_real_execution.py`.
@@ -214,6 +266,11 @@ Mapped against `.github/instructions/constitution.instructions.md` (actual princ
   existing `_build_crawl_source_key`/`_crawl_option_parts` rather than re-parsing, so no separate
   parse grammar exists to drift; the R2 `_CRAWL_OPTION_KEYS` shared constant is unnecessary under
   the typed-config recompose and is not introduced.
+- **Total / fail-closed marker-gated `sanitize_source_id` (R6)** -- the id sanitizer never delegates
+  to the throwing `sanitize_source()` / `_sanitize_url()` path; it is non-throwing over any `str`,
+  preserves credential-free ids verbatim, redacts only recognized credential markers, and fails
+  closed to `<source-url-redacted>` / `<source-id-redacted>` for malformed inputs, so the helper is
+  safe to call before the fetch `try` and inside the exception logger without crashing or masking.
 - **Sanitize representation, not the hashed key** — only way to satisfy both "no leak" and
   "job_id determinism" simultaneously.
 
@@ -226,20 +283,23 @@ Mapped against `.github/instructions/constitution.instructions.md` (actual princ
   string is parsed and there is no option-suffix peel. **Residual:** `sanitize_source()`
   URL-sanitization semantics still apply to the isolated `config.url` (userinfo + credential query
   params) and are covered by the Unit 1 scenarios (incl. an uppercase-scheme URL).
-- **Risk (CLOSED by the R5 ID-specific redaction refinement):** the R3 typed recompose left
-  `ManifestUrlSource.id` verbatim, and R4's `sanitize_source()`-only routing was a NO-OP for a
-  non-URL-form credential-bearing `id` (e.g. `srcA?token=SECRET` with no scheme), so the token still
-  reached `metadata.source` and the ERROR log (PR #195 Copilot findings, threads
-  `PRRT_kwDOSsAX4c6h0OMq` / `PRRT_kwDOSsAX4c6h0OM1`) — a residual that contradicted the
-  no-credential invariant. **Mitigation (closes the gap):** the safe representation now applies
-  ID-specific credential redaction INDEPENDENT of URL detection — `sanitize_source_id(config.id)`
-  strips userinfo and redacts credential-named `key=value` fragments (reusing the existing
-  `_CREDENTIAL_PARAM_PREFIXES` vocabulary) whether or not the `id` is URL-shaped, so both a
-  scheme-bearing id and a non-URL-form id are redacted before recompose; Unit 1 asserts both. No
-  accepted non-URL-form-id residual remains. `job_id` still hashes the raw key. This is distinct
-  from the `_CREDENTIAL_PARAM_PREFIXES`-vocabulary-expansion residual below (adding NEW param names
-  such as `password`/`client_secret`, separately deferred as `06A59B1D`; R5 reuses the current
-  vocabulary without expanding it and applies equally to URL and non-URL sinks).
+- **Risk (CLOSED by the R6 marker-gated, fail-closed refinement):** R4's `sanitize_source()`-only
+  routing was a NO-OP for a non-URL-form credential-bearing `id`, and the R5 refinement, while
+  redacting such ids, still (a) delegated to `sanitize_source()` -- whose `_sanitize_url()` reads
+  `parsed.port` and RAISES `ValueError` on a malformed value such as `https://host:notaport`,
+  crashing `sanitize_source_key(config)` at the pre-`try` metadata build or masking a fetch failure
+  in the logger (PR #195 Copilot finding `PRRT_kwDOSsAX4c6h0dUG`) -- and (b) contradicted its own
+  "preserved byte-for-byte" claim, since `sanitize_source()` rewrites absolute-path/`file://` ids to
+  `<local-path-redacted>` and drops URL fragments (PR #195 Copilot finding `PRRT_kwDOSsAX4c6h0dUO`).
+  **Mitigation (closes both):** `sanitize_source_id()` is now TOTAL, non-throwing, and MARKER-GATED
+  -- it does not delegate to `sanitize_source()`; it returns a credential-free id VERBATIM
+  (byte-for-byte) regardless of shape, redacts only recognized credential fragments/userinfo when a
+  marker is present, and FAILS CLOSED to `<source-id-redacted>` for a marker-bearing input it cannot
+  surgically redact. `sanitize_source_key()` wraps the `config.url` sanitize fail-closed (malformed
+  URL -> `<source-url-redacted>`), so the whole helper never raises. Unit 1 and Unit 2 assert
+  totality, verbatim preservation, and fail-closed behavior. `job_id` still hashes the raw key. This
+  reuses the current `_CREDENTIAL_PARAM_PREFIXES` vocabulary WITHOUT expanding it (that expansion is
+  separately deferred as `06A59B1D`).
 - **Risk:** `exc_info` traceback re-leaks the URL. **Mitigation:** Unit 2 asserts absence against
   `caplog.text` (full record incl. traceback), forcing Unit 3 to close the traceback path.
 - **Risk:** silently changing `job_id`. **Mitigation:** determinism assertion + parity test.
@@ -485,3 +545,51 @@ Stage-owned R4 artifacts:
 - **Independent review:** Correctness Reviewer (targeted, this diff) — leak closure, determinism
   invariant, cross-artifact consistency, and `_CRAWL_OPTION_KEYS` drift resolution confirmed.
   Verdict: PASS.
+
+## PR #195 Copilot Remediation -- Cycle 3 (Revision R6)
+
+Cycle-3 Copilot review on PR #195 raised two unresolved same-contract-surface findings on the
+Stage-owned R5 artifacts, both on the `sanitize_source_id` / `sanitize_source_key` contract:
+
+- `PRRT_kwDOSsAX4c6h0dUG` (plan line 129, comment db `3997932059`): `sanitize_source()` is not
+  total for the unrestricted `str` fields used here -- `_sanitize_url()` reads `parsed.port`, which
+  raises `ValueError` for a malformed value such as `https://host:notaport`. Because Unit 3 calls
+  `sanitize_source_key(config)` while building `metadata` before the fetch `try` (and in the
+  exception logger), such a config would crash `_execute_single_source` or mask the original fetch
+  failure. Require the helper to fail closed WITHOUT raising (a fully-redacted fallback for malformed
+  URLs) plus a regression case.
+- `PRRT_kwDOSsAX4c6h0dUO` (plan line 142, comment db `3997932072`): the byte-preservation guarantee
+  conflicts with step (a) "apply `sanitize_source()`", which rewrites every absolute-path or
+  `file://` value to `<local-path-redacted>` and drops URL fragments, so a credential-free id such
+  as `/source-a` cannot be preserved verbatim. Define `sanitize_source_id()` to return the id
+  verbatim when no credential marker exists, or narrow the guarantee; synchronize decision/tasks.
+
+- **Classification (P-021 C1):** BOTH IN SCOPE -- same-contract-surface findings on Stage-owned
+  planning artifacts for feature 072-F / shipment 063-S (the `sanitize_source_id` /
+  `sanitize_source_key` contract). Verified authoritatively against the live PR review threads
+  (Copilot login `copilot-pull-request-reviewer`); these are the only two unresolved threads. Fixed
+  in-cycle; neither deferred; no P-021 C2 capture required.
+- **Fix (R6) -- totality / fail-closed:** `sanitize_source_key()` wraps the `config.url` sanitize
+  fail-closed (a `ValueError` from `_sanitize_url`'s `parsed.port` yields `<source-url-redacted>`
+  rather than propagating), and `sanitize_source_id()` is TOTAL and non-throwing, so the whole
+  helper never raises and is safe to call before the fetch `try` and inside the logger. Closes
+  `PRRT_kwDOSsAX4c6h0dUG`.
+- **Fix (R6) -- verbatim preservation + marker gating:** `sanitize_source_id()` no longer delegates
+  to `sanitize_source()`. It detects credential markers with a non-throwing scan, returns a
+  credential-free id byte-for-byte regardless of shape (absolute path, `file://`, fragment-bearing
+  URL), redacts only recognized credential fragments/userinfo when a marker is present, and fails
+  closed to `<source-id-redacted>` for a marker-bearing input it cannot surgically redact. Closes
+  `PRRT_kwDOSsAX4c6h0dUO`. `make_job_id` still hashes the raw `build_source_key(config)` --
+  determinism invariant unchanged.
+- **Regression scenarios added:** Unit 1 -- malformed `config.url`
+  (`https://host:notaport?token=SECRET`) returns without raising with the URL redacted; a malformed
+  credential-bearing `id` fails closed to the sentinel; credential-free `/source-a` and
+  `https://host/x#frag` preserved verbatim. Unit 2 -- a malformed credentialed config does not crash
+  `_execute_single_source` nor mask the fetch failure, with the credential absent from `caplog.text`
+  and `metadata.json`.
+- **Artifacts updated:** this plan (revision R6 note, Requirements Trace, Unit 1, Unit 2, Risks,
+  rationale, this section), the decision doc (Option B R6 refinement, Chosen Direction, Done Looks
+  Like), feature card 072-F, and tasks 072.001-T / 072.002-T / 072.003-T.
+- **Independent review:** targeted independent review (this diff) -- totality/fail-closed closure,
+  verbatim-preservation correctness, determinism invariant, and cross-artifact consistency
+  confirmed. Verdict: PASS.
