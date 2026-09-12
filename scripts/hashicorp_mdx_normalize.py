@@ -692,19 +692,28 @@ def _process_one_product_tree(
 
     def _record_planned_path(dest_candidate: Path) -> None:
         dest_relative = dest_candidate.relative_to(dest_root).as_posix()
-        # Collision detection compares a filesystem-normalized key
-        # (Copilot review cycle 4, follow-up round 3, finding htTX0), not
-        # the raw posix-relative string: the documented operator target
-        # is Windows, whose filesystems are normally case-INSENSITIVE, so
-        # ``Foo.mdx`` -> ``Foo.md`` and an existing ``foo.md`` are the
-        # SAME destination on disk even though they are different Python
-        # strings. ``planned_dest_paths`` itself keeps storing the
+        # Collision detection compares a case-folded key (Copilot review
+        # cycle 4, follow-up round 3, finding htTX0; case-fold fix in
+        # follow-up round 5, finding htcWC's sibling CI-failure comment),
+        # not the raw posix-relative string: the documented operator
+        # target is Windows, whose filesystems are normally case-
+        # INSENSITIVE, so ``Foo.mdx`` -> ``Foo.md`` and an existing
+        # ``foo.md`` are the SAME destination on disk even though they
+        # are different Python strings. ``os.path.normcase()`` is a
+        # no-op on POSIX (it only lowercases and folds slashes on
+        # Windows), so it silently failed to fold case on Linux CI --
+        # ``str.casefold()`` is used instead because it performs
+        # Unicode-aware case folding on every platform, matching the
+        # documented case-insensitive-filesystem contract regardless of
+        # the host OS. ``dest_relative`` is already posix-formatted via
+        # ``.as_posix()`` above, so no separate slash normalization is
+        # needed. ``planned_dest_paths`` itself keeps storing the
         # ORIGINAL-casing strings (unchanged public contract, relied on
         # by ``main()``'s --report checks and by existing tests) -- only
         # the membership *comparison* is normalized, via a fresh
         # case-folded projection of the same shared set.
-        dest_key = os.path.normcase(dest_relative)
-        if any(os.path.normcase(existing) == dest_key for existing in planned_dest_paths):
+        dest_key = dest_relative.casefold()
+        if any(existing.casefold() == dest_key for existing in planned_dest_paths):
             raise DestinationCollisionError(
                 f"planned destination path collision under --dest: '{dest_relative}' would "
                 "be written by more than one source file -- refusing to proceed. This "
@@ -1122,7 +1131,7 @@ def main(argv: list[str] | None = None) -> int:
         except ValueError:
             report_relative_to_dest = None
         if report_relative_to_dest is not None and any(
-            os.path.normcase(planned) == os.path.normcase(report_relative_to_dest)
+            planned.casefold() == report_relative_to_dest.casefold()
             for planned in planned_dest_paths
         ):
             print(
@@ -1254,7 +1263,7 @@ def main(argv: list[str] | None = None) -> int:
             except ValueError:
                 report_relative_to_dest_final = None
             if report_relative_to_dest_final is not None and any(
-                os.path.normcase(planned) == os.path.normcase(report_relative_to_dest_final)
+                planned.casefold() == report_relative_to_dest_final.casefold()
                 for planned in planned_dest_paths
             ):
                 # Defense-in-depth only, same rationale as the reserved-

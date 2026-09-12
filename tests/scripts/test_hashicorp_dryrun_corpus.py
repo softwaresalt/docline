@@ -1176,9 +1176,11 @@ def test_process_corpus_rejects_case_insensitive_destination_collision(tmp_path:
     string than an existing ``foo.md`` in the same tree, so the original
     check let both through -- even though on the real destination
     filesystem they are the exact same path, and one write would silently
-    clobber the other. The fix compares ``os.path.normcase()``-normalized
-    keys while still reporting the original, human-readable casing in the
-    raised error message.
+    clobber the other. The fix compares ``str.casefold()``-normalized
+    keys (not ``os.path.normcase()``, which is a no-op on POSIX and
+    caused this exact test to fail on Ubuntu CI -- see finding htcWC's
+    sibling comment, follow-up round 5) while still reporting the
+    original, human-readable casing in the raised error message.
     """
     source = tmp_path / "source"
     product_dir = source / "hcp-docs"
