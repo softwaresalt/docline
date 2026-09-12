@@ -1011,6 +1011,74 @@ def test_process_corpus_rejects_symlinked_top_level_product_dir_escaping_source(
     assert not dest.exists()
 
 
+def test_process_corpus_rejects_symlinked_top_level_product_dir_to_empty_dir(
+    tmp_path: Path,
+) -> None:
+    """P1 regression (Copilot review cycle 4 follow-up round, finding
+    htL40): the sibling test above only covers a symlinked top-level
+    product directory whose external target CONTAINS files -- those
+    files get caught via ``_iter_files_sorted``'s per-file
+    ``guard_read_path`` check. But if the external target is empty (or
+    contains only subdirectories with no regular files at all),
+    ``root.rglob("*")`` filtered to ``is_file()`` yields zero candidates,
+    so ``guard_read_path`` is never invoked on anything and the escape
+    succeeds completely undetected. The product/version ROOT itself must
+    be guarded before any enumeration begins, not just the files
+    discovered inside it.
+    """
+    source = tmp_path / "source"
+    source.mkdir()
+    outside_product = tmp_path / "outside-hcp-docs-empty"
+    outside_product.mkdir()
+    # Deliberately directory-only: a nested subdirectory but zero files
+    # anywhere under it, so rglob("*") filtered to is_file() yields nothing.
+    (outside_product / "nested").mkdir()
+
+    product_link = source / "hcp-docs"
+    try:
+        os.symlink(outside_product, product_link, target_is_directory=True)
+    except OSError as exc:
+        pytest.skip(f"symlink creation unsupported in this environment: {exc}")
+
+    dest = tmp_path / "dest"
+    with pytest.raises(hashicorp_mdx_normalize.ContainmentViolation):
+        hashicorp_mdx_normalize.process_corpus(source=source, dest=dest, execute=False)
+    assert not dest.exists()
+
+
+def test_process_corpus_rejects_symlinked_version_dir_pointing_to_empty_dir_escaping_source(
+    tmp_path: Path,
+) -> None:
+    """P1 regression (Copilot review cycle 4 follow-up round, finding
+    htL40): same gap as the sibling unversioned-product test above, but
+    at the version-directory level for a VERSIONED product.
+    ``process_corpus`` lists version directory NAMES via
+    ``product_source_root.iterdir()`` before
+    ``_process_one_product_tree``/``_iter_files_sorted`` ever runs, and
+    the selected version directory itself may be a symlink pointing
+    outside ``--source`` to an empty external target -- which, absent a
+    guard on the root itself, would never reach any per-file check.
+    """
+    source = tmp_path / "source"
+    product_dir = source / "terraform"
+    product_dir.mkdir(parents=True)
+
+    outside_version = tmp_path / "outside-terraform-v1.16.x-empty"
+    outside_version.mkdir()
+    (outside_version / "nested").mkdir()
+
+    version_link = product_dir / "v1.16.x"
+    try:
+        os.symlink(outside_version, version_link, target_is_directory=True)
+    except OSError as exc:
+        pytest.skip(f"symlink creation unsupported in this environment: {exc}")
+
+    dest = tmp_path / "dest"
+    with pytest.raises(hashicorp_mdx_normalize.ContainmentViolation):
+        hashicorp_mdx_normalize.process_corpus(source=source, dest=dest, execute=False)
+    assert not dest.exists()
+
+
 def test_process_corpus_rejects_mdx_md_destination_collision(tmp_path: Path) -> None:
     """P2 regression (finding p8PN, Copilot review cycle 4): normalizing
     ``foo.mdx`` to ``foo.md`` can collide with an existing ``foo.md`` in

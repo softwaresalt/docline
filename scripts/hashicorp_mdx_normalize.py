@@ -125,11 +125,17 @@ command is never executed by an agent -- only the operator runs it):
         --source "C:\\Source\\Docs\\hashicorp-tf-unified-dev-docs\\content" `
         --dest "C:\\Source\\Docs\\tf-unified-dev-docs-normalized" `
         --execute `
+        --allow-unresolved-mdx `
         --report "C:\\Source\\Docs\\tf-unified-dev-docs-normalized\\_normalize-report.json"
 
-Omit ``--execute`` (and, if desired, point ``--report`` at any local
-path) to preview the exact same plan with zero writes -- this is the
-default mode and is safe to run repeatedly.
+Omit ``--allow-unresolved-mdx`` once the corpus has zero
+``unresolved_constructs`` (see the tool's own report output); the flag
+is currently required because the selected live corpus has 4 known,
+deferred residues (review-fix cycle 4, stash entry ``7F80C39E`` --
+see the requirements-evidence doc, section 6/7/13.4). Omit ``--execute``
+(and, if desired, point ``--report`` at any local path) to preview the
+exact same plan with zero writes -- this is the default mode and is
+safe to run repeatedly.
 """
 
 from __future__ import annotations
@@ -590,7 +596,18 @@ def _iter_files_sorted(root: Path, source_root: Path) -> list[Path]:
     (via :func:`guard_read_path`) that each one's fully-resolved path
     stays inside ``source_root``. Raises :class:`ContainmentViolation`
     the moment any escaping file is found, before any content is read.
+
+    ``root`` itself is guarded FIRST, before ``is_dir()``/``rglob()`` ever
+    run (Copilot review cycle 4 follow-up round, finding htL40): those
+    calls follow symlinks transparently, so a symlinked product/version
+    root pointing outside ``source_root`` to an EMPTY (or directory-only)
+    external target would otherwise yield zero file candidates -- meaning
+    the per-file check below would never fire for anything, and the
+    escape would succeed completely undetected. Guarding the root first
+    catches that case unconditionally, regardless of whether the escaped
+    target happens to contain any readable files.
     """
+    guard_read_path(source_root, root)
     if not root.is_dir():
         return []
     candidates = sorted(p for p in root.rglob("*") if p.is_file())
@@ -798,6 +815,16 @@ def process_corpus(
 
     for product in classification.versioned:
         product_source_root = source / product
+        # Guard the top-level product root itself before enumerating its
+        # version subdirectories (Copilot review cycle 4 follow-up round,
+        # finding htL40): a versioned product whose top-level directory is
+        # ITSELF a symlink pointing outside `source` to an external
+        # location with NO version-looking subdirectories would otherwise
+        # cause `select_latest_version` to return None, `continue` past
+        # this product with only a warning, and never reach
+        # `_iter_files_sorted`'s per-root guard at all -- silently
+        # skipping the escape check entirely rather than failing closed.
+        guard_read_path(source, product_source_root)
         version_dirnames = sorted(p.name for p in product_source_root.iterdir() if p.is_dir())
         selected = selection.select_latest_version(version_dirnames)
         product_report = ProductReport(versioned=True, selected_version=selected)
