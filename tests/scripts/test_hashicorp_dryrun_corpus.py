@@ -1220,6 +1220,41 @@ def test_case_folded_path_set_is_case_insensitive_membership_o1() -> None:
     assert len(paths) == 1
 
 
+def test_process_corpus_rejects_case_insensitive_collision_with_plain_caller_set(
+    tmp_path: Path,
+) -> None:
+    """P1 regression (Copilot review follow-up round 8, finding ht1tJ):
+    a caller that supplies its OWN plain ``set[str]`` (the documented,
+    still-supported ``planned_dest_paths`` out-parameter type) must still
+    get full case-insensitive collision detection -- not just a caller
+    that happens to already construct a ``_CaseFoldedPathSet``. Before
+    this fix, ``process_corpus`` used the caller-supplied object's own
+    ``in`` operator directly for the internal collision check
+    introduced in the round-7 O(1) rewrite; a plain ``set()`` has no
+    case-folded index of its own, so ``Foo.md`` and ``foo.md`` were
+    treated as distinct keys and the collision silently went
+    undetected -- exactly the same class of bug ``str.casefold()``
+    (finding htTX0/CI regression) was originally meant to close. The
+    fix makes ``process_corpus`` always validate through an internal
+    ``_CaseFoldedPathSet`` regardless of what the caller passed, syncing
+    the caller's own object with the full result afterward so its
+    populated-in-place contract is preserved.
+    """
+    source = tmp_path / "source"
+    product_dir = source / "hcp-docs"
+    product_dir.mkdir(parents=True)
+    (product_dir / "Foo.mdx").write_text("# mdx version\n", encoding="utf-8")
+    (product_dir / "foo.md").write_text("# md version\n", encoding="utf-8")
+
+    dest = tmp_path / "dest"
+    caller_set: set[str] = set()  # deliberately a PLAIN set, not _CaseFoldedPathSet
+    with pytest.raises(hashicorp_mdx_normalize.DestinationCollisionError):
+        hashicorp_mdx_normalize.process_corpus(
+            source=source, dest=dest, execute=False, planned_dest_paths=caller_set
+        )
+    assert not dest.exists(), "a rejected collision must never create --dest, even in dry-run"
+
+
 def test_process_corpus_collects_full_planned_dest_paths_when_requested(tmp_path: Path) -> None:
     """The uncapped ``planned_dest_paths`` out-parameter (used by
     ``main()``'s --report collision check, finding qAsu) is populated

@@ -866,72 +866,103 @@ def process_corpus(
     set is used instead -- duplicate-destination detection (review
     finding p8PN) always runs regardless of whether the caller wants the
     full set back.
+
+    Collision detection is ALWAYS case-folded, even when the caller
+    supplies a plain ``set[str]`` rather than a :class:`_CaseFoldedPathSet`
+    (Copilot review follow-up round 8, finding ht1tJ): a plain caller
+    set has no case-folded index of its own, so relying on the caller's
+    object directly would silently revert to case-SENSITIVE collision
+    detection for that caller, defeating the documented Windows
+    case-insensitive-filesystem guarantee. Internally, a
+    ``_CaseFoldedPathSet`` is always used for the actual collision-safe
+    tracking passed down to ``_process_one_product_tree``; if the caller
+    supplied a *different* object (a plain ``set()``, or any ``set[str]``
+    that is not already a ``_CaseFoldedPathSet``), that object is
+    synced -- via ``update()`` -- with the full, original-casing result
+    once processing completes, so the caller's own populated-in-place
+    contract is preserved unchanged.
     """
-    if planned_dest_paths is None:
-        planned_dest_paths = _CaseFoldedPathSet()
+    caller_planned_dest_paths = planned_dest_paths
+    if planned_dest_paths is None or not isinstance(planned_dest_paths, _CaseFoldedPathSet):
+        planned_dest_paths = _CaseFoldedPathSet(planned_dest_paths or ())
     builder = ReportBuilder(source=source, dest=dest, execute=execute)
 
-    top_level_dirs = sorted(p.name for p in source.iterdir() if p.is_dir())
-    classification = selection.classify_products(top_level_dirs)
+    try:
+        top_level_dirs = sorted(p.name for p in source.iterdir() if p.is_dir())
+        classification = selection.classify_products(top_level_dirs)
 
-    for name in classification.excluded:
-        builder.excluded_top_level_dirs.append(name)
-        if name != "global":
-            builder.warnings.append(
-                f"Unrecognized top-level directory '{name}' -- not in the known "
-                "product map; excluded from selection."
+        for name in classification.excluded:
+            builder.excluded_top_level_dirs.append(name)
+            if name != "global":
+                builder.warnings.append(
+                    f"Unrecognized top-level directory '{name}' -- not in the known "
+                    "product map; excluded from selection."
+                )
+
+        for product in classification.versioned:
+            product_source_root = source / product
+            # Guard the top-level product root itself before enumerating its
+            # version subdirectories (Copilot review cycle 4 follow-up round,
+            # finding htL40): a versioned product whose top-level directory is
+            # ITSELF a symlink pointing outside `source` to an external
+            # location with NO version-looking subdirectories would otherwise
+            # cause `select_latest_version` to return None, `continue` past
+            # this product with only a warning, and never reach
+            # `_iter_files_sorted`'s per-root guard at all -- silently
+            # skipping the escape check entirely rather than failing closed.
+            guard_read_path(source, product_source_root)
+            version_dirnames = sorted(p.name for p in product_source_root.iterdir() if p.is_dir())
+            selected = selection.select_latest_version(version_dirnames)
+            product_report = ProductReport(versioned=True, selected_version=selected)
+            builder.products[product] = product_report
+            if selected is None:
+                builder.warnings.append(
+                    f"Versioned product '{product}' has no valid version directories; skipped."
+                )
+                continue
+            _process_one_product_tree(
+                source_root=source,
+                product_root=product_source_root / selected,
+                dest_product_root=dest / product / selected,
+                dest_root=dest,
+                execute=execute,
+                product_report=product_report,
+                fallback_tally=builder.fallback_constructs,
+                ambiguous_tally=builder.ambiguous_tokens,
+                unresolved_tally=builder.unresolved_constructs,
+                planned_dest_paths=planned_dest_paths,
             )
 
-    for product in classification.versioned:
-        product_source_root = source / product
-        # Guard the top-level product root itself before enumerating its
-        # version subdirectories (Copilot review cycle 4 follow-up round,
-        # finding htL40): a versioned product whose top-level directory is
-        # ITSELF a symlink pointing outside `source` to an external
-        # location with NO version-looking subdirectories would otherwise
-        # cause `select_latest_version` to return None, `continue` past
-        # this product with only a warning, and never reach
-        # `_iter_files_sorted`'s per-root guard at all -- silently
-        # skipping the escape check entirely rather than failing closed.
-        guard_read_path(source, product_source_root)
-        version_dirnames = sorted(p.name for p in product_source_root.iterdir() if p.is_dir())
-        selected = selection.select_latest_version(version_dirnames)
-        product_report = ProductReport(versioned=True, selected_version=selected)
-        builder.products[product] = product_report
-        if selected is None:
-            builder.warnings.append(
-                f"Versioned product '{product}' has no valid version directories; skipped."
+        for product in classification.unversioned:
+            product_source_root = source / product
+            product_report = ProductReport(versioned=False, selected_version=None)
+            builder.products[product] = product_report
+            _process_one_product_tree(
+                source_root=source,
+                product_root=product_source_root,
+                dest_product_root=dest / product,
+                dest_root=dest,
+                execute=execute,
+                product_report=product_report,
+                fallback_tally=builder.fallback_constructs,
+                ambiguous_tally=builder.ambiguous_tokens,
+                unresolved_tally=builder.unresolved_constructs,
+                planned_dest_paths=planned_dest_paths,
             )
-            continue
-        _process_one_product_tree(
-            source_root=source,
-            product_root=product_source_root / selected,
-            dest_product_root=dest / product / selected,
-            dest_root=dest,
-            execute=execute,
-            product_report=product_report,
-            fallback_tally=builder.fallback_constructs,
-            ambiguous_tally=builder.ambiguous_tokens,
-            unresolved_tally=builder.unresolved_constructs,
-            planned_dest_paths=planned_dest_paths,
-        )
-
-    for product in classification.unversioned:
-        product_source_root = source / product
-        product_report = ProductReport(versioned=False, selected_version=None)
-        builder.products[product] = product_report
-        _process_one_product_tree(
-            source_root=source,
-            product_root=product_source_root,
-            dest_product_root=dest / product,
-            dest_root=dest,
-            execute=execute,
-            product_report=product_report,
-            fallback_tally=builder.fallback_constructs,
-            ambiguous_tally=builder.ambiguous_tokens,
-            unresolved_tally=builder.unresolved_constructs,
-            planned_dest_paths=planned_dest_paths,
-        )
+    finally:
+        # Sync back to the caller's own object even on an exception path
+        # (e.g. DestinationCollisionError / ContainmentViolation raised
+        # partway through): the pre-round-8 behavior always operated
+        # directly on whatever object the caller supplied, so partial
+        # progress was visible in the caller's set even on failure. This
+        # preserves that same observable behavior now that a distinct
+        # internal _CaseFoldedPathSet is used for correctness (finding
+        # ht1tJ) whenever the caller did not already supply one.
+        if (
+            caller_planned_dest_paths is not None
+            and caller_planned_dest_paths is not planned_dest_paths
+        ):
+            caller_planned_dest_paths.update(planned_dest_paths)
 
     return builder.to_dict()
 
