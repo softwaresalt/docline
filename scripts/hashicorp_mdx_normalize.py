@@ -1047,6 +1047,14 @@ def main(argv: list[str] | None = None) -> int:
         print(f"error: {dest_error}", file=sys.stderr)
         return EXIT_DEST_NOT_EMPTY
 
+    # Declared here (rather than only inside the ``if`` below) so pyright
+    # can prove it is always bound at its later read, further down, in a
+    # separate ``if args.report is not None:`` block split apart by the
+    # intervening corpus preflight scan (self-discovered via PR-readiness
+    # pyright re-verification, direct consequence of the qAsu fix that
+    # introduced this split in review-fix cycle 4 commit 8dac2ee -- not a
+    # behavior change, purely a static-analysis fix).
+    resolved_report_precheck: Path | None = None
     if args.report is not None:
         try:
             resolved_report_precheck = guard_write_path(dest, args.report)
@@ -1087,7 +1095,7 @@ def main(argv: list[str] | None = None) -> int:
         print(f"error: {exc}", file=sys.stderr)
         return EXIT_DEST_PATH_COLLISION
 
-    if args.report is not None:
+    if args.report is not None and resolved_report_precheck is not None:
         dest_resolved_for_report_check = dest.resolve()
         try:
             report_relative_to_dest = resolved_report_precheck.relative_to(
