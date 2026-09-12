@@ -1099,6 +1099,31 @@ def test_process_corpus_rejects_mdx_md_destination_collision(tmp_path: Path) -> 
     assert not dest.exists(), "a rejected collision must never create --dest, even in dry-run"
 
 
+def test_process_corpus_rejects_case_insensitive_destination_collision(tmp_path: Path) -> None:
+    """P1 regression (Copilot review cycle 4 follow-up round, finding
+    htTX0): the documented operator target is Windows, whose filesystems
+    are normally case-INSENSITIVE, but the original collision-detection
+    key was a raw posix-relative string comparison (case-SENSITIVE).
+    ``Foo.mdx`` normalizes to ``Foo.md``, which is a DIFFERENT Python
+    string than an existing ``foo.md`` in the same tree, so the original
+    check let both through -- even though on the real destination
+    filesystem they are the exact same path, and one write would silently
+    clobber the other. The fix compares ``os.path.normcase()``-normalized
+    keys while still reporting the original, human-readable casing in the
+    raised error message.
+    """
+    source = tmp_path / "source"
+    product_dir = source / "hcp-docs"
+    product_dir.mkdir(parents=True)
+    (product_dir / "Foo.mdx").write_text("# mdx version\n", encoding="utf-8")
+    (product_dir / "foo.md").write_text("# md version\n", encoding="utf-8")
+
+    dest = tmp_path / "dest"
+    with pytest.raises(hashicorp_mdx_normalize.DestinationCollisionError):
+        hashicorp_mdx_normalize.process_corpus(source=source, dest=dest, execute=False)
+    assert not dest.exists(), "a rejected collision must never create --dest, even in dry-run"
+
+
 def test_process_corpus_collects_full_planned_dest_paths_when_requested(tmp_path: Path) -> None:
     """The uncapped ``planned_dest_paths`` out-parameter (used by
     ``main()``'s --report collision check, finding qAsu) is populated
@@ -1132,6 +1157,41 @@ def test_execute_rejects_report_path_colliding_with_planned_output(tmp_path: Pat
 
     dest = tmp_path / "dest"
     colliding_report = dest / "hcp-docs" / "index.md"
+
+    result = _run_cli(
+        [
+            "--source",
+            str(source),
+            "--dest",
+            str(dest),
+            "--execute",
+            "--report",
+            str(colliding_report),
+        ]
+    )
+    assert result.returncode == hashicorp_mdx_normalize.EXIT_REPORT_PATH_COLLIDES_WITH_OUTPUT
+    assert not dest.exists(), "--dest must never be claimed/created when --report collides"
+    assert "collides" in result.stderr.lower() or "planned corpus output" in result.stderr.lower()
+
+
+def test_execute_rejects_report_path_colliding_with_planned_output_case_insensitive(
+    tmp_path: Path,
+) -> None:
+    """P1 regression (Copilot review cycle 4 follow-up round, finding
+    htTX0): the --report collision check (finding qAsu) must apply the
+    same case-insensitive-filesystem normalization as the destination
+    collision check, since the documented operator target is Windows.
+    ``--report <dest>/hcp-docs/INDEX.MD`` must be rejected exactly like
+    the same-case ``index.md`` collision above, even though the two
+    strings differ.
+    """
+    source = tmp_path / "source"
+    product_dir = source / "hcp-docs"
+    product_dir.mkdir(parents=True)
+    (product_dir / "index.mdx").write_text("# ok\n", encoding="utf-8")
+
+    dest = tmp_path / "dest"
+    colliding_report = dest / "hcp-docs" / "INDEX.MD"
 
     result = _run_cli(
         [

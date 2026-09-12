@@ -692,15 +692,28 @@ def _process_one_product_tree(
 
     def _record_planned_path(dest_candidate: Path) -> None:
         dest_relative = dest_candidate.relative_to(dest_root).as_posix()
-        if dest_relative in planned_dest_paths:
+        # Collision detection compares a filesystem-normalized key
+        # (Copilot review cycle 4, follow-up round 3, finding htTX0), not
+        # the raw posix-relative string: the documented operator target
+        # is Windows, whose filesystems are normally case-INSENSITIVE, so
+        # ``Foo.mdx`` -> ``Foo.md`` and an existing ``foo.md`` are the
+        # SAME destination on disk even though they are different Python
+        # strings. ``planned_dest_paths`` itself keeps storing the
+        # ORIGINAL-casing strings (unchanged public contract, relied on
+        # by ``main()``'s --report checks and by existing tests) -- only
+        # the membership *comparison* is normalized, via a fresh
+        # case-folded projection of the same shared set.
+        dest_key = os.path.normcase(dest_relative)
+        if any(os.path.normcase(existing) == dest_key for existing in planned_dest_paths):
             raise DestinationCollisionError(
                 f"planned destination path collision under --dest: '{dest_relative}' would "
                 "be written by more than one source file -- refusing to proceed. This "
                 "usually means an MDX file normalizes to the same name as an existing "
                 "ordinary Markdown file in the same tree (e.g. foo.mdx -> foo.md colliding "
-                "with an existing foo.md). Rename or remove one of the colliding source "
-                "files to resolve this. Detected during the read-only preflight, before "
-                "--dest was ever claimed or written to."
+                "with an existing foo.md), including a same-destination collision that only "
+                "differs by letter case on a case-insensitive filesystem. Rename or remove "
+                "one of the colliding source files to resolve this. Detected during the "
+                "read-only preflight, before --dest was ever claimed or written to."
             )
         planned_dest_paths.add(dest_relative)
         if len(product_report.planned_paths) < MAX_PLANNED_PATHS_PER_PRODUCT:
@@ -1082,7 +1095,10 @@ def main(argv: list[str] | None = None) -> int:
             ).as_posix()
         except ValueError:
             report_relative_to_dest = None
-        if report_relative_to_dest is not None and report_relative_to_dest in planned_dest_paths:
+        if report_relative_to_dest is not None and any(
+            os.path.normcase(planned) == os.path.normcase(report_relative_to_dest)
+            for planned in planned_dest_paths
+        ):
             print(
                 f"error: --report resolves to a planned corpus output path: "
                 f"{resolved_report_precheck} -- choose a different --report path. Writing "
@@ -1211,9 +1227,9 @@ def main(argv: list[str] | None = None) -> int:
                 ).as_posix()
             except ValueError:
                 report_relative_to_dest_final = None
-            if (
-                report_relative_to_dest_final is not None
-                and report_relative_to_dest_final in planned_dest_paths
+            if report_relative_to_dest_final is not None and any(
+                os.path.normcase(planned) == os.path.normcase(report_relative_to_dest_final)
+                for planned in planned_dest_paths
             ):
                 # Defense-in-depth only, same rationale as the reserved-
                 # sentinel re-check immediately above: the early
