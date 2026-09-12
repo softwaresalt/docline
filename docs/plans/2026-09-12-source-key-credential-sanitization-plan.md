@@ -6,7 +6,7 @@ kind: implementation-plan
 source: docs/decisions/2026-09-12-source-key-credential-sanitization.md
 stash_id: D6E758F5
 covering_release_unit: chore
-revision: R3
+revision: R4
 ---
 
 # Implementation Plan: Source-key credential sanitization (stash D6E758F5)
@@ -32,6 +32,18 @@ Source document: `docs/decisions/2026-09-12-source-key-credential-sanitization.m
 > ambiguity. `job_id` still hashes the raw `build_source_key(config)` (determinism invariant
 > unchanged). The decision doc and tasks 072.001-T/072.002-T/072.003-T are updated to match.
 
+> **Revision R4** -- revised after Copilot review on PR #195 (thread
+> `PRRT_kwDOSsAX4c6hz0Jq`, comment `PRRC_kwDOSsAX4c7uR7ht`). R3 removed the string-parse
+> *URL-isolation* ambiguity, but the typed recompose still placed `ManifestUrlSource.id` (an
+> unrestricted `str`, `src/docline/elt/manifest_models.py:65`) VERBATIM into the recomposed
+> `manifest_url:<id>:<url>:...` key, so a credential-bearing `id` (a scheme-bearing string carrying
+> userinfo or `?token=...`) still leaked into `metadata.source` and the ERROR log even when
+> `config.url` was sanitized -- violating the Requirements Trace no-credential-in-`metadata.source`-or-ERROR-log requirement. The contract is
+> refined so the safe representation ALSO routes `config.id` through `sanitize_source()` for
+> `ManifestUrlSource` before recompose; a credential-bearing-id scenario is added to Unit 1.
+> `job_id` still hashes the raw `build_source_key(config)` (determinism invariant unchanged). The
+> decision doc and task 072.001-T are updated to match.
+
 ## Problem Frame
 
 `_execute_single_source` (`src/docline/elt/execute.py:203`) computes
@@ -54,6 +66,7 @@ metadata/log representation may be sanitized.
 |---|---|
 | Sanitize embedded URL inside prefixed source keys | Add `sanitize_source_key()` in `source_keys.py` (Unit 1) |
 | Correctly isolate the URL for BOTH web_crawl and manifest_url | Sanitize the typed `config.url` and recompose via `_build_crawl_source_key`; no string parse (Unit 1) |
+| No credential in the manifest_url `id` segment | Sanitize `config.id` via `sanitize_source()` before recompose; credential-bearing-id case (Unit 1, R4) |
 | Do not change `job_id` determinism | Keep `make_job_id(source_key)` on raw key; sanitize only metadata/log (Unit 3) |
 | No credential in `metadata.source` or ERROR log (incl. traceback) | Route both sinks through helper; assert against `caplog.text` (Units 2, 3) |
 | Redaction observed before production change | Author failing redaction test first (Unit 2 before Unit 3) |
@@ -99,6 +112,17 @@ Mapped against `.github/instructions/constitution.instructions.md` (actual princ
        path that `build_source_key` uses, so the sanitized key is grammar-identical to the raw key
        except for the URL segment. This is immune to the `manifest_url:<id>:<url>` ambiguity even
        when `<id>` itself contains a URL scheme, because no composed string is parsed.
+     - **`ManifestUrlSource.id` sanitization (R4):** the recomposed manifest_url prefix is
+       `manifest_url:<id>` and `id` is an unrestricted `str` that may itself be scheme-bearing and
+       carry credentials (userinfo or `?token=...`). Route `config.id` through the SAME
+       `sanitize_source()` primitive and build the prefix from the sanitized id
+       (`f"manifest_url:{sanitize_source(config.id)}"`) before recompose, so no credential embedded
+       in `id` reaches the safe representation. `sanitize_source()` is a no-op on a plain non-URL
+       identifier, so a credential-free `id` is preserved byte-for-byte (a non-URL-form `id` that
+       embeds a raw credential is likewise a no-op and is NOT closed here — recorded as a distinct
+       residual under Risks and Caveats). Only the RAW
+       `build_source_key(config)` (unsanitized id + url) is fed to `make_job_id`, so `job_id`
+       determinism is unchanged. (Closes PR #195 Copilot finding `PRRT_kwDOSsAX4c6hz0Jq`.)
      - For ALL other config types (`LocalFileSource`, `GitHubRepoSource`, `ManifestLocalSource`,
        `ManifestGitSource`) return `build_source_key(config)` **byte-identical** (github_repo token
        handling is DEFERRED, not implemented here).
@@ -110,8 +134,9 @@ Mapped against `.github/instructions/constitution.instructions.md` (actual princ
 - **Files:** `src/docline/elt/source_keys.py`, `tests/elt/test_source_keys.py` (new).
 - **Tests (<= 3 scenarios):** (1) `web_crawl:` key with userinfo + `?token=SECRET` + options ->
   token + userinfo ABSENT, prefix + option suffixes preserved; (2) a `ManifestUrlSource` whose
-  `id` itself contains `http://` and whose `url` carries `?token=SECRET` -> token ABSENT and the
-  recomposed key preserves the correct prefix/id/options (proves the typed-config recompose is
+  `id` is itself a credential-bearing, scheme-bearing string (userinfo + `?token=IDSECRET`) and
+  whose `url` carries `?token=SECRET` -> BOTH `SECRET` and `IDSECRET` (and any userinfo) ABSENT and the
+  recomposed key preserves the correct prefix, the sanitized id, and the option suffixes (proves the typed-config recompose is
   immune to scheme-in-id — the exact case the R2 string parse could not handle); (3) non-crawl
   configs (`GitHubRepoSource`, `LocalFileSource`) returned byte-identical AND an empty-option
   credentialed `WebCrawlSource` sanitized.
@@ -179,6 +204,18 @@ Mapped against `.github/instructions/constitution.instructions.md` (actual princ
   string is parsed and there is no option-suffix peel. **Residual:** `sanitize_source()`
   URL-sanitization semantics still apply to the isolated `config.url` (userinfo + credential query
   params) and are covered by the Unit 1 scenarios (incl. an uppercase-scheme URL).
+- **Risk (closed by the R4 `id`-sanitization refinement):** the R3 typed recompose left
+  `ManifestUrlSource.id` verbatim in the `manifest_url:<id>` prefix, so a credential-bearing `id`
+  leaked (PR #195 Copilot finding, thread `PRRT_kwDOSsAX4c6hz0Jq`). **Mitigation:** the safe
+  representation routes `config.id` through `sanitize_source()` before recompose and Unit 1 asserts
+  a credential-bearing-id case; `job_id` still hashes the raw key. **Residual (distinct):**
+  `sanitize_source()` only redacts strings it recognizes as a URL / absolute path, so a non-URL-form
+  `id` embedding a raw credential (e.g. `srcA?token=SECRET` with no scheme) is a FULL no-op and is
+  NOT closed by this refinement. This is a SEPARATE gap from the `_sanitize_url`
+  credential-param/path-secret residual below (the string never enters `_sanitize_url`, so
+  expanding `_CREDENTIAL_PARAM_PREFIXES` would not reach it); manifest `id` values are normally
+  short opaque identifiers, so this is a narrow vector, but it is recorded here as its own known
+  gap rather than silently folded.
 - **Risk:** `exc_info` traceback re-leaks the URL. **Mitigation:** Unit 2 asserts absence against
   `caplog.text` (full record incl. traceback), forcing Unit 3 to close the traceback path.
 - **Risk:** silently changing `job_id`. **Mitigation:** determinism assertion + parity test.
@@ -360,3 +397,28 @@ recorded here: Stage-owned adversarial review of the exact local staging diff `o
 - **Residual after remediation:** the three captured deferrals (`0F1A653C` high, `79BF0AEC`,
   `06A59B1D`) remain out-of-scope for 063-S by operator P-017 scope freeze; no P0/P1 remain in the
   staged artifacts. Gate (2): PASS.
+
+## PR #195 Copilot Remediation (Revision R4)
+
+Copilot review on PR #195 (thread `PRRT_kwDOSsAX4c6hz0Jq`, comment `PRRC_kwDOSsAX4c7uR7ht`,
+`docs/plans/...-plan.md` line 99) flagged that the R3 typed-config recompose still placed
+`ManifestUrlSource.id` (an unrestricted `str`) VERBATIM into the recomposed
+`manifest_url:<id>:<url>:<options>` key, so a credential-bearing `id` leaked into `metadata.source`
+and the ERROR log even when `config.url` was sanitized.
+
+- **Classification (P-021 C1):** IN SCOPE — same-contract-surface finding on this Stage-owned plan
+  artifact (source-key credential sanitization). Fixed in-cycle; not deferred.
+- **Fix (R4):** the safe representation ALSO routes `config.id` through `sanitize_source()` for
+  `ManifestUrlSource` before recompose (`manifest_url:{sanitize_source(config.id)}`); Unit 1
+  scenario 2 is strengthened to a credential-bearing-`id` case asserting the `id` credential is
+  absent from the recomposed key. `make_job_id` still hashes the raw `build_source_key(config)` —
+  determinism invariant unchanged.
+- **Artifacts updated:** this plan (Requirements Trace, Unit 1, Risks, revision note), the decision
+  doc (Option B R4 refinement, Chosen Direction, Done Looks Like), and tasks 072.001-T / 072.002-T
+  / 072.003-T (CONTRACT label + AC(2)).
+- **Known residual (distinct, documented):** `sanitize_source()` no-ops on a non-URL-form `id` that
+  embeds a raw credential with no scheme; recorded under Risks and Caveats. Narrow vector (manifest
+  `id` values are normally short opaque identifiers); not a `_sanitize_url` param-list gap.
+- **Independent review:** Correctness Reviewer (targeted, this diff) — leak closure, determinism
+  invariant, cross-artifact consistency, and source-fact accuracy all confirmed; one P3
+  (residual-vector mischaracterization) raised and remediated in the same cycle. Verdict: PASS.

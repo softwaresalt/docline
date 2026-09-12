@@ -83,6 +83,15 @@ the typed config removes all string-parse ambiguity (there is no composed string
 and is preferred over the alternative unambiguous-encoded-delimiter remedy because it requires no
 change to the `build_source_key` wire format or the `make_job_id` input.
 
+**R4 refinement (Copilot review, PR #195 thread PRRT_kwDOSsAX4c6hz0Jq):** the R3 typed-config
+recompose removed the URL mis-isolation ambiguity but still placed `ManifestUrlSource.id` (an
+unrestricted `str`) VERBATIM into the recomposed `manifest_url:<id>:<url>:<options>` key, so a
+credential-bearing `id` (a scheme-bearing string carrying userinfo or `?token=...`) still reached
+`metadata.source` and the ERROR log even when `config.url` was sanitized. The contract is refined so
+the safe representation ALSO routes `config.id` through `sanitize_source()` before recompose
+(`manifest_url:<sanitized_id>:<sanitized_url>:...`); `job_id` still hashes the raw
+`build_source_key(config)`. A credential-bearing-id case is added to Unit 1 of the plan.
+
 ### Option C — Redact by not logging / not persisting the key at all
 Drop `source_key` from the log and store only `job_id` in metadata. Rejected: loses
 operator-facing diagnostic value (sanitized host/path is useful) and changes the metadata
@@ -95,14 +104,14 @@ contract more than necessary; the existing test depends on a source field being 
 recomposes via `_build_crawl_source_key`; route `metadata.source` and the ERROR log through
 `sanitize_source_key(config)`; keep `make_job_id(build_source_key(config))` on the raw key
 unchanged. Update the affected test to assert the sanitized representation appears and that a
-credential token does NOT appear (including for a manifest_url config whose `id` itself contains a
-URL scheme), while `job_id` continues to be asserted against the raw-key recomputation.
+credential token does NOT appear (including for a manifest_url config whose `id` is itself a
+credential-bearing scheme-bearing string, with `config.id` sanitized via `sanitize_source()` before recompose (R4)), while `job_id` continues to be asserted against the raw-key recomputation.
 
 ## Done Looks Like
 
 - No raw URL credential (userinfo or credential query param) reaches `metadata.json` or the
   ERROR log written by `_execute_single_source` (incl. the `exc_info` traceback) for
-  `web_crawl:` / `manifest_url:` keys. NOTE: the separate `orchestrate_fetch` /
+  `web_crawl:` / `manifest_url:` keys -- including a credential embedded in the manifest_url `id` segment, which the safe representation routes through `sanitize_source()` (R4). NOTE: the separate `orchestrate_fetch` /
   `create_staging_job` default-fetch sink is a distinct, out-of-scope leak captured as a P-021
   deferral (see below) — NOT closed by this shipment.
 - `job_id` for identical inputs is byte-identical before and after the fix (determinism proof).
