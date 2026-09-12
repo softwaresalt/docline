@@ -19,9 +19,9 @@ trigger:
 
 Shipment 062-S's HashiCorp MDX normalization preprocessor (`scripts/hashicorp_mdx_normalize.py`)
 needed a mutual-exclusion guard so two concurrent `--execute` invocations against the same
-`--dest` could never interleave writes. The first design used `os.mkdir(dest, exist_ok=False)`
-as the claim primitive: if the directory already existed, the `mkdir` call raised and the
-invocation aborted, correctly preventing two concurrent claims.
+`--dest` could never interleave writes. The first design used `Path.mkdir(dest, parents=True,
+exist_ok=False)` as the claim primitive: if the directory already existed, the `mkdir` call
+raised and the invocation aborted, correctly preventing two concurrent claims.
 
 This design was self-consistent, passed all of its own unit tests, and passed local adversarial
 review — but it silently assumed `--dest` would always be either fully absent (the common case in
@@ -43,9 +43,9 @@ perfectly safe to use.
 ## Resolution
 
 Replaced the absent-only `mkdir` guard with an **exclusive OS-level sentinel-file claim**:
-`open(sentinel_path, os.O_CREAT | os.O_EXCL)` inside the destination directory, released via an
-explicit `close()` + delete after the run completes (success or failure). This separates the two
-questions cleanly:
+`os.open(str(sentinel_path), os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)` inside the destination
+directory, released via an explicit `os.close()` + delete after the run completes (success or
+failure). This separates the two questions cleanly:
 
 * **`--dest` may be absent OR existing-and-empty** — both are accepted; only an existing
   **non-empty**, unclaimed destination is rejected (`EXIT_DEST_NOT_EMPTY`).

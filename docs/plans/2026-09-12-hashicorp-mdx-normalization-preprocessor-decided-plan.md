@@ -65,7 +65,9 @@ No `src/docline/` file was touched by this feature's own scope.
    full-corpus cross-check. Live verification found and corrected discrepancies vs. the
    plan's original assumptions (`terraform-enterprise` had newer semver-style directories).
 3. **MDX corruption of fenced code/placeholders/frontmatter** — mitigated by the B.T1
-   protection scaffold; no regressions found across 3 review-fix cycles.
+   protection scaffold; no regressions found across 4 review-fix cycles (cycle 4 was an
+   operator-authorized additional cycle beyond the original 3-cycle budget — see
+   Verification outcome below).
 4. **Scope creep into production docline** — held throughout; confirmed zero `src/docline/`
    changes attributable to this feature at closure.
 5. **Materialize-then-normalize regression** — did not occur; C.T1's in-flight requirement
@@ -75,10 +77,17 @@ No `src/docline/` file was touched by this feature's own scope.
 ## Verification outcome
 
 All acceptance criteria met. Full-corpus dry-run: 23 products (19 versioned + 4
-unversioned), zero out-of-repo writes, `unresolved_constructs: {}` after 3 real bugs found
-and fixed via full-corpus dry-run testing. Requirements-evidence doc committed with
-numbered productionization requirements. Full detail:
-`docs/closure/2026-09-12-hashicorp-mdx-normalization-preprocessor-runtime-verification.md`.
+unversioned), zero out-of-repo writes across every session. Cycle 4's classifier fix
+(see the sentinel-file compound learning cross-reference above) revealed the corpus's
+honest final `unresolved_constructs` baseline is **not empty** —
+`{"EnterpriseAlert": 12, "Note": 1, "VideoEmbed": 8, "Warning": 2}` (4 distinct pipeline
+gaps, deferred as stash `7F80C39E` per P-021 C1) — so the documented operator `--execute`
+command requires `--allow-unresolved-mdx` until those residues are separately resolved.
+Requirements-evidence doc committed with numbered productionization requirements. Full
+detail:
+`docs/closure/2026-09-12-hashicorp-mdx-normalization-preprocessor-runtime-verification.md`
+and `docs/design-docs/2026-09-11-hashicorp-mdx-normalization-requirements-evidence.md`
+§12-13.
 
 ## Out of scope (unchanged from the original plan, held throughout)
 

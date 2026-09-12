@@ -41,11 +41,12 @@ already-shipped feature that predates `062-S` on the same long-lived branch
   closure session's explicit containment instruction ("Do not write outside
   `C:\Source\GitHub\docline`"), this session does not invoke the tool
   against those external paths. The prior build session (see
-  `docs/memory/2026-09-11-ship-hashicorp-mdx-normalizer-cycle2.md` and
-  `2026-09-12-ship-hashicorp-mdx-normalizer-cycle3.md`) already exercised the
-  exact documented operator command read-only against the real external
-  paths and confirmed **zero writes** (0 entries before/after in the real
-  external `--dest`).
+  `docs/archive/memory/2026-09-11/ship-hashicorp-mdx-normalizer.md` and
+  `docs/archive/memory/2026-09-12/ship-hashicorp-mdx-normalizer-cycle3.md`,
+  compacted into `docs/memory/compacted/2026-09-12-062-s-compacted.md`)
+  already exercised the exact documented operator command read-only
+  against the real external paths and confirmed **zero writes** (0
+  entries before/after in the real external `--dest`).
 
 ## Execution — Repo-Contained Smoke Check (this session)
 
@@ -68,12 +69,29 @@ already-shipped feature that predates `062-S` on the same long-lived branch
 
 ## Prior Session Evidence (carried forward, not re-executed this session)
 
-* Exact documented operator command (`--execute --allow-unresolved-mdx`)
-  run **read-only** (without `--execute`) against the real external
-  `--source`/`--dest`/`--report` paths in the immediately-preceding build
-  session: exit 0, `unresolved_constructs: {}`, 23 real products resolved.
-  Real external `--dest` confirmed **0 entries before and 0 entries
-  after** the session — never touched.
+* The documented operator command's exact paths/options were exercised
+  **without** `--execute` (dry-run) against the real external
+  `--source`/`--dest`/`--report` paths in an earlier build session (cycle
+  2/3, before cycle 4's classifier fix — see below): exit 0, 23 real
+  products resolved, real external `--dest` confirmed **0 entries before
+  and 0 entries after** the session — never touched. That session's
+  `unresolved_constructs: {}` reading has since been superseded (next
+  bullet): the classifier bug fixed in cycle 4 had been silently masking
+  real residue, so this earlier empty reading does not reflect the
+  corpus's honest final baseline.
+* **Cycle 4 real-corpus re-verification (authoritative baseline, PR #192
+  §13.4)**: after cycle 4's `qAsc` classifier fix, re-running the
+  real-corpus integration test surfaced the corpus's true, previously
+  hidden `unresolved_constructs` baseline: **`{"EnterpriseAlert": 12,
+  "Note": 1, "VideoEmbed": 8, "Warning": 2}`** (4 distinct pipeline gaps,
+  deferred as stash `7F80C39E` per P-021 C1 — each requires its own
+  shape-specific fix, out of scope for that cycle). The integration
+  test's assertion was updated to lock in this honest baseline as the
+  regression guard, and it passed at merge HEAD. **The operator's
+  documented real `--execute` command therefore requires the
+  `--allow-unresolved-mdx` override flag** until those 4 residues are
+  separately resolved; omitting it will abort the run by design
+  (`EXIT_UNRESOLVED_MDX_CONSTRUCTS`).
 * Full local test suite for this feature
   (`tests/scripts/test_hashicorp_normalize.py`,
   `test_hashicorp_selection.py`, `test_hashicorp_dryrun_corpus.py`) passing
@@ -91,9 +109,14 @@ this) and is outside this closure's verification scope.
 ## Verdict
 
 **PASS.** The CLI surface behaves as documented: dry-run is a true zero-write
-operation, the plan output is well-formed and matches expectations for both
-the synthetic fixture (this session) and the real external corpus (prior
-session), and unresolved-construct detection reports empty for both corpora.
+operation, and the plan output is well-formed for both the synthetic fixture
+(this session) and the real external corpus (prior session). Unresolved-
+construct detection is **not** empty for the real external corpus — the
+honest final baseline established in cycle 4 is `{"EnterpriseAlert": 12,
+"Note": 1, "VideoEmbed": 8, "Warning": 2}` (stash `7F80C39E`), requiring
+`--allow-unresolved-mdx` on the operator's real `--execute` run. This
+verification's PASS verdict certifies the zero-write containment property,
+not an empty unresolved-construct bucket.
 
 ## Follow-up Recommendations
 
@@ -101,5 +124,6 @@ session), and unresolved-construct detection reports empty for both corpora.
   (requirements-evidence only); no ongoing monitoring or rollback path
   applies since nothing is deployed or released to a running system.
 * The operator's own `--execute` run against the real external corpus (per
-  the tool's documented exact command) remains a manual, operator-owned
-  action outside this closure's scope, as designed.
+  the tool's documented exact command, including `--allow-unresolved-mdx`
+  until the 4 `7F80C39E` residues are separately resolved) remains a
+  manual, operator-owned action outside this closure's scope, as designed.

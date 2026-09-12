@@ -32,8 +32,11 @@ surface is touched by this feature.
   `BRANCH_MISMATCH` (branch predates shipment-slug naming convention;
   advisory-only per repo config, `PIPELINE_TOPOLOGY_GATE_REQUIRED` unset;
   deferred as stash `ADE96404`). Handled at merge time via an audited
-  `--force` override of the agent-mode lifecycle gate (see
-  `.autoharness/gates/pipeline-topology-force-audit.log`).
+  `--force` override of the agent-mode lifecycle gate — durable, committed
+  audit record: `.autoharness/gates/062-S-lifecycle-force-audit.json` (the
+  raw append-only `.autoharness/gates/pipeline-topology-force-audit.log`
+  source line is gitignored and local-only; the JSON record above is the
+  repo-committed, verifiable evidence).
 * 18 P-021 deferred-scope-expansion findings from the review-fix cycles are
   already captured in `.backlogit/stash.jsonl` as part of PR #192's own
   commits: `1EDE36E7`, `1E7CCBF7`, `E3129374`, `13F7C7C3`, `ADE96404`,
@@ -78,9 +81,18 @@ requirements-evidence snapshot from the real external HashiCorp corpus.
 ## Post-Deploy Checks
 
 * First operator-initiated `--execute` run (whenever the operator chooses
-  to run it) should be checked for: `unresolved_constructs: {}` (or
-  explicit `--allow-unresolved-mdx` override), exit code 0, and a
-  `_normalize-report.json` written inside `--dest`.
+  to run it) should be checked for: exit code 0 and a `_normalize-report.json`
+  written inside `--dest`. **`unresolved_constructs` is expected to be
+  non-empty** — the honest final baseline (established in cycle 4, see
+  runtime-verification report) is `{"EnterpriseAlert": 12, "Note": 1,
+  "VideoEmbed": 8, "Warning": 2}` (stash `7F80C39E`) — so the operator's
+  documented command **must include `--allow-unresolved-mdx`**; a run that
+  aborts with `EXIT_UNRESOLVED_MDX_CONSTRUCTS` because that flag was
+  omitted is an expected, documented failure mode, not a defect. A
+  genuinely successful, zero-write/runtime-verified check therefore means:
+  exit 0 with either the known 4-category baseline reported (flag was
+  supplied) or a smaller/different bucket only if the corpus itself
+  changed since cycle 4.
 
 ## Risky Action Record
 
@@ -92,9 +104,12 @@ requirements-evidence snapshot from the real external HashiCorp corpus.
 ## Healthy Signals
 
 * `--help` resolves and documents the exact operator command.
-* Dry-run against any corpus (synthetic or real) returns exit 0 with a
-  well-formed JSON plan and empty `unresolved_constructs`/
-  `containment_violations`.
+* Dry-run against any corpus returns exit 0 with a well-formed JSON plan
+  and empty `containment_violations`. `unresolved_constructs` is empty
+  only for the synthetic fixture; the real external corpus's honest
+  baseline is the known 4-category `7F80C39E` bucket (see Post-Deploy
+  Checks above) — its presence at that exact size is itself a healthy
+  signal, not a regression.
 * Full test suite for this feature
   (`tests/scripts/test_hashicorp_normalize.py`,
   `test_hashicorp_selection.py`, `test_hashicorp_dryrun_corpus.py`) passes.

@@ -78,7 +78,9 @@ external unified-docs repo's `scripts/prebuild/gather-version-metadata.mjs`
 ### 3.1 Live-verified corrections vs. the original plan/deliberation
 
 The plan
-(`docs/plans/2026-09-11-hashicorp-mdx-normalization-preprocessor-plan.md`) and
+(`docs/archive/plans/2026-09-11-hashicorp-mdx-normalization-preprocessor-plan.md`,
+moved here at 2026-09-12 post-merge closure; compacted into
+`docs/plans/2026-09-12-hashicorp-mdx-normalization-preprocessor-decided-plan.md`) and
 deliberation
 (`docs/decisions/2026-09-11-hashicorp-mdx-normalization-preprocessor-deliberation.md`)
 were written from an initial investigation of the corpus. Running the
@@ -722,7 +724,7 @@ unstated implementation detail.
   addition)
 * Dry-run report (repo-local, git-ignored):
   `build/hashicorp-dryrun-evidence/real-corpus-dry-run-report.json`
-* Plan: `docs/plans/2026-09-11-hashicorp-mdx-normalization-preprocessor-plan.md`
+* Plan: `docs/archive/plans/2026-09-11-hashicorp-mdx-normalization-preprocessor-plan.md` (moved here at 2026-09-12 post-merge closure; compacted into `docs/plans/2026-09-12-hashicorp-mdx-normalization-preprocessor-decided-plan.md`)
 * Deliberation: `docs/decisions/2026-09-11-hashicorp-mdx-normalization-preprocessor-deliberation.md`
 * Shipment: `062-S`; Feature: `071-F`; Tasks: `071.001-T`..`071.011-T`
 * PR: #192; review-fix cycle 1 findings and resolutions: §9; review-fix
