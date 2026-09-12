@@ -351,15 +351,18 @@ the plan on stdout only) to preview the identical plan with zero writes --
 this is the default mode and is safe to run repeatedly, and never writes the
 `--report` file even when `--report` is given (see §9.1 -- dry-run prints
 the report to stdout and a stderr note instead). In `--execute` mode, a
-complete read-only normalization preflight pass runs first: `--dest` must
-not exist, and is claimed atomically immediately before any write begins
-(`EXIT_DEST_ALREADY_EXISTS` otherwise, see §9.2/§11.3); `--report` must
-resolve strictly under `--dest` or the run fails closed before `--dest` is
-even created (`EXIT_CONTAINMENT_VIOLATION`, see §11.2); and any genuine
-unresolved MDX construct aborts the run before any write begins unless
-`--allow-unresolved-mdx` is passed (`EXIT_UNRESOLVED_MDX_CONSTRUCTS`, see
-§11.1). This exact command is also reproduced in the script's own `--help`
-epilog.
+complete read-only normalization preflight pass runs first: `--dest` may be
+**absent or an existing, empty directory** (review-fix cycle 3 -- never a
+pre-existing non-empty destination), and is claimed via an exclusive
+sentinel file immediately before any write begins (`EXIT_DEST_ALREADY_EXISTS`
+if the destination is already claimed by another, still-running invocation;
+`EXIT_DEST_NOT_EMPTY` if it contains any other content; see §9.2/§11.3/§12.1);
+`--report` must resolve strictly under `--dest` or the run fails closed
+before `--dest` is even created (`EXIT_CONTAINMENT_VIOLATION`, see §11.2);
+and any genuine unresolved MDX construct aborts the run before any write
+begins unless `--allow-unresolved-mdx` is passed
+(`EXIT_UNRESOLVED_MDX_CONSTRUCTS`, see §11.1). This exact command is also
+reproduced in the script's own `--help` epilog.
 
 ## 8. Numbered requirements for a first-class docline MDX ingestion capability
 
@@ -497,15 +500,22 @@ without ever creating or touching it.
 was itself non-atomic (a P2 finding). It was replaced by a simplified
 "`--dest` must be ABSENT" contract with an atomic
 `mkdir(..., exist_ok=False)` claim immediately before writes
-(`EXIT_DEST_ALREADY_EXISTS`, superseding `EXIT_DEST_NOT_EMPTY`). This
-section is left as the historical record of the original finding and fix.
+(`EXIT_DEST_ALREADY_EXISTS`, superseding `EXIT_DEST_NOT_EMPTY`). **Further
+superseded by review-fix cycle 3** (§12.1): cycle 2's absent-only
+requirement was itself an unintended usability regression against this very
+finding's original intent (mutual exclusion, not "must not exist yet"); an
+existing, empty `--dest` is accepted again, claimed via an exclusive
+sentinel file rather than by `--dest`'s own creation. This section is left
+as the historical record of the original finding and fix.
 
 **Tests**: `test_execute_rejects_non_empty_existing_dest`,
 `test_dry_run_may_point_dest_at_a_non_empty_directory_without_creating_it`.
-(The original `test_execute_succeeds_against_existing_empty_dest` no longer
-exists -- it was replaced in cycle 2 by
-`test_execute_rejects_existing_empty_dest_too`, reflecting the tightened
-"absent, not merely empty" contract; see §11.3.)
+(The original `test_execute_succeeds_against_existing_empty_dest` was
+replaced in cycle 2 by `test_execute_rejects_existing_empty_dest_too`,
+reflecting the tightened "absent, not merely empty" contract -- see §11.3
+-- and then restored under its original name in cycle 3 with the opposite,
+success-asserting body, reflecting the sentinel-claim contract -- see
+§12.1.)
 
 ### 9.3 Finding 3 (P2) -- calendar version lexical sort
 
@@ -680,8 +690,9 @@ unstated implementation detail.
   `scripts/_hashicorp_mdx/selection.py`, `scripts/_hashicorp_mdx/normalize.py`
 * Tests: `tests/scripts/test_hashicorp_selection.py` (30 cases),
   `tests/scripts/test_hashicorp_normalize.py` (43 cases),
-  `tests/scripts/test_hashicorp_dryrun_corpus.py` (27 cases, including the
-  real-corpus dry-run integration test)
+  `tests/scripts/test_hashicorp_dryrun_corpus.py` (28 cases, including the
+  real-corpus dry-run integration test; see §12.6 for the most recent
+  addition)
 * Dry-run report (repo-local, git-ignored):
   `build/hashicorp-dryrun-evidence/real-corpus-dry-run-report.json`
 * Plan: `docs/plans/2026-09-11-hashicorp-mdx-normalization-preprocessor-plan.md`
@@ -789,9 +800,22 @@ partial output is deliberately left in place (never auto-deleted) and
 reported as a distinct, clearly-labeled partial-output failure
 (`EXIT_EXECUTION_FAILED`).
 
-**Tests**: `test_execute_rejects_existing_empty_dest_too` (an existing
-empty `--dest` is no longer accepted -- contract simplification),
-`test_execute_succeeds_against_absent_dest`,
+**Superseded by review-fix cycle 3** (§12.1): the "ABSENT (not merely
+empty)" contract itself proved too narrow -- it rejected the documented
+exact operator command whenever the real destination already existed but
+was completely empty, a same-contract-surface usability defect against
+this very finding's own mutual-exclusion intent. `_dest_must_be_absent()`
+was replaced by a sentinel-aware `_dest_precheck()`, and the `mkdir`-based
+claim was replaced by `claim_destination()` (an exclusive sentinel file
+created directly under `--dest`), preserving the identical mutual-exclusion
+guarantee while accepting an existing, empty `--dest` again. This section
+is left as the historical record of the original finding and fix.
+
+**Tests** (as of this finding's original fix in cycle 2 -- see §12.1 for
+the current, cycle-3 test names, several of which renamed or replaced
+these as the contract changed again): `test_execute_rejects_existing_empty_dest_too`
+(an existing empty `--dest` is no longer accepted -- contract
+simplification), `test_execute_succeeds_against_absent_dest`,
 `test_execute_second_claim_attempt_against_already_claimed_dest_fails_closed`
 (two SEQUENTIAL claim attempts against the same `--dest` -- the first
 succeeds and claims it, the second fails closed, without requiring real
@@ -1202,3 +1226,126 @@ one job's individual `failure` conclusion, consistent with an advisory
 / `continue-on-error` ambient check rather than a required gate. Captured
 as deferred stash entry `ADE96404` (P-021, threadless path -- an ambient
 CI signal, not a GitHub review thread) rather than fixed.
+
+### 12.5 Copilot shadow-review findings (commit `201fc58`, thread-present path)
+
+GitHub's Copilot shadow review re-runs automatically on every push to PR
+#192. The round submitted against commit `201fc58` (the §12.4 doc-only
+commit) surfaced four review threads. Each was classified against P-021
+C1 individually:
+
+* **`3994209535`** (`normalize.py:205`, a backtick-inside-a-fence-info-
+  string edge case in the existing fence scanner) -- **out of scope**: a
+  pre-existing parsing concern unrelated to the `--dest`/sentinel-claim
+  contract this cycle authorizes touching. Captured as deferred stash
+  entry `C0E88586` (low priority); thread replied to citing the entry
+  and resolved.
+* **`3994209569`** (`hashicorp_mdx_normalize.py:753`, `--dest` not
+  rejected when it is nested underneath `--source`) -- **out of scope**:
+  a different concern from the existing-empty-`--dest` claim fix, and a
+  duplicate of an earlier-round finding (`3993438433`) raised before
+  cycle 3 began. Captured as deferred stash entry `387E5F82` (medium
+  priority, citing both thread IDs so the duplication is traceable);
+  both threads replied to citing the entry and resolved.
+* **`3994209593`** (`design-doc:356`, the "Exact operator command"
+  prose in §7 still described the OLD absent-only `--dest` contract) --
+  **in scope**: this is a staleness defect in the documentation of this
+  cycle's own fix, not a different concern. Fixed directly by rewriting
+  §7 to describe the current absent-or-existing-empty contract, the
+  sentinel claim, and the `EXIT_DEST_ALREADY_EXISTS` /
+  `EXIT_DEST_NOT_EMPTY` distinction. While auditing for this same class
+  of staleness, two further stale cross-references were found and fixed
+  in the same commit even though Copilot had not flagged them directly:
+  §9.2 (which still claimed a test superseded in cycle 3 "no longer
+  exists") and §11.3 (whose fix description and test-name list predated
+  cycle 3's further supersession of the "absent-only" contract). Thread
+  replied to confirming the fix and resolved.
+* **`3994209606`** (`hashicorp_mdx_normalize.py:233`, the PR body's
+  "Local Review Readiness" block referenced a stale HEAD `ebce8d5`) --
+  **in scope**, but already resolved: this cycle's own PR-body update
+  (made before this Copilot round completed) had already moved the
+  readiness block to the current HEAD, so the finding and the fix
+  crossed in flight. Thread replied to confirming resolution via the
+  existing body update and resolved -- no additional code or doc change
+  was needed.
+
+### 12.6 Report-path-reserved-sentinel-collision fix (commit-pending, thread-present path)
+
+A further Copilot shadow-review round, submitted against commit
+`201fc58` as well (review id `5184263905`, thread `3994230152`), found a
+real, deterministic bug in this cycle's own sentinel-claim mechanism: an
+operator-supplied `--report` path that resolves to EXACTLY the reserved
+claim-sentinel filename under `--dest`
+(`.docline-hashicorp-mdx-normalize.claim`, `CLAIM_SENTINEL_NAME`) was
+never rejected. `guard_write_path()` only checks *containment* (does the
+resolved path fall inside `--dest`) -- and the reserved name is trivially
+inside `--dest` too, so containment alone let it through. Writing the
+report there would overwrite the live sentinel, and `main()`'s
+`finally`-block cleanup would then delete it as "the sentinel this
+process created," silently losing the report while the run still
+reported exit 0.
+
+This is classified **in scope** per P-021 C1/C3(i): the reserved sentinel
+name did not exist before this cycle's own `--dest` claim redesign, so a
+collision with it is a defect *introduced by* this cycle's change, not a
+pre-existing concern. It is a same-contract-surface completion of the
+sentinel-claim mechanism, not a different concern. This finding also
+corrected an overclaim of my own: the `CLAIM_SENTINEL_NAME` docstring
+comment (written earlier this cycle) had asserted the sentinel "never
+collides" with corpus output or the report -- true for ordinary corpus
+output (which is guarded to a distinct sub-path), but never actually
+enforced for an operator-chosen `--report` path, so the claim was
+unverified prose, not a backed guarantee.
+
+Fix (test-first):
+
+* Added a new exit code, `EXIT_REPORT_PATH_RESERVED = 11`.
+* Added a small helper, `_reserved_sentinel_path(dest) -> Path`, that
+  resolves to `dest.resolve() / CLAIM_SENTINEL_NAME`.
+* Wired a rejection check into **both** existing `guard_write_path(dest,
+  args.report)` call sites in `main()`:
+  * the early, pre-claim check (before `--dest` is created or claimed --
+    the realistically-reachable path, and the one the new regression
+    test exercises at the CLI level);
+  * the post-write, defense-in-depth re-check (mirroring the existing
+    double-guard pattern already used for `guard_write_path` itself,
+    per review-fix cycle 2 finding 2 -- kept for symmetry, not given its
+    own dedicated CLI-level test, consistent with this shipment's
+    established proportionality precedent for narrow, code-inspection-
+    verifiable duplicate checks).
+* Corrected the `CLAIM_SENTINEL_NAME` docstring comment to describe the
+  actual, now-enforced rejection instead of the previous unverified
+  "never collides" claim.
+* Updated the module-level docstring's containment-contract bullet list
+  to document the new rejection.
+* Added a new regression test,
+  `test_execute_rejects_report_path_equal_to_reserved_sentinel`, covering
+  BOTH the absent-`--dest` and the existing-empty-`--dest` cases (the
+  latter being the exact scenario this cycle's headline fix made legal
+  again): in both cases, the rejection fires before any claim, `--dest`
+  is left absent (case 1) or empty (case 2), and the specific
+  `EXIT_REPORT_PATH_RESERVED` exit code and message are asserted.
+
+Re-verification after this fix:
+
+* Targeted HashiCorp suite
+  (`test_hashicorp_dryrun_corpus.py` +
+  `test_hashicorp_normalize.py` + `test_hashicorp_selection.py`,
+  `-m "not integration"`): **100 passed, 1 deselected** (up from 99 at
+  the end of §12.3; +1 net new test this fix).
+* Full local suite (`-m "not integration"`): **2210 passed, 2 skipped,
+  16 deselected** (up from 2209; +1 net new test this fix).
+* `ruff check .`: all checks passed. `ruff format --check .`: 301 files
+  already formatted.
+* `uv run pyright scripts/hashicorp_mdx_normalize.py`: 0 errors, 0
+  warnings, 0 informations.
+* `uv run python -m build`: succeeded.
+* Exact documented operator command (§7), run WITHOUT `--execute`
+  against the real external `--source`/`--dest`/`--report` paths: **exit
+  0**, `unresolved_constructs: {}`, 23 products. The real external
+  `--dest` (`C:\Source\Docs\tf-unified-dev-docs-normalized`) had exactly
+  0 entries before and exactly 0 entries after -- dry-run mode never
+  claims it, and it was never written to by this fix's work either.
+
+Thread `3994230152` replied to describing the fix and the commit that
+lands it, and resolved.

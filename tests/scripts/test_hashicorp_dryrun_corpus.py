@@ -435,6 +435,80 @@ def test_execute_rejects_dest_actively_claimed_by_another_invocation(
     assert live_sentinel.read_bytes() == b""
 
 
+def test_execute_rejects_report_path_equal_to_reserved_sentinel(tmp_path: Path) -> None:
+    """Regression (review-fix cycle 3, finding: independent-review /
+    Copilot shadow-review comment on commit 201fc58): a --report path that
+    resolves to EXACTLY the reserved claim-sentinel filename under --dest
+    must be rejected with a dedicated EXIT_REPORT_PATH_RESERVED code
+    before --dest is created or claimed, in BOTH the absent-dest and
+    existing-empty-dest cases.
+
+    Before this fix, --report was only checked for containment (does it
+    resolve inside --dest), never for collision with the reserved
+    sentinel name. Because the reserved name is trivially "inside --dest"
+    too, the containment guard let it through: the report write would
+    overwrite the live sentinel, and main()'s finally-block cleanup would
+    then delete it as "the sentinel this process created" -- silently
+    losing the report while the run still returned exit 0. This test
+    pre-empts --dest being created at all in the absent case, proving the
+    rejection happens at the early pre-claim guard, not merely after some
+    partial side effect."""
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location(
+        "docline_hashicorp_mdx_normalize_reserved_report_cli", _SCRIPT_PATH
+    )
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    sys.modules["docline_hashicorp_mdx_normalize_reserved_report_cli"] = module
+    spec.loader.exec_module(module)
+
+    # Case 1: --dest does not exist yet. The rejection must fire before
+    # --dest is ever created.
+    dest_absent = tmp_path / "dest-absent"
+    reserved_report_path = dest_absent / module.CLAIM_SENTINEL_NAME
+
+    result = _run_cli(
+        [
+            "--source",
+            str(_SYNTHETIC_CORPUS),
+            "--dest",
+            str(dest_absent),
+            "--report",
+            str(reserved_report_path),
+            "--execute",
+        ]
+    )
+
+    assert result.returncode == module.EXIT_REPORT_PATH_RESERVED
+    assert "reserved claim sentinel path" in result.stderr
+    assert not dest_absent.exists()
+
+    # Case 2: --dest already exists and is empty (the exact scenario this
+    # review-fix cycle's headline fix made legal again) -- the reserved
+    # --report path must still be rejected before claim, and --dest must
+    # be left empty (no sentinel, no partial output).
+    dest_existing_empty = tmp_path / "dest-existing-empty"
+    dest_existing_empty.mkdir()
+    reserved_report_path_existing = dest_existing_empty / module.CLAIM_SENTINEL_NAME
+
+    result_existing = _run_cli(
+        [
+            "--source",
+            str(_SYNTHETIC_CORPUS),
+            "--dest",
+            str(dest_existing_empty),
+            "--report",
+            str(reserved_report_path_existing),
+            "--execute",
+        ]
+    )
+
+    assert result_existing.returncode == module.EXIT_REPORT_PATH_RESERVED
+    assert "reserved claim sentinel path" in result_existing.stderr
+    assert list(dest_existing_empty.iterdir()) == []
+
+
 def test_execute_leaves_partial_dest_in_place_when_write_pass_fails(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:

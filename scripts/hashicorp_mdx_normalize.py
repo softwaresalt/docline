@@ -34,6 +34,14 @@ HARD CONTAINMENT CONTRACT
   best-effort containment check, not a race-free guarantee: Python's
   ``Path.resolve()`` cannot atomically bind a check to a subsequent
   write any more than any other check-then-act filesystem sequence can.
+  A ``--report`` path resolving to EXACTLY the reserved claim sentinel
+  name under ``--dest`` (``CLAIM_SENTINEL_NAME``) is a further, distinct
+  rejection (``EXIT_REPORT_PATH_RESERVED``, review-fix cycle 3
+  independent-review finding): plain containment alone does not catch
+  this, since the reserved name is trivially inside ``--dest`` too, but
+  writing there would overwrite the live sentinel and then have it
+  deleted by the end-of-run claim-release cleanup, silently losing the
+  report while the run still reports success.
 * ``--execute`` accepts ``--dest`` ABSENT or EXISTING-AND-EMPTY -- never a
   pre-existing non-empty destination (review-fix cycle 3, reinstating the
   "existing empty is fine" ergonomics that cycle 2's atomic-claim redesign
@@ -134,12 +142,19 @@ EXIT_EXECUTION_FAILED = 7
 EXIT_DEST_CLAIM_FAILED = 8
 EXIT_REPORT_WRITE_FAILED = 9
 EXIT_DEST_NOT_EMPTY = 10
+EXIT_REPORT_PATH_RESERVED = 11
 
 #: Name of the exclusive claim sentinel file created directly under
 #: ``--dest`` while an ``--execute`` run owns that destination (review-fix
-#: cycle 3). Never collides with corpus output: every corpus/report write
-#: lands under a product subdirectory or at an operator-chosen ``--report``
-#: name, never at this exact reserved filename.
+#: cycle 3). An operator-chosen ``--report`` path CAN collide with this
+#: reserved name (an independent review caught this after an earlier
+#: version of this comment incorrectly claimed it could not): writing the
+#: report there would overwrite the live sentinel, and the end-of-run
+#: cleanup in :func:`main` would then delete the report it just wrote --
+#: silently losing it while still returning success. ``main()`` rejects a
+#: ``--report`` that resolves to exactly this reserved path under
+#: ``--dest`` (``EXIT_REPORT_PATH_RESERVED``) before ``--dest`` is ever
+#: claimed or written to.
 CLAIM_SENTINEL_NAME = ".docline-hashicorp-mdx-normalize.claim"
 
 #: Image-like binary assets copied byte-for-byte, unchanged.
@@ -198,6 +213,18 @@ def guard_write_path(dest_root: Path, candidate: Path) -> Path:
             f"refusing to write outside --dest: {candidate_resolved} is not under {dest_resolved}"
         ) from exc
     return candidate_resolved
+
+
+def _reserved_sentinel_path(dest: Path) -> Path:
+    """Return the fully-resolved path of the reserved claim sentinel under ``dest``.
+
+    Used to reject an operator-chosen ``--report`` path that collides with
+    this reserved name (independent-review finding, review-fix cycle 3):
+    writing the report there would overwrite the live claim sentinel, and
+    the end-of-run cleanup in :func:`main` would then delete the report it
+    just wrote -- silently losing it while still returning success.
+    """
+    return dest.resolve() / CLAIM_SENTINEL_NAME
 
 
 class DestClaimError(RuntimeError):
@@ -757,10 +784,20 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.report is not None:
         try:
-            guard_write_path(dest, args.report)
+            resolved_report_precheck = guard_write_path(dest, args.report)
         except ContainmentViolation as exc:
             print(f"error: containment violation: {exc}", file=sys.stderr)
             return EXIT_CONTAINMENT_VIOLATION
+        if resolved_report_precheck == _reserved_sentinel_path(dest):
+            print(
+                f"error: --report resolves to the reserved claim sentinel path: "
+                f"{resolved_report_precheck} -- choose a different --report path. Writing "
+                "here would overwrite the live claim sentinel, and it would then be deleted "
+                "when the claim is released at the end of this run, silently losing the "
+                "report. --dest was never created or claimed.",
+                file=sys.stderr,
+            )
+            return EXIT_REPORT_PATH_RESERVED
 
     # Complete READ-ONLY normalization preflight: the SAME selection and
     # per-file normalization logic as the real write pass below, but
@@ -861,6 +898,25 @@ def main(argv: list[str] | None = None) -> int:
                     file=sys.stderr,
                 )
                 return EXIT_CONTAINMENT_VIOLATION
+            if resolved_report == _reserved_sentinel_path(dest):
+                # Defense-in-depth only: the early precheck above already
+                # rejects this collision before --dest is claimed on the
+                # ordinary path. This duplicate check exists for the same
+                # reason guard_write_path itself is re-invoked here rather
+                # than trusted from the earlier call (review-fix cycle 2,
+                # finding 2) -- to narrow, not assume away, the window in
+                # which the resolved report path could differ between the
+                # two checks.
+                print(
+                    f"error: --report resolves to the reserved claim sentinel path: "
+                    f"{resolved_report} -- choose a different --report path. Corpus output "
+                    f"under {dest} was already written successfully and is left in place; "
+                    "only the report file was rejected. Writing here would overwrite the "
+                    "live claim sentinel, and it would then be deleted when the claim is "
+                    "released at the end of this run, silently losing the report.",
+                    file=sys.stderr,
+                )
+                return EXIT_REPORT_PATH_RESERVED
             try:
                 resolved_report.parent.mkdir(parents=True, exist_ok=True)
                 resolved_report.write_text(payload, encoding="utf-8")
