@@ -61,7 +61,7 @@ embedded URL. Rejected: `sanitize_source` is a general primitive also used by
 `create_staging_job` on bare sources; overloading it with source-key grammar couples two
 concerns and risks regressions on the bare-URL callers.
 
-### Option B — New source-config-aware sanitizer `sanitize_source_key()` (CHOSEN; contract amended R3)
+### Option B — New source-config-aware sanitizer `sanitize_source_key()` (CHOSEN; contract amended R3/R4/R5)
 Add a dedicated helper (co-located with `build_source_key` in `source_keys.py`) that consumes the
 **typed `SourceConfig`** (not the composed key string): for the two leak-scoped crawl configs
 (`WebCrawlSource` / `ManifestUrlSource`) it sanitizes the typed `config.url` via the existing
@@ -92,6 +92,21 @@ the safe representation ALSO routes `config.id` through `sanitize_source()` befo
 (`manifest_url:<sanitized_id>:<sanitized_url>:...`); `job_id` still hashes the raw
 `build_source_key(config)`. A credential-bearing-id case is added to Unit 1 of the plan.
 
+**R5 refinement (Copilot review, PR #195 threads `PRRT_kwDOSsAX4c6h0OMq` (decision line 93) /
+`PRRT_kwDOSsAX4c6h0OM1` (plan line 123)):** routing `config.id` through `sanitize_source()` (R4) is
+a NO-OP for an unrestricted, non-URL-form `id` such as `srcA?token=SECRET` — `sanitize_source()`
+only redacts strings it recognizes as a URL or absolute path and otherwise returns the string
+verbatim, so the token still reaches `metadata.source` and the ERROR log, a documented exception
+that CONTRADICTS the no-credential invariant. The contract is refined so the safe representation
+applies **ID-specific credential redaction INDEPENDENT of URL detection** to the `id` segment via a
+`sanitize_source_id()` helper: it strips `user:pass@` userinfo and redacts credential-named
+`key=value` fragments (reusing the existing `_CREDENTIAL_PARAM_PREFIXES` vocabulary — NOT expanding
+it, which stays deferred as stash `06A59B1D`) whether or not the `id` is URL-shaped, so
+`srcA?token=SECRET` -> `srcA?token=<redacted>`. The R4 non-URL-form-id "known residual" is CLOSED,
+not documented as an accepted exception. A non-URL credential-bearing-id regression case is added
+to Unit 1 (unit) and Unit 2 (integration). `job_id` still hashes the raw `build_source_key(config)` (determinism invariant
+unchanged).
+
 ### Option C — Redact by not logging / not persisting the key at all
 Drop `source_key` from the log and store only `job_id` in metadata. Rejected: loses
 operator-facing diagnostic value (sanitized host/path is useful) and changes the metadata
@@ -99,19 +114,23 @@ contract more than necessary; the existing test depends on a source field being 
 
 ## Chosen Direction
 
-**Option B (typed-config contract, R3).** Introduce
-`sanitize_source_key(config: SourceConfig) -> str` that sanitizes the typed `config.url` and
-recomposes via `_build_crawl_source_key`; route `metadata.source` and the ERROR log through
+**Option B (typed-config contract, R5).** Introduce
+`sanitize_source_key(config: SourceConfig) -> str` that sanitizes the typed `config.url` (via
+`sanitize_source()`) AND, for `ManifestUrlSource`, credential-redacts the `config.id` segment via a
+`sanitize_source_id()` helper that redacts INDEPENDENT of URL detection (strip userinfo + redact
+credential-named `key=value` fragments using the existing `_CREDENTIAL_PARAM_PREFIXES` vocabulary,
+so a non-URL-form `id` like `srcA?token=SECRET` is redacted rather than a no-op), then recomposes
+via `_build_crawl_source_key`; route `metadata.source` and the ERROR log through
 `sanitize_source_key(config)`; keep `make_job_id(build_source_key(config))` on the raw key
 unchanged. Update the affected test to assert the sanitized representation appears and that a
 credential token does NOT appear (including for a manifest_url config whose `id` is itself a
-credential-bearing scheme-bearing string, with `config.id` sanitized via `sanitize_source()` before recompose (R4)), while `job_id` continues to be asserted against the raw-key recomputation.
+credential-bearing string (URL-shaped or non-URL-form such as `srcA?token=SECRET`), with `config.id` credential-redacted independent of URL detection before recompose (R5)), while `job_id` continues to be asserted against the raw-key recomputation.
 
 ## Done Looks Like
 
 - No raw URL credential (userinfo or credential query param) reaches `metadata.json` or the
   ERROR log written by `_execute_single_source` (incl. the `exc_info` traceback) for
-  `web_crawl:` / `manifest_url:` keys -- including a credential embedded in the manifest_url `id` segment, which the safe representation routes through `sanitize_source()` (R4). NOTE: the separate `orchestrate_fetch` /
+  `web_crawl:` / `manifest_url:` keys -- including a credential embedded in the manifest_url `id` segment (URL-shaped OR non-URL-form such as `srcA?token=SECRET`), which the safe representation redacts via ID-specific credential redaction independent of URL detection (R5). NOTE: the separate `orchestrate_fetch` /
   `create_staging_job` default-fetch sink is a distinct, out-of-scope leak captured as a P-021
   deferral (see below) — NOT closed by this shipment.
 - `job_id` for identical inputs is byte-identical before and after the fix (determinism proof).
