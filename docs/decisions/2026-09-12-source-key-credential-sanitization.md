@@ -61,15 +61,27 @@ embedded URL. Rejected: `sanitize_source` is a general primitive also used by
 `create_staging_job` on bare sources; overloading it with source-key grammar couples two
 concerns and risks regressions on the bare-URL callers.
 
-### Option B — New source-key-aware sanitizer `sanitize_source_key()` (CHOSEN)
-Add a dedicated helper (co-located with `build_source_key` in `source_keys.py`) that (per plan-review R2) isolates the
-embedded URL by **scheme anchor** (`http(s)://`) — not a positional colon split — restricted to
-the `web_crawl:` / `manifest_url:` prefixes, applies the existing `sanitize_source()` URL logic
-to that URL segment, right-anchor-peels and preserves the trailing crawl-option suffixes (`depth=`,
-`max_pages=`, ...), and is a
-pass-through for non-URL keys (`local_file:`, `github_repo:`, `manifest_local:`,
-`manifest_git:`). `job_id` still hashes the raw key. Chosen: smallest blast radius, reuses the
-vetted URL sanitizer, keeps `sanitize_source` semantics intact, single clear seam.
+### Option B — New source-config-aware sanitizer `sanitize_source_key()` (CHOSEN; contract amended R3)
+Add a dedicated helper (co-located with `build_source_key` in `source_keys.py`) that consumes the
+**typed `SourceConfig`** (not the composed key string): for the two leak-scoped crawl configs
+(`WebCrawlSource` / `ManifestUrlSource`) it sanitizes the typed `config.url` via the existing
+`sanitize_source()` URL logic and recomposes the key through the same builder grammar
+(`_build_crawl_source_key`) used by `build_source_key`, so the sanitized representation is
+grammar-identical to the raw key except for the URL segment. All other config types return
+`build_source_key(config)` byte-identical (`local_file:`, `github_repo:`, `manifest_local:`,
+`manifest_git:` — github_repo token handling DEFERRED). `job_id` still hashes the raw
+`build_source_key(config)`. Chosen: smallest blast radius, reuses the vetted URL sanitizer, keeps
+`sanitize_source` semantics intact, single clear seam.
+
+**R3 amendment (Copilot review, PR #194 thread PRRT_kwDOSsAX4c6hzYmm):** the earlier R2 contract
+isolated the URL by scheme anchor over the composed key string. That grammar could not reliably
+resolve the manifest_url case: `ManifestUrlSource.id` is an unrestricted `str`
+(`src/docline/elt/manifest_models.py:65`) and the composed key is
+`manifest_url:<id>:<url>:<options>` (`src/docline/elt/source_keys.py:32-40`), so an `id` containing
+`http://`/`https://` makes the FIRST-scheme-after-prefix anchor select the wrong segment. Consuming
+the typed config removes all string-parse ambiguity (there is no composed string to disambiguate)
+and is preferred over the alternative unambiguous-encoded-delimiter remedy because it requires no
+change to the `build_source_key` wire format or the `make_job_id` input.
 
 ### Option C — Redact by not logging / not persisting the key at all
 Drop `source_key` from the log and store only `job_id` in metadata. Rejected: loses
@@ -78,10 +90,13 @@ contract more than necessary; the existing test depends on a source field being 
 
 ## Chosen Direction
 
-**Option B.** Introduce `sanitize_source_key()`; route `metadata.source` and the ERROR log
-through it; keep `make_job_id(source_key)` on the raw key unchanged. Update the affected test to
-assert the sanitized representation appears and that a credential token does NOT appear, while
-`job_id` continues to be asserted.
+**Option B (typed-config contract, R3).** Introduce
+`sanitize_source_key(config: SourceConfig) -> str` that sanitizes the typed `config.url` and
+recomposes via `_build_crawl_source_key`; route `metadata.source` and the ERROR log through
+`sanitize_source_key(config)`; keep `make_job_id(build_source_key(config))` on the raw key
+unchanged. Update the affected test to assert the sanitized representation appears and that a
+credential token does NOT appear (including for a manifest_url config whose `id` itself contains a
+URL scheme), while `job_id` continues to be asserted against the raw-key recomputation.
 
 ## Done Looks Like
 

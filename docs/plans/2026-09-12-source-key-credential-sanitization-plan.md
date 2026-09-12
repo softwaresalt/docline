@@ -6,7 +6,7 @@ kind: implementation-plan
 source: docs/decisions/2026-09-12-source-key-credential-sanitization.md
 stash_id: D6E758F5
 covering_release_unit: chore
-revision: R2
+revision: R3
 ---
 
 # Implementation Plan: Source-key credential sanitization (stash D6E758F5)
@@ -21,6 +21,16 @@ Source document: `docs/decisions/2026-09-12-source-key-credential-sanitization.m
 > suffix peel; (d) redaction verified against full log output (`caplog.text`, incl. traceback);
 > (e) Constitution Check section added; (f) credential-list expansion explicitly deferred as a
 > documented residual to hold strict D6E758F5 scope.
+
+> **Revision R3** — revised after Copilot review on PR #194 (thread `PRRT_kwDOSsAX4c6hzYmm`).
+> The R2 scheme-anchored string parse could not reliably resolve the manifest_url ambiguity:
+> `ManifestUrlSource.id` is an unrestricted `str` (`src/docline/elt/manifest_models.py:65`) and the
+> composed key is `manifest_url:<id>:<url>:<options>` (`src/docline/elt/source_keys.py:32-40`), so an
+> `id` containing `http://`/`https://` defeats the "first scheme after prefix" anchor. The sanitizer
+> contract is changed to **consume the typed `SourceConfig`** — sanitize `config.url` and recompose
+> the key via the existing builder grammar (`_build_crawl_source_key`) — removing all string-parse
+> ambiguity. `job_id` still hashes the raw `build_source_key(config)` (determinism invariant
+> unchanged). The decision doc and tasks 072.001-T/072.002-T/072.003-T are updated to match.
 
 ## Problem Frame
 
@@ -43,7 +53,7 @@ metadata/log representation may be sanitized.
 | Requirement (from decision doc) | Implementation action |
 |---|---|
 | Sanitize embedded URL inside prefixed source keys | Add `sanitize_source_key()` in `source_keys.py` (Unit 1) |
-| Correctly isolate the URL for BOTH web_crawl and manifest_url | Scheme-anchored isolation, prefix-restricted (Unit 1) |
+| Correctly isolate the URL for BOTH web_crawl and manifest_url | Sanitize the typed `config.url` and recompose via `_build_crawl_source_key`; no string parse (Unit 1) |
 | Do not change `job_id` determinism | Keep `make_job_id(source_key)` on raw key; sanitize only metadata/log (Unit 3) |
 | No credential in `metadata.source` or ERROR log (incl. traceback) | Route both sinks through helper; assert against `caplog.text` (Units 2, 3) |
 | Redaction observed before production change | Author failing redaction test first (Unit 2 before Unit 3) |
@@ -80,34 +90,38 @@ Mapped against `.github/instructions/constitution.instructions.md` (actual princ
   1. Add a module-level constant co-located with `_crawl_option_parts`, e.g.
      `_CRAWL_OPTION_KEYS = ("depth", "max_pages", "domain_lock", "rate_limit_ms")`, and refactor
      `_crawl_option_parts` to reference it (single source of truth for option-key tokens).
-  2. Add `sanitize_source_key(source_key: str) -> str` in `src/docline/elt/source_keys.py`:
-     - Act ONLY on keys with prefix `web_crawl:` or `manifest_url:` (the leak-scoped crawl
-       prefixes emitted by `_build_crawl_source_key`). ALL other prefixes (`local_file:`,
-       `github_repo:`, `manifest_local:`, `manifest_git:`) return **byte-identical** (github_repo
-       token handling is DEFERRED, not implemented here).
-     - Locate the embedded URL by **scheme anchor** (`http://` / `https://` substring), not by
-       positional colon split — this correctly handles `manifest_url:<id>:<url>` even when `<id>`
-       contains a colon.
-     - Peel the trailing crawl-option suffixes with a **right-anchored** match built from
-       `_CRAWL_OPTION_KEYS` (options are always appended last by `_crawl_option_parts`), handling
-       the empty-option case.
-     - Sanitize the isolated URL via the existing public `sanitize_source()` (import from
-       `docline.fetch.staging`; reuse — do not duplicate `_CREDENTIAL_PARAM_PREFIXES`).
-     - Reassemble `prefix + sanitized_url + untouched option suffixes`. Add `sanitize_source_key`
-       to `__all__`; update the module docstring to reflect the added safe-representation role.
+  2. Add `sanitize_source_key(config: SourceConfig) -> str` in `src/docline/elt/source_keys.py`
+     that consumes the **typed config** (not the composed key string):
+     - For the two leak-scoped crawl configs (`WebCrawlSource`, `ManifestUrlSource`), sanitize the
+       typed `config.url` via the existing public `sanitize_source()` (import from
+       `docline.fetch.staging`; reuse — do not duplicate `_CREDENTIAL_PARAM_PREFIXES`), then
+       **recompose** the key through the same `_build_crawl_source_key(prefix, sanitized_url, ...)`
+       path that `build_source_key` uses, so the sanitized key is grammar-identical to the raw key
+       except for the URL segment. This is immune to the `manifest_url:<id>:<url>` ambiguity even
+       when `<id>` itself contains a URL scheme, because no composed string is parsed.
+     - For ALL other config types (`LocalFileSource`, `GitHubRepoSource`, `ManifestLocalSource`,
+       `ManifestGitSource`) return `build_source_key(config)` **byte-identical** (github_repo token
+       handling is DEFERRED, not implemented here).
+     - Keep `_build_crawl_source_key` (and its `_CRAWL_OPTION_KEYS`-based option construction) as
+       the single builder grammar reused by both `build_source_key` and the sanitizer, so there is
+       no separate parse grammar to drift and no option-suffix peel is needed. Add
+       `sanitize_source_key` to `__all__`; update the module docstring to reflect the added
+       safe-representation role.
 - **Files:** `src/docline/elt/source_keys.py`, `tests/elt/test_source_keys.py` (new).
 - **Tests (<= 3 scenarios):** (1) `web_crawl:` key with userinfo + `?token=SECRET` + options ->
-  token + userinfo ABSENT, prefix + option suffixes preserved; (2) `manifest_url:<id-with-colon>:`
-  key with `?token=SECRET` -> token ABSENT, full prefix preserved (explicit absence assertion —
-  guards the no-op regression); (3) non-crawl prefixes (`github_repo:`, `local_file:`) returned
-  byte-identical AND an empty-option credentialed `web_crawl:` key sanitized.
+  token + userinfo ABSENT, prefix + option suffixes preserved; (2) a `ManifestUrlSource` whose
+  `id` itself contains `http://` and whose `url` carries `?token=SECRET` -> token ABSENT and the
+  recomposed key preserves the correct prefix/id/options (proves the typed-config recompose is
+  immune to scheme-in-id — the exact case the R2 string parse could not handle); (3) non-crawl
+  configs (`GitHubRepoSource`, `LocalFileSource`) returned byte-identical AND an empty-option
+  credentialed `WebCrawlSource` sanitized.
 - **Posture:** test-first. Reuses vetted `sanitize_source` without altering it.
 
 ### Unit 2 — Author failing redaction test (tests; test-first RED)
 - **Changes:** Update `test_url_fetch_failure_logs_source_key_and_job_id` in
   `tests/elt/test_elt_real_execution.py` to encode the redaction contract BEFORE the call-site
   is wired: (a) keep asserting `job_id in record.message` and `exc_info is not None`; (b) assert
-  the persisted `metadata.source` equals `sanitize_source_key(source_key)`; (c) add a
+  the persisted `metadata.source` equals `sanitize_source_key(config)`; (c) add a
   credential-bearing crawl URL (userinfo + `?token=SECRET`) and assert the literal `SECRET` /
   userinfo substrings are ABSENT from `caplog.text` (the FULL rendered record incl. traceback)
   AND from the written `metadata.json` text — the injected crawl failure MUST raise an exception
@@ -122,8 +136,8 @@ Mapped against `.github/instructions/constitution.instructions.md` (actual princ
 
 ### Unit 3 — Wire the call-site to green (code; GREEN)
 - **Changes:** In `_execute_single_source`, set
-  `metadata = SourceMetadata(source=sanitize_source_key(source_key), ...)` and change the
-  `_log.exception(...)` argument from `source_key` to `sanitize_source_key(source_key)`. Keep
+  `metadata = SourceMetadata(source=sanitize_source_key(config), ...)` and change the
+  `_log.exception(...)` argument from `source_key` to `sanitize_source_key(config)`. Keep
   `job_id = make_job_id(source_key)` on the raw key. If Unit 2's `caplog.text` assertion reveals
   the `exc_info` traceback re-leaks the raw URL (a crawl exception embedding `config.url`), close
   it within this same ERROR sink by SCRUBBING the raw URL out of the logged exception (sanitize or
@@ -146,28 +160,25 @@ Mapped against `.github/instructions/constitution.instructions.md` (actual princ
 
 - **Dedicated `sanitize_source_key()` (not extending `sanitize_source`)** — keeps the general
   bare-source sanitizer untouched (also used by `create_staging_job`), lowest regression risk.
-- **Prefix-restricted + scheme-anchored isolation** — acts only on the two leak-scoped crawl
-  prefixes and finds the URL by scheme, eliminating the manifest_url positional no-op and
-  colon-in-id ambiguity; keeps github_repo out of scope (deferred).
-- **Shared `_CRAWL_OPTION_KEYS` constant** — single source of truth so build (`_crawl_option_parts`)
-  and parse (sanitizer) grammars cannot drift.
+- **Typed-config consumption + builder recompose (R3)** — sanitizes the typed `config.url` and
+  recomposes via `_build_crawl_source_key`, eliminating the manifest_url positional no-op and ALL
+  scheme-in-id / colon-in-id string-parse ambiguity (no composed string is parsed); keeps
+  github_repo out of scope (deferred).
+- **Shared `_CRAWL_OPTION_KEYS` constant** — single source of truth for option-key tokens in the
+  builder (`_crawl_option_parts`); the sanitizer reuses the builder rather than re-parsing, so no
+  separate parse grammar exists to drift.
 - **Sanitize representation, not the hashed key** — only way to satisfy both "no leak" and
   "job_id determinism" simultaneously.
 
 ## Risks and Caveats
 
-- **Risk:** manifest_url URL mis-isolation. **Mitigation:** scheme anchor + explicit
-  token-absence test with a colon-bearing id (Unit 1 scenario 2).
-- **Risk:** URL path/query legitimately contains `:key=` colliding with the option grammar.
-  **Mitigation:** right-anchored peel of the known trailing `_CRAWL_OPTION_KEYS` grammar only; a
-  mis-peeled non-option suffix is re-appended verbatim and carries no credential (fidelity-only,
-  not a leak).
-- **Risk:** scheme anchor mis-fires if a `manifest_url:<id>` id itself contains `http(s)://`, or a
-  URL uses an uppercase scheme. **Mitigation:** anchor on the FIRST scheme occurrence AFTER the
-  known prefix and match schemes case-insensitively; add Unit 1 scenarios for a scheme-bearing id
-  and an uppercase-scheme URL. Robust alternative (Ship may adopt without re-review, strengthens
-  the same contract): sanitize `config.url` from the typed `SourceConfig` and recompose via the
-  existing builder grammar instead of re-parsing the composed key string.
+- **Risk (eliminated by the R3 typed-config contract):** the R2 string-parse risks — manifest_url
+  URL mis-isolation, an `id` containing `http(s)://` defeating the scheme anchor, and a URL
+  path/query `:key=` colliding with the option-suffix grammar — no longer apply: the sanitizer
+  consumes the typed `config.url` and recomposes via `_build_crawl_source_key`, so no composed
+  string is parsed and there is no option-suffix peel. **Residual:** `sanitize_source()`
+  URL-sanitization semantics still apply to the isolated `config.url` (userinfo + credential query
+  params) and are covered by the Unit 1 scenarios (incl. an uppercase-scheme URL).
 - **Risk:** `exc_info` traceback re-leaks the URL. **Mitigation:** Unit 2 asserts absence against
   `caplog.text` (full record incl. traceback), forcing Unit 3 to close the traceback path.
 - **Risk:** silently changing `job_id`. **Mitigation:** determinism assertion + parity test.
