@@ -22,7 +22,9 @@ _CONFIG: dict[str, Any] = {
     "source_rel_path,expected",
     [
         ("docs/admin/foo.md", "/fabric/admin/foo"),
+        ("docs/admin/foo.markdown", "/fabric/admin/foo"),
         ("docs/admin/index.md", "/fabric/admin"),
+        ("docs/admin/index.markdown", "/fabric/admin"),
         ("docs/index.md", "/fabric"),
         ("powerbi-docs/create/report.md", "/power-bi/create/report"),
         ("docs/Admin/Foo.md", "/fabric/admin/foo"),  # canonical URLs are lowercase

@@ -5,7 +5,7 @@ import json
 import sys
 from pathlib import Path
 
-from docline.app import execute_process, get_manifest
+from docline.app import DEFAULT_LOCAL_INCLUDE_PATTERNS, execute_process, get_manifest
 from docline.app_models import ProcessRequest
 from docline.elt.orchestrate import orchestrate_fetch
 from docline.paths import PathContainmentError, safe_workspace_path
@@ -238,9 +238,10 @@ def _build_parser() -> argparse.ArgumentParser:
         default=None,
         help=(
             "Glob pattern (relative to source_path) of files to include. "
-            "Repeatable. Defaults to ['**/*.md', '**/TOC.yml', '**/toc.yml'] "
-            "when omitted (TOC files are staged so the manifest emitter can "
-            "derive ingest order; they are filtered out of the process pass)."
+            "Repeatable. Defaults to ['**/*.md', '**/*.markdown', "
+            "'**/TOC.yml', '**/toc.yml'] when omitted (TOC files are staged "
+            "so the manifest emitter can derive ingest order; they are "
+            "filtered out of the process pass)."
         ),
     )
     local_dir_parser.add_argument(
@@ -486,7 +487,7 @@ def _run_ingest_local_dir(parsed: argparse.Namespace) -> int:
     # Default include also captures TOC.yml so the T2 manifest emitter can
     # derive authorial ingest order. .yml files are filtered out by the
     # process pipeline's _SUPPORTED_EXTENSIONS check.
-    include = parsed.include or ["**/*.md", "**/TOC.yml", "**/toc.yml"]
+    include = parsed.include or list(DEFAULT_LOCAL_INCLUDE_PATTERNS)
     # Always stage the publish config (when present) so canonical_url derivation
     # can run during processing; like TOC.yml it is filtered out of the process
     # pass by _SUPPORTED_EXTENSIONS (044.002-T). docfx.json is staged too so the

@@ -21,6 +21,17 @@ def test_resolve_links_finds_intra_corpus_md_link() -> None:
     assert "[Other]" in out_body
 
 
+def test_resolve_links_finds_intra_corpus_markdown_link() -> None:
+    """The long-form .markdown extension is collected as a cross-doc link."""
+    from docline.process.cross_doc_links import resolve_cross_doc_links
+
+    body = "See [Other](other-doc.markdown) for details."
+    _, links = resolve_cross_doc_links(body, current_rel_path=Path("docs/this.markdown"))
+
+    assert len(links) == 1
+    assert links[0]["target_path"] == "docs/other-doc.markdown"
+
+
 def test_resolve_links_resolves_relative_path() -> None:
     from docline.process.cross_doc_links import resolve_cross_doc_links
 

@@ -29,6 +29,17 @@ def test_manifest_has_ingest_local_dir_tool() -> None:
     assert "ingest_local_dir" in names
 
 
+def test_manifest_ingest_local_dir_defaults_include_markdown_extensions() -> None:
+    """The shared tool schema advertises both Markdown source extensions."""
+    manifest = get_manifest()
+    ingest = next(tool for tool in manifest.tools if tool.name == "ingest_local_dir")
+
+    assert ingest.parameters["properties"]["include"]["default"][:2] == [
+        "**/*.md",
+        "**/*.markdown",
+    ]
+
+
 def test_manifest_has_fetch_tool() -> None:
     """Manifest contains a 'fetch' tool."""
     manifest = get_manifest()

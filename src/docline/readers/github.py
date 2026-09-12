@@ -80,6 +80,10 @@ def _http_get(url: str) -> str:
 def _path_matches_pattern(path: str, pattern: str) -> bool:
     """Return True if ``path`` matches ``pattern`` with ``**`` root compatibility.
 
+    A pattern ending in ``.md`` also matches the equivalent ``.markdown``
+    extension so repository Markdown sources are not omitted by the default
+    ``**/*.md`` filter.
+
     Checks are applied in order:
 
     1. Direct ``fnmatch`` of the full path against the pattern.
@@ -96,17 +100,19 @@ def _path_matches_pattern(path: str, pattern: str) -> bool:
     Returns:
         ``True`` if the path should be included.
     """
-    if fnmatch.fnmatch(path, pattern):
-        return True
     basename = path.split("/")[-1]
-    if fnmatch.fnmatch(basename, pattern):
-        return True
-    # Compatibility: **/<suffix> must also match top-level basenames where
-    # the standard fnmatch does not treat ** as crossing directory boundaries.
-    if pattern.startswith("**/"):
-        tail = pattern[3:]
-        if fnmatch.fnmatch(basename, tail):
+    patterns = (pattern, f"{pattern[:-3]}.markdown") if pattern.endswith(".md") else (pattern,)
+    for candidate in patterns:
+        if fnmatch.fnmatch(path, candidate):
             return True
+        if fnmatch.fnmatch(basename, candidate):
+            return True
+        # Compatibility: **/<suffix> must also match top-level basenames where
+        # the standard fnmatch does not treat ** as crossing directory boundaries.
+        if candidate.startswith("**/"):
+            tail = candidate[3:]
+            if fnmatch.fnmatch(basename, tail):
+                return True
     return False
 
 

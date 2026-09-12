@@ -40,9 +40,15 @@ _log = logging.getLogger(__name__)
 _CRAWL_MANIFEST_NAME = "crawl-manifest.json"
 _PUBLISH_CONFIG_NAME = ".openpublishing.publish.config.json"
 _HEADING_RE = re.compile(r"^(#{1,6})(\s+.+)$")
+DEFAULT_LOCAL_INCLUDE_PATTERNS: tuple[str, ...] = (
+    "**/*.md",
+    "**/*.markdown",
+    "**/TOC.yml",
+    "**/toc.yml",
+)
 
 # Supported file extension → reader function name
-_SUPPORTED_EXTENSIONS = {".docx", ".pdf", ".html", ".htm", ".md", ".txt"}
+_SUPPORTED_EXTENSIONS = {".docx", ".pdf", ".html", ".htm", ".md", ".markdown", ".txt"}
 
 # Extensions that MAY carry an OpenAPI/Swagger spec. A file is only treated as a
 # spec after a positive content-sniff (``openapi_file_kind``); this keeps config
@@ -510,7 +516,7 @@ def get_manifest() -> Manifest:
                         "include": {
                             "type": "array",
                             "items": {"type": "string"},
-                            "default": ["**/*.md", "**/TOC.yml", "**/toc.yml"],
+                            "default": list(DEFAULT_LOCAL_INCLUDE_PATTERNS),
                         },
                         "exclude": {
                             "type": "array",

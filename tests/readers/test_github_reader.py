@@ -28,6 +28,12 @@ def test_double_glob_matches_nested_md() -> None:
     assert _path_matches_pattern("docs/guide.md", "**/*.md") is True
 
 
+@pytest.mark.parametrize("path", ["README.markdown", "docs/guide.markdown"])
+def test_md_glob_matches_markdown_extension(path: str) -> None:
+    """A Markdown glob must include both common Markdown file extensions."""
+    assert _path_matches_pattern(path, "**/*.md") is True
+
+
 def test_double_glob_matches_deeply_nested_md() -> None:
     """**/*.md must match files in any depth of subdirectory."""
     assert _path_matches_pattern("a/b/c/deep.md", "**/*.md") is True
@@ -96,6 +102,7 @@ def test_fetch_github_files_includes_top_level_md_with_double_glob() -> None:
         "tree": [
             {"path": "README.md", "type": "blob"},
             {"path": "CHANGELOG.md", "type": "blob"},
+            {"path": "CONTRIBUTING.markdown", "type": "blob"},
             {"path": "src/module.py", "type": "blob"},
         ]
     }
@@ -115,6 +122,7 @@ def test_fetch_github_files_includes_top_level_md_with_double_glob() -> None:
     paths = [r[0] for r in results]
     assert "README.md" in paths
     assert "CHANGELOG.md" in paths
+    assert "CONTRIBUTING.markdown" in paths
     assert "src/module.py" not in paths
 
 

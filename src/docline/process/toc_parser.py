@@ -42,7 +42,7 @@ def _walk_entries(
         if not isinstance(entry, dict):
             continue
         href = entry.get("href")
-        if isinstance(href, str) and href.endswith(".md"):
+        if isinstance(href, str) and href.endswith((".md", ".markdown")):
             # Resolve relative to TOC file's directory
             full = (toc_dir / href).resolve()
             try:

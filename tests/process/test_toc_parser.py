@@ -23,6 +23,18 @@ def test_parse_toc_flat_list(tmp_path: Path) -> None:
     assert [e["href"] for e in entries] == ["first.md", "second.md", "third.md"]
 
 
+def test_parse_toc_includes_markdown_extension(tmp_path: Path) -> None:
+    """TOC entries may reference the long-form .markdown extension."""
+    from docline.process.toc_parser import parse_toc
+
+    toc_yml = tmp_path / "TOC.yml"
+    toc_yml.write_text("- name: Guide\n  href: guide.markdown\n", encoding="utf-8")
+
+    entries = parse_toc(toc_yml, base_dir=tmp_path)
+
+    assert [entry["href"] for entry in entries] == ["guide.markdown"]
+
+
 def test_parse_toc_nested_items(tmp_path: Path) -> None:
     """Nested ``items: [...]`` lists flatten into the order they appear."""
     from docline.process.toc_parser import parse_toc
