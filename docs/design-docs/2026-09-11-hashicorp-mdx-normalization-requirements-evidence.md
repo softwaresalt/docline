@@ -1396,3 +1396,249 @@ triage: `3994209535` (→ `C0E88586`), `3993438433` + `3994209569` (→
 §12.6), and `3994338286` (→ `7D71CBEA`, this section). No further new
 Copilot review rounds were observed after a reasonable post-push waiting
 window at the final HEAD.
+
+## 13. Review-fix cycle 4 (PR #192) -- operator-authorized additional cycle, Copilot review findings
+
+Cycle 3 (§12) was recorded as "the final allowed review-fix cycle" per
+this shipment's own nominal cycle budget. The operator subsequently
+reported additional Copilot review comments on PR #192 and explicitly
+authorized **one additional review-fix cycle** for in-scope, P-021
+C1-passing findings -- explicitly not waiving P-021 scope classification
+itself. This section records that additional cycle.
+
+### 13.1 Enumeration and classification
+
+All review threads on PR #192 were enumerated via `gh api graphql` with
+full `reviewThreads` pagination (not the partial REST list), yielding 25
+threads total, of which 13 were unresolved and Copilot-authored. Each was
+classified individually against P-021 C1 (does the fix require ONLY
+completing the exact temporary HashiCorp MDX normalizer contract already
+authorized for 062-S/071-F -- `scripts/hashicorp_mdx_normalize.py` +
+`scripts/_hashicorp_mdx/*` + their tests):
+
+| Thread | File:line | Classification | Disposition |
+|---|---|---|---|
+| `nt1k` | `src/docline/app.py:51` | out of scope | deferred → `48D6D05A` |
+| `nt2J` | `hashicorp_mdx_normalize.py:456` | in scope | fixed (§13.2) |
+| `nt3T` | `src/docline/app.py:48` | out of scope | deferred → `360FB708` |
+| `ho7ie` | fixture `config.json:1` | in scope | fixed (§13.2) |
+| `p8Oq` | `_hashicorp_mdx/normalize.py:210` | in scope | fixed (§13.2) |
+| `p8PF` | `hashicorp_mdx_normalize.py:496` | in scope | fixed (§13.2) |
+| `p8PN` | `hashicorp_mdx_normalize.py:535` | in scope | fixed (§13.2) |
+| `p8PV` | `_hashicorp_mdx/normalize.py:810` | in scope | fixed (§13.2) |
+| `p8Ph` | `hashicorp_mdx_normalize.py:525` | in scope | fixed (§13.2) |
+| `p8Ps` | `process/cross_doc_links.py:157` | out of scope | deferred → `8FA344D0` |
+| `qAsc` | `_hashicorp_mdx/normalize.py:759` | in scope | fixed (§13.2) |
+| `qAsu` | `hashicorp_mdx_normalize.py` | in scope | fixed (§13.2) |
+| `qAs7` | `process/output_contract.py:291` | out of scope | deferred → `87BFB31B` |
+
+The four out-of-scope findings (`nt1k`, `nt3T`, `p8Ps`, `qAs7`) all touch
+pre-existing `.markdown` handling in `src/docline/**` (production docline
+code, e.g. `app.py`, `process/cross_doc_links.py`,
+`process/output_contract.py`) that predates this shipment and belongs to
+unrelated work already present on branch `feat/github-markdown-extension`
+before 062-S's commits began -- confirmed via `git log` on each affected
+line. Feature 071-F's authorized contract is explicitly a standalone
+disposable Python preprocessor with production docline MDX/`.markdown`
+integration out of scope, so these four are categorically outside this
+cycle's authorization regardless of their individual merit. Each was
+captured as a P-021 C2 deferred-scope-expansion stash entry with the full
+six-field payload before any thread reply, per the threadless-vs-thread-
+present capture procedure (all four have an existing PR thread, so the
+thread-present path applies: reply citing the entry ID, then resolve).
+
+### 13.2 In-scope fixes (test-first)
+
+Nine findings were in scope and fixed, each test-first (new test written
+and confirmed to fail without the fix, via `git stash` on the source
+file(s) alone with the new test left in place, then confirmed to pass
+once the fix was restored):
+
+* **`nt2J`** (`ProductReport` omits planned destination paths) --
+  added `planned_paths`/`planned_paths_truncated` fields to
+  `ProductReport` (capped at `MAX_PLANNED_PATHS_PER_PRODUCT = 200`
+  per product; `planned_paths_truncated` signals a capped list, while
+  the uncapped `file_counts` totals remain authoritative). Tests:
+  `test_process_corpus_collects_full_planned_dest_paths_when_requested`
+  and additional planned-paths coverage in
+  `test_hashicorp_dryrun_corpus.py`.
+* **`ho7ie`** (misleading synthetic fixture text) -- corrected the
+  fixture text in
+  `tests/scripts/fixtures/hashicorp/synthetic_corpus/terraform/v1.16.x/config.json`
+  to accurately describe what it exercises.
+* **`p8Oq`** (fenced-code scanner over-masks unindented MDX as an
+  indented code block inside list-item/blockquote containers) -- added
+  `_container_establishes_indent()` to `scripts/_hashicorp_mdx/normalize.py`,
+  which back-scans (bounded by `_MAX_CONTAINER_BACKSCAN_LINES`) for a
+  list-marker or blockquote-marker line establishing a container
+  context before treating a 4+-column-indented fence opener as a
+  legitimate indented code block. Tests: three new fence-context
+  regression tests in `test_hashicorp_normalize.py`.
+* **`p8PF`** (symlink escape on the read side: `_iter_files_sorted`
+  followed symlinks pointing outside `--source` without detection) --
+  added `guard_read_path(source_root, candidate)`, the read-side
+  counterpart to the existing `guard_write_path()`; generalized the
+  `ContainmentViolation` docstring to cover both read and write;
+  threaded a new `source_root` parameter through `_iter_files_sorted()`
+  and `_process_one_product_tree()`. Tests:
+  `test_guard_read_path_rejects_paths_outside_source`,
+  `test_process_corpus_rejects_symlinked_file_escaping_source`,
+  `test_process_corpus_rejects_symlinked_top_level_product_dir_escaping_source`
+  (symlinks confirmed to work without admin rights on this Windows
+  development machine).
+* **`p8PN`** (`.mdx`/`.md` destination collision: normalizing
+  `foo.mdx` to `foo.md` can silently overwrite a pre-existing `foo.md`
+  in the same selected tree, or vice versa) -- added
+  `DestinationCollisionError`, new exit codes
+  `EXIT_DEST_PATH_COLLISION = 12` and
+  `EXIT_REPORT_PATH_COLLIDES_WITH_OUTPUT = 13`, and an uncapped
+  `planned_dest_paths: set[str]` out-parameter threaded through
+  `_process_one_product_tree()`/`process_corpus()`, with collision
+  detection inside the `_record_planned_path()` closure that raises
+  before any write, in both dry-run and execute mode. Tests:
+  `test_process_corpus_rejects_mdx_md_destination_collision` and
+  companion coverage.
+* **`qAsu`** (`--report` path may collide with an arbitrary planned
+  corpus OUTPUT path, not only the reserved claim sentinel) -- reused
+  the same `planned_dest_paths` set populated during preflight; added
+  checks in `main()` (an early pre-claim check and a defense-in-depth
+  re-check immediately before the final report write) comparing the
+  resolved `--report` path against the full uncapped plan. Test:
+  `test_execute_rejects_report_path_colliding_with_planned_output`.
+* **`qAsc`** (known-tag-name residue silently excluded from
+  classification) -- removed an unsafe
+  `if name in _KNOWN_HANDLED_TAGS: continue` skip from
+  `classify_remaining_constructs()`. The skip assumed any "known" tag
+  name was always fully consumed upstream, but nested same-tag elements
+  (e.g. a `<Note>` inside a `<Note>`) defeat `transform_callouts`'s
+  non-greedy regex, leaving genuine unrendered residue invisible to
+  classification. Test:
+  `test_classify_remaining_constructs_flags_survived_known_tags_as_unresolved`.
+  This fix also revealed a genuinely new, out-of-scope finding against
+  the real corpus -- see §13.4.
+* **`p8PV`** (inline code spans not masked before component
+  transforms, so JSX-looking text written literally inside backticks,
+  e.g. `` `<PluginBadge type="official" />` ``, was incorrectly
+  rewritten by the fallback pass as if it were a live component) --
+  added `protect_inline_code()`/`restore_inline_code()` to
+  `scripts/_hashicorp_mdx/normalize.py`, masking backtick-delimited
+  inline code spans (variable-length delimiters via a regex
+  backreference, restricted to single-line spans -- a documented,
+  accepted simplification for this disposable tool) before the
+  component-transform passes run, and restoring them afterward. Tests:
+  `test_protect_inline_code_masks_single_backtick_span`,
+  `test_protect_inline_code_handles_variable_length_delimiter_with_inner_backtick`,
+  `test_protect_inline_code_leaves_unterminated_backticks_unmasked`,
+  `test_normalize_mdx_to_md_preserves_jsx_looking_text_inside_inline_code`,
+  `test_normalize_mdx_to_md_still_renders_live_component_outside_code_span`
+  (the last confirming the SAME tag shape outside a code span is still
+  correctly rendered, so masking does not over-suppress legitimate
+  component handling).
+* **`p8Ph`** (frontmatter newline preservation broken on Windows:
+  `Path.read_text()`/`Path.write_text()` perform universal-newline
+  translation by default, silently rewriting a source file's original
+  CRLF frontmatter delimiters to LF on read and re-translating LF back
+  to the platform newline on write) -- added
+  `_read_text_preserving_newlines()` (`hashicorp_mdx_normalize.py`),
+  reading via `path.open("r", encoding="utf-8", newline="")` since
+  `Path.read_text()` gains a `newline` parameter only in Python 3.13
+  and this project's runtime is 3.12; wired it into
+  `_process_one_product_tree`'s MDX branch, paired with
+  `dest_path.write_text(result.text, encoding="utf-8", newline="")` on
+  the write side. Scoped the fix narrowly: the frontmatter block is
+  preserved byte-exact (untouched raw bytes flow straight through),
+  while `normalize_mdx_to_md()` explicitly normalizes only the BODY to
+  bare `\n` right after `split_frontmatter` (reproducing what universal-
+  newline reading would have done), keeping the already-tested
+  transform-pipeline behavior on body content unchanged. Accepted,
+  documented side effect: since `newline=""` on write disables ALL
+  translation (required to keep frontmatter bytes exact), the body's
+  `\n` characters are now written as literal LF rather than being
+  auto-translated to the platform's line ending; no existing test
+  asserted CRLF body output. Tests:
+  `test_execute_preserves_frontmatter_byte_exact_on_crlf_source` and
+  `test_execute_preserves_frontmatter_byte_exact_on_lf_source` in
+  `test_hashicorp_dryrun_corpus.py`, using `Path.write_bytes()`/
+  `Path.read_bytes()` to control and assert exact input/output bytes.
+
+### 13.3 Quality-gate and full-suite re-verification
+
+* `ruff check .`: two `E501` line-too-long violations introduced by
+  this cycle's `p8Oq`/`qAsu` fixes were found and fixed (wrapped
+  argument lists); all checks pass.
+* `ruff format --check .`: two files needed reformatting after the
+  `E501` fixes (`scripts/_hashicorp_mdx/normalize.py`,
+  `tests/scripts/test_hashicorp_normalize.py`); applied, then
+  `ruff format --check .` reports 301 files already formatted.
+* Full local suite (`pytest --basetemp=build/.pytest-tmp`, all
+  markers): **2241 passed, 6 skipped**.
+* Targeted HashiCorp suite
+  (`test_hashicorp_dryrun_corpus.py` + `test_hashicorp_normalize.py` +
+  `test_hashicorp_selection.py` + `test_load_test.py`,
+  `-m "not integration"`): **138 passed, 1 deselected**.
+
+### 13.4 Real-corpus re-verification and a genuinely new self-discovered finding
+
+The real-corpus integration test
+(`test_real_corpus_dry_run_zero_writes_and_coverage_report`, run
+explicitly against
+`C:\Source\Docs\hashicorp-tf-unified-dev-docs\content`) was re-run after
+all nine §13.2 fixes. The `qAsc` fix made
+`classify_remaining_constructs()` accurate for the first time, and as a
+direct consequence the test's pre-existing `unresolved_constructs == {}`
+assertion -- which had only ever been passing because the now-removed
+skip was silently hiding real residue -- failed, surfacing four
+genuinely distinct, previously-invisible pipeline gaps against the live
+corpus:
+
+* a `<Note>` opening a list-item-indented block
+  (`boundary/v1.0.x/content/docs/workers/manage.mdx`) not matched by
+  `transform_callouts`'s line-anchored regex;
+* `<EnterpriseAlert inline />` embedded mid-sentence inside running
+  list-item prose (multiple `consul/v2.0.x` files, e.g.
+  `api-docs/acl/index.mdx`) not recognized in that inline-embedded
+  position;
+* a bare self-closing `<Warning/>` with no attributes or body
+  (`consul/v2.0.x/content/docs/monitor/telemetry/appdynamics.mdx`) not
+  handled by the paired-tag Warning transform;
+* `<VideoEmbed url="...">...</VideoEmbed>` (8 occurrences in
+  `well-architected-framework/.../design-control-data-management-plane.mdx`)
+  not matched by the VideoEmbed transform's expected attribute/shape.
+
+Each was investigated (via a scratch, non-committed instrumentation
+script) far enough to confirm none shares `qAsc`'s root cause (nested
+same-tag elements defeating a non-greedy regex, already fixed and
+unit-tested with a synthetic regression) and that each would require its
+own separate, shape-specific pipeline investigation and fix. This is
+classified **out of scope** per P-021 C1: none of the four are required
+to complete the `qAsc` Copilot comment's classification-bug fix, and
+collectively they are a substantially larger body of work than this
+cycle's single-comment authorization. Captured as a threadless P-021 C2
+deferred-scope-expansion stash entry, `7F80C39E` (no GitHub review
+thread exists for this self-discovered finding -- it surfaced from
+re-running an existing integration test, not from a Copilot comment).
+
+The integration test's assertion was updated in this same commit to
+assert the actual, now-honestly-reported baseline
+(`{"EnterpriseAlert": 12, "Note": 1, "VideoEmbed": 8, "Warning": 2}`)
+instead of the `{}` bar that was only ever passing due to the classifier
+bug just fixed, with an in-test comment explaining the history and
+citing `7F80C39E`. The test remains a precise regression guard against
+this documented baseline rather than a merely type-checked assertion.
+Re-run after the assertion update: **PASSED**. `containment_violations`
+remained `[]`; dry-run performed zero writes, as in every prior cycle.
+
+### 13.5 P-021 deferred-scope-expansion entries created this cycle
+
+| Entry | Priority | Source finding(s) | Summary |
+|---|---|---|---|
+| `48D6D05A` | medium | `nt1k` | `.md`/`.markdown` output-path collision in `src/docline/app.py` |
+| `360FB708` | high | `nt3T` | pre-existing `.markdown` production changes contradict PR scope |
+| `8FA344D0` | medium | `p8Ps` | `.markdown` link targets not rewritten to `.md` in `cross_doc_links.py` |
+| `87BFB31B` | medium | `qAs7` | `.md`/`.markdown` output-path collision in `output_contract.py` (same underlying defect as `nt1k`, different call site) |
+| `7F80C39E` | medium | self-discovered (via `qAsc` fix) | four distinct real-corpus unresolved-construct pipeline gaps (see §13.4) |
+
+All five entries were verified to persist correctly (re-read after
+creation) and confirmed, via search of both the active and archived
+stash, to have no prior reusable entry for the same expansion before
+capture.

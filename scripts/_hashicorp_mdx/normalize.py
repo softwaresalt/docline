@@ -4,8 +4,22 @@ unified-docs preprocessor (071-F / 062-S).
 Pipeline (see :func:`normalize_mdx_to_md`):
 
 1. Split off frontmatter verbatim (:func:`split_frontmatter`) -- the
-   YAML frontmatter block is copied byte-for-byte into the output, never
-   touched by any transform.
+   YAML frontmatter block is copied byte-for-byte into the output,
+   INCLUDING its original line-ending bytes exactly as authored (LF,
+   CRLF, or a mixed convention), never touched by any transform. This
+   guarantee holds precisely because the CALLER reads the source file
+   with newline translation disabled (see
+   ``hashicorp_mdx_normalize.py``'s MDX read/write branch) so the text
+   handed to this function still carries its original, untranslated
+   line-ending bytes; ``normalize_mdx_to_md`` then normalizes ONLY the
+   BODY portion to plain ``\\n`` line endings for the transform pipeline
+   below (review-fix cycle 4, finding p8Ph) -- the transform pipeline
+   itself has always assumed, and is tested against, ``\\n``-only body
+   content, so its behavior is unchanged by this fix. The net effect: a
+   normalized ``.md`` file's frontmatter block is a byte-exact copy of
+   the source ``.mdx`` file's frontmatter block; its body always uses
+   ``\\n`` line endings regardless of the source body's original
+   convention or the host platform.
 2. Mask fenced code blocks (:func:`protect_fenced_code`) so their
    contents -- including any text that superficially resembles an MDX/
    JSX tag, and any literal placeholder tokens -- are completely inert
@@ -110,6 +124,75 @@ _FENCE_TOKEN_FMT = "\x00FENCE{index}\x00"
 #: fence. Review-fix cycle 2, finding 4.
 _TOP_LEVEL_MAX_INDENT = 3
 
+#: List-item marker at the start of a line: ``-``/``*``/``+`` bullets or
+#: ``1.``/``1)``-style ordered markers, followed by at least one space/tab
+#: (the marker's own leading indentation is captured separately so the
+#: content-start column can be computed precisely).
+_LIST_MARKER_RE = re.compile(r"^(?P<indent>[ \t]*)(?:[-*+]|\d{1,9}[.)])[ \t]+")
+#: A blockquote marker (``>``) at the start of a line, optionally indented.
+_BLOCKQUOTE_MARKER_RE = re.compile(r"^[ \t]*>")
+
+#: Bound on how many lines :func:`_container_establishes_indent` scans
+#: backward before conservatively giving up (returning "no container
+#: context found"). This is a defensive cap against pathological input --
+#: real list/blockquote continuations establishing a 4+-column fence are
+#: always found within a handful of lines in practice.
+_MAX_CONTAINER_BACKSCAN_LINES = 1000
+
+
+def _container_establishes_indent(
+    lines: list[str], opener_index: int, opener_indent_col: int
+) -> bool:
+    """True when a 4+-column indented fence opener at ``lines[opener_index]``
+    is legitimately inside a list-item or blockquote continuation, rather
+    than a bare CommonMark indented code block at the top level (bug,
+    Copilot review cycle 4): scans backward from just before
+    ``opener_index``, skipping blank lines, until it finds:
+
+    * a list-item marker line (``- ``, ``* ``, ``+ ``, ``1. ``, ``1) ``)
+      whose own content-start column is <= ``opener_indent_col`` -- the
+      fence is indented far enough to be that item's continuation; or
+    * a blockquote marker line (``>``) -- treated as establishing context
+      unconditionally, since blockquote continuation indentation is
+      relative to the marker, not the left margin; or, failing either,
+    * a plain-text line indented AT LEAST as far as ``opener_indent_col``
+      is skipped over (it may itself be part of the same list item's
+      continuation paragraph) and the scan continues further back;
+    * a plain-text line indented LESS than ``opener_indent_col`` ends the
+      scan with no context found -- this is ordinary top-level prose, so
+      the 4+-column line that follows is a genuine indented code block,
+      not a fence.
+
+    Without this check, ANY 4+-column indented backtick/tilde line was
+    treated as a valid container fence opener purely from its own
+    indentation, letting the scanner mask everything up to the next
+    similarly-indented line as one opaque block -- hiding a real
+    unresolved MDX/JSX construct in between from the execute preflight.
+    """
+    j = opener_index - 1
+    scanned = 0
+    while j >= 0 and scanned < _MAX_CONTAINER_BACKSCAN_LINES:
+        raw = lines[j].rstrip("\r\n")
+        if raw.strip() == "":
+            j -= 1
+            scanned += 1
+            continue
+        list_match = _LIST_MARKER_RE.match(raw)
+        if list_match:
+            marker_indent_col, _ = _leading_indent_columns(raw)
+            content_col = (
+                marker_indent_col + len(list_match.group(0)) - len(list_match.group("indent"))
+            )
+            return content_col <= opener_indent_col
+        if _BLOCKQUOTE_MARKER_RE.match(raw):
+            return True
+        line_indent_col, _ = _leading_indent_columns(raw)
+        if line_indent_col < opener_indent_col:
+            return False
+        j -= 1
+        scanned += 1
+    return False
+
 
 def _leading_indent_columns(line: str) -> tuple[int, int]:
     """Return ``(visual_column_width, char_length)`` of the run of leading
@@ -209,6 +292,16 @@ def protect_fenced_code(body: str) -> tuple[str, dict[str, str]]:
         fence_len = len(fence_run)
         opener_is_top_level = indent_col <= _TOP_LEVEL_MAX_INDENT
 
+        if not opener_is_top_level and not _container_establishes_indent(lines, i, indent_col):
+            # A 4+-column indented backtick/tilde line with no genuine
+            # preceding list-item/blockquote context is a CommonMark
+            # INDENTED CODE BLOCK, not a fence boundary -- treat it as
+            # ordinary text so nothing is masked and any real construct
+            # later in the document remains visible to classification.
+            output.append(line)
+            i += 1
+            continue
+
         close_index: int | None = None
         for j in range(i + 1, total):
             close_stripped = lines[j].rstrip("\r\n")
@@ -307,6 +400,71 @@ def protect_placeholders(body: str) -> tuple[str, dict[str, str]]:
 
 def restore_placeholders(body: str, store: dict[str, str]) -> str:
     """Reverse :func:`protect_placeholders`, restoring every placeholder verbatim."""
+    for token, original in store.items():
+        body = body.replace(token, original)
+    return body
+
+
+# ---------------------------------------------------------------------------
+# Inline code span protection (review finding p8PV, Copilot review cycle 4)
+# ---------------------------------------------------------------------------
+
+#: Matches a single-line inline code span delimited by a run of N
+#: backticks (N >= 1, "variable-length" per CommonMark: a longer
+#: delimiter run lets the span's content safely contain a SHORTER run of
+#: literal backticks, e.g. ```` ``code with a ` backtick`` ````). The
+#: backreference ``(?P=fence)`` requires the CLOSING run to reuse the
+#: exact captured opening text, and the trailing ``(?!`)`` negative
+#: lookahead rejects a "close" that is actually the first part of a
+#: LONGER run of backticks -- forcing the non-greedy ``body`` to keep
+#: expanding past it and try the next candidate closing run instead. Not
+#: using ``re.DOTALL`` deliberately keeps a span from crossing a line
+#: break: CommonMark code spans may technically span lines, but they
+#: never cross a blank line (paragraph boundary), and restricting to a
+#: single line sidesteps that edge case entirely for this disposable
+#: tool -- a legitimate single-line inline code span (the shape used by
+#: every known real-corpus example, including this finding's own
+#: ``` `<PluginBadge type="official" />` ``` case) is still matched
+#: correctly either way.
+_INLINE_CODE_RE = re.compile(r"(?P<fence>`+)(?P<body>.+?)(?P=fence)(?!`)")
+_INLINE_CODE_TOKEN_FMT = "\x00INLINECODE{index}\x00"
+
+
+def protect_inline_code(body: str) -> tuple[str, dict[str, str]]:
+    """Mask inline code spans with an opaque token; return the token map.
+
+    Runs AFTER :func:`protect_fenced_code` (so real fenced-code blocks,
+    and any backticks inside them, are already opaque tokens by this
+    point) and BEFORE the named :data:`TRANSFORM_PIPELINE` and
+    :func:`apply_fallback_pass` (review finding p8PV): without this
+    protection, JSX-looking text written INSIDE an inline code span --
+    e.g. `` `<PluginBadge type="official" />` `` -- is literal Markdown
+    source, but the named/fallback transforms cannot tell that apart
+    from a real, live MDX/JSX component and would silently rewrite or
+    unwrap it, corrupting the example. Masking the whole span (backticks
+    included) before those transforms run makes its contents completely
+    inert, exactly mirroring :func:`protect_fenced_code`'s
+    protect/restore architecture. A span with no valid same-length
+    closing run anywhere in the remaining text is left as literal,
+    unmasked backticks (CommonMark's own behavior for unterminated code
+    spans), never masked or otherwise force-consumed.
+    """
+    store: dict[str, str] = {}
+    counter = 0
+
+    def _replace(match: re.Match[str]) -> str:
+        nonlocal counter
+        token = _INLINE_CODE_TOKEN_FMT.format(index=counter)
+        store[token] = match.group(0)
+        counter += 1
+        return token
+
+    protected = _INLINE_CODE_RE.sub(_replace, body)
+    return protected, store
+
+
+def restore_inline_code(body: str, store: dict[str, str]) -> str:
+    """Reverse :func:`protect_inline_code`, restoring every inline code span verbatim."""
     for token, original in store.items():
         body = body.replace(token, original)
     return body
@@ -746,13 +904,26 @@ def classify_remaining_constructs(body: str) -> tuple[Counter[str], Counter[str]
     reporting-precision property -- :func:`classify_remaining_constructs`
     never mutates ``body``, so it cannot affect the actual transformed
     output, only the accuracy of the coverage report.
+
+    A tag name in :data:`_KNOWN_HANDLED_TAGS` is deliberately NOT given a
+    blanket pass here (bug, Copilot review cycle 4): in the successful
+    case, every well-formed occurrence of a known tag is already fully
+    consumed by the named :data:`TRANSFORM_PIPELINE` before this function
+    ever runs, so it structurally cannot appear in ``body`` at all --
+    excluding it from classification was a no-op for that case. But when
+    a malformed shape defeats the named transform's regex (e.g. nested
+    same-tag ``<Note>`` elements defeating a non-greedy same-tag close
+    match) and a raw, un-rendered tag genuinely SURVIVES to this point,
+    that is precisely an unresolved construct -- a blanket skip let it
+    escape the execute-mode gate entirely instead. Any tag-shaped residue
+    reaching this function is, by construction (see
+    :func:`apply_fallback_pass`'s docstring), not well-formed MDX/JSX;
+    it is classified exactly like any other residue, by name, below.
     """
     ambiguous: Counter[str] = Counter()
     unresolved: Counter[str] = Counter()
     for match in _REMAINING_TAG_SCAN_RE.finditer(body):
         name = match.group(1)
-        if name in _KNOWN_HANDLED_TAGS:
-            continue
         if name in _KNOWN_AMBIGUOUS_TAGS:
             ambiguous[name] += 1
         else:
@@ -806,7 +977,17 @@ TRANSFORM_PIPELINE: list[Callable[[str], str]] = [
 def normalize_mdx_to_md(text: str) -> NormalizeResult:
     """Convert one MDX document's text to Markdown, per the module-level pipeline."""
     frontmatter, body = split_frontmatter(text)
+    # Normalize the BODY (only) to plain \n line endings for the transform
+    # pipeline below, which has always assumed -- and is tested against
+    # -- \n-only content (review-fix cycle 4, finding p8Ph). The
+    # frontmatter block above is left completely untouched, preserving
+    # whatever line-ending bytes it was authored with (LF, CRLF, or a
+    # mixed convention) exactly, since callers now read the source file
+    # with newline translation disabled precisely so this text still
+    # carries those original bytes.
+    body = body.replace("\r\n", "\n").replace("\r", "\n")
     body, fence_store = protect_fenced_code(body)
+    body, inline_code_store = protect_inline_code(body)
     body, placeholder_store = protect_placeholders(body)
 
     for transform in TRANSFORM_PIPELINE:
@@ -819,12 +1000,13 @@ def normalize_mdx_to_md(text: str) -> NormalizeResult:
     body, fallback = apply_fallback_pass(body)
 
     # Remaining-construct classification MUST run before restoration:
-    # fenced example code and placeholder tokens are still masked/opaque
-    # here, so look-alike tags inside them are never mis-tallied as live
-    # constructs.
+    # fenced example code, inline code spans, and placeholder tokens are
+    # still masked/opaque here, so look-alike tags inside them are never
+    # mis-tallied as live constructs.
     ambiguous, unresolved = classify_remaining_constructs(body)
 
     body = restore_fenced_code(body, fence_store)
+    body = restore_inline_code(body, inline_code_store)
     body = restore_placeholders(body, placeholder_store)
 
     return NormalizeResult(

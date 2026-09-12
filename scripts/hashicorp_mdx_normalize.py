@@ -97,6 +97,26 @@ HARD CONTAINMENT CONTRACT
 * This script never hardcodes or defaults to the operator's real external
   destination; ``--source`` and ``--dest`` are always explicit,
   operator-supplied arguments.
+* Every file read is also resolved against, and verified to remain
+  strictly inside, the original ``--source`` root
+  (:func:`guard_read_path` / :class:`ContainmentViolation`, review-fix
+  cycle 4): ``Path.is_file()``/``Path.rglob()`` follow symlinks
+  transparently, so a symlinked leaf file -- or a symlinked ancestor
+  directory, including an entire top-level product tree -- could
+  otherwise cause a read from outside the operator-authorized corpus.
+  This is a read-side fail-closed check, exactly mirroring the write-side
+  ``guard_write_path`` / ``--dest`` guarantee above.
+* Two different source files that would resolve to the SAME planned
+  destination path (e.g. ``foo.mdx`` normalizing to ``foo.md`` while
+  ``foo.md`` already exists in the same tree) are rejected as a
+  :class:`DestinationCollisionError` (``EXIT_DEST_PATH_COLLISION``,
+  review-fix cycle 4) during the read-only preflight, before ``--dest``
+  is claimed. A ``--report`` path that resolves to any OTHER planned
+  corpus output path (not just the reserved sentinel name) is similarly
+  rejected (``EXIT_REPORT_PATH_COLLIDES_WITH_OUTPUT``, review-fix cycle
+  4, finding qAsu) before ``--dest`` is claimed -- both checks use the
+  same full, uncapped set of planned destination paths collected during
+  the preflight pass.
 
 EXACT OPERATOR COMMAND (documented per C.T2's acceptance criterion; this
 command is never executed by an agent -- only the operator runs it):
@@ -143,6 +163,8 @@ EXIT_DEST_CLAIM_FAILED = 8
 EXIT_REPORT_WRITE_FAILED = 9
 EXIT_DEST_NOT_EMPTY = 10
 EXIT_REPORT_PATH_RESERVED = 11
+EXIT_DEST_PATH_COLLISION = 12
+EXIT_REPORT_PATH_COLLIDES_WITH_OUTPUT = 13
 
 #: Name of the exclusive claim sentinel file created directly under
 #: ``--dest`` while an ``--execute`` run owns that destination (review-fix
@@ -156,6 +178,17 @@ EXIT_REPORT_PATH_RESERVED = 11
 #: ``--dest`` (``EXIT_REPORT_PATH_RESERVED``) before ``--dest`` is ever
 #: claimed or written to.
 CLAIM_SENTINEL_NAME = ".docline-hashicorp-mdx-normalize.claim"
+
+#: Per-product cap on how many entries the dry-run/execute JSON plan's
+#: ``planned_paths`` list records (C.T2 acceptance criterion: the plan must
+#: include planned destination paths so an operator can audit exactly what
+#: ``--execute`` would write; post-push Copilot review requested a bounded
+#: representation so a real corpus with thousands of files per product
+#: cannot balloon the report unboundedly). Exceeding the cap only truncates
+#: the reported path *list* for that product -- it never affects the
+#: authoritative ``file_counts`` totals or which files are actually
+#: normalized/copied.
+MAX_PLANNED_PATHS_PER_PRODUCT = 200
 
 #: Image-like binary assets copied byte-for-byte, unchanged.
 IMAGE_EXTENSIONS = frozenset({".png", ".jpg", ".jpeg", ".gif", ".svg", ".webp"})
@@ -172,7 +205,21 @@ MDX_EXTENSIONS = frozenset({".mdx"})
 
 
 class ContainmentViolation(RuntimeError):
-    """Raised when a resolved write path falls outside the configured ``--dest`` root."""
+    """Raised when a resolved path -- read OR write -- falls outside its
+    configured containment root (``--source`` for reads, ``--dest`` for
+    writes)."""
+
+
+class DestinationCollisionError(RuntimeError):
+    """Raised when two different source files would resolve to the SAME
+    planned destination path within a single ``--source`` -> ``--dest``
+    run (review finding, Copilot review cycle 4) -- e.g. ``foo.mdx``
+    normalizing to ``foo.md`` while ``foo.md`` already exists (or is
+    separately planned) in the same tree. Detected during the read-only
+    preflight, before ``--dest`` is ever claimed or written to: files are
+    otherwise processed sequentially with no destination-path registry,
+    so one source would silently overwrite the other's already-written
+    output with no diagnostic."""
 
 
 def guard_write_path(dest_root: Path, candidate: Path) -> Path:
@@ -447,12 +494,25 @@ class ProductReport:
     versioned: bool
     selected_version: str | None
     counts: ProductCounts = field(default_factory=ProductCounts)
+    #: Planned destination paths (posix-style, relative to ``--dest``) for
+    #: every file this product will normalize/copy -- capped at
+    #: ``MAX_PLANNED_PATHS_PER_PRODUCT`` entries; see
+    #: ``planned_paths_truncated``. Skipped partials are never planned
+    #: outputs and never appear here.
+    planned_paths: list[str] = field(default_factory=list)
+    #: True when this product had more write-eligible files than
+    #: ``MAX_PLANNED_PATHS_PER_PRODUCT``, so ``planned_paths`` is a
+    #: truncated prefix rather than the complete list. ``file_counts``
+    #: above always remains the authoritative, untruncated totals.
+    planned_paths_truncated: bool = False
 
     def as_dict(self) -> dict[str, Any]:
         return {
             "versioned": self.versioned,
             "selected_version": self.selected_version,
             "file_counts": self.counts.as_dict(),
+            "planned_paths": self.planned_paths,
+            "planned_paths_truncated": self.planned_paths_truncated,
         }
 
 
@@ -490,22 +550,89 @@ class ReportBuilder:
         }
 
 
-def _iter_files_sorted(root: Path) -> list[Path]:
+def guard_read_path(source_root: Path, candidate: Path) -> Path:
+    """Resolve ``candidate`` and verify it falls strictly inside ``source_root``.
+
+    Read-side counterpart to :func:`guard_write_path` (review finding,
+    Copilot review cycle 4): ``Path.is_file()``/``Path.rglob()`` follow
+    symlinks transparently, so a symlinked file -- or an ancestor
+    directory that is itself a symlink, including an entire top-level
+    product tree symlinked out from under ``--source`` -- could
+    otherwise cause this tool to read content from outside the
+    operator-authorized ``--source`` corpus without any indication in
+    the report. ``Path.resolve()`` fully resolves every symlink in the
+    chain, so checking the final resolved leaf-file path against the
+    resolved ``source_root`` catches an escape introduced at ANY level
+    (the file itself, a version directory, or the top-level product
+    directory) with a single check.
+
+    Returns the resolved candidate path on success. Raises
+    :class:`ContainmentViolation` -- WITHOUT touching the filesystem
+    beyond the read-only ``resolve()`` calls -- when the resolved
+    candidate is not contained by ``source_root``. Callers must fail the
+    run rather than silently skip: silently omitting an escaping file
+    could hide the very tampering this guard is meant to surface.
+    """
+    source_resolved = source_root.resolve()
+    candidate_resolved = candidate.resolve()
+    try:
+        candidate_resolved.relative_to(source_resolved)
+    except ValueError as exc:
+        raise ContainmentViolation(
+            f"refusing to read outside --source: {candidate_resolved} is not under "
+            f"{source_resolved} (symlink escape at {candidate})"
+        ) from exc
+    return candidate_resolved
+
+
+def _iter_files_sorted(root: Path, source_root: Path) -> list[Path]:
+    """Return every regular file under ``root``, sorted, after verifying
+    (via :func:`guard_read_path`) that each one's fully-resolved path
+    stays inside ``source_root``. Raises :class:`ContainmentViolation`
+    the moment any escaping file is found, before any content is read.
+    """
     if not root.is_dir():
         return []
-    return sorted(p for p in root.rglob("*") if p.is_file())
+    candidates = sorted(p for p in root.rglob("*") if p.is_file())
+    for candidate in candidates:
+        guard_read_path(source_root, candidate)
+    return candidates
+
+
+def _read_text_preserving_newlines(path: Path) -> str:
+    """Read ``path`` as UTF-8 text with newline translation disabled.
+
+    ``pathlib.Path.read_text()`` (on the Python 3.12 baseline this
+    project targets) has no ``newline`` parameter and always performs
+    universal-newline decoding, translating every ``\\r\\n``/``\\r`` to
+    ``\\n`` -- silently discarding the source file's original
+    line-ending convention before a single transform ever runs. Reading
+    via ``open(..., newline="")`` instead disables that translation
+    entirely, so the returned text carries the file's EXACT original
+    bytes for line-ending purposes. This is required for frontmatter
+    byte-for-byte preservation on Windows (review-fix cycle 4, finding
+    p8Ph): :func:`normalize.normalize_mdx_to_md` splits this text into
+    frontmatter (left completely untouched) and body (explicitly
+    re-normalized to ``\\n`` for the transform pipeline), so only
+    reading raw here lets the frontmatter's original bytes survive the
+    whole round trip.
+    """
+    with path.open("r", encoding="utf-8", newline="") as fh:
+        return fh.read()
 
 
 def _process_one_product_tree(
     *,
+    source_root: Path,
     product_root: Path,
     dest_product_root: Path,
     dest_root: Path,
     execute: bool,
-    counts: ProductCounts,
+    product_report: ProductReport,
     fallback_tally: Counter[str],
     ambiguous_tally: Counter[str],
     unresolved_tally: Counter[str],
+    planned_dest_paths: set[str],
 ) -> None:
     """Streaming walk: for each file under ``product_root``, read -> (normalize) -> write.
 
@@ -513,8 +640,58 @@ def _process_one_product_tree(
     is handled individually, in one pass, whether or not ``execute`` is
     set. Only the final "write to disk" step is skipped when
     ``execute`` is ``False``.
+
+    Every write-eligible file (MDX normalized, ordinary Markdown copied,
+    an image asset, or a generic byte-for-byte copy) also records its
+    planned destination path -- relative to ``dest_root``, posix-style --
+    onto ``product_report.planned_paths``, capped at
+    ``MAX_PLANNED_PATHS_PER_PRODUCT`` (C.T2 acceptance criterion: the
+    dry-run/execute JSON plan must include planned destination paths so
+    an operator can audit exactly what will be written). Skipped
+    partials never get a planned path. Truncation only shortens the
+    reported path list; it never affects ``product_report.counts``,
+    which always remains the authoritative total.
+
+    ``source_root`` is the overall ``--source`` corpus root (not just
+    ``product_root``): every file discovered under ``product_root`` is
+    validated by :func:`_iter_files_sorted` to resolve strictly inside
+    ``source_root``, so a symlink escape is caught regardless of whether
+    the offending symlink is the file itself, a version directory, or
+    the top-level product directory.
+
+    ``planned_dest_paths`` is an UNCAPPED set (shared across every
+    product processed in this run, never truncated) of every planned
+    destination path -- relative to ``dest_root``, posix-style -- claimed
+    so far. Before a write-eligible file's destination is recorded, it is
+    checked against this set (review finding p8PN, Copilot review cycle
+    4): a second file mapping to an already-claimed destination (e.g.
+    ``foo.mdx`` normalizing to ``foo.md`` while ``foo.md`` already exists
+    in the same tree) raises :class:`DestinationCollisionError` instead
+    of silently overwriting the earlier file's output. This check always
+    runs, in both dry-run and ``--execute`` modes, before any write for
+    the colliding file would occur.
     """
-    for source_path in _iter_files_sorted(product_root):
+    counts = product_report.counts
+
+    def _record_planned_path(dest_candidate: Path) -> None:
+        dest_relative = dest_candidate.relative_to(dest_root).as_posix()
+        if dest_relative in planned_dest_paths:
+            raise DestinationCollisionError(
+                f"planned destination path collision under --dest: '{dest_relative}' would "
+                "be written by more than one source file -- refusing to proceed. This "
+                "usually means an MDX file normalizes to the same name as an existing "
+                "ordinary Markdown file in the same tree (e.g. foo.mdx -> foo.md colliding "
+                "with an existing foo.md). Rename or remove one of the colliding source "
+                "files to resolve this. Detected during the read-only preflight, before "
+                "--dest was ever claimed or written to."
+            )
+        planned_dest_paths.add(dest_relative)
+        if len(product_report.planned_paths) < MAX_PLANNED_PATHS_PER_PRODUCT:
+            product_report.planned_paths.append(dest_relative)
+        else:
+            product_report.planned_paths_truncated = True
+
+    for source_path in _iter_files_sorted(product_root, source_root):
         relative_path = source_path.relative_to(product_root)
         if _is_partial_path(relative_path):
             counts.skipped_partials += 1
@@ -522,25 +699,42 @@ def _process_one_product_tree(
 
         suffix = source_path.suffix.lower()
         if suffix in MDX_EXTENSIONS:
-            text = source_path.read_text(encoding="utf-8")
+            text = _read_text_preserving_newlines(source_path)
             result = normalize.normalize_mdx_to_md(text)
             fallback_tally.update(result.fallback)
             ambiguous_tally.update(result.ambiguous)
             unresolved_tally.update(result.unresolved)
             counts.mdx_normalized += 1
             dest_relative = relative_path.with_suffix(".md")
+            _record_planned_path(dest_product_root / dest_relative)
             if execute:
                 dest_path = guard_write_path(dest_root, dest_product_root / dest_relative)
                 dest_path.parent.mkdir(parents=True, exist_ok=True)
-                dest_path.write_text(result.text, encoding="utf-8")
+                # newline="" mirrors the read side: the frontmatter
+                # portion of result.text carries its ORIGINAL line-ending
+                # bytes (preserved exactly by normalize_mdx_to_md), and
+                # writing with translation disabled is what lets those
+                # original bytes reach disk unchanged instead of being
+                # re-mangled by write_text()'s default \n -> os.linesep
+                # translation (review-fix cycle 4, finding p8Ph). The
+                # body portion (always \n internally) is therefore also
+                # written as literal \n rather than the platform's
+                # newline convention -- a deliberate, documented
+                # narrowing: only the frontmatter block is guaranteed
+                # byte-for-byte; the body's own line-ending convention
+                # was never separately guaranteed and is now simply LF
+                # everywhere, regardless of host platform.
+                dest_path.write_text(result.text, encoding="utf-8", newline="")
         elif suffix in ORDINARY_MD_EXTENSIONS:
             counts.md_copied += 1
+            _record_planned_path(dest_product_root / relative_path)
             if execute:
                 dest_path = guard_write_path(dest_root, dest_product_root / relative_path)
                 dest_path.parent.mkdir(parents=True, exist_ok=True)
                 shutil.copyfile(source_path, dest_path)
         elif suffix in IMAGE_EXTENSIONS:
             counts.assets_copied += 1
+            _record_planned_path(dest_product_root / relative_path)
             if execute:
                 dest_path = guard_write_path(dest_root, dest_product_root / relative_path)
                 dest_path.parent.mkdir(parents=True, exist_ok=True)
@@ -553,13 +747,19 @@ def _process_one_product_tree(
             # silently dropped. There is no allow-list; only "partials"
             # and MDX get special treatment.
             counts.generic_copied += 1
+            _record_planned_path(dest_product_root / relative_path)
             if execute:
                 dest_path = guard_write_path(dest_root, dest_product_root / relative_path)
                 dest_path.parent.mkdir(parents=True, exist_ok=True)
                 shutil.copyfile(source_path, dest_path)
 
 
-def process_corpus(source: Path, dest: Path, execute: bool) -> dict[str, Any]:
+def process_corpus(
+    source: Path,
+    dest: Path,
+    execute: bool,
+    planned_dest_paths: set[str] | None = None,
+) -> dict[str, Any]:
     """Run the full selection + normalize-on-copy pipeline; return the JSON-able report dict.
 
     Shared by both dry-run and execute modes: the exact same selection
@@ -567,7 +767,22 @@ def process_corpus(source: Path, dest: Path, execute: bool) -> dict[str, Any]:
     dry-run's report is a faithful preview of what ``--execute`` would
     produce. Only the actual disk-write step is conditioned on
     ``execute``.
+
+    ``planned_dest_paths``, when the caller supplies a set, is populated
+    IN PLACE with every (uncapped) planned destination path -- relative
+    to ``dest``, posix-style -- across the whole corpus. This lets a
+    caller (see ``main()``'s ``--report`` collision check, review
+    finding qAsu, Copilot review cycle 4) check an arbitrary candidate
+    path against the FULL plan, unlike the per-product
+    ``planned_paths`` list on each product's report entry, which is
+    capped at ``MAX_PLANNED_PATHS_PER_PRODUCT`` for JSON-report-size
+    reasons. When the caller omits this argument, an internal, discarded
+    set is used instead -- duplicate-destination detection (review
+    finding p8PN) always runs regardless of whether the caller wants the
+    full set back.
     """
+    if planned_dest_paths is None:
+        planned_dest_paths = set()
     builder = ReportBuilder(source=source, dest=dest, execute=execute)
 
     top_level_dirs = sorted(p.name for p in source.iterdir() if p.is_dir())
@@ -593,14 +808,16 @@ def process_corpus(source: Path, dest: Path, execute: bool) -> dict[str, Any]:
             )
             continue
         _process_one_product_tree(
+            source_root=source,
             product_root=product_source_root / selected,
             dest_product_root=dest / product / selected,
             dest_root=dest,
             execute=execute,
-            counts=product_report.counts,
+            product_report=product_report,
             fallback_tally=builder.fallback_constructs,
             ambiguous_tally=builder.ambiguous_tokens,
             unresolved_tally=builder.unresolved_constructs,
+            planned_dest_paths=planned_dest_paths,
         )
 
     for product in classification.unversioned:
@@ -608,14 +825,16 @@ def process_corpus(source: Path, dest: Path, execute: bool) -> dict[str, Any]:
         product_report = ProductReport(versioned=False, selected_version=None)
         builder.products[product] = product_report
         _process_one_product_tree(
+            source_root=source,
             product_root=product_source_root,
             dest_product_root=dest / product,
             dest_root=dest,
             execute=execute,
-            counts=product_report.counts,
+            product_report=product_report,
             fallback_tally=builder.fallback_constructs,
             ambiguous_tally=builder.ambiguous_tokens,
             unresolved_tally=builder.unresolved_constructs,
+            planned_dest_paths=planned_dest_paths,
         )
 
     return builder.to_dict()
@@ -758,6 +977,9 @@ def main(argv: list[str] | None = None) -> int:
         except ContainmentViolation as exc:
             print(f"error: containment violation: {exc}", file=sys.stderr)
             return EXIT_CONTAINMENT_VIOLATION
+        except DestinationCollisionError as exc:
+            print(f"error: {exc}", file=sys.stderr)
+            return EXIT_DEST_PATH_COLLISION
 
         print(json.dumps(report, indent=2, sort_keys=True))
         if args.report is not None:
@@ -805,12 +1027,40 @@ def main(argv: list[str] | None = None) -> int:
     # writes. This is the only way to inspect unresolved_constructs
     # before anything is written -- the alternative (checking the report
     # only after execute writes have already happened) is exactly the
-    # cycle-2 finding-1 bug this preflight fixes.
+    # cycle-2 finding-1 bug this preflight fixes. ``planned_dest_paths``
+    # collects the FULL, uncapped set of planned destination paths so the
+    # --report collision check below (finding qAsu) can consult it, and
+    # duplicate-destination detection (finding p8PN) runs as a side
+    # effect of the preflight call itself.
+    planned_dest_paths: set[str] = set()
     try:
-        preflight_report = process_corpus(source=source, dest=dest, execute=False)
+        preflight_report = process_corpus(
+            source=source, dest=dest, execute=False, planned_dest_paths=planned_dest_paths
+        )
     except ContainmentViolation as exc:
         print(f"error: containment violation: {exc}", file=sys.stderr)
         return EXIT_CONTAINMENT_VIOLATION
+    except DestinationCollisionError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return EXIT_DEST_PATH_COLLISION
+
+    if args.report is not None:
+        dest_resolved_for_report_check = dest.resolve()
+        try:
+            report_relative_to_dest = resolved_report_precheck.relative_to(
+                dest_resolved_for_report_check
+            ).as_posix()
+        except ValueError:
+            report_relative_to_dest = None
+        if report_relative_to_dest is not None and report_relative_to_dest in planned_dest_paths:
+            print(
+                f"error: --report resolves to a planned corpus output path: "
+                f"{resolved_report_precheck} -- choose a different --report path. Writing "
+                "the report there would silently replace a successfully normalized/copied "
+                "document with the JSON report. --dest was never created or claimed.",
+                file=sys.stderr,
+            )
+            return EXIT_REPORT_PATH_COLLIDES_WITH_OUTPUT
 
     if preflight_report["unresolved_constructs"] and not args.allow_unresolved_mdx:
         unresolved_summary = ", ".join(
@@ -869,6 +1119,14 @@ def main(argv: list[str] | None = None) -> int:
                 file=sys.stderr,
             )
             return EXIT_CONTAINMENT_VIOLATION
+        except DestinationCollisionError as exc:
+            print(
+                f"error: {exc} PARTIAL OUTPUT MAY ALREADY HAVE BEEN WRITTEN under {dest} "
+                "before this failure. It is left in place (never auto-deleted); inspect and "
+                "remove it manually before retrying.",
+                file=sys.stderr,
+            )
+            return EXIT_DEST_PATH_COLLISION
         except OSError as exc:
             print(
                 f"error: execution failed partway through writing output: {exc}. PARTIAL "
@@ -917,6 +1175,29 @@ def main(argv: list[str] | None = None) -> int:
                     file=sys.stderr,
                 )
                 return EXIT_REPORT_PATH_RESERVED
+            try:
+                report_relative_to_dest_final = resolved_report.relative_to(
+                    dest.resolve()
+                ).as_posix()
+            except ValueError:
+                report_relative_to_dest_final = None
+            if (
+                report_relative_to_dest_final is not None
+                and report_relative_to_dest_final in planned_dest_paths
+            ):
+                # Defense-in-depth only, same rationale as the reserved-
+                # sentinel re-check immediately above: the early
+                # precheck/preflight already rejects this collision before
+                # --dest is claimed on the ordinary path.
+                print(
+                    f"error: --report resolves to a planned corpus output path: "
+                    f"{resolved_report} -- choose a different --report path. Corpus output "
+                    f"under {dest} was already written successfully and is left in place; "
+                    "only the report file was rejected. Writing here would silently replace "
+                    "a normalized/copied document with the JSON report.",
+                    file=sys.stderr,
+                )
+                return EXIT_REPORT_PATH_COLLIDES_WITH_OUTPUT
             try:
                 resolved_report.parent.mkdir(parents=True, exist_ok=True)
                 resolved_report.write_text(payload, encoding="utf-8")

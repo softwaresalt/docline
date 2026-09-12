@@ -232,6 +232,62 @@ def test_protect_fenced_code_container_indented_closer_beyond_three_columns_skip
     assert restored == body
 
 
+# ---------------------------------------------------------------------------
+# Regression (Copilot review, post-push cycle 4): a container-branch (4+
+# column) opener needs GENUINE preceding list/blockquote context, not just
+# indentation, to be treated as a fence at all
+# ---------------------------------------------------------------------------
+
+
+def test_protect_fenced_code_container_branch_requires_list_or_blockquote_context() -> None:
+    """Bug: a 4+-column indented backtick/tilde line at the TOP LEVEL (no
+    preceding list-item or blockquote marker) is a CommonMark INDENTED
+    CODE BLOCK, not a fence boundary -- treating it as a container-
+    relative fence opener let this scanner swallow everything between it
+    and a later similarly-indented line as one opaque fence block, hiding
+    a real unresolved MDX/JSX construct in between from the execute
+    preflight's classifier. Without genuine list/blockquote context, the
+    indented backtick line is ordinary text -- no masking happens at all,
+    so any real construct in between remains visible to classification.
+    """
+    body = (
+        "Some paragraph.\n\n"
+        "    ```\n"
+        "content <UnknownWidget /> more text\n"
+        "    ```\n\n"
+        "Trailing paragraph.\n"
+    )
+    protected, store = normalize.protect_fenced_code(body)
+    assert store == {}
+    assert "<UnknownWidget" in protected
+    assert protected == body
+
+
+def test_protect_fenced_code_container_branch_honors_genuine_list_context() -> None:
+    """The SAME 4-column-indented opener/closer shape as above IS treated
+    as a genuine fence when it is legitimately preceded by a list-item
+    marker line establishing that indentation as a list continuation
+    (unchanged behavior for the corpus's real, common shape)."""
+    body = "1. Step one:\n\n    ```\ncontent <UnknownWidget /> more text\n    ```\n\n2. Step two.\n"
+    protected, store = normalize.protect_fenced_code(body)
+    assert len(store) == 1
+    assert "<UnknownWidget" not in protected
+    restored = normalize.restore_fenced_code(protected, store)
+    assert restored == body
+
+
+def test_protect_fenced_code_container_branch_honors_blockquote_context() -> None:
+    """A blockquote-preceded 4+-column indented opener is also treated as
+    a genuine fence -- blockquote continuation indentation is relative to
+    the ``>`` marker, not the document's left margin."""
+    body = "> Example:\n>\n    ```\ncontent <UnknownWidget /> more text\n    ```\n\nAfter.\n"
+    protected, store = normalize.protect_fenced_code(body)
+    assert len(store) == 1
+    assert "<UnknownWidget" not in protected
+    restored = normalize.restore_fenced_code(protected, store)
+    assert restored == body
+
+
 def test_normalize_mdx_to_md_fence_variants_never_leak_mdx_looking_text() -> None:
     """End-to-end: construct-like text inside any of the above fence
     variants must never be tallied as unhandled nor transformed, and the
@@ -511,6 +567,65 @@ def test_apply_fallback_pass_leaves_known_handled_tags_untouched() -> None:
     assert transformed == body
 
 
+# ---------------------------------------------------------------------------
+# Inline code span protection (review finding p8PV, Copilot review cycle 4)
+# ---------------------------------------------------------------------------
+
+
+def test_protect_inline_code_masks_single_backtick_span() -> None:
+    body = 'Use `<PluginBadge type="official" />`.'
+    protected, store = normalize.protect_inline_code(body)
+    assert '<PluginBadge type="official" />' not in protected
+    assert len(store) == 1
+    restored = normalize.restore_inline_code(protected, store)
+    assert restored == body
+
+
+def test_protect_inline_code_handles_variable_length_delimiter_with_inner_backtick() -> None:
+    """A double-backtick delimiter lets the span's content safely contain
+    a literal single backtick, per CommonMark's variable-length-delimiter
+    rule."""
+    body = "See `` `raw` `` for the literal form."
+    protected, store = normalize.protect_inline_code(body)
+    assert "`raw`" not in protected
+    assert len(store) == 1
+    restored = normalize.restore_inline_code(protected, store)
+    assert restored == body
+
+
+def test_protect_inline_code_leaves_unterminated_backticks_unmasked() -> None:
+    """CommonMark: an opening backtick run with no matching same-length
+    closing run anywhere in the remaining text is literal, plain-text
+    backticks -- never masked, never force-consumed through EOF (unlike
+    fenced code blocks)."""
+    body = "This has a stray ` backtick with no partner."
+    protected, store = normalize.protect_inline_code(body)
+    assert protected == body
+    assert store == {}
+
+
+def test_normalize_mdx_to_md_preserves_jsx_looking_text_inside_inline_code() -> None:
+    """Integration regression for finding p8PV: JSX-looking text written
+    INSIDE an inline code span must survive verbatim in the normalized
+    output -- the fallback pass must never unwrap/rewrite it, since it is
+    literal Markdown source, not a live component."""
+    text = 'Badges: `<PluginBadge type="official" />` is the literal markup.\n'
+    result = normalize.normalize_mdx_to_md(text)
+    assert '`<PluginBadge type="official" />`' in result.text
+    assert result.fallback == {}
+    assert result.unresolved == {}
+
+
+def test_normalize_mdx_to_md_still_renders_live_component_outside_code_span() -> None:
+    """Sanity check: the SAME tag shape, when NOT inside a code span, is
+    still rendered by the fallback pass as before -- inline-code masking
+    must not accidentally suppress legitimate live-component handling."""
+    text = 'Badges: <PluginBadge type="official" /> is the live component.\n'
+    result = normalize.normalize_mdx_to_md(text)
+    assert "<PluginBadge" not in result.text
+    assert result.fallback["PluginBadge"] == 1
+
+
 def test_classify_remaining_constructs_flags_unknown_capitalized_tags_as_unresolved() -> None:
     body = "Some text <MysteryWidget> and more <Note>known</Note>."
     body = normalize.transform_callouts(body)
@@ -518,6 +633,25 @@ def test_classify_remaining_constructs_flags_unknown_capitalized_tags_as_unresol
     assert unresolved["MysteryWidget"] == 1
     assert "Note" not in unresolved
     assert ambiguous == {}
+
+
+def test_classify_remaining_constructs_flags_survived_known_tags_as_unresolved() -> None:
+    """Bug (Copilot review, cycle 4): a KNOWN tag name (e.g. ``Note``) that
+    SURVIVES the full named-transform pipeline -- e.g. because nested
+    same-tag ``<Note>`` elements defeat ``transform_callouts``' non-greedy
+    same-tag closing match, leaving a genuine ``<Note>...</Note>`` pair
+    un-rendered -- is precisely an unresolved construct: invalid MDX
+    residue would otherwise reach ``.md`` output completely unflagged.
+    The prior behavior unconditionally excluded ANY known tag name from
+    classification regardless of whether the named pipeline actually
+    consumed it, letting this residue escape the execute-mode gate
+    entirely. Only tags actually consumed upstream are absent from this
+    classification -- a tag name simply being "known" is not enough."""
+    body = "<Note>outer <Note>inner</Note> more</Note>"
+    body = normalize.transform_callouts(body)
+    assert "<Note>inner more</Note>" in body  # confirms the survival this test guards against
+    ambiguous, unresolved = normalize.classify_remaining_constructs(body)
+    assert unresolved["Note"] >= 1
 
 
 def test_classify_remaining_constructs_treats_known_ambiguous_tags_as_non_blocking() -> None:

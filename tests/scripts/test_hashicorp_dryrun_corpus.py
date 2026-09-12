@@ -22,6 +22,7 @@ and asserts the dest directory is never created at all.
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -32,6 +33,12 @@ _REPO_ROOT = Path(__file__).resolve().parents[2]
 _SCRIPT_PATH = _REPO_ROOT / "scripts" / "hashicorp_mdx_normalize.py"
 _SYNTHETIC_CORPUS = Path(__file__).resolve().parent / "fixtures" / "hashicorp" / "synthetic_corpus"
 _REAL_CORPUS = Path(r"C:\Source\Docs\hashicorp-tf-unified-dev-docs\content")
+
+_SCRIPTS_DIR = _REPO_ROOT / "scripts"
+if str(_SCRIPTS_DIR) not in sys.path:
+    sys.path.insert(0, str(_SCRIPTS_DIR))
+
+import hashicorp_mdx_normalize  # noqa: E402
 
 
 def _run_cli(args: list[str]) -> subprocess.CompletedProcess[str]:
@@ -120,6 +127,61 @@ def test_dry_run_emits_json_plan_with_expected_shape(tmp_path: Path) -> None:
         vault_counts["mdx_normalized"] + terraform_counts["mdx_normalized"] + 1  # hcp-docs index
     )
     assert report["containment_violations"] == []
+
+
+def test_dry_run_plan_includes_planned_dest_paths(tmp_path: Path) -> None:
+    """C.T2 acceptance-criterion regression (post-push Copilot review): the
+    dry-run JSON plan must include the planned destination paths per
+    product so an operator can audit exactly what --execute would write
+    before running it. Covers every write-eligible kind (.mdx normalized
+    to .md, .md copied unchanged, an image asset, and a generic
+    byte-for-byte copy) -- skipped partials must never appear."""
+    dest = tmp_path / "dest"
+    result = _run_cli(["--source", str(_SYNTHETIC_CORPUS), "--dest", str(dest)])
+    assert result.returncode == 0, result.stderr
+    report = json.loads(result.stdout)
+
+    vault = report["products"]["vault"]
+    assert sorted(vault["planned_paths"]) == [
+        "vault/v2.x/index.md",
+        "vault/v2.x/sub/page.md",
+    ]
+    assert vault["planned_paths_truncated"] is False
+
+    terraform = report["products"]["terraform"]
+    assert sorted(terraform["planned_paths"]) == [
+        "terraform/v1.16.x/config.json",
+        "terraform/v1.16.x/diagram.png",
+        "terraform/v1.16.x/index.md",
+        "terraform/v1.16.x/notes.md",
+    ]
+    assert terraform["planned_paths_truncated"] is False
+
+    hcp_docs = report["products"]["hcp-docs"]
+    assert sorted(hcp_docs["planned_paths"]) == [
+        "hcp-docs/assets/logo.svg",
+        "hcp-docs/index.md",
+    ]
+    assert hcp_docs["planned_paths_truncated"] is False
+
+
+def test_dry_run_plan_truncates_planned_paths_per_product(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Planned-path reporting is bounded per product (review suggestion:
+    "preferably with a bounded/paginated representation if report size is
+    a concern") so a real corpus with thousands of files per product
+    cannot balloon the JSON report unboundedly."""
+    monkeypatch.setattr(hashicorp_mdx_normalize, "MAX_PLANNED_PATHS_PER_PRODUCT", 1)
+    dest = tmp_path / "dest"
+    report = hashicorp_mdx_normalize.process_corpus(
+        source=_SYNTHETIC_CORPUS, dest=dest, execute=False
+    )
+    vault = report["products"]["vault"]
+    assert len(vault["planned_paths"]) == 1
+    assert vault["planned_paths_truncated"] is True
+    # Truncation never affects the authoritative file-count totals.
+    assert vault["file_counts"]["mdx_normalized"] == 2
 
 
 def test_dry_run_stdout_also_contains_json_plan() -> None:
@@ -531,11 +593,13 @@ def test_execute_leaves_partial_dest_in_place_when_write_pass_fails(
     real_process_corpus = module.process_corpus
     call_count = {"n": 0}
 
-    def flaky_process_corpus(*, source, dest, execute):
+    def flaky_process_corpus(*, source, dest, execute, planned_dest_paths=None):
         call_count["n"] += 1
         if execute:
             raise OSError("simulated disk failure partway through writing")
-        return real_process_corpus(source=source, dest=dest, execute=execute)
+        return real_process_corpus(
+            source=source, dest=dest, execute=execute, planned_dest_paths=planned_dest_paths
+        )
 
     monkeypatch.setattr(module, "process_corpus", flaky_process_corpus)
 
@@ -874,6 +938,149 @@ def test_dry_run_never_fails_on_unresolved_mdx_constructs(tmp_path: Path) -> Non
     assert report["unresolved_constructs"]["BrandNewWidget"] == 1
 
 
+def test_guard_read_path_rejects_paths_outside_source(tmp_path: Path) -> None:
+    """Unit-level read-side containment guard check (Copilot review cycle
+    4 -- read-side counterpart of ``test_guard_write_path_rejects_paths_outside_dest``).
+    """
+    source_root = tmp_path / "source"
+    source_root.mkdir()
+    outside = tmp_path / "sibling" / "escaped.mdx"
+    with pytest.raises(hashicorp_mdx_normalize.ContainmentViolation):
+        hashicorp_mdx_normalize.guard_read_path(source_root, outside)
+
+    inside = source_root / "nested" / "ok.mdx"
+    resolved = hashicorp_mdx_normalize.guard_read_path(source_root, inside)
+    assert resolved == inside.resolve()
+
+
+def test_process_corpus_rejects_symlinked_file_escaping_source(tmp_path: Path) -> None:
+    """P2 regression (Copilot review cycle 4): ``Path.is_file()`` /
+    ``Path.rglob()`` follow symlinks transparently, so a symlinked file
+    inside an otherwise-legitimate product tree could point at content
+    OUTSIDE the operator-authorized ``--source`` corpus without any
+    indication in the report. ``process_corpus`` must refuse to read such
+    an escape (fail closed with :class:`ContainmentViolation`) rather than
+    silently normalizing/copying whatever the symlink resolves to, and
+    must do so BEFORE anything is written to ``--dest``.
+    """
+    source = tmp_path / "source"
+    outside_dir = tmp_path / "outside"
+    outside_dir.mkdir()
+    secret = outside_dir / "secret.mdx"
+    secret.write_text("# secret content\n", encoding="utf-8")
+
+    product_dir = source / "hcp-docs"
+    product_dir.mkdir(parents=True)
+    (product_dir / "index.mdx").write_text("# ok\n", encoding="utf-8")
+    escape_link = product_dir / "escape.mdx"
+    try:
+        os.symlink(secret, escape_link)
+    except OSError as exc:
+        pytest.skip(f"symlink creation unsupported in this environment: {exc}")
+
+    dest = tmp_path / "dest"
+    with pytest.raises(hashicorp_mdx_normalize.ContainmentViolation):
+        hashicorp_mdx_normalize.process_corpus(source=source, dest=dest, execute=False)
+    assert not dest.exists(), "a rejected read must never create --dest, even in dry-run"
+
+
+def test_process_corpus_rejects_symlinked_top_level_product_dir_escaping_source(
+    tmp_path: Path,
+) -> None:
+    """P2 regression (Copilot review cycle 4): a top-level product
+    directory that is ITSELF a symlink pointing outside ``--source`` must
+    also be rejected -- not just an individual symlinked leaf file. Both
+    cases are caught by the same resolved-path containment check since
+    ``Path.resolve()`` follows the entire symlink chain.
+    """
+    source = tmp_path / "source"
+    source.mkdir()
+    outside_product = tmp_path / "outside-hcp-docs"
+    outside_product.mkdir()
+    (outside_product / "index.mdx").write_text("# secret\n", encoding="utf-8")
+
+    product_link = source / "hcp-docs"
+    try:
+        os.symlink(outside_product, product_link, target_is_directory=True)
+    except OSError as exc:
+        pytest.skip(f"symlink creation unsupported in this environment: {exc}")
+
+    dest = tmp_path / "dest"
+    with pytest.raises(hashicorp_mdx_normalize.ContainmentViolation):
+        hashicorp_mdx_normalize.process_corpus(source=source, dest=dest, execute=False)
+    assert not dest.exists()
+
+
+def test_process_corpus_rejects_mdx_md_destination_collision(tmp_path: Path) -> None:
+    """P2 regression (finding p8PN, Copilot review cycle 4): normalizing
+    ``foo.mdx`` to ``foo.md`` can collide with an existing ``foo.md`` in
+    the same selected tree. ``process_corpus`` must detect this during
+    the read-only preflight (dry-run or --execute alike) and refuse to
+    proceed with :class:`DestinationCollisionError`, rather than silently
+    letting one file's output overwrite the other's.
+    """
+    source = tmp_path / "source"
+    product_dir = source / "hcp-docs"
+    product_dir.mkdir(parents=True)
+    (product_dir / "foo.mdx").write_text("# mdx version\n", encoding="utf-8")
+    (product_dir / "foo.md").write_text("# md version\n", encoding="utf-8")
+
+    dest = tmp_path / "dest"
+    with pytest.raises(hashicorp_mdx_normalize.DestinationCollisionError):
+        hashicorp_mdx_normalize.process_corpus(source=source, dest=dest, execute=False)
+    assert not dest.exists(), "a rejected collision must never create --dest, even in dry-run"
+
+
+def test_process_corpus_collects_full_planned_dest_paths_when_requested(tmp_path: Path) -> None:
+    """The uncapped ``planned_dest_paths`` out-parameter (used by
+    ``main()``'s --report collision check, finding qAsu) is populated
+    in-place with every planned destination path, independent of the
+    per-product JSON-report cap."""
+    source = tmp_path / "source"
+    product_dir = source / "hcp-docs"
+    product_dir.mkdir(parents=True)
+    (product_dir / "index.mdx").write_text("# ok\n", encoding="utf-8")
+
+    dest = tmp_path / "dest"
+    planned: set[str] = set()
+    hashicorp_mdx_normalize.process_corpus(
+        source=source, dest=dest, execute=False, planned_dest_paths=planned
+    )
+    assert "hcp-docs/index.md" in planned
+
+
+def test_execute_rejects_report_path_colliding_with_planned_output(tmp_path: Path) -> None:
+    """P2 regression (finding qAsu, Copilot review cycle 4): a contained
+    ``--report`` path may equal a planned corpus OUTPUT path (not just the
+    reserved claim-sentinel name), e.g. ``--report <dest>/hcp-docs/index.md``.
+    ``write_text`` would then silently replace the successfully normalized
+    document with the JSON report. This must be rejected before ``--dest``
+    is ever claimed.
+    """
+    source = tmp_path / "source"
+    product_dir = source / "hcp-docs"
+    product_dir.mkdir(parents=True)
+    (product_dir / "index.mdx").write_text("# ok\n", encoding="utf-8")
+
+    dest = tmp_path / "dest"
+    colliding_report = dest / "hcp-docs" / "index.md"
+
+    result = _run_cli(
+        [
+            "--source",
+            str(source),
+            "--dest",
+            str(dest),
+            "--execute",
+            "--report",
+            str(colliding_report),
+        ]
+    )
+    assert result.returncode == hashicorp_mdx_normalize.EXIT_REPORT_PATH_COLLIDES_WITH_OUTPUT
+    assert not dest.exists(), "--dest must never be claimed/created when --report collides"
+    assert "collides" in result.stderr.lower() or "planned corpus output" in result.stderr.lower()
+
+
 def test_guard_write_path_rejects_paths_outside_dest(tmp_path: Path) -> None:
     """Unit-level containment guard check -- no actual I/O is attempted on rejection."""
     import importlib.util
@@ -894,6 +1101,62 @@ def test_guard_write_path_rejects_paths_outside_dest(tmp_path: Path) -> None:
     inside = dest_root / "nested" / "ok.md"
     resolved = module.guard_write_path(dest_root, inside)
     assert resolved == inside.resolve()
+
+
+def test_execute_preserves_frontmatter_byte_exact_on_crlf_source(tmp_path: Path) -> None:
+    """P2 regression (finding p8Ph, Copilot review cycle 4): on Windows,
+    ``Path.read_text()``/``Path.write_text()`` perform universal-newline
+    translation by default, silently rewriting a source file's CRLF
+    frontmatter delimiters to LF before a single transform runs, and then
+    re-translating the (now-LF) body back to CRLF on write -- corrupting
+    the "frontmatter preserved verbatim" contract the very first time a
+    real CRLF source file is processed. ``--execute`` must instead
+    preserve the frontmatter block byte-for-byte, exactly as the source
+    wrote it, regardless of the host platform's newline convention.
+    """
+    source = tmp_path / "source"
+    product_dir = source / "hcp-docs"
+    product_dir.mkdir(parents=True)
+
+    frontmatter = b"---\r\npage_title: CRLF Frontmatter\r\ndescription: exact bytes\r\n---\r\n"
+    body = b"# Heading\n\nSome body text.\n"
+    (product_dir / "index.mdx").write_bytes(frontmatter + body)
+
+    dest = tmp_path / "dest"
+    hashicorp_mdx_normalize.process_corpus(source=source, dest=dest, execute=True)
+
+    output_bytes = (dest / "hcp-docs" / "index.md").read_bytes()
+    assert output_bytes.startswith(frontmatter), (
+        "frontmatter block (including its CRLF line endings) must survive "
+        "the full read/transform/write round trip byte-for-byte"
+    )
+    # The body is intentionally re-normalized to bare \n regardless of the
+    # source's original convention (documented narrowing) -- it must not
+    # retain any \r, and it must not be silently dropped either.
+    body_bytes = output_bytes[len(frontmatter) :]
+    assert b"\r" not in body_bytes
+    assert b"Heading" in body_bytes
+
+
+def test_execute_preserves_frontmatter_byte_exact_on_lf_source(tmp_path: Path) -> None:
+    """Companion case for p8Ph: a plain LF-only source file's frontmatter
+    must ALSO survive byte-for-byte (i.e. the fix must not introduce a
+    regression -- or accidentally inject CRLF -- for the common non-Windows
+    source-file case)."""
+    source = tmp_path / "source"
+    product_dir = source / "hcp-docs"
+    product_dir.mkdir(parents=True)
+
+    frontmatter = b"---\npage_title: LF Frontmatter\n---\n"
+    body = b"# Heading\n"
+    (product_dir / "index.mdx").write_bytes(frontmatter + body)
+
+    dest = tmp_path / "dest"
+    hashicorp_mdx_normalize.process_corpus(source=source, dest=dest, execute=True)
+
+    output_bytes = (dest / "hcp-docs" / "index.md").read_bytes()
+    assert output_bytes.startswith(frontmatter)
+    assert b"\r" not in output_bytes
 
 
 # ---------------------------------------------------------------------------
@@ -948,10 +1211,33 @@ def test_real_corpus_dry_run_zero_writes_and_coverage_report(tmp_path: Path) -> 
     assert isinstance(report["ambiguous_tokens"], dict)
     # P3 regression (review-fix cycle 2, finding 5): the live corpus must
     # have ZERO genuine unresolved MDX constructs, not merely "some dict" --
-    # this is the actual "aim for zero" bar the review-fix cycle 1 grounded
-    # registry expansion was meant to satisfy (requirements-evidence doc §9.5),
-    # and it must be asserted precisely, not just type-checked.
-    assert report["unresolved_constructs"] == {}
+    # this was the "aim for zero" bar the review-fix cycle 1 grounded
+    # registry expansion was meant to satisfy (requirements-evidence doc §9.5).
+    #
+    # Updated in review-fix cycle 4 (Copilot finding qAsc, PR 192): removing
+    # classify_remaining_constructs()'s unsafe `if name in
+    # _KNOWN_HANDLED_TAGS: continue` skip made the classifier accurate --
+    # and, as a direct consequence, revealed that this "== {}" bar was ONLY
+    # ever passing because that skip was silently hiding real residue for
+    # any tag name the transform pipeline sometimes fails to fully consume.
+    # The four counts below are the classifier's now-honest baseline against
+    # the live corpus: a list-item-indented <Note>, a mid-sentence-embedded
+    # <EnterpriseAlert inline />, a bare self-closing <Warning/>, and an
+    # attribute-shape-mismatched <VideoEmbed url="..."> (8 occurrences, one
+    # file). None of these four share qAsc's root cause (nested same-tag
+    # elements defeating a non-greedy regex, covered by its own synthetic
+    # regression test) and closing them is deliberately deferred as
+    # out-of-scope for this cycle per P-021 C1/C2 -- see stash entry
+    # 7F80C39E for the full analysis. This assertion is intentionally
+    # precise (not just type-checked) so it still catches any further
+    # regression -- or any accidental improvement -- against this documented
+    # baseline.
+    assert report["unresolved_constructs"] == {
+        "EnterpriseAlert": 12,
+        "Note": 1,
+        "VideoEmbed": 8,
+        "Warning": 2,
+    }
     assert report["containment_violations"] == []
 
     # Persist the real coverage report to a repo-local, git-ignored path so it
