@@ -1,7 +1,7 @@
 # Plan Review: HashiCorp unified-docs MDX→MD normalization preprocessor
 
 - **Date:** 2026-09-11
-- **Plan reviewed:** `docs/plans/2026-09-11-hashicorp-mdx-normalization-preprocessor-plan.md`
+- **Plan reviewed:** `docs/archive/plans/2026-09-11-hashicorp-mdx-normalization-preprocessor-plan.md` (moved here 2026-09-12 post-merge closure; compacted into `docs/plans/2026-09-12-hashicorp-mdx-normalization-preprocessor-decided-plan.md`)
 - **Deliberation:** `docs/decisions/2026-09-11-hashicorp-mdx-normalization-preprocessor-deliberation.md`
 - **Attempt:** 1
 - **Verdict:** PASS

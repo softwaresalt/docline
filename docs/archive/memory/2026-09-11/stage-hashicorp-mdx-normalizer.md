@@ -29,7 +29,7 @@ this session; operator runs `--execute`.
   applied → mandated full-corpus dry-run cross-check.
 - **Deliberation:** `docs/decisions/2026-09-11-hashicorp-mdx-normalization-preprocessor-deliberation.md`
   (chose Python semver-port selection + standalone normalization engine, `scripts/` placement).
-- **Plan:** `docs/plans/2026-09-11-hashicorp-mdx-normalization-preprocessor-plan.md`
+- **Plan:** `docs/archive/plans/2026-09-11-hashicorp-mdx-normalization-preprocessor-plan.md` (moved here 2026-09-12 post-merge closure; compacted into `docs/plans/2026-09-12-hashicorp-mdx-normalization-preprocessor-decided-plan.md`)
   (Requires plan hardening: yes → hardening section folded in; P-006 satisfied).
 - **Plan review:** `docs/plans/...-plan-review.md` — Verdict PASS (attempt 1).
 - **Harvest:** feature **071-F** + 11 tasks **071.001-T..071.011-T** (groups A–E), 16

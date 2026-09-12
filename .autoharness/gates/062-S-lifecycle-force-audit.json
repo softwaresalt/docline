@@ -1,0 +1,28 @@
+{
+  "mode": "agent",
+  "phase": "lifecycle",
+  "target_shipment_id": "062-S",
+  "exit_code": 0,
+  "blocked": false,
+  "invalid": false,
+  "message": "BRANCH_MISMATCH: current branch feat/github-markdown-extension does not match target 062-S (forced)",
+  "checks": [
+    {
+      "name": "branch_ownership",
+      "status": "blocked",
+      "token": "BRANCH_MISMATCH",
+      "message": "BRANCH_MISMATCH: current branch feat/github-markdown-extension does not match target 062-S",
+      "details": {
+        "target_shipment_id": "062-S",
+        "current_branch": "feat/github-markdown-extension",
+        "expected_branch_pattern": "feat/{shipment-slug} or chore/{shipment-slug}",
+        "note": "Branch predates the shipment-slug naming convention; pre-existing, non-blocking condition captured as stash entry ADE96404 prior to this merge."
+      }
+    }
+  ],
+  "token": "BRANCH_MISMATCH",
+  "forced": true,
+  "telemetry_log": null,
+  "force_audit_log": ".autoharness\\gates\\pipeline-topology-force-audit.log",
+  "source_log_entry": "{\"timestamp\": \"2026-09-12T07:55:36.746169+00:00\", \"actor\": \"dewilliams\", \"reason\": \"--force override\", \"mode\": \"agent\", \"phase\": \"lifecycle\", \"target_shipment_id\": \"062-S\", \"token\": \"BRANCH_MISMATCH\", \"message\": \"BRANCH_MISMATCH: current branch feat/github-markdown-extension does not match target 062-S\"}"
+}
