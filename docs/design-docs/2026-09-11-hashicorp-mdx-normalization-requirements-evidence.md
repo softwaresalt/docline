@@ -1349,3 +1349,50 @@ Re-verification after this fix:
 
 Thread `3994230152` replied to describing the fix and the commit that
 lands it, and resolved.
+
+### 12.7 Final post-push Copilot round (commit `20f91a4`, deferred) and thread-cleanup summary
+
+A further Copilot shadow-review round, submitted against commit
+`20f91a4` (the §12.6 fix itself), created one new actionable review
+thread and additionally summarized (without creating separate threads
+for) three other, already-known/unrelated observations:
+
+* **New thread, `3994338286`** (`hashicorp_mdx_normalize.py:215`):
+  `guard_write_path()`'s core containment check
+  (`candidate_resolved.relative_to(dest_resolved)`) succeeds when
+  `candidate_resolved == dest_resolved`, so a `--report` path equal to
+  `--dest` itself passes the guard despite the documented strictly-inside
+  contract; execute mode would then write the corpus and only fail later
+  when it tries to open the destination directory as the report file --
+  after corpus writes have already occurred. **Out of scope** per P-021
+  C1: this is a pre-existing gap in `guard_write_path()`'s own core
+  logic (unchanged since cycle 1/2), distinct from the reserved-sentinel
+  collision §12.6 fixed (that defect was caused by a sentinel name this
+  cycle newly introduced; this one predates cycle 3 entirely and would
+  require modifying `guard_write_path()`'s own relative_to logic, a
+  broader change). Captured as deferred stash entry `7D71CBEA` (low
+  priority); thread replied to and resolved.
+* **Suppressed, non-threaded observations** (mentioned in the review
+  body's summary, not posted as separate line comments -- no GitHub
+  thread exists for these, so no reply/resolve action applies): a
+  version-stage-classification edge case in
+  `scripts/_hashicorp_mdx/selection.py` (an unmatched parenthesized
+  stage suffix defaults to "stable"); a fence-opener indentation-masking
+  concern in `scripts/_hashicorp_mdx/normalize.py` closely related to
+  the already-deferred `C0E88586` fence-scanner finding; and two findings
+  in `src/docline/app.py` / `src/docline/process/output_contract.py`
+  about `.markdown`-extension output-path collisions. The latter two are
+  not part of the HashiCorp normalizer tooling this shipment (062-S)
+  covers at all -- they belong to unrelated, pre-existing work already
+  present on this branch (`feat/github-markdown-extension`) before this
+  shipment's commits began, and are out of scope for 062-S's review-fix
+  cycles regardless of P-021 classification.
+
+**Thread-cleanup summary for this cycle**: seven review threads in total
+were replied to and resolved across §12.5–§12.7's post-push Copilot
+triage: `3994209535` (→ `C0E88586`), `3993438433` + `3994209569` (→
+`387E5F82`, both resolved against the same entry), `3994209593` (fixed),
+`3994209606` (already resolved via body update), `3994230152` (fixed,
+§12.6), and `3994338286` (→ `7D71CBEA`, this section). No further new
+Copilot review rounds were observed after a reasonable post-push waiting
+window at the final HEAD.
