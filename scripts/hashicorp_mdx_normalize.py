@@ -727,9 +727,27 @@ def _process_one_product_tree(
             counts.skipped_partials += 1
             continue
 
+        # Re-guard and capture the RESOLVED path immediately before this
+        # file's actual read/copy (Copilot review cycle 4 follow-up
+        # round, finding htcWC): ``_iter_files_sorted`` already validated
+        # every candidate, but discarded each ``guard_read_path()``
+        # return value, so the read/copy below previously re-used
+        # ``source_path`` -- the ORIGINAL, potentially symlink-bearing
+        # reference -- which performs its OWN independent symlink
+        # resolution at read-time, entirely decoupled from the guard's
+        # earlier check. Re-validating here and reading through the
+        # concrete, already-resolved path narrows that gap to nothing
+        # more than this one function call, immediately adjacent to the
+        # read/copy, instead of the width of the whole per-product file
+        # list built by ``_iter_files_sorted``. ``relative_path`` (and
+        # therefore every ``dest_*`` naming decision below) deliberately
+        # keeps using the ORIGINAL, unresolved ``source_path`` -- only
+        # the bytes actually read or copied come from the resolved path.
+        resolved_source_path = guard_read_path(source_root, source_path)
+
         suffix = source_path.suffix.lower()
         if suffix in MDX_EXTENSIONS:
-            text = _read_text_preserving_newlines(source_path)
+            text = _read_text_preserving_newlines(resolved_source_path)
             result = normalize.normalize_mdx_to_md(text)
             fallback_tally.update(result.fallback)
             ambiguous_tally.update(result.ambiguous)
@@ -761,14 +779,14 @@ def _process_one_product_tree(
             if execute:
                 dest_path = guard_write_path(dest_root, dest_product_root / relative_path)
                 dest_path.parent.mkdir(parents=True, exist_ok=True)
-                shutil.copyfile(source_path, dest_path)
+                shutil.copyfile(resolved_source_path, dest_path)
         elif suffix in IMAGE_EXTENSIONS:
             counts.assets_copied += 1
             _record_planned_path(dest_product_root / relative_path)
             if execute:
                 dest_path = guard_write_path(dest_root, dest_product_root / relative_path)
                 dest_path.parent.mkdir(parents=True, exist_ok=True)
-                shutil.copyfile(source_path, dest_path)
+                shutil.copyfile(resolved_source_path, dest_path)
         else:
             # Generic byte-for-byte copy (review-fix cycle 1, P2 finding):
             # any remaining non-partial, non-MDX file -- linked PDFs,
@@ -781,7 +799,7 @@ def _process_one_product_tree(
             if execute:
                 dest_path = guard_write_path(dest_root, dest_product_root / relative_path)
                 dest_path.parent.mkdir(parents=True, exist_ok=True)
-                shutil.copyfile(source_path, dest_path)
+                shutil.copyfile(resolved_source_path, dest_path)
 
 
 def process_corpus(

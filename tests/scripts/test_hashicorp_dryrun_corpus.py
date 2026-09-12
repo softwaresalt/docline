@@ -984,6 +984,74 @@ def test_process_corpus_rejects_symlinked_file_escaping_source(tmp_path: Path) -
     assert not dest.exists(), "a rejected read must never create --dest, even in dry-run"
 
 
+def test_process_corpus_reads_mdx_through_resolved_path_not_original(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """P1 regression (Copilot review cycle 4 follow-up round, finding
+    htcWC): ``guard_read_path()`` resolves ``source_path`` and verifies
+    the RESOLVED target stays inside ``--source``, but the resolved
+    return value was previously discarded -- the actual read
+    (``_read_text_preserving_newlines``) re-used the ORIGINAL,
+    possibly-symlink-bearing path variable instead. That means the read
+    performs its OWN, independent symlink resolution at read-time,
+    entirely separate from the one the guard already validated. A
+    symlink retargeted in the (however small) window between the guard
+    check and the read would therefore escape ``--source`` undetected,
+    because nothing then re-validates -- or even reuses -- the
+    already-resolved, already-proven-safe path.
+
+    This test does not attempt to simulate an actual filesystem race
+    (Python has no portable way to do that deterministically); instead
+    it directly enforces the code-level contract that closes the gap:
+    the read must be issued against the concrete, fully-resolved path
+    captured by the guard at check time, not against the original
+    (potentially symlink-bearing) path reference the corpus walk
+    produced. That is what makes a later, out-of-band symlink retarget
+    unable to affect this already-completed resolution.
+
+    Uses a symlinked FILE (leaf-level), not a symlinked directory:
+    Python 3.13+'s ``pathlib`` ``rglob()`` does not descend into
+    symlinked directories by default (``recurse_symlinks=False``), but
+    it still matches an individual symlinked FILE within a directory it
+    does traverse -- that is the actual shape of the TOCTOU gap this
+    finding describes.
+    """
+    source = tmp_path / "source"
+    real_subdir = source / "_real_subdir_outside_product"
+    real_subdir.mkdir(parents=True)
+    real_file = real_subdir / "target.mdx"
+    real_file.write_text("# real content\n", encoding="utf-8")
+
+    product_dir = source / "hcp-docs"
+    product_dir.mkdir(parents=True)
+    linked_file = product_dir / "foo.mdx"
+    try:
+        os.symlink(real_file, linked_file)
+    except OSError as exc:
+        pytest.skip(f"symlink creation unsupported in this environment: {exc}")
+
+    dest = tmp_path / "dest"
+    calls: list[Path] = []
+    original_read = hashicorp_mdx_normalize._read_text_preserving_newlines
+
+    def _spy_read(path: Path) -> str:
+        calls.append(path)
+        return original_read(path)
+
+    monkeypatch.setattr(hashicorp_mdx_normalize, "_read_text_preserving_newlines", _spy_read)
+
+    hashicorp_mdx_normalize.process_corpus(source=source, dest=dest, execute=False)
+
+    assert len(calls) == 1, f"expected exactly one MDX read, got {calls!r}"
+    read_path = calls[0]
+    expected_resolved = linked_file.resolve()
+    assert read_path == expected_resolved, (
+        "the MDX read must go through the already-guarded, fully-resolved "
+        f"path ({expected_resolved!r}), not the original symlink-bearing "
+        f"candidate path; got {read_path!r}"
+    )
+
+
 def test_process_corpus_rejects_symlinked_top_level_product_dir_escaping_source(
     tmp_path: Path,
 ) -> None:
