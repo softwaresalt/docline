@@ -280,12 +280,25 @@ ambiguous_tokens:      75 distinct tags,  255 total occurrences
 unresolved_constructs: 0 distinct tags,   0 total occurrences
 ```
 
-`unresolved_constructs` is **empty** on the selected live corpus -- the
-acceptance bar set by finding 5 ("aim for zero unresolved genuine MDX
-components... while preserving placeholder-like tokens") is met without
-loosening the execute-mode fail-closed gate (`EXIT_UNRESOLVED_MDX_CONSTRUCTS`,
-`--allow-unresolved-mdx`; see §9.5): the real operator `--execute` run does
-not need the override flag against this corpus as it stands today.
+`unresolved_constructs` was **empty** on the selected live corpus as of
+review-fix cycle 1 -- the acceptance bar set by finding 5 ("aim for zero
+unresolved genuine MDX components... while preserving placeholder-like
+tokens") was met without loosening the execute-mode fail-closed gate
+(`EXIT_UNRESOLVED_MDX_CONSTRUCTS`, `--allow-unresolved-mdx`; see §9.5).
+
+**Superseded by review-fix cycle 4 (§13.4, Copilot finding qAsc)**: this
+zero baseline was only ever passing because `classify_remaining_constructs()`
+carried an unsafe skip that hid genuine residue for any "known" tag name.
+Removing that skip (cycle 4) made the classifier accurate and revealed 4
+distinct real residues (`EnterpriseAlert: 12`, `Note: 1`, `VideoEmbed: 8`,
+`Warning: 2` -- 23 total occurrences), none sharing qAsc's root cause. Fixing
+these 4 gaps was deliberately deferred as out of scope for cycle 4 per
+P-021 C1/C2 -- see stash entry **`7F80C39E`** for the full per-gap analysis,
+and §13.4 for the re-verification narrative. **As of this writing, the real
+operator `--execute` run against this corpus DOES need the
+`--allow-unresolved-mdx` override flag** (§7's exact command must include
+it, or the preflight aborts with `EXIT_UNRESOLVED_MDX_CONSTRUCTS`) until the
+4 deferred gaps are resolved.
 
 The top `fallback_constructs` entries (unknown MDX/JSX components the
 generic pass structurally unwrapped or rendered as a readable annotation --
@@ -338,13 +351,27 @@ individually grounded and maintained.
 
 ## 7. Exact operator command for the real external run (never executed by an agent)
 
+**Updated in review-fix cycle 4 (§13.4, Copilot findings qAsc/htGvn/htGv9)**:
+as documented in §6 above, the classifier-accuracy fix in this cycle
+revealed that the selected live corpus currently has 4 distinct, deferred
+(`7F80C39E`) unresolved-construct residues. Until those are resolved, the
+real `--execute` run against this corpus **requires**
+`--allow-unresolved-mdx`, or the preflight aborts with
+`EXIT_UNRESOLVED_MDX_CONSTRUCTS` before any write begins:
+
 ```powershell
 python scripts/hashicorp_mdx_normalize.py `
     --source "C:\Source\Docs\hashicorp-tf-unified-dev-docs\content" `
     --dest "C:\Source\Docs\tf-unified-dev-docs-normalized" `
     --execute `
+    --allow-unresolved-mdx `
     --report "C:\Source\Docs\tf-unified-dev-docs-normalized\_normalize-report.json"
 ```
+
+Omit `--allow-unresolved-mdx` once the 4 deferred residues (`7F80C39E`) are
+resolved by a future cycle -- the flag is only required while they remain
+outstanding, and the run's own reported `unresolved_constructs` bucket
+remains the authoritative signal either way.
 
 Omit `--execute` (and point `--report` anywhere convenient, or omit it to see
 the plan on stdout only) to preview the identical plan with zero writes --

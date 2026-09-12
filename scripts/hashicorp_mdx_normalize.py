@@ -856,9 +856,12 @@ def _build_arg_parser() -> argparse.ArgumentParser:
             '--source "C:\\Source\\Docs\\hashicorp-tf-unified-dev-docs\\content" '
             '--dest "C:\\Source\\Docs\\tf-unified-dev-docs-normalized" '
             "--execute "
+            "--allow-unresolved-mdx "
             '--report "C:\\Source\\Docs\\tf-unified-dev-docs-normalized'
             '\\_normalize-report.json"\n\n'
-            "Omit --execute to preview the identical plan with zero writes."
+            "Omit --allow-unresolved-mdx once the corpus has zero "
+            "unresolved_constructs (see the tool's own report output); "
+            "omit --execute to preview the identical plan with zero writes."
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
