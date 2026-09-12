@@ -729,19 +729,25 @@ def _process_one_product_tree(
         # review cycle 4, follow-up round 3, finding htTX0; case-fold
         # correctness fix in follow-up round 5, finding htcWC's sibling
         # CI-failure comment; O(1)-lookup fix in follow-up round 7,
-        # finding at line 716): the documented operator target is
-        # Windows, whose filesystems are normally case-INSENSITIVE, so
-        # ``Foo.mdx`` -> ``Foo.md`` and an existing ``foo.md`` are the
-        # SAME destination on disk even though they are different Python
-        # strings. ``planned_dest_paths`` is a :class:`_CaseFoldedPathSet`
-        # (or, for an external caller that supplies a plain ``set[str]``,
-        # falls back to that set's own exact-match ``in``), so this ``in``
-        # check is a single case-folded hash lookup rather than a fresh
-        # O(n) re-scan of every previously recorded path on every call.
-        # ``planned_dest_paths`` itself keeps storing the ORIGINAL-casing
-        # strings (unchanged public contract, relied on by ``main()``'s
-        # --report checks and by existing tests) -- only the membership
-        # *comparison* is case-folded.
+        # finding at line 716; always-case-folded-regardless-of-caller
+        # fix in follow-up round 8, finding ht1tJ): the documented
+        # operator target is Windows, whose filesystems are normally
+        # case-INSENSITIVE, so ``Foo.mdx`` -> ``Foo.md`` and an existing
+        # ``foo.md`` are the SAME destination on disk even though they
+        # are different Python strings. ``planned_dest_paths`` here is
+        # ALWAYS a :class:`_CaseFoldedPathSet` -- ``process_corpus()``
+        # unconditionally wraps (or reuses) one internally regardless of
+        # what type of set[str] its own caller supplied -- so this ``in``
+        # check is always a single case-folded hash lookup rather than a
+        # fresh O(n) re-scan of every previously recorded path on every
+        # call, and never silently falls back to a plain, case-SENSITIVE
+        # ``set``'s exact-match ``in`` (a caller-supplied plain set is
+        # synced with the full result afterward, but is never the object
+        # used for this internal check). ``planned_dest_paths`` itself
+        # keeps storing the ORIGINAL-casing strings (unchanged public
+        # contract, relied on by ``main()``'s --report checks and by
+        # existing tests) -- only the membership *comparison* is
+        # case-folded.
         if dest_relative in planned_dest_paths:
             raise DestinationCollisionError(
                 f"planned destination path collision under --dest: '{dest_relative}' would "
