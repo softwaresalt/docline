@@ -1669,3 +1669,56 @@ All five entries were verified to persist correctly (re-read after
 creation) and confirmed, via search of both the active and archived
 stash, to have no prior reusable entry for the same expansion before
 capture.
+
+### 13.6 Post-push Copilot shadow-review rounds 4-9 (final state, commits `b802974`..`8a46d20`)
+
+The operator explicitly authorized one additional review-fix cycle
+beyond §13.1-13.5, directing: fix in-scope findings, reply to each
+comment only after the fixing commit is pushed, resolve threads
+programmatically via `gh api graphql`, and continue to classify every
+finding under P-021 C1 (no scope-classification waiver). Each push
+triggered a fresh automated Copilot review round roughly 4-9 minutes
+later; this repeated for six further rounds (4 through 9) before the
+pattern stabilized with zero new findings. Every round's findings were
+independently re-queried via GraphQL (never assumed from the review
+body's "suppressed comments" summary text, which does not necessarily
+match the actual generated inline threads) and classified under P-021
+C1 before any fix was made.
+
+| Round | Commit | Real GraphQL thread(s) | Threadless/body-only finding(s) | Fixed (in scope) | Deferred (out of scope) |
+|---|---|---|---|---|---|
+| 4 | `b802974` | `htcWC` | -- | TOCTOU gap: the containment guard re-validated a resolved path but discarded it, so the actual read/copy re-resolved via the original symlink-bearing reference; fixed by re-guarding the resolved path immediately before use. | -- |
+| 5 | `3276b7c` | -- | line 585 (cross-boundary symlink across product/version roots); 3x `os.path.normcase()` no-op on POSIX (CI-verified `pytest (ubuntu-latest)` failure) | `os.path.normcase()` -> `str.casefold()` at 3 call sites -- a direct completion of the `htTX0` case-fold fix, which was supposed to be cross-platform but silently was not on POSIX. | Line 585 -> `F42911A1` (threadless; pre-existing guard-scoping gap, requires a design change). |
+| 6 | `50005ce` | `htp9L` | line 429 (`_INLINE_CODE_RE` malformed unequal-delimiter-run bug) | Line-429 regex fix (added CommonMark maximality guards); confirmed via `git log -S` this regex was introduced by cycle 4's own `8dac2ee` commit, so completing it is in scope. | `htp9L` -> `F144B331` (stale `planned_dest_paths` in `main()`'s `--report` defense-in-depth recheck; different architecture than any cycle-4 fix). |
+| 7 | `5ea8c2b` | `htvhC`, `htvhV` | -- | `htvhV`: O(n^2) case-folded collision check -> O(1) via new `_CaseFoldedPathSet(set[str])` subclass, a direct performance-completion of the `htTX0`/`3276b7c` casefold fix written this cycle. | `htvhC` -> `81815867` (blockquote-fence scanner does not recognize `>` prefixes; confirmed via `git log -S` this scanner predates cycle 4, introduced in cycle 2's `a898a7c`). |
+| 8 | `949aca8` | `ht1tJ`, `ht1tX` | -- | `ht1tJ`: round 7's O(1) rewrite silently assumed `planned_dest_paths` was always a `_CaseFoldedPathSet`; a caller-supplied plain `set[str]` bypassed the case-folded index, undoing the `htTX0` cross-platform guarantee. Fixed by always validating through an internal `_CaseFoldedPathSet` and syncing the caller's own object afterward (including on the exception path, via `try`/`finally`) -- a direct correction of this cycle's own round-7 code. | `ht1tX` -> `19675EF9` (`main()`'s preflight/execute calls only catch `ContainmentViolation`/`DestinationCollisionError`, not general `OSError`; confirmed pre-existing since the original feature commit, related to but distinct from `1E7CCBF7`). |
+| 9 | `8a46d20` | `ht7F8` | design-doc §13 ledger stale; PR-body readiness stale; PR-body operator command missing `--allow-unresolved-mdx` (all three addressed by this same PR-body/design-doc refresh) | `ht7F8`: round-7 comment in `_record_planned_path` describing a "falls back to plain-set exact-match" path became stale/incorrect after round 8's fix; corrected (comment-only, no logic change) as a direct completion of round 8. | -- |
+
+Final state after round 9 (HEAD `8a46d20`): **0 unresolved Copilot-authored
+threads** (39 total threads across the whole PR, all resolved, full-pagination
+re-verified). CI green on every required check except the known
+pre-existing `pipeline-topology (ambient)` `BRANCH_MISMATCH` failure
+(confirmed via `commits/8dac2ee/check-runs` to already be failing at
+cycle 4's very first commit -- unrelated to any Copilot finding, out of
+scope). Full local build evidence at final HEAD: targeted HashiCorp
+suite 127 passed (1 deselected); full repo suite 2237 passed, 2
+skipped, 16 deselected; `ruff check` / `ruff format --check` clean;
+`pyright src/` 0 errors.
+
+New P-021 deferred-scope-expansion stash entries created across rounds
+5-8 (in addition to the five in §13.5): `F42911A1` (medium, threadless),
+`F144B331` (low, thread-present, `htp9L`), `81815867` (medium,
+thread-present, `htvhC`), `19675EF9` (low, thread-present, `ht1tX`).
+Every entry was discovery-checked against both the active and archived
+stash before creation (none had a prior reusable match) and follows the
+full six-field P-021 C2 payload contract.
+
+Given the strength of this pattern (nine consecutive review-triggering
+pushes), rounds 4-9 are considered the practical convergence point for
+this review-fix cycle: round 9 introduced zero new code findings beyond
+a stale-comment correction and pure documentation-freshness reminders
+addressed by this very update. Further Copilot re-review may still
+surface additional documentation-freshness comments each time this
+document or the PR body is edited (a known, unavoidable side effect of
+any post-fix edit re-arming automated review) -- this is called out
+explicitly to the operator rather than chased through a tenth round.
