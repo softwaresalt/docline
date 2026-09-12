@@ -426,7 +426,30 @@ def restore_placeholders(body: str, store: dict[str, str]) -> str:
 #: every known real-corpus example, including this finding's own
 #: ``` `<PluginBadge type="official" />` ``` case) is still matched
 #: correctly either way.
-_INLINE_CODE_RE = re.compile(r"(?P<fence>`+)(?P<body>.+?)(?P=fence)(?!`)")
+#:
+#: Both the OPENING and CLOSING backtick runs are additionally required
+#: to be MAXIMAL (Copilot review cycle 4, follow-up round 6: a malformed
+#: sequence with UNEQUAL delimiter-run lengths -- e.g. an opening run of
+#: 3 backticks with no matching 3-backtick close anywhere, but a shorter
+#: 2-backtick run later -- could otherwise still be "matched" because
+#: the greedy ``(?P<fence>`+)`` backtracks to a SHORTER count, silently
+#: absorbing the leftover backtick(s) from the true opening run into
+#: ``body`` instead of correctly failing to match at all. Per
+#: CommonMark, a backtick string is a valid code-span delimiter only
+#: when it is neither preceded nor followed by another backtick (i.e.
+#: it is the FULL, maximal run at that position). The ``(?<!`)`` /
+#: ``(?!`)`` guards immediately around the opening ``fence`` group
+#: enforce that for the opening delimiter (a shortened backtracked
+#: capture would always be immediately followed by the leftover
+#: backtick it gave up, failing the trailing ``(?!`)``); the ``(?<!`)``
+#: immediately before the closing ``(?P=fence)`` enforces the same
+#: maximality for the closing delimiter (rejecting a "close" that
+#: actually starts partway through a longer backtick run). Together
+#: these force a genuinely unequal/malformed delimiter sequence to be
+#: left as literal, unmasked text -- exactly CommonMark's behavior for
+#: an unterminated code span -- rather than silently hiding real
+#: JSX/HTML-looking content from the unresolved-construct execute gate.
+_INLINE_CODE_RE = re.compile(r"(?<!`)(?P<fence>`+)(?!`)(?P<body>.+?)(?<!`)(?P=fence)(?!`)")
 _INLINE_CODE_TOKEN_FMT = "\x00INLINECODE{index}\x00"
 
 

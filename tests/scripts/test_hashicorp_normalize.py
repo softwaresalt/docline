@@ -604,6 +604,29 @@ def test_protect_inline_code_leaves_unterminated_backticks_unmasked() -> None:
     assert store == {}
 
 
+def test_protect_inline_code_rejects_unequal_delimiter_runs_as_unmasked() -> None:
+    """Regression for Copilot review finding p8PV's follow-up (review-fix
+    cycle 4, follow-up round 6): a malformed sequence with UNEQUAL
+    backtick delimiter-run lengths -- an opening run of 3 backticks with
+    no matching 3-backtick close anywhere, but a shorter 2-backtick run
+    later -- must NOT be accepted as a valid code span via the greedy
+    ``(?P<fence>`+)`` group backtracking to a shorter count and silently
+    absorbing the leftover backtick from the true opening run into
+    ``body``. Per CommonMark, a backtick string is a valid delimiter
+    only when neither preceded nor followed by another backtick (i.e.
+    "maximal"); this malformed sequence has no matching maximal closing
+    run, so -- exactly like the existing unterminated-single-backtick
+    case above -- it must be left as literal, unmasked text, keeping the
+    JSX-looking ``<UnknownWidget />`` visible to the unresolved-construct
+    execute gate rather than silently hiding it inside a false code-span
+    match.
+    """
+    body = "See ```<UnknownWidget /> `` for details."
+    protected, store = normalize.protect_inline_code(body)
+    assert protected == body
+    assert store == {}
+
+
 def test_normalize_mdx_to_md_preserves_jsx_looking_text_inside_inline_code() -> None:
     """Integration regression for finding p8PV: JSX-looking text written
     INSIDE an inline code span must survive verbatim in the normalized
