@@ -61,7 +61,7 @@ embedded URL. Rejected: `sanitize_source` is a general primitive also used by
 `create_staging_job` on bare sources; overloading it with source-key grammar couples two
 concerns and risks regressions on the bare-URL callers.
 
-### Option B — New source-config-aware sanitizer `sanitize_source_key()` (CHOSEN; contract amended R3/R4/R5/R6)
+### Option B — New source-config-aware sanitizer `sanitize_source_key()` (CHOSEN; contract amended R3/R4/R5/R6/R7)
 Add a dedicated helper (co-located with `build_source_key` in `source_keys.py`) that consumes the
 **typed `SourceConfig`** (not the composed key string): for the two leak-scoped crawl configs
 (`WebCrawlSource` / `ManifestUrlSource`) it sanitizes the typed `config.url` via the existing
@@ -123,6 +123,26 @@ surgically redact. `sanitize_source_key()` wraps the `config.url` sanitize fail-
 (`<source-url-redacted>` on a malformed URL), so the whole helper is total. `job_id` still hashes the
 raw `build_source_key(config)` (determinism invariant unchanged).
 
+**R7 refinement (Copilot review, PR #195 cycle 4 / operator remediation cycle 5, unresolved threads
+`PRRT_kwDOSsAX4c6h05Dd` (task 072.001-T line 18) / `PRRT_kwDOSsAX4c6h05Ds` (plan lines 174/178)):**
+the R6 marker-gated `sanitize_source_id()` classified credential parameter names over the RAW id
+bytes, but the URL sanitizer it must stay consistent with classifies names AFTER `parse_qsl`
+percent-decoding (`src/docline/fetch/staging.py:109-115`). A percent-encoded credential key such as
+`%74oken=IDSECRET` decodes to the recognized `token=IDSECRET`, so the raw scan matched nothing, the
+no-marker branch returned the id VERBATIM, and the secret leaked into `metadata.source` and the ERROR
+log (both URL-shaped and opaque non-URL ids). The contract is refined so detection classifies
+parameter names on a DECODED VIEW using the same semantics `parse_qsl` uses -- exactly one
+`urllib.parse.unquote` pass, `encoding="utf-8"`, `errors="replace"`, never `.port` -- so encoded
+credential names are recognized. The decode is DETECTION-ONLY (the returned id is built from the raw
+bytes; a marker-bearing fragment is surgically redacted in place with its raw encoded key preserved
+and only the value replaced). The single pass mirrors `parse_qsl` exactly, so a double-encoded key
+(`%2574oken` -> literal `%74oken`) is left un-redacted just as the URL sanitizer leaves it (id/URL
+consistency, no over-redaction, guaranteed termination), and `errors="replace"` keeps malformed /
+non-UTF8 percent sequences total and non-throwing. Encoded-key, double-encoded, malformed-percent, and
+encoded-userinfo regressions are added to Unit 1; an encoded-key manifest-id regression is added to
+Unit 2. `job_id` still hashes the raw `build_source_key(config)`; the `_CREDENTIAL_PARAM_PREFIXES`
+vocabulary is NOT expanded (`06A59B1D` deferred).
+
 ### Option C — Redact by not logging / not persisting the key at all
 Drop `source_key` from the log and store only `job_id` in metadata. Rejected: loses
 operator-facing diagnostic value (sanitized host/path is useful) and changes the metadata
@@ -130,7 +150,7 @@ contract more than necessary; the existing test depends on a source field being 
 
 ## Chosen Direction
 
-**Option B (typed-config contract, R6).** Introduce
+**Option B (typed-config contract, R7).** Introduce
 `sanitize_source_key(config: SourceConfig) -> str` that sanitizes the typed `config.url` (via
 `sanitize_source()`) AND, for `ManifestUrlSource`, credential-redacts the `config.id` segment via a
 `sanitize_source_id()` helper that redacts INDEPENDENT of URL detection (strip userinfo + redact
@@ -150,7 +170,12 @@ credential-free `id` of ANY shape (including a malformed URL-shaped `https://hos
 preserved verbatim (byte-for-byte, no `sanitize_source()` path/fragment mangling), a marker-bearing
 `id` is surgically redacted, and `<source-id-redacted>` is reserved ONLY for a marker-bearing `id`
 whose surgical redaction cannot complete. Neither path raises into the pre-`try` metadata build or
-the exception logger.
+the exception logger. The R7 refinement further requires `sanitize_source_id()` to classify credential
+parameter names on a single-`unquote` decoded view mirroring `parse_qsl` (utf-8, `errors="replace"`,
+no `.port`), so a percent-encoded credential key (`%74oken` -> `token`) is recognized rather than
+bypassing the marker gate; the decode is detection-only (redaction still operates over the raw bytes)
+and the single pass keeps id/URL handling consistent for double-encoded and malformed percent
+sequences without over-redaction or non-termination.
 
 ## Done Looks Like
 
@@ -174,6 +199,11 @@ the exception logger.
   whose surgical redaction cannot complete -- never for a credential-free or merely-malformed `id`.
   So metadata construction before the fetch `try` and the exception logger cannot crash or mask a
   fetch failure (R6).
+- No percent-encoded credential parameter name bypasses redaction: `sanitize_source_id()` classifies
+  names on a single-`unquote` decoded view mirroring `parse_qsl`, so `%74oken=IDSECRET` (decoding to
+  `token`) is surgically redacted (encoded key preserved, value redacted) rather than returned
+  verbatim, while a double-encoded or malformed/non-UTF8 percent sequence is handled by the same
+  bounded, non-throwing single pass -- consistent with the URL sanitizer and terminating (R7).
 
 ## Covering Feature Synthesis
 

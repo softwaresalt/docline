@@ -6,7 +6,7 @@ kind: implementation-plan
 source: docs/decisions/2026-09-12-source-key-credential-sanitization.md
 stash_id: D6E758F5
 covering_release_unit: chore
-revision: R6
+revision: R7
 ---
 
 # Implementation Plan: Source-key credential sanitization (stash D6E758F5)
@@ -82,6 +82,34 @@ Source document: `docs/decisions/2026-09-12-source-key-credential-sanitization.m
 > hashes the raw `build_source_key(config)` (determinism invariant unchanged). The decision doc,
 > feature card 072-F, and tasks 072.001-T/072.002-T/072.003-T are updated to match.
 
+> **Revision R7** -- revised after Copilot review on PR #195 cycle 4 (operator remediation
+> cycle 5; unresolved threads `PRRT_kwDOSsAX4c6h05Dd`, task `072.001-T` line 18, comment db
+> `3998103338`, and `PRRT_kwDOSsAX4c6h05Ds`, plan lines 174/178, comment db `3998103357`). Two
+> same-contract-surface findings on the R6 `sanitize_source_id` marker scan: the marker detector
+> classifies credential parameter names over the RAW id bytes, but the URL sanitizer it must stay
+> consistent with classifies names AFTER `parse_qsl` percent-decoding
+> (`src/docline/fetch/staging.py:109-115`). So a percent-encoded credential key such as
+> `%74oken=IDSECRET` -- which `parse_qsl` decodes to the recognized `token=IDSECRET` -- has no raw
+> key matching the vocabulary, the R6 no-marker branch returns the id VERBATIM, and `IDSECRET` leaks
+> into `metadata.source` and the ERROR log (both the URL-shaped `id` and the opaque non-URL `id`).
+> The contract is refined so `sanitize_source_id()` marker detection classifies parameter names on a
+> DECODED VIEW using the SAME semantics `parse_qsl` uses -- exactly one `urllib.parse.unquote` pass,
+> `encoding="utf-8"`, `errors="replace"`, never `.port` -- so an encoded credential name is
+> recognized. The decode is used for DETECTION ONLY: the returned id is still built from the ORIGINAL
+> raw bytes (credential-free id VERBATIM; a marker-bearing fragment surgically redacted in place with
+> its raw, possibly-encoded key preserved and only the value replaced by `<redacted>`;
+> `<source-id-redacted>` only when surgical redaction cannot complete). The single decode pass mirrors
+> `parse_qsl` exactly, so a DOUBLE-encoded key (`%2574oken`, which decodes once to the literal
+> `%74oken`, not `token`) is NOT treated as a marker -- identical to how the URL sanitizer leaves it
+> -- keeping id and URL handling consistent, avoiding over-redaction of credential-free ids, and
+> guaranteeing termination (no decode-until-stable loop). `errors="replace"` makes malformed /
+> non-UTF8 percent sequences (`%zz`, a truncated `%e0`) total and non-throwing (they decode to
+> replacement characters, match no credential name, and the credential-free id is returned verbatim).
+> The helper stays TOTAL, non-throwing, and marker-gated; `job_id` still hashes the raw
+> `build_source_key(config)` and the `_CREDENTIAL_PARAM_PREFIXES` vocabulary is NOT expanded (that
+> stays deferred as `06A59B1D`). The decision doc, feature card 072-F, and tasks
+> 072.001-T/072.002-T/072.003-T are updated to match.
+
 ## Problem Frame
 
 `_execute_single_source` (`src/docline/elt/execute.py:203`) computes
@@ -107,6 +135,7 @@ metadata/log representation may be sanitized.
 | No credential in the manifest_url `id` segment (URL-shaped OR non-URL-form) | Marker-gated `sanitize_source_id(config.id)` credential redaction independent of URL detection before recompose; scheme-bearing AND non-URL credential-bearing-id cases (Unit 1, R6) |
 | Helper is TOTAL / fail-closed -- never raises for arbitrary unrestricted `str` (malformed URL/id yields a redacted fallback, not an exception) | Fail-closed wrapper around the `config.url` sanitize + non-throwing marker-gated `sanitize_source_id`; malformed-input unit + integration regression (Units 1, 2, R6) |
 | Credential-free IDs preserved verbatim (absolute paths, `file://`, fragment-bearing URLs) | `sanitize_source_id` returns the id byte-for-byte when no credential marker is present -- no `sanitize_source()` path/fragment mangling (Unit 1, R6) |
+| Percent-encoded credential parameter names recognized (no encoding bypass) | `sanitize_source_id` marker detection classifies parameter names on a single-`unquote` decoded view mirroring `parse_qsl` (utf-8, `errors="replace"`, no `.port`); encoded-key surgical redaction + double-encoded / malformed-percent regressions (Unit 1, Unit 2, R7) |
 | Do not change `job_id` determinism | Keep `make_job_id(source_key)` on raw key; sanitize only metadata/log (Unit 3) |
 | No credential in `metadata.source` or ERROR log (incl. traceback) | Route both sinks through helper; assert against `caplog.text` (Units 2, 3) |
 | Redaction observed before production change | Author failing redaction test first (Unit 2 before Unit 3) |
@@ -171,10 +200,22 @@ Mapped against `.github/instructions/constitution.instructions.md` (actual princ
        where `sanitize_source_id(raw_id: str) -> str` is TOTAL, non-throwing, and MARKER-GATED. It
        does NOT delegate to `sanitize_source()` (whose absolute-path/`file://` redaction and fragment
        drop would mangle a credential-free id, and whose `_sanitize_url()` can raise). Instead:
-       (a) **detect credential markers** with a non-throwing string/regex scan only -- `user:pass@`
-       (or `user@`) userinfo before a host, and any `key=value` fragment whose key (case-insensitive)
-       matches the EXISTING `_CREDENTIAL_PARAM_PREFIXES` vocabulary (reuse -- do NOT expand the list;
-       that expansion stays deferred as stash `06A59B1D`); detection never calls `urllib` `.port`;
+       (a) **detect credential markers** with a non-throwing scan over a DECODED VIEW of the id --
+       `user:pass@` (or `user@`) userinfo before a host, and any `key=value` fragment whose key
+       (case-insensitive) matches the EXISTING `_CREDENTIAL_PARAM_PREFIXES` vocabulary (reuse -- do
+       NOT expand the list; that expansion stays deferred as stash `06A59B1D`). **[R7] Classify
+       parameter names on the decoded view, not the raw bytes:** the URL sanitizer this helper must
+       stay consistent with classifies names AFTER `parse_qsl` percent-decoding
+       (`src/docline/fetch/staging.py:109-115`), so detection percent-decodes each parameter-name
+       token with EXACTLY ONE `urllib.parse.unquote` pass mirroring `parse_qsl`'s own semantics
+       (`encoding="utf-8"`, `errors="replace"`), so an encoded credential key such as
+       `%74oken=IDSECRET` (decodes to `token`) IS recognized. The single decode pass is bounded and
+       terminating (NO decode-until-stable loop): a DOUBLE-encoded key (`%2574oken`, which decodes
+       once to the literal `%74oken`, not `token`) is NOT a marker -- identical to how the URL
+       sanitizer leaves it -- so id and URL handling stay consistent and credential-free ids are not
+       over-redacted. `errors="replace"` makes malformed / non-UTF8 percent sequences (`%zz`, a
+       truncated `%e0`) total and non-throwing. The decoded view is used for DETECTION ONLY (see (c)
+       for redaction over the raw bytes); detection never calls `urllib` `.port`;
        (b) **no marker -> return `raw_id` byte-for-byte** (verbatim), so a credential-free id of ANY
        shape -- an absolute path such as `/source-a`, a `file://` value, or a fragment-bearing URL
        such as `https://host/x#frag` -- is preserved exactly (Closes PR #195 Copilot finding
@@ -216,7 +257,7 @@ Mapped against `.github/instructions/constitution.instructions.md` (actual princ
   (`https://host/x#frag`), and (f) [R6] a credential-free MALFORMED URL-shaped `id`
   (`https://host:notaport`, no marker) each returned VERBATIM (byte-for-byte, no path-redaction,
   fragment retained, malformed port preserved with no port parse). (3) non-crawl configs (`GitHubRepoSource`, `LocalFileSource`) returned byte-identical
-  AND an empty-option credentialed `WebCrawlSource` sanitized.
+  AND an empty-option credentialed `WebCrawlSource` sanitized. **[R7] Encoded-credential-name id scenarios (added):** (g) a percent-encoded credential-name id `srcA?%74oken=IDSECRET` (opaque, no scheme) AND its URL-shaped form `https://host/x?%74oken=IDSECRET` -- each decodes to `token` on the detection view -> SURGICALLY redacted to `srcA?%74oken=<redacted>` / `https://host/x?%74oken=<redacted>` (raw encoded key bytes preserved, only the value redacted over the raw string), `IDSECRET` ABSENT; (h) a DOUBLE-encoded id `srcA?%2574oken=IDSECRET` (decodes ONCE to the literal `%74oken`, not `token`) -> returned VERBATIM byte-for-byte, consistent with the URL sanitizer's own single-pass `parse_qsl` decode (pins the bounded single decode; no decode-until-stable loop); (i) a credential-free id carrying a malformed / non-UTF8 percent sequence (`srcA?note=%zz`, `srcA?b=%e0%80`) -> `unquote(..., errors="replace")` does not raise, no credential name matches, id returned VERBATIM; (j) a percent-encoded userinfo id `https://user%3Apass@host/x` (decodes to `user:pass@`) -> userinfo marker detected on the decoded view and stripped from the raw id, credential ABSENT.
 - **Posture:** test-first. Reuses vetted `sanitize_source` without altering it.
 
 ### Unit 2 — Author failing redaction test (tests; test-first RED)
@@ -229,7 +270,7 @@ Mapped against `.github/instructions/constitution.instructions.md` (actual princ
   AND from the written `metadata.json` text — the injected crawl failure MUST raise an exception
   whose message embeds the credentialed `config.url` (e.g. an error carrying `start_url`), so the
   `caplog.text` traceback assertion is a genuine RED and is NOT vacuously satisfied by a URL-free
-  message like `OSError("Network down")`; (c2) add a `ManifestUrlSource` whose `id` is a NON-URL-form credential-bearing string (`srcA?token=IDSECRET`, no scheme) and assert `IDSECRET` is ABSENT from both `caplog.text` and the written `metadata.json` (R5 regression for the non-URL-form-id closure); (c3) [R6] add a MALFORMED credentialed config whose URL would make `_sanitize_url` raise (`https://host:notaport?token=SECRET`) and assert `_execute_single_source` does NOT crash with a sanitizer `ValueError` (it proceeds to the normal fetch-failure path) and `SECRET` is ABSENT from both `caplog.text` and `metadata.json` (R6 totality/fail-closed regression); (d) assert `job_id == make_job_id(build_source_key(config))`
+  message like `OSError("Network down")`; (c2) add a `ManifestUrlSource` whose `id` is a NON-URL-form credential-bearing string (`srcA?token=IDSECRET`, no scheme) and assert `IDSECRET` is ABSENT from both `caplog.text` and the written `metadata.json` (R5 regression for the non-URL-form-id closure); (c3) [R6] add a MALFORMED credentialed config whose URL would make `_sanitize_url` raise (`https://host:notaport?token=SECRET`) and assert `_execute_single_source` does NOT crash with a sanitizer `ValueError` (it proceeds to the normal fetch-failure path) and `SECRET` is ABSENT from both `caplog.text` and `metadata.json` (R6 totality/fail-closed regression); (c4) [R7] add a percent-encoded credential-name manifest `id` (`srcA?%74oken=IDSECRET`, opaque) and assert `IDSECRET` is ABSENT from both `caplog.text` and `metadata.json` -- proving decoded-name detection closes the encoding bypass (the raw marker scan would miss `%74oken`); (d) assert `job_id == make_job_id(build_source_key(config))`
   recomputed independently from the raw credentialed key — this pin, NOT the credential-free parity
   test, is the raw-hash oracle: an impl that hashes the SANITIZED key MUST fail this assertion.
 - **Files:** `tests/elt/test_elt_real_execution.py`.
@@ -278,6 +319,13 @@ Mapped against `.github/instructions/constitution.instructions.md` (actual princ
   redaction cannot complete (never for a merely-malformed id); the separate `config.url` sanitize is
   wrapped fail-closed to `<source-url-redacted>` on a malformed URL. The helper is thus safe to call
   before the fetch `try` and inside the exception logger without crashing or masking.
+- **Decoded-name marker detection (R7)** -- `sanitize_source_id()` classifies credential parameter
+  names on a single-`unquote` decoded view mirroring `parse_qsl` (utf-8, `errors="replace"`, no
+  `.port`), so a percent-encoded credential key (`%74oken` -> `token`) is recognized and cannot
+  bypass the marker gate, while the decode is DETECTION-ONLY (returned id built from raw bytes) and
+  the single pass keeps id/URL handling consistent for double-encoded and malformed sequences without
+  over-redaction or non-termination. Reuses the existing vocabulary (no expansion; `06A59B1D` stays
+  deferred).
 - **Sanitize representation, not the hashed key** — only way to satisfy both "no leak" and
   "job_id determinism" simultaneously.
 
@@ -307,6 +355,19 @@ Mapped against `.github/instructions/constitution.instructions.md` (actual princ
   totality, verbatim preservation, and fail-closed behavior. `job_id` still hashes the raw key. This
   reuses the current `_CREDENTIAL_PARAM_PREFIXES` vocabulary WITHOUT expanding it (that expansion is
   separately deferred as `06A59B1D`).
+- **Risk (CLOSED by the R7 decoded-name detection):** the R6 marker scan classified credential
+  parameter names over the RAW id bytes, so a percent-encoded credential key (`%74oken=IDSECRET`,
+  decoding to `token`) matched nothing and the no-marker branch returned the id verbatim, leaking
+  `IDSECRET` into `metadata.source` and the ERROR log (PR #195 threads `PRRT_kwDOSsAX4c6h05Dd` /
+  `PRRT_kwDOSsAX4c6h05Ds`). **Mitigation:** detection now percent-decodes parameter names with exactly
+  one `unquote` pass mirroring `parse_qsl` (utf-8, `errors="replace"`, no `.port`) before matching,
+  so encoded credential names are recognized; the decode is detection-only (redaction still operates
+  over the raw bytes, preserving the encoded key and redacting only the value), the single pass leaves
+  a double-encoded key un-redacted exactly as the URL sanitizer does (no over-redaction, guaranteed
+  termination), and `errors="replace"` keeps malformed/non-UTF8 percent sequences total and
+  non-throwing. Unit 1 and Unit 2 add encoded-key, double-encoded, malformed-percent, and
+  encoded-userinfo regressions. `job_id` still hashes the raw key; vocabulary unchanged (`06A59B1D`
+  deferred).
 - **Risk:** `exc_info` traceback re-leaks the URL. **Mitigation:** Unit 2 asserts absence against
   `caplog.text` (full record incl. traceback), forcing Unit 3 to close the traceback path.
 - **Risk:** silently changing `job_id`. **Mitigation:** determinism assertion + parity test.
@@ -603,3 +664,68 @@ Stage-owned R5 artifacts, both on the `sanitize_source_id` / `sanitize_source_ke
 - **Independent review:** targeted independent review (this diff) -- totality/fail-closed closure,
   verbatim-preservation correctness, determinism invariant, and cross-artifact consistency
   confirmed. Verdict: PASS.
+
+## PR #195 Copilot Remediation -- Cycle 4 (Revision R7)
+
+Cycle-4 Copilot review on PR #195 (operator remediation cycle 5) raised two unresolved
+same-contract-surface findings on the Stage-owned R6 artifacts, both on the `sanitize_source_id`
+marker-detection contract:
+
+- `PRRT_kwDOSsAX4c6h05Dd` (task `072.001-T` line 18, comment db `3998103338`): the execution task
+  repeats the raw-regex marker design with no case for percent-encoded credential names; because the
+  existing sanitizer decodes query names before matching, `%74oken=IDSECRET` is semantically a
+  recognized `token` parameter, so a literal regex scan can miss it and return the unrestricted id
+  unchanged. Requires decoded-name matching plus an acceptance case proving the secret is absent.
+- `PRRT_kwDOSsAX4c6h05Ds` (plan lines 174/178, comment db `3998103357`): the raw-regex marker scan
+  leaves an encoding bypass in the central no-leak contract. The URL sanitizer classifies names after
+  `parse_qsl` decoding (`src/docline/fetch/staging.py:109-115`), but an id such as
+  `https://host/x?%74oken=SECRET` has no raw key matching `token`, so the no-marker branch returns it
+  verbatim and leaks `SECRET` into metadata and the error log. Classify decoded parameter names
+  without accessing `.port`, and add encoded-key regressions for URL-shaped and opaque ids.
+
+- **Classification (P-021 C1):** BOTH IN SCOPE -- same-contract-surface findings on Stage-owned
+  planning/backlog artifacts for feature 072-F / shipment 063-S (the `sanitize_source_id` marker
+  detector). Verified authoritatively against the live PR review threads at HEAD `11b7d39` (Copilot
+  login `copilot-pull-request-reviewer`); a full GraphQL enumeration of all 15 review threads confirms
+  these are the ONLY two unresolved threads (no additions since the prior snapshot). Fixed in-cycle
+  under the operator's continue-autonomously authorization; NEITHER deferred; no P-021 C2 capture
+  required. The erroneously-appended deferral stash entry `C53CF18E` (which had proposed deferring
+  exactly this fix) is reconciled as superseded/fixed-in-scope and archived, not carried as a deferral.
+- **Fix (R7) -- decoded-name detection:** `sanitize_source_id()` marker detection now classifies
+  credential parameter names on a DECODED VIEW using the same semantics `parse_qsl` uses -- exactly
+  one `urllib.parse.unquote` pass, `encoding="utf-8"`, `errors="replace"`, never `.port` -- so a
+  percent-encoded credential key such as `%74oken=IDSECRET` (decoding to `token`) is recognized. The
+  decode is DETECTION-ONLY: the returned id is still built from the ORIGINAL raw bytes -- a
+  credential-free id VERBATIM, a marker-bearing fragment surgically redacted in place with the raw
+  (possibly-encoded) key preserved and only the value replaced by `<redacted>`, and
+  `<source-id-redacted>` only when surgical redaction cannot complete. Closes `PRRT_kwDOSsAX4c6h05Dd`
+  / `PRRT_kwDOSsAX4c6h05Ds`.
+- **Termination / error behavior (explicit):** exactly one bounded decode pass (NO decode-until-stable
+  loop), so a double-encoded key (`%2574oken` -> literal `%74oken`, not `token`) is NOT treated as a
+  marker -- identical to the URL sanitizer's own single `parse_qsl` decode, keeping id and URL handling
+  consistent and avoiding over-redaction of credential-free ids; `errors="replace"` makes malformed /
+  non-UTF8 percent sequences (`%zz`, truncated `%e0`) total and non-throwing; detection never parses
+  ports; any internal redaction failure on a marker-bearing id fails closed to `<source-id-redacted>`.
+  The helper stays TOTAL, non-throwing, and marker-gated.
+- **Regression scenarios added:** Unit 1 -- (g) encoded-key id `srcA?%74oken=IDSECRET` and URL-shaped
+  `https://host/x?%74oken=IDSECRET` surgically redacted (encoded key preserved, value `<redacted>`,
+  `IDSECRET` absent); (h) double-encoded `srcA?%2574oken=IDSECRET` returned VERBATIM (bounded single
+  decode); (i) malformed/non-UTF8 percent (`srcA?note=%zz`, `srcA?b=%e0%80`) credential-free id
+  returned verbatim without raising; (j) percent-encoded userinfo `https://user%3Apass@host/x`
+  userinfo stripped. Unit 2 -- a percent-encoded credential-name manifest id asserts `IDSECRET` absent
+  from `caplog.text` and `metadata.json`.
+- **Invariants preserved:** `make_job_id` still hashes the raw `build_source_key(config)` (job-id
+  determinism unchanged); `_CREDENTIAL_PARAM_PREFIXES` NOT expanded (vocabulary-expansion stays
+  deferred as `06A59B1D`); crawl `config.url` handling unchanged (the URL path already decodes via
+  `parse_qsl`, so it was never subject to this bypass).
+- **Artifacts updated:** this plan (frontmatter revision R7, Revision R7 note, Requirements Trace,
+  Unit 1, Unit 2, Decisions, Risks, this section), the decision doc (Option B R7 refinement, Chosen
+  Direction, Done Looks Like), feature card 072-F, and tasks 072.001-T / 072.002-T / 072.003-T.
+- **Stash reconciliation:** erroneous active stash entry `C53CF18E` (Ship's out-of-scope deferral of
+  this exact fix) archived as superseded/fixed-in-scope; the unrelated pre-existing 3-line
+  timestamp-normalization working-copy diff on `0F1A653C` / `79BF0AEC` / `06A59B1D` preserved
+  byte-for-byte and excluded from the fix commit.
+- **Independent review:** targeted independent correctness/security review (this diff) -- decoded-name
+  detection closes the encoding bypass, detection-only decode preserves determinism and verbatim
+  credential-free ids, single-pass bound guarantees termination, `errors="replace"` guarantees
+  totality, cross-artifact consistency confirmed. Verdict: PASS.
