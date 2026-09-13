@@ -54,6 +54,7 @@ from docline.elt.manifest_models import ManifestGitSource, ManifestLocalSource, 
 from docline.elt.models import GitHubRepoSource, LocalFileSource, SourceConfig, WebCrawlSource
 from docline.elt.source_keys import (
     _is_credential_name,
+    _strip_reversed_query_credentials,
     build_source_key,
     sanitize_source_id,
     sanitize_source_key,
@@ -75,10 +76,16 @@ from docline.schema.models import DoclineError
 _ELT_GENERATED_DIR_PREFIXES: tuple[str, ...] = ("runtime-staging", "runtime-output")
 _STAGED_WEB_METADATA_SUFFIX = ".meta.json"
 _CRAWL_MANIFEST_NAME = "crawl-manifest.json"
-_HTTP_URL_RE = re.compile(r"https?://[^\s'\"<>]+")
+# The trailing optional group lets a URL match absorb a directly-adjacent
+# quoted or angle-bracketed span (e.g. `token="SECRET"`) as part of the same
+# match. Without it, the base `[^\s'"<>]+` run stops right before the
+# opening delimiter, leaving the quoted/bracketed credential value entirely
+# outside the matched span -- and therefore untouched by any redaction pass
+# that operates on the match text (see U-2).
+_HTTP_URL_RE = re.compile(r"https?://[^\s'\"<>]+(?:\"[^\"]*\"|'[^']*'|<[^>]*>)?")
 _QUERY_PARAM_TOKEN_RE = re.compile(
     r"(?P<prefix>[?&])(?P<name>[^=?\s&#]+)="
-    r"(?P<value>[^?\s&#'\"<>]*)"
+    r"(?P<value>\"[^\"]*\"|'[^']*'|<[^>]*>|[^?\s&#'\"<>]*)"
 )
 _log = logging.getLogger(__name__)
 
@@ -369,10 +376,11 @@ def _exception_scrub_replacements(config: SourceConfig) -> list[tuple[str, str]]
 
 def _sanitize_exception_text(raw_value: str) -> str:
     """Return a scrubbed text fragment safe to embed in failure logs."""
+    stripped_value = _strip_reversed_query_credentials(raw_value)
     try:
-        sanitized = sanitize_source(raw_value)
+        sanitized = sanitize_source(stripped_value)
     except ValueError:
-        sanitized = raw_value
+        sanitized = stripped_value
     return sanitize_source_id(sanitized)
 
 

@@ -43,6 +43,30 @@ class TestSanitizeSourceKey:
         assert "SECRET" not in sanitized
         assert "user:pass@" not in sanitized
 
+    def test_redacts_reversed_multi_query_delimiter_crawl_url_credentials(self) -> None:
+        """sanitize_source_key drops a credential hidden behind a reversed ?-joined token.
+
+        Regression test for C-1: ``parse_qsl`` (used internally by
+        ``staging.sanitize_source``) only splits query components on ``&``, so a
+        second ``?`` embedded inside a value (e.g. ``?detail=x?token=SECRET``) makes
+        the entire ``x?token=SECRET`` text the value of ``detail``, hiding
+        ``token=SECRET`` from the credential-param filter and leaving the literal
+        secret unredacted (merely percent-encoded) after ``urlencode`` runs.
+        """
+        config = WebCrawlSource(
+            type="web_crawl",
+            url="https://host/x?detail=x?token=SECRETTOKEN123",
+            depth=0,
+            max_pages=None,
+            domain_lock=True,
+            rate_limit_ms=0,
+        )
+
+        sanitized = sanitize_source_key(config)
+
+        assert "SECRETTOKEN123" not in sanitized
+        assert sanitized == "web_crawl:https://host/x?detail=x"
+
     def test_redacts_malformed_crawl_url_without_raising(self) -> None:
         """sanitize_source_key fails closed for malformed crawl URLs."""
         config = WebCrawlSource(
@@ -418,3 +442,33 @@ class TestSanitizeSourceId:
 
         assert sanitized == "https://host/x"
         assert "user%3Apass" not in sanitized
+
+    def test_fails_closed_for_ambiguous_multi_at_authority(self) -> None:
+        """sanitize_source_id redacts to the fail-closed sentinel for a 2-``@`` authority.
+
+        Regression test for U-1: ``_contains_userinfo_marker`` used to return
+        ``False`` whenever the authority held more than one ``@``, which skipped
+        ``sanitize_source_id``'s marker gate entirely and returned the raw
+        credential-bearing identifier byte-for-byte unchanged -- worse than the
+        documented fail-closed sentinel behaviour that ``_strip_userinfo`` already
+        implements (but could never reach) for this exact ambiguous shape.
+        """
+        raw_id = "https://" + "user" + ":" + "pass" + "@evil@host/x"
+
+        sanitized = sanitize_source_id(raw_id)
+
+        assert "pass" not in sanitized
+        assert sanitized == "<source-id-redacted>"
+
+    def test_preserves_single_at_userinfo_redaction(self) -> None:
+        """sanitize_source_id still redacts a genuine single-``@`` authority (no regression)."""
+        sanitized = sanitize_source_id("https://user:pass@host/x")
+
+        assert sanitized == "https://host/x"
+        assert "pass" not in sanitized
+
+    def test_preserves_credential_free_identifier_with_no_at_sign(self) -> None:
+        """sanitize_source_id passes through a credential-free, ``@``-free identifier."""
+        raw_id = "https://host/x?other=1"
+
+        assert sanitize_source_id(raw_id) == raw_id

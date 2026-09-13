@@ -158,13 +158,61 @@ def _crawl_option_parts(
 
 def _sanitize_url_field(raw_url: str) -> str:
     """Return a fail-closed sanitized URL field."""
+    stripped_url = _strip_reversed_query_credentials(raw_url)
     try:
-        sanitized = sanitize_source(raw_url)
+        sanitized = sanitize_source(stripped_url)
     except ValueError:
         return _SOURCE_URL_REDACTED
     if sanitized.lower().startswith(("http://", "https://")):
         return _remove_credential_query_params(sanitized)
     return sanitized
+
+
+def _strip_reversed_query_credentials(raw_value: str) -> str:
+    """Drop ``?``/``&``-joined credential-bearing query/fragment tokens up front.
+
+    ``staging.sanitize_source`` (and any other URL-shape-specific processing
+    downstream) only treats ``&`` as a query-token boundary, via
+    ``urllib.parse.parse_qsl``. When a value contains a *reversed* or duplicated
+    ``?`` boundary (e.g. ``?detail=x?token=SECRET``), the entire
+    ``x?token=SECRET`` text becomes the single value of ``detail``, hiding
+    ``token=SECRET`` from that credential-param filter. Worse, the later
+    ``urlencode`` step then percent-encodes the embedded ``?``/``=`` characters
+    while leaving the literal secret text completely unredacted.
+
+    This pre-pass uses the same ``?``/``&``-aware token splitter as
+    :func:`_remove_credential_query_params` to drop (not redact-in-place)
+    credential-named tokens from the raw query/fragment *before* any
+    URL-shape-specific processing runs, closing that gap regardless of how many
+    ``?`` characters appear in the query/fragment text.
+
+    Args:
+        raw_value: Raw URL or URL-shaped text to pre-scrub.
+
+    Returns:
+        *raw_value* with credential-bearing query/fragment tokens dropped.
+    """
+    prefix, fragment_sep, fragment = raw_value.partition("#")
+    base, query_sep, query = prefix.partition("?")
+
+    def _strip_component(component: str) -> str:
+        survivors = [
+            token
+            for token in _split_query_component_preserving_separators(component)[::2]
+            if not _token_has_credential_name(token)
+        ]
+        return "&".join(token for token in survivors if token != "")
+
+    result = base
+    if query_sep:
+        stripped_query = _strip_component(query)
+        if stripped_query:
+            result = f"{result}?{stripped_query}"
+    if fragment_sep:
+        stripped_fragment = _strip_component(fragment)
+        if stripped_fragment:
+            result = f"{result}#{stripped_fragment}"
+    return result
 
 
 def _remove_credential_query_params(raw_url: str) -> str:
@@ -204,8 +252,14 @@ def _contains_userinfo_marker(raw_value: str) -> bool:
     if not _is_url_shaped(raw_value):
         return False
     raw_authority = _authority_segment(raw_value)
-    if raw_authority.count("@") != 1:
+    if "@" not in raw_authority:
         return False
+    if raw_authority.count("@") != 1:
+        # Ambiguous authority (more than one "@"): treat it as a marker so
+        # sanitize_source_id's try/except reaches _strip_userinfo's existing
+        # fail-closed ValueError path instead of returning the raw,
+        # credential-bearing identifier unchanged.
+        return True
     raw_userinfo, _ = raw_authority.split("@", 1)
     return _userinfo_has_marker(raw_userinfo)
 
