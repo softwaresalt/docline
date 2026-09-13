@@ -697,3 +697,166 @@ class TestUrlShapeGateMalformedSlashCount:
         """No regression: an identifier with no colon at all is completely unaffected."""
         assert _is_url_shaped("release@2026") is False
         assert sanitize_source_id("release@2026") == "release@2026"
+
+
+class TestUrlShapeGateLooseAuthorityUserinfoGuard:
+    """Regression tests for stash entry E462E1F0 (PR #198 round-5 Copilot finding).
+
+    Round 3's ``_URL_SCHEME_RE`` relaxation (``:/{1,2}`` -> ``:/*``) made
+    ``_is_url_shaped`` return ``True`` for any bare ``scheme:value`` identifier.
+    Because ``_contains_userinfo_marker``/``_strip_userinfo`` previously treated
+    *any* non-empty text before an ``@`` in that loose (non-``//``, non-exactly-
+    two-slash) authority segment as genuine userinfo, an arbitrary colon-prefixed
+    identifier containing ``@`` (e.g. a manifest ID like ``release:owner@2026``)
+    was silently corrupted to ``release:2026`` -- violating the documented
+    byte-for-byte-preservation contract for credential-free identifiers, even
+    though no genuine URL or credential was present.
+
+    The fix (see ``_has_authoritative_userinfo_context``) narrows a *loose*
+    (non-``//``, non-exactly-two-slash) authority match to only be
+    authoritative when the scheme name is one of a small, already-tested set
+    of recognized network schemes (``_LOOSE_AUTHORITY_KNOWN_SCHEMES``) --
+    directly matching the Copilot review's own suggested remediation
+    ("narrow zero-slash malformed-URL detection to the URL schemes/fields
+    that need it"). A strict authority (``//...`` or ``scheme://...``) is
+    unaffected by scheme name and keeps the pre-existing non-empty-userinfo
+    behavior regardless.
+
+    An earlier draft of this fix used an "internal colon in userinfo"
+    heuristic instead of a known-scheme allowlist; a follow-up adversarial
+    review (see
+    ``docs/closure/2026-09-13-sanitize-source-key-elt-error-paths-e462e1f0-e89dc095-adversarial-review.md``,
+    finding F1) found that heuristic silently stopped stripping a bare,
+    colon-less credential token under loose authority (e.g.
+    ``https:TOKEN@host``) -- a genuine new false negative reachable through
+    both ``_sanitize_url_field`` and ``_sanitize_exception_text``. The
+    known-scheme-allowlist design closes E462E1F0 without that regression;
+    see ``TestUrlShapeGateLooseAuthorityKnownSchemeStillStrips`` below for the
+    explicit regression guard.
+    """
+
+    def test_preserves_zero_slash_scheme_identifier_with_colonless_at_userinfo(self) -> None:
+        """No corruption: reported example, zero-slash scheme + colon-less userinfo."""
+        assert sanitize_source_id("release:owner@2026") == "release:owner@2026"
+
+    def test_preserves_single_slash_scheme_identifier_with_colonless_at_userinfo(self) -> None:
+        """No corruption: single-slash malformed scheme + colon-less userinfo."""
+        assert sanitize_source_id("release:/owner@2026") == "release:/owner@2026"
+
+    def test_preserves_three_slash_scheme_identifier_with_colonless_at_userinfo(self) -> None:
+        """No corruption at the exact strict/loose boundary: three slashes (one more
+        than the strict ``scheme://`` two-slash case) is still a loose match for an
+        unrecognized scheme, so a colon-free, credential-free identifier stays
+        byte-for-byte unchanged."""
+        assert sanitize_source_id("release:///owner@2026") == "release:///owner@2026"
+
+    def test_preserves_four_slash_scheme_identifier_with_colonless_at_userinfo(self) -> None:
+        """No corruption: four-slash malformed scheme + colon-less userinfo."""
+        assert sanitize_source_id("release:////owner@2026") == "release:////owner@2026"
+
+    def test_still_strips_loose_scheme_userinfo_with_internal_colon(self) -> None:
+        """No regression: a genuine malformed credential URL (userinfo carrying an
+        internal colon, e.g. ``user:pass``) is still detected and stripped under a
+        loose (non-``//``) authority match for a recognized scheme."""
+        sanitized = sanitize_source_id("https:owner:secret@2026")
+
+        assert sanitized == "https:2026"
+        assert "secret" not in sanitized
+
+    def test_release_owner_at_sign_is_still_url_shaped(self) -> None:
+        """No contract change to `_is_url_shaped` itself: it remains True for a
+        bare zero-slash scheme value; only the userinfo-marker gate is narrowed."""
+        assert _is_url_shaped("release:owner@2026") is True
+
+
+class TestUrlShapeGateLooseAuthorityKnownSchemeStillStrips:
+    """Regression tests for adversarial-review finding F1 (see
+    ``docs/closure/2026-09-13-sanitize-source-key-elt-error-paths-e462e1f0-e89dc095-adversarial-review.md``).
+
+    A bare, single-token, colon-less credential (e.g. a bearer token used as a
+    colon-less username) under a *loose* authority match for a RECOGNIZED
+    network scheme must still be stripped -- unlike the credential-free,
+    colon-less identifiers in ``TestUrlShapeGateLooseAuthorityUserinfoGuard``,
+    which all use scheme names outside ``_LOOSE_AUTHORITY_KNOWN_SCHEMES``.
+    Without this guard, an "internal colon in userinfo" heuristic (an earlier
+    draft of the E462E1F0 fix) would also stop stripping this genuinely
+    credential-bearing shape -- exactly the false negative F1 identified,
+    reachable via both ``_sanitize_url_field`` (persisted ``metadata.source``)
+    and ``_sanitize_exception_text`` (ELT error log).
+    """
+
+    def test_strips_bare_token_userinfo_under_zero_slash_known_scheme(self) -> None:
+        """A bare bearer-token credential under a zero-slash known-scheme malformed
+        URL is still stripped (no internal colon in the userinfo required)."""
+        sanitized = sanitize_source_id("https:TOKEN@host")
+
+        assert sanitized == "https:host"
+        assert "TOKEN" not in sanitized
+
+    def test_strips_bare_token_userinfo_field_end_to_end(self) -> None:
+        """Exercises the actual persisted-field entry point (not just the ID
+        helper) for the same bare-token, zero-slash malformed-URL shape."""
+        sanitized = _sanitize_url_field("https:TOKEN@host.example.com/path")
+
+        assert sanitized == "https:host.example.com/path"
+        assert "TOKEN" not in sanitized
+
+    def test_strips_bare_token_userinfo_under_single_slash_known_scheme(self) -> None:
+        """A bare bearer-token credential under a single-slash known-scheme
+        malformed URL is still stripped."""
+        sanitized = sanitize_source_id("https:/TOKEN@host")
+
+        assert sanitized == "https:/host"
+        assert "TOKEN" not in sanitized
+
+    def test_strips_bare_token_userinfo_under_four_slash_known_scheme(self) -> None:
+        """A bare bearer-token credential under a four-slash known-scheme
+        malformed URL is still stripped."""
+        sanitized = sanitize_source_id("https:////TOKEN@host")
+
+        assert sanitized == "https:////host"
+        assert "TOKEN" not in sanitized
+
+
+class TestUrlShapeGateUnderscoreScheme:
+    """Regression tests for stash entry E89DC095 (PR #198 round-6 Copilot finding).
+
+    ``_URL_SCHEME_RE``'s scheme-name character class excluded ``_``, so an
+    underscore-containing scheme never matched the pattern at all:
+    ``_is_url_shaped`` returned ``False``, the marker gate never ran, and
+    userinfo credentials passed through completely unsanitized.
+    """
+
+    def test_underscore_scheme_is_url_shaped(self) -> None:
+        """_is_url_shaped now recognizes an underscore-containing scheme."""
+        assert _is_url_shaped("custom_scheme://user:pass@host") is True
+
+    def test_strips_userinfo_from_underscore_scheme_url(self) -> None:
+        """sanitize_source_id strips userinfo credentials from an underscore-scheme URL."""
+        sanitized = sanitize_source_id("custom_scheme://user:pass@host")
+
+        assert sanitized == "custom_scheme://host"
+        assert "pass" not in sanitized
+
+    def test_preserves_underscore_scheme_credential_free_identifier(self) -> None:
+        """No regression: a credential-free underscore-scheme identifier is unchanged."""
+        assert sanitize_source_id("custom_scheme://host/x") == "custom_scheme://host/x"
+
+    def test_preserves_zero_slash_underscore_scheme_identifier_with_colonless_at_userinfo(
+        self,
+    ) -> None:
+        """No corruption: an underscore-containing scheme is not itself one of
+        ``_LOOSE_AUTHORITY_KNOWN_SCHEMES``, so a zero-slash malformed match with a
+        colon-less userinfo is preserved unchanged, exactly like any other
+        unrecognized scheme (see ``TestUrlShapeGateLooseAuthorityUserinfoGuard``).
+        This documents an intentional, narrow scoping boundary -- not a gap this
+        shipment's reported findings (both of which use a strict ``scheme://``
+        double-slash reproduction for the underscore case) require closing."""
+        assert sanitize_source_id("custom_scheme:owner@2026") == "custom_scheme:owner@2026"
+
+    def test_preserves_existing_production_underscore_scheme_prefix(self) -> None:
+        """No regression: passing a real production ``prefix:url`` key (which is never
+        actually routed through this function as a whole in production -- only the
+        typed ``.url`` sub-field is -- but is checked here directly for safety) with
+        no embedded credential marker stays byte-for-byte unchanged."""
+        assert sanitize_source_id("web_crawl:https://host/x") == "web_crawl:https://host/x"

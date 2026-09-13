@@ -12,8 +12,33 @@ from docline.fetch.staging import _is_credential_param, sanitize_source
 _MAX_CREDENTIAL_DECODE_LAYERS = 5
 _SOURCE_ID_REDACTED = "<source-id-redacted>"
 _SOURCE_URL_REDACTED = "<source-url-redacted>"
-_URL_SCHEME_RE = re.compile(r"^[A-Za-z][A-Za-z0-9+.-]*:/*")
+# Underscore is included so underscore-containing schemes (e.g. a
+# ``custom_scheme://`` value) are recognized as URL-shaped (stash entry
+# E89DC095) -- but note this also makes every one of docline's own
+# underscore-containing compound source-key prefixes (``web_crawl``,
+# ``github_repo``, ``manifest_local``, ``manifest_url``, ``manifest_git``,
+# ``local_file``) match as a "scheme" too. That is a latent, currently
+# unreachable defense-in-depth gap tracked separately (P-021 deferred, stash
+# entry pending) rather than closed here: no production call site re-feeds an
+# already-prefixed compound key back through this module's sanitizer
+# functions, so it is not live today. See ``_LOOSE_AUTHORITY_KNOWN_SCHEMES``
+# below for the related, deliberately narrow set of schemes trusted to
+# authorize a *loose* (malformed slash-count) authority-userinfo match.
+_URL_SCHEME_RE = re.compile(r"^(?P<scheme>[A-Za-z][A-Za-z0-9+_.-]*):(?P<slashes>/*)")
 _QUERY_COMPONENT_SEPARATOR_RE = re.compile(r"([&?;])")
+# Schemes recognized as network/URL schemes for the *loose* (non-``//``,
+# non-exactly-two-slash) malformed-authority match introduced in round 3 (see
+# ``_has_authoritative_userinfo_context`` below). Deliberately narrow and
+# case-insensitive: matches every scheme this module's existing malformed-URL
+# regression coverage already exercises (``https``/``ftp``/``ssh``), plus a
+# small set of other well-known network schemes for defense in depth. An
+# unrecognized scheme (e.g. an arbitrary manifest-ID-style prefix like
+# ``release:``) under a loose slash count is deliberately NOT treated as
+# authoritative, so it cannot be misdetected as URL userinfo and corrupted
+# (stash entry E462E1F0).
+_LOOSE_AUTHORITY_KNOWN_SCHEMES = frozenset(
+    {"http", "https", "ftp", "ftps", "ssh", "sftp", "git", "ws", "wss", "file"}
+)
 
 
 def build_source_key(config: SourceConfig) -> str:
@@ -274,11 +299,48 @@ def _contains_userinfo_marker(raw_value: str) -> bool:
         # credential-bearing identifier unchanged.
         return True
     raw_userinfo, _ = raw_authority.split("@", 1)
-    return _userinfo_has_marker(raw_userinfo)
+    authoritative = _has_authoritative_userinfo_context(raw_value)
+    return _userinfo_has_marker(raw_userinfo, authoritative_context=authoritative)
 
 
-def _userinfo_has_marker(raw_userinfo: str) -> bool:
-    """Return True when *raw_userinfo* is a present, unambiguous userinfo segment."""
+def _has_authoritative_userinfo_context(raw_value: str) -> bool:
+    """Return True when *raw_value*'s authority context is authoritative enough
+    to treat a present userinfo segment as genuine URL credentials.
+
+    A leading ``//`` (protocol-relative) or a scheme followed by exactly two
+    slashes (``scheme://...``) is the RFC 3986 authority marker and is always
+    authoritative, regardless of scheme name. Any other post-scheme-colon
+    slash count (zero, one, or three-plus -- the round-3 malformed-URL
+    relaxation, see ``_URL_SCHEME_RE``) is a *loose* match, which is
+    authoritative ONLY when the scheme name is one of the small, already-
+    tested set of recognized network schemes in
+    ``_LOOSE_AUTHORITY_KNOWN_SCHEMES``. An unrecognized scheme under a loose
+    slash count is NOT authoritative -- treating it as such would misdetect
+    an arbitrary colon-prefixed identifier (e.g. a manifest ID like
+    ``release:owner@2026``) as URL userinfo and corrupt it (regression, stash
+    entry E462E1F0). A recognized scheme under a loose slash count IS
+    authoritative regardless of whether the userinfo segment itself contains
+    an internal colon: a real credential is not guaranteed to be
+    ``user:pass``-shaped (e.g. a bare bearer token used as a colon-less
+    username, ``https:TOKEN@host``), and requiring one would silently stop
+    stripping such tokens.
+    """
+    if raw_value.startswith("//"):
+        return True
+    scheme_match = _URL_SCHEME_RE.match(raw_value)
+    if scheme_match is None:
+        return False
+    if len(scheme_match.group("slashes")) == 2:
+        return True
+    return scheme_match.group("scheme").lower() in _LOOSE_AUTHORITY_KNOWN_SCHEMES
+
+
+def _userinfo_has_marker(raw_userinfo: str, *, authoritative_context: bool) -> bool:
+    """Return True when *raw_userinfo* is a present, unambiguous userinfo segment
+    within an authoritative-enough context (see
+    :func:`_has_authoritative_userinfo_context`)."""
+    if not authoritative_context:
+        return False
     return raw_userinfo != ""
 
 
@@ -333,7 +395,8 @@ def _strip_userinfo(raw_value: str) -> str:
     if raw_authority.count("@") != 1:
         raise ValueError("ambiguous authority userinfo")
     raw_userinfo, raw_host = raw_authority.split("@", 1)
-    if not _userinfo_has_marker(raw_userinfo):
+    authoritative = _has_authoritative_userinfo_context(raw_value)
+    if not _userinfo_has_marker(raw_userinfo, authoritative_context=authoritative):
         return raw_value
     return f"{raw_value[:authority_start]}{raw_host}{raw_value[authority_end:]}"
 
