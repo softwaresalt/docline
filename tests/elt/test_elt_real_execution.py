@@ -563,6 +563,121 @@ class TestEltFetchUrlSource:
         assert "SECRETTOKEN123" not in caplog.text
         assert "https://example.com/docs?detail=x" in failure_record.getMessage()
 
+    def test_url_fetch_failure_scrubs_uppercase_scheme_credential_url(
+        self,
+        tmp_path: Path,
+        caplog,
+    ) -> None:
+        """execute_elt_fetch redacts userinfo in an uppercase-scheme URL.
+
+        Regression test for PR #198 Finding A: ``_HTTP_URL_RE`` only matched a
+        lowercase ``http``/``https`` scheme prefix, so an uppercase-scheme URL
+        (e.g. ``HTTPS://user:pass@host/path``) embedded in an exception message
+        was never extracted for credential scrubbing at all and reached the
+        error log with its userinfo credential completely unredacted.
+        """
+        from docline.elt.execute import execute_elt_fetch
+
+        config_dir = tmp_path / ".elt" / "config"
+        config_dir.mkdir(parents=True)
+        (config_dir / "web.yaml").write_text(
+            "type: web_crawl\nurl: https://example.com/other\n",
+            encoding="utf-8",
+        )
+
+        error_message = "Connection failed to HTTPS://user:secretpass@host.example.com/path"
+
+        async def fake_crawl(start_url: str, config=None, progress=None) -> None:
+            del start_url, config, progress
+            raise OSError(error_message)
+
+        caplog.set_level(logging.ERROR, logger="docline.elt.execute")
+        with patch("docline.fetch.crawl.crawl", side_effect=fake_crawl):
+            execute_elt_fetch(config_dir, ".elt/staging", workspace_root=tmp_path)
+
+        failure_record = next(record for record in caplog.records if record.exc_info is not None)
+
+        assert "secretpass" not in caplog.text
+        assert "Connection failed to https://host.example.com/path" in failure_record.getMessage()
+
+    def test_url_fetch_failure_scrubs_semicolon_separated_scheme_less_credential_fragments(
+        self,
+        tmp_path: Path,
+        caplog,
+    ) -> None:
+        """execute_elt_fetch redacts a ``;``-separated scheme-less credential fragment.
+
+        Regression test for PR #198 Finding B: ``;`` is a legacy-but-still-valid
+        query-parameter separator that ``_QUERY_PARAM_TOKEN_RE`` did not treat as
+        a token boundary, so a ``;``-joined credential token (e.g.
+        ``?detail=1;token=SECRET``) was absorbed into the preceding token's value
+        and never recognized as an independently redactable name/value pair.
+        """
+        from docline.elt.execute import execute_elt_fetch
+
+        config_dir = tmp_path / ".elt" / "config"
+        config_dir.mkdir(parents=True)
+        (config_dir / "web.yaml").write_text(
+            "type: web_crawl\nurl: https://example.com/docs?token=SECRET\n",
+            encoding="utf-8",
+        )
+
+        error_message = "Max retries exceeded with url: /docs?detail=1;token=SECRETXYZ"
+
+        async def fake_crawl(start_url: str, config=None, progress=None) -> None:
+            del start_url, config, progress
+            raise OSError(error_message)
+
+        caplog.set_level(logging.ERROR, logger="docline.elt.execute")
+        with patch("docline.fetch.crawl.crawl", side_effect=fake_crawl):
+            execute_elt_fetch(config_dir, ".elt/staging", workspace_root=tmp_path)
+
+        failure_record = next(record for record in caplog.records if record.exc_info is not None)
+
+        assert "SECRETXYZ" not in caplog.text
+        assert "/docs?detail=1;token=<redacted>" in failure_record.getMessage()
+
+    def test_url_fetch_failure_scrubs_semicolon_separated_full_url_credential_fragments(
+        self,
+        tmp_path: Path,
+        caplog,
+    ) -> None:
+        """execute_elt_fetch redacts a ``;``-separated credential inside a full URL.
+
+        Regression test for PR #198 Finding B: the same ``;``-as-separator gap
+        also affected ``source_keys._QUERY_COMPONENT_SEPARATOR_RE``, used by
+        ``_strip_reversed_query_credentials`` ahead of
+        ``staging.sanitize_source`` (whose own ``parse_qsl``-based query parser
+        only treats ``&`` as a token boundary). A ``;``-joined credential token
+        embedded in a full URL therefore passed straight through both layers
+        unredacted.
+        """
+        from docline.elt.execute import execute_elt_fetch
+
+        config_dir = tmp_path / ".elt" / "config"
+        config_dir.mkdir(parents=True)
+        (config_dir / "web.yaml").write_text(
+            "type: web_crawl\nurl: https://example.com/other\n",
+            encoding="utf-8",
+        )
+
+        error_message = (
+            "Max retries exceeded with url: https://example.com/docs?detail=1;token=SECRETTOKEN456"
+        )
+
+        async def fake_crawl(start_url: str, config=None, progress=None) -> None:
+            del start_url, config, progress
+            raise OSError(error_message)
+
+        caplog.set_level(logging.ERROR, logger="docline.elt.execute")
+        with patch("docline.fetch.crawl.crawl", side_effect=fake_crawl):
+            execute_elt_fetch(config_dir, ".elt/staging", workspace_root=tmp_path)
+
+        failure_record = next(record for record in caplog.records if record.exc_info is not None)
+
+        assert "SECRETTOKEN456" not in caplog.text
+        assert "https://example.com/docs?detail=1" in failure_record.getMessage()
+
     def test_url_fetch_failure_scrubs_quote_adjacent_credential_values(
         self,
         tmp_path: Path,

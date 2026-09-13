@@ -7,6 +7,7 @@ import pytest
 from docline.elt.manifest_models import ManifestGitSource, ManifestLocalSource, ManifestUrlSource
 from docline.elt.models import GitHubRepoSource, LocalFileSource, WebCrawlSource
 from docline.elt.source_keys import (
+    _is_url_shaped,
     _sanitize_url_field,
     build_source_key,
     sanitize_source_id,
@@ -71,6 +72,31 @@ class TestSanitizeSourceKey:
 
         assert "SECRETTOKEN123" not in sanitized
         assert sanitized == "web_crawl:https://host/x?detail=x"
+
+    def test_redacts_semicolon_separated_crawl_url_credentials(self) -> None:
+        """sanitize_source_key drops a credential hidden behind a ``;``-joined token.
+
+        Regression test for PR #198 Finding B: ``urllib.parse.parse_qsl`` (used
+        internally by ``staging.sanitize_source``) only splits query components
+        on ``&`` -- a modern Python security fix removed ``;`` as a default
+        separator -- so a legacy-but-still-valid ``;``-joined query string (e.g.
+        ``?detail=1;token=SECRET``) makes the entire ``1;token=SECRET`` text the
+        single value of ``detail``, hiding ``token=SECRET`` from the
+        credential-param filter entirely.
+        """
+        config = WebCrawlSource(
+            type="web_crawl",
+            url="https://host/x?detail=1;token=SECRETTOKEN123",
+            depth=0,
+            max_pages=None,
+            domain_lock=True,
+            rate_limit_ms=0,
+        )
+
+        sanitized = sanitize_source_key(config)
+
+        assert "SECRETTOKEN123" not in sanitized
+        assert sanitized == "web_crawl:https://host/x?detail=1"
 
     def test_redacts_malformed_crawl_url_without_raising(self) -> None:
         """sanitize_source_key fails closed for malformed crawl URLs."""
@@ -560,3 +586,41 @@ class TestSanitizeUrlFieldNonHttpSchemes:
         sanitized = _sanitize_url_field("file:///etc/secret/path")
 
         assert sanitized == "<local-path-redacted>"
+
+
+class TestUrlShapeGateSingleSlashScheme:
+    """Regression tests for the PR #198 Finding C single-slash scheme gap.
+
+    ``_URL_SCHEME_RE`` previously required exactly two slashes after the
+    scheme colon (``scheme://``), so a malformed single-slash URL (e.g. a
+    typo like ``https:/user:pass@host/path``) was never recognized as
+    URL-shaped by ``_is_url_shaped``/``_authority_span``, and its userinfo
+    credential skipped the marker-gated detection entirely.
+    """
+
+    def test_single_slash_scheme_is_url_shaped(self) -> None:
+        """_is_url_shaped recognizes a malformed single-slash scheme URL."""
+        assert _is_url_shaped("https:/user:pass@host/path") is True
+
+    def test_strips_userinfo_from_single_slash_scheme_url(self) -> None:
+        """_sanitize_url_field strips userinfo credentials from a single-slash URL."""
+        sanitized = _sanitize_url_field("https:/user:secretpass@host.example.com/path")
+
+        assert "secretpass" not in sanitized
+        assert sanitized == "https:/host.example.com/path"
+
+    def test_preserves_double_slash_scheme_is_url_shaped(self) -> None:
+        """No regression: a normal double-slash URL is still recognized as URL-shaped."""
+        assert _is_url_shaped("https://host/x") is True
+
+    def test_preserves_zero_slash_scheme_value_as_not_url_shaped(self) -> None:
+        """No regression (R-3 guard): a zero-slash ``scheme:value`` shape is not URL-shaped.
+
+        A bare ``scheme:value`` identifier with no slash at all (e.g. a branch
+        name like ``release:2026``) must remain classified as NOT url-shaped,
+        exactly as before this fix, to avoid re-introducing the kind of
+        over-broad-marker regression a prior remediation cycle for this file
+        had to fix (see ``_contains_userinfo_marker``/R-3 history above).
+        """
+        assert _is_url_shaped("release:2026") is False
+        assert sanitize_source_id("release:2026") == "release:2026"

@@ -12,8 +12,8 @@ from docline.fetch.staging import _is_credential_param, sanitize_source
 _MAX_CREDENTIAL_DECODE_LAYERS = 5
 _SOURCE_ID_REDACTED = "<source-id-redacted>"
 _SOURCE_URL_REDACTED = "<source-url-redacted>"
-_URL_SCHEME_RE = re.compile(r"^[A-Za-z][A-Za-z0-9+.-]*://")
-_QUERY_COMPONENT_SEPARATOR_RE = re.compile(r"([&?])")
+_URL_SCHEME_RE = re.compile(r"^[A-Za-z][A-Za-z0-9+.-]*:/{1,2}")
+_QUERY_COMPONENT_SEPARATOR_RE = re.compile(r"([&?;])")
 
 
 def build_source_key(config: SourceConfig) -> str:
