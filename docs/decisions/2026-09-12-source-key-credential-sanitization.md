@@ -210,6 +210,11 @@ sequences without over-redaction or non-termination. The R8 refinement replaces 
   `web_crawl:` / `manifest_url:` / `github_repo:` / `manifest_git:` keys -- including a credential embedded in the manifest_url `id` segment (URL-shaped OR non-URL-form such as `srcA?token=SECRET`), which the safe representation redacts via ID-specific credential redaction independent of URL detection (R5). NOTE: the separate `orchestrate_fetch` /
   `create_staging_job` default-fetch sink is a distinct, out-of-scope leak captured as a P-021
   deferral (see below) — NOT closed by this shipment.
+- The `exc_info` traceback AND the exception MESSAGE itself carry no credential for ANY fetch-failure
+  path: the Git fetch path (`readers/github.py` `GitHubFetchError` embedding a raw `repo_url` /
+  branch-derived request URL, `github.py:45-52,74-77`) is scrubbed UNCONDITIONALLY in the same ERROR
+  sink -- not merely the structured source-key argument, and not gated on a prior observed leak --
+  while `exc_info` is retained (traceback present but credential-free) and safe diagnostics are kept.
 - `job_id` for identical inputs is byte-identical before and after the fix (determinism proof).
 - Non-URL source keys are unchanged by the sanitizer.
 - `test_url_fetch_failure_logs_source_key_and_job_id` updated and green; a credential-bearing
@@ -238,8 +243,11 @@ sequences without over-redaction or non-termination. The R8 refinement replaces 
 
 Single task-shaped bug -> solo group -> synthesize one covering top-level **chore** release unit
 (security remediation / internal hardening, not a net-new user capability). Decomposes directly
-into three atomic single-domain tasks (backlogit WIT defines no sub-epic type; tasks attach
-directly to the covering feature 072-F).
+into four atomic single-domain tasks -- `072.001-T` (core helper), `072.004-T` (R8 git-variant
+same-sink extension), `072.002-T` (failing redaction test), `072.003-T` (call-site wiring); backlogit
+WIT defines no sub-epic type, so tasks attach directly to the covering feature 072-F. Dependency
+order: `072.001-T` -> `072.004-T` -> `072.002-T` -> `072.003-T` (see the plan `## Dependency Graph`
+and shipment `063-S` item order).
 
 ## Open Questions
 

@@ -298,7 +298,7 @@ Mapped against `.github/instructions/constitution.instructions.md` (actual princ
   AND from the written `metadata.json` text — the injected crawl failure MUST raise an exception
   whose message embeds the credentialed `config.url` (e.g. an error carrying `start_url`), so the
   `caplog.text` traceback assertion is a genuine RED and is NOT vacuously satisfied by a URL-free
-  message like `OSError("Network down")`; (c2) add a `ManifestUrlSource` whose `id` is a NON-URL-form credential-bearing string (`srcA?token=IDSECRET`, no scheme) and assert `IDSECRET` is ABSENT from both `caplog.text` and the written `metadata.json` (R5 regression for the non-URL-form-id closure); (c3) [R6] add a MALFORMED credentialed config whose URL would make `_sanitize_url` raise (`https://host:notaport?token=SECRET`) and assert `_execute_single_source` does NOT crash with a sanitizer `ValueError` (it proceeds to the normal fetch-failure path) and `SECRET` is ABSENT from both `caplog.text` and `metadata.json` (R6 totality/fail-closed regression); (c4) [R7] add a percent-encoded credential-name manifest `id` (`srcA?%74oken=IDSECRET`, opaque) and assert `IDSECRET` is ABSENT from both `caplog.text` and `metadata.json` -- proving decoded-name detection closes the encoding bypass (the raw marker scan would miss `%74oken`); (c5) [R8] add a DOUBLE-encoded credential-name manifest `id` (`srcA?%2574oken=IDSECRET`) and a `github_repo`/`manifest_git` config whose credentialed url uses a double-encoded credential key, asserting the secret value is ABSENT from both `caplog.text` and `metadata.json` -- proving the bounded multi-layer decode closes the encoding bypass on the id AND url paths and across the git variants; (d) assert `job_id == make_job_id(build_source_key(config))`
+  message like `OSError("Network down")`; (c2) add a `ManifestUrlSource` whose `id` is a NON-URL-form credential-bearing string (`srcA?token=IDSECRET`, no scheme) and assert `IDSECRET` is ABSENT from both `caplog.text` and the written `metadata.json` (R5 regression for the non-URL-form-id closure); (c3) [R6] add a MALFORMED credentialed config whose URL would make `_sanitize_url` raise (`https://host:notaport?token=SECRET`) and assert `_execute_single_source` does NOT crash with a sanitizer `ValueError` (it proceeds to the normal fetch-failure path) and `SECRET` is ABSENT from both `caplog.text` and `metadata.json` (R6 totality/fail-closed regression); (c4) [R7] add a percent-encoded credential-name manifest `id` (`srcA?%74oken=IDSECRET`, opaque) and assert `IDSECRET` is ABSENT from both `caplog.text` and `metadata.json` -- proving decoded-name detection closes the encoding bypass (the raw marker scan would miss `%74oken`); (c5) [R8] add a DOUBLE-encoded credential-name manifest `id` (`srcA?%2574oken=IDSECRET`) and a `github_repo`/`manifest_git` config whose credentialed url uses a double-encoded credential key, asserting the secret value is ABSENT from both `caplog.text` and `metadata.json` -- proving the bounded multi-layer decode closes the encoding bypass on the id AND url paths and across the git variants; (c6) [R8 traceback] for the `github_repo`/`manifest_git` case the injected fetch failure MUST raise a `GitHubFetchError` whose message embeds the raw credentialed `repo_url` / branch-derived request URL (mirroring `readers/github.py:45-52,74-77`), and assert the credential value is ABSENT from `caplog.text` (message + `exc_info` traceback) — a genuine RED that fails until Unit 3 UNCONDITIONALLY scrubs the exception message/traceback, not only the sanitized source-key argument; (d) assert `job_id == make_job_id(build_source_key(config))`
   recomputed independently from the raw credentialed key — this pin, NOT the credential-free parity
   test, is the raw-hash oracle: an impl that hashes the SANITIZED key MUST fail this assertion.
 - **Files:** `tests/elt/test_elt_real_execution.py`.
@@ -309,12 +309,19 @@ Mapped against `.github/instructions/constitution.instructions.md` (actual princ
 - **Changes:** In `_execute_single_source`, set
   `metadata = SourceMetadata(source=sanitize_source_key(config), ...)` and change the
   `_log.exception(...)` argument from `source_key` to `sanitize_source_key(config)`. Keep
-  `job_id = make_job_id(source_key)` on the raw key. If Unit 2's `caplog.text` assertion reveals
-  the `exc_info` traceback re-leaks the raw URL (a crawl exception embedding `config.url`), close
-  it within this same ERROR sink by SCRUBBING the raw URL out of the logged exception (sanitize or
-  wrap the exception message so the rendered traceback carries no credential). Do NOT drop
-  `exc_info`: Unit 2 keeps asserting `exc_info is not None`, so the traceback MUST remain present
-  but credential-free. Bounded to this file and this ERROR path (still D6E758F5 scope).
+  `job_id = make_job_id(source_key)` on the raw key. UNCONDITIONALLY scrub credential-bearing data
+  from the logged exception MESSAGE AND its `exc_info` traceback within this ERROR sink for ALL
+  fetch-failure paths — not merely the sanitized `source_key` argument, and not gated on a prior
+  observed leak. This covers BOTH the crawl path (an exception embedding the raw `config.url`) AND
+  the Git fetch paths: `readers/github.py` raises `GitHubFetchError` whose message embeds the raw
+  `repo_url` (`github.py:45-52`) and branch-derived request URLs (`github.py:74-77`), which
+  `_log.exception` renders via `exc_info` even after the source-key argument is sanitized. Route the
+  exception through a total credential-scrubber (reuse the R8 sanitize primitives on the rendered
+  message/traceback text) so no raw userinfo/credential-query value from `config.url`, `repo_url`,
+  or `branch` reaches the log or `metadata.json`, while KEEPING safe diagnostics (error class,
+  status/reason, credential-free host/path). Do NOT drop `exc_info`: Unit 2 keeps asserting
+  `exc_info is not None`, so the traceback MUST remain present but credential-free. Bounded to this
+  file and this ERROR path (still D6E758F5 scope).
 - **Files:** `src/docline/elt/execute.py`.
 - **Tests:** Units 1 + 2 turn green; existing `test_web_crawl_orchestrate_and_execute_share_job_key`
   stays green (job-key parity / determinism).
@@ -322,10 +329,16 @@ Mapped against `.github/instructions/constitution.instructions.md` (actual princ
 
 ## Dependency Graph
 
-- Unit 2 depends on Unit 1 (test imports `sanitize_source_key`).
-- Unit 3 depends on Unit 2 (wiring turns the pre-authored red test green).
-- No cycles. Order: **1 -> 2 -> 3** (helper -> failing redaction test -> wiring). Test-first
-  ordering satisfied: redaction observed red (Unit 2) before the production change (Unit 3).
+- Unit 1b (`072.004-T`) depends on Unit 1 (`072.001-T`) — it reuses the `sanitize_source_key` /
+  `sanitize_source_id` + `_MAX_CREDENTIAL_DECODE_LAYERS` primitive and extends it to the
+  git-variant same-sink configs (`github_repo:` / `manifest_git:` + `manifest_local:` id).
+- Unit 2 (`072.002-T`) depends on BOTH Unit 1 (`072.001-T`) and Unit 1b (`072.004-T`) — the failing
+  redaction test imports `sanitize_source_key` and exercises the crawl AND git-variant configs.
+- Unit 3 (`072.003-T`) depends on Unit 2 (wiring turns the pre-authored red test green).
+- No cycles. Order: **1 -> 1b -> 2 -> 3** (helper -> git-variant same-sink extension -> failing
+  redaction test -> wiring). Test-first ordering satisfied: redaction observed red (Unit 2) before
+  the production change (Unit 3). Shipment `063-S` item order mirrors this dependency chain:
+  `072-F`, `072.001-T`, `072.004-T`, `072.002-T`, `072.003-T`.
 
 ## Decisions and Rationale
 
@@ -424,8 +437,11 @@ Mapped against `.github/instructions/constitution.instructions.md` (actual princ
   deferred, holds scope):** `0F1A653C` (the string-arg `create_staging_job` default-fetch sink, a
   materially distinct call path) and `06A59B1D` (vocabulary expansion + path-embedded secrets,
   cross-path blast radius) remain active deferrals.
-- **Risk:** `exc_info` traceback re-leaks the URL. **Mitigation:** Unit 2 asserts absence against
-  `caplog.text` (full record incl. traceback), forcing Unit 3 to close the traceback path.
+- **Risk:** `exc_info` traceback re-leaks the URL — for crawl exceptions embedding `config.url` AND
+  for Git `GitHubFetchError` messages embedding a raw `repo_url` / branch-derived request URL
+  (`readers/github.py:45-52,74-77`). **Mitigation:** Unit 2 asserts credential absence against
+  `caplog.text` (full record incl. traceback) for BOTH the crawl and git-variant failures, forcing
+  Unit 3 to UNCONDITIONALLY scrub the exception message/traceback across all fetch-failure paths.
 - **Risk:** silently changing `job_id`. **Mitigation:** determinism assertion + parity test.
 - **Documented residual (NOT fixed here, holds scope):** `_CREDENTIAL_PARAM_PREFIXES` omits
   `password`/`pwd`/`passwd`/`client_secret`/`refresh_token`/`code`, and `_sanitize_url` does not
