@@ -68,11 +68,17 @@ threads at merge.
 ## Post-merge closure
 
 062-S's shipment record was already safe-closed and archived in a prior
-session (`.backlogit/archive/062-S.md`); this session was a narrow,
-already-reviewed evidence repair, not a new shipment build. No
-`post-merge/{slug}` branch or shipment-archival pipeline was re-run — it
-does not apply to a post-hoc closure-evidence fix for an already-closed
-shipment. 063-S was not claimed or implemented.
+session (`.backlogit/archive/062-S.md`); the PR #196 merge-and-verify scope
+itself was a narrow, already-reviewed evidence repair, not a new shipment
+build, and required no shipment-archival branch or pipeline re-run for that
+scope. Distinct from that: this compaction pass, which selected the PR #196
+session memory as a completed-work candidate, did produce one commit (this
+compacted artifact plus the archived original) and — per the Step 6.0
+branch protocol — that commit's own `post-merge/{slug}` branch,
+`post-merge/pr196-062-s-closure-repair` (PR #197), which is exactly the
+branch and PR carrying this record. That compaction-only branch is not a
+shipment-archival branch and does not imply one. 063-S was not claimed or
+implemented.
 
 ## Follow-ups (stash, non-blocking)
 

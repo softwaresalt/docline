@@ -25,17 +25,32 @@
 
 None.
 
+## Historical note (chronology)
+
+This record was written when the PR #196 merge-and-verify session closed,
+before a subsequent compact-context pass selected this very memory file as
+a completed-work compaction candidate. That later pass produced the
+compacted artifact at
+`docs/memory/compacted/2026-09-13-062-s-closure-repair-compacted.md`,
+archived this original file here, and its one resulting commit required its
+own `post-merge/{slug}` branch — `post-merge/pr196-062-s-closure-repair`
+(PR #197) — which is exactly the branch and PR carrying this record. The
+"no post-merge branch" / "nothing needed a PR" statements below describe
+only the PR #196 merge-and-verify scope itself (which correctly needed no
+shipment-archival branch, since 062-S was already archived); they predate,
+and are not contradicted by, this later compaction-only branch and PR.
+
 ## Branch state
 
 - `main` is current, up to date with `origin/main` at `204c4c5` (merge commit for PR #196).
 - Feature branch `chore/062-s-closure-evidence-repair` fully merged; not deleted (repo `delete_branch_on_merge=false`; no explicit cleanup requested).
-- No `post-merge/{slug}` closure branch was created: this PR was itself a narrow, already-reviewed closure-evidence repair (not a new shipment build), 062-S's shipment record was already archived prior to this session, and no closure-produced commits are required beyond the P-020 compact-context invocation, which produced no new commits (see below). Per the operator's explicit narrow scope for this invocation, the full Step 6 shipment-archival/source-artifact-cleanup pipeline was not re-run — it does not apply to a post-hoc evidence repair of an already-closed shipment.
+- No `post-merge/{slug}` closure branch was created for PR #196's own merge-and-verify scope: that PR was itself a narrow, already-reviewed closure-evidence repair (not a new shipment build), and 062-S's shipment record was already archived prior to this session. Per the operator's explicit narrow scope for this invocation, the full Step 6 shipment-archival/source-artifact-cleanup pipeline was not re-run for that scope — it does not apply to a post-hoc evidence repair of an already-closed shipment. (See the Historical note above: the P-020 compact-context invocation below did subsequently select this file for compaction and did require its own `post-merge/{slug}` branch — that is a separate, later step, not a contradiction of this bullet.)
 
 ## Decisions with rationale
 
 - Used `git stash` (not `git checkout -f` / not committing) to carry the unrelated `.backlogit/stash.jsonl` diff across the branch switch, because content was verified identical between the feature branch HEAD and `origin/main` for that file, so a stash/pop round-trip carries zero risk of discarding or altering the unrelated normalization edit.
 - Did not invoke the full Step 6 shipment-closure pipeline (shipment ship/archive, source-artifact cleanup, stash follow-up creation) because 062-S was already safe-closed and archived in a prior session; this session's scope was strictly the merge + verification of the closure-evidence repair itself, per explicit operator instruction not to touch 063-S or expand scope.
-- Did not create a `post-merge/{slug}` branch because no new closure-artifact commits were produced by this session (compact-context found no qualifying candidates within threshold — see below); nothing needed a PR.
+- At the time this record was first written, no `post-merge/{slug}` branch had been created because compact-context had not yet selected a qualifying candidate; nothing had needed a PR up to that point. (See the Historical note above: a subsequent compaction pass did select this memory file, producing exactly the `post-merge/pr196-062-s-closure-repair` branch and PR #197 that carry this record.)
 
 ## Next steps
 
