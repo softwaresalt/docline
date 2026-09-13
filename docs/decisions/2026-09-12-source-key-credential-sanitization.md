@@ -142,9 +142,15 @@ unchanged. Update the affected test to assert the sanitized representation appea
 credential token does NOT appear (including for a manifest_url config whose `id` is itself a
 credential-bearing string (URL-shaped or non-URL-form such as `srcA?token=SECRET`), with `config.id` credential-redacted independent of URL detection before recompose (R5)), while `job_id` continues to be asserted against the raw-key recomputation.
 The R6 refinement makes both `sanitize_source_id()` and `sanitize_source_key()` TOTAL and
-non-throwing (fail-closed to `<source-id-redacted>` / `<source-url-redacted>` on malformed input,
-never raising into the pre-`try` metadata build or the exception logger) and preserves a
-credential-free `id` verbatim (byte-for-byte, no `sanitize_source()` path/fragment mangling).
+non-throwing, by two DISTINCT mechanisms that must not be conflated: the `config.url` path delegates
+to `sanitize_source()`/`_sanitize_url()`, which parses `parsed.port` and raises `ValueError` on a
+malformed URL, so that call is wrapped fail-closed to `<source-url-redacted>`; `sanitize_source_id()`
+is MARKER-GATED and does NOT parse ports, so malformedness alone never triggers its sentinel -- a
+credential-free `id` of ANY shape (including a malformed URL-shaped `https://host:notaport`) is
+preserved verbatim (byte-for-byte, no `sanitize_source()` path/fragment mangling), a marker-bearing
+`id` is surgically redacted, and `<source-id-redacted>` is reserved ONLY for a marker-bearing `id`
+whose surgical redaction cannot complete. Neither path raises into the pre-`try` metadata build or
+the exception logger.
 
 ## Done Looks Like
 
@@ -157,11 +163,17 @@ credential-free `id` verbatim (byte-for-byte, no `sanitize_source()` path/fragme
 - Non-URL source keys are unchanged by the sanitizer.
 - `test_url_fetch_failure_logs_source_key_and_job_id` updated and green; a credential-bearing
   case proves redaction.
-- `sanitize_source_key()` / `sanitize_source_id()` are TOTAL and never raise for any config (a
-  malformed URL/id yields a redacted `<source-url-redacted>` / `<source-id-redacted>` fallback, not a
-  `ValueError`), so metadata construction before the fetch `try` and the exception logger cannot
-  crash or mask a fetch failure; and a credential-free `id` (absolute path, `file://`, or
-  fragment-bearing URL such as `/source-a`) is preserved verbatim (R6).
+- `sanitize_source_key()` / `sanitize_source_id()` are TOTAL and never raise for any config, but by
+  two DIFFERENT mechanisms: the `config.url` path parses `parsed.port` and is wrapped fail-closed to
+  `<source-url-redacted>` on a malformed URL (e.g. `https://host:notaport`); `sanitize_source_id()`
+  is MARKER-GATED and does NOT parse ports, so a credential-free `id` of ANY shape (absolute path
+  `/source-a`, `file://`, fragment-bearing URL `https://host/x#frag`, or a malformed URL-shaped
+  `https://host:notaport`) is preserved VERBATIM byte-for-byte, a marker-bearing `id` is SURGICALLY
+  redacted (e.g. `https://host:notaport?token=IDSECRET` -> `https://host:notaport?token=<redacted>`,
+  malformed port preserved), and `<source-id-redacted>` is reserved ONLY for a marker-bearing `id`
+  whose surgical redaction cannot complete -- never for a credential-free or merely-malformed `id`.
+  So metadata construction before the fetch `try` and the exception logger cannot crash or mask a
+  fetch failure (R6).
 
 ## Covering Feature Synthesis
 

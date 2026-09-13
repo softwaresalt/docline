@@ -206,12 +206,16 @@ Mapped against `.github/instructions/constitution.instructions.md` (actual princ
   handling, parametrized over: (a) a scheme-bearing credential `id` (userinfo + `?token=IDSECRET`),
   (b) a NON-URL-form credential `id` (`srcA?token=IDSECRET`, no scheme) -- in both, `IDSECRET` +
   userinfo ABSENT while the non-credential id/prefix/options are preserved (proves redaction is
-  independent of URL detection); (c) [R6] a MALFORMED credential-bearing `id`
-  (`https://u:p@host:notaport?token=IDSECRET`) -> `sanitize_source_id()` FAILS CLOSED to
-  `<source-id-redacted>` without raising, `IDSECRET` ABSENT; (d) [R6] a credential-free
-  absolute-path `id` (`/source-a`) and (e) [R6] a credential-free fragment-bearing URL `id`
-  (`https://host/x#frag`) each returned VERBATIM (byte-for-byte, no path-redaction, fragment
-  retained). (3) non-crawl configs (`GitHubRepoSource`, `LocalFileSource`) returned byte-identical
+  independent of URL detection); (c) [R6] a MALFORMED URL-shaped credential-bearing `id`
+  (`https://u:p@host:notaport?token=IDSECRET`) -> SURGICALLY redacted to `https://host:notaport?token=<redacted>` without raising
+  (`sanitize_source_id()` is marker-gated and does NOT parse ports): userinfo + `IDSECRET` ABSENT,
+  the recognized token fragment redacted, the malformed `:notaport` preserved byte-for-byte (no port
+  parse, no `ValueError`, and NOT the `<source-id-redacted>` sentinel, which is reserved for a
+  marker-bearing `id` whose surgical redaction cannot complete); (d) [R6] a credential-free
+  absolute-path `id` (`/source-a`), (e) [R6] a credential-free fragment-bearing URL `id`
+  (`https://host/x#frag`), and (f) [R6] a credential-free MALFORMED URL-shaped `id`
+  (`https://host:notaport`, no marker) each returned VERBATIM (byte-for-byte, no path-redaction,
+  fragment retained, malformed port preserved with no port parse). (3) non-crawl configs (`GitHubRepoSource`, `LocalFileSource`) returned byte-identical
   AND an empty-option credentialed `WebCrawlSource` sanitized.
 - **Posture:** test-first. Reuses vetted `sanitize_source` without altering it.
 
@@ -268,9 +272,12 @@ Mapped against `.github/instructions/constitution.instructions.md` (actual princ
   the typed-config recompose and is not introduced.
 - **Total / fail-closed marker-gated `sanitize_source_id` (R6)** -- the id sanitizer never delegates
   to the throwing `sanitize_source()` / `_sanitize_url()` path; it is non-throwing over any `str`,
-  preserves credential-free ids verbatim, redacts only recognized credential markers, and fails
-  closed to `<source-url-redacted>` / `<source-id-redacted>` for malformed inputs, so the helper is
-  safe to call before the fetch `try` and inside the exception logger without crashing or masking.
+  preserves credential-free ids verbatim (of ANY shape, including a malformed URL-shaped
+  `https://host:notaport`, since it does NOT parse ports), surgically redacts recognized credential
+  markers, and fails closed to `<source-id-redacted>` ONLY for a marker-bearing id whose surgical
+  redaction cannot complete (never for a merely-malformed id); the separate `config.url` sanitize is
+  wrapped fail-closed to `<source-url-redacted>` on a malformed URL. The helper is thus safe to call
+  before the fetch `try` and inside the exception logger without crashing or masking.
 - **Sanitize representation, not the hashed key** — only way to satisfy both "no leak" and
   "job_id determinism" simultaneously.
 
@@ -582,9 +589,12 @@ Stage-owned R5 artifacts, both on the `sanitize_source_id` / `sanitize_source_ke
   `PRRT_kwDOSsAX4c6h0dUO`. `make_job_id` still hashes the raw `build_source_key(config)` --
   determinism invariant unchanged.
 - **Regression scenarios added:** Unit 1 -- malformed `config.url`
-  (`https://host:notaport?token=SECRET`) returns without raising with the URL redacted; a malformed
-  credential-bearing `id` fails closed to the sentinel; credential-free `/source-a` and
-  `https://host/x#frag` preserved verbatim. Unit 2 -- a malformed credentialed config does not crash
+  (`https://host:notaport?token=SECRET`) returns without raising with the URL redacted to
+  `<source-url-redacted>` (the `config.url` path parses `.port` and is wrapped fail-closed); a
+  malformed URL-shaped credential-bearing `id` (userinfo + `?token=IDSECRET`, nonnumeric port) is
+  SURGICALLY redacted to `https://host:notaport?token=<redacted>` (marker-gated, no port parse, NOT
+  the sentinel); credential-free `/source-a`, `https://host/x#frag`, and a malformed URL-shaped
+  `https://host:notaport` preserved verbatim. Unit 2 -- a malformed credentialed config does not crash
   `_execute_single_source` nor mask the fetch failure, with the credential absent from `caplog.text`
   and `metadata.json`.
 - **Artifacts updated:** this plan (revision R6 note, Requirements Trace, Unit 1, Unit 2, Risks,
