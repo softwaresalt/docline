@@ -96,5 +96,8 @@ not a placeholder for PR #193's already-known merge commit
 (`2c624c16dd805e7df07a5872cd3b3337469391a0`) and reviewed HEAD
 (`f8c5b412cb578c187a087609b3157a954849af8d`), which remain fully documented
 in the "Merge Confirmation" section above and in the narrative closure
-record. This repair's own reviewed HEAD and merge commit are recorded
-instead in its own PR's `## Local Review Readiness` section.
+record. This repair's own reviewed HEAD is recorded instead in its own PR's
+`## Local Review Readiness` section; this repair's own merge commit does
+not yet exist as of this writing and is not asserted here — it will be
+established only once this repair's PR itself merges, and is not a field
+this closure artifact tracks.
