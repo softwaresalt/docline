@@ -18,8 +18,8 @@ closure_pr: 193
 merge_commit: d4a534e241c5daae592da12883ae0a522f9e762c
 merged_at: "2026-09-12T07:55:48Z"
 reviewed_head: 8ec7020bad8141057697ba0eb9b2cefe6d6e8124
-closure_merge_commit: 2c624c16dd805e7df07a5872cd3b3337469391a0
-closure_reviewed_head: f8c5b412cb578c187a087609b3157a954849af8d
+closure_merge_commit: null
+closure_reviewed_head: null
 closure_status: READY
 compaction_status: done
 ---
@@ -86,3 +86,15 @@ conditions remain outstanding.
 "Compaction Status (P-020)" section. `compact-context --target all` was
 invoked as part of the original closure; the compacted memory record is at
 `docs/memory/compacted/2026-09-12-062-s-compacted.md`.
+
+### Note on self-referential closure fields
+
+Consistent with the adopted convention established by
+`060-S-069-F-post-merge-closure.md`, `closure_merge_commit` and
+`closure_reviewed_head` are left permanently `null` in this file: they are
+not a placeholder for PR #193's already-known merge commit
+(`2c624c16dd805e7df07a5872cd3b3337469391a0`) and reviewed HEAD
+(`f8c5b412cb578c187a087609b3157a954849af8d`), which remain fully documented
+in the "Merge Confirmation" section above and in the narrative closure
+record. This repair's own reviewed HEAD and merge commit are recorded
+instead in its own PR's `## Local Review Readiness` section.
