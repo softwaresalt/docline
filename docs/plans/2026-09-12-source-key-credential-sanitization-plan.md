@@ -6,7 +6,7 @@ kind: implementation-plan
 source: docs/decisions/2026-09-12-source-key-credential-sanitization.md
 stash_id: D6E758F5
 covering_release_unit: chore
-revision: R7
+revision: R8
 ---
 
 # Implementation Plan: Source-key credential sanitization (stash D6E758F5)
@@ -110,6 +110,24 @@ Source document: `docs/decisions/2026-09-12-source-key-credential-sanitization.m
 > stays deferred as `06A59B1D`). The decision doc, feature card 072-F, and tasks
 > 072.001-T/072.002-T/072.003-T are updated to match.
 
+> **Revision R8** -- revised after Copilot review on PR #195 cycle 5 (operator remediation cycle 6;
+> unresolved threads `PRRT_kwDOSsAX4c6h1D4y`, plan line 260, and `PRRT_kwDOSsAX4c6h1D4t`, plan line
+> 235). SUPERSEDES the R7 single-`unquote` detection above: that single pass mirrored `parse_qsl` and
+> inherited its single-layer blind spot, so a DOUBLE-encoded credential key (`%2574oken=IDSECRET`,
+> decoding once to literal `%74oken`) was returned VERBATIM and leaked `IDSECRET` on BOTH the id and
+> url paths. Detection now runs a BOUNDED multi-layer `unquote` decode (fixed point or
+> `_MAX_CREDENTIAL_DECODE_LAYERS = 5`), matches a credential marker at ANY layer (so double- and
+> multi-layer encodings are recognized and surgically redacted over the raw bytes), and FAILS CLOSED
+> (redacts) when a name is still decoding at the cap; termination is guaranteed (each pass removes >=1
+> decodable escape) and the helper stays total (`errors="replace"`). A source-fact audit also brings
+> the remaining same-sink URL-bearing variants `github_repo:` and `manifest_git:` (both reach
+> `_execute_single_source` via `_fetch_github`) plus `manifest_local` id INTO the typed-config
+> sanitizer (new task `072.004-T`), subsuming/closing the former `79BF0AEC` github_repo deferral.
+> `job_id` still hashes the raw `build_source_key(config)`; `_CREDENTIAL_PARAM_PREFIXES` is NOT
+> expanded (`06A59B1D` deferred) and `_sanitize_url` in `staging.py` is unchanged (059-S boundary
+> held). The decision doc, feature card 072-F, tasks 072.001-T/072.002-T/072.003-T, and new task
+> 072.004-T are updated to match.
+
 ## Problem Frame
 
 `_execute_single_source` (`src/docline/elt/execute.py:203`) computes
@@ -135,11 +153,11 @@ metadata/log representation may be sanitized.
 | No credential in the manifest_url `id` segment (URL-shaped OR non-URL-form) | Marker-gated `sanitize_source_id(config.id)` credential redaction independent of URL detection before recompose; scheme-bearing AND non-URL credential-bearing-id cases (Unit 1, R6) |
 | Helper is TOTAL / fail-closed -- never raises for arbitrary unrestricted `str` (malformed URL/id yields a redacted fallback, not an exception) | Fail-closed wrapper around the `config.url` sanitize + non-throwing marker-gated `sanitize_source_id`; malformed-input unit + integration regression (Units 1, 2, R6) |
 | Credential-free IDs preserved verbatim (absolute paths, `file://`, fragment-bearing URLs) | `sanitize_source_id` returns the id byte-for-byte when no credential marker is present -- no `sanitize_source()` path/fragment mangling (Unit 1, R6) |
-| Percent-encoded credential parameter names recognized (no encoding bypass) | `sanitize_source_id` marker detection classifies parameter names on a single-`unquote` decoded view mirroring `parse_qsl` (utf-8, `errors="replace"`, no `.port`); encoded-key surgical redaction + double-encoded / malformed-percent regressions (Unit 1, Unit 2, R7) |
+| Percent-encoded credential parameter names recognized at EVERY decode layer (no single- OR multi-layer encoding bypass) | `sanitize_source_id` and the URL guard classify parameter names over a BOUNDED multi-layer `unquote` decode (fixed point or `_MAX_CREDENTIAL_DECODE_LAYERS = 5`, utf-8, `errors="replace"`, no `.port`); a marker matched at ANY layer redacts the value over the raw bytes, and a name still decoding at the cap FAILS CLOSED; encoded-key, double-encoded (now surgically redacted), deep-encoded fail-closed, malformed-percent, and URL-path multi-layer regressions (Unit 1, Unit 1b, Unit 2, R8) |
 | Do not change `job_id` determinism | Keep `make_job_id(source_key)` on raw key; sanitize only metadata/log (Unit 3) |
 | No credential in `metadata.source` or ERROR log (incl. traceback) | Route both sinks through helper; assert against `caplog.text` (Units 2, 3) |
 | Redaction observed before production change | Author failing redaction test first (Unit 2 before Unit 3) |
-| Non-crawl keys unchanged (github_repo deferred) | Prefix-restricted pass-through + tests (Unit 1) |
+| Every same-sink URL-bearing source variant sanitized (`web_crawl`, `manifest_url`, `github_repo`, `manifest_git`); only filesystem keys pass through | Typed-config sanitize of url/id/branch/path components for WebCrawl/ManifestUrl/GitHubRepo/ManifestGit; `local_file` and `manifest_local` path components byte-identical (path-embedded-secret residual deferred as `06A59B1D`) (Unit 1, Unit 1b) |
 
 ## Constitution Check
 
@@ -180,7 +198,7 @@ Mapped against `.github/instructions/constitution.instructions.md` (actual princ
        **fail-closed wrapper (R6):** `sanitize_source()` / `_sanitize_url()` reads `parsed.port`,
        which raises `ValueError` for a malformed URL-shaped value such as `https://host:notaport`, so
        the call is guarded -- on any `ValueError` (or other parse failure) it yields a fully-redacted
-       URL sentinel `<source-url-redacted>` instead of propagating. Then **recompose** the key
+       URL sentinel `<source-url-redacted>` instead of propagating. **[R8] Multi-layer URL guard:** because `_sanitize_url`'s own `parse_qsl` decodes only ONE layer, also scan the URL's query parameter names with the same bounded multi-layer decode primitive (see (a)); if a credential marker is revealed at any layer beyond the first (a double+-encoded credential name the single-pass `_sanitize_url` would leave un-redacted, e.g. `%2574oken=SECRET`) OR a name is still decoding at the cap, FAIL CLOSED -- yield `<source-url-redacted>` for the whole URL segment rather than the partially-sanitized url. This closes the URL-path double-encoding leak WITHOUT modifying the shared `_sanitize_url` or `_CREDENTIAL_PARAM_PREFIXES` (059-S blast radius and the `06A59B1D` vocabulary boundary both held). Then **recompose** the key
        through the same `_build_crawl_source_key(prefix, sanitized_url, ...)` path that
        `build_source_key` uses, so the sanitized key is grammar-identical to the raw key except for
        the URL segment. This is immune to the `manifest_url:<id>:<url>` ambiguity even when `<id>`
@@ -203,19 +221,7 @@ Mapped against `.github/instructions/constitution.instructions.md` (actual princ
        (a) **detect credential markers** with a non-throwing scan over a DECODED VIEW of the id --
        `user:pass@` (or `user@`) userinfo before a host, and any `key=value` fragment whose key
        (case-insensitive) matches the EXISTING `_CREDENTIAL_PARAM_PREFIXES` vocabulary (reuse -- do
-       NOT expand the list; that expansion stays deferred as stash `06A59B1D`). **[R7] Classify
-       parameter names on the decoded view, not the raw bytes:** the URL sanitizer this helper must
-       stay consistent with classifies names AFTER `parse_qsl` percent-decoding
-       (`src/docline/fetch/staging.py:109-115`), so detection percent-decodes each parameter-name
-       token with EXACTLY ONE `urllib.parse.unquote` pass mirroring `parse_qsl`'s own semantics
-       (`encoding="utf-8"`, `errors="replace"`), so an encoded credential key such as
-       `%74oken=IDSECRET` (decodes to `token`) IS recognized. The single decode pass is bounded and
-       terminating (NO decode-until-stable loop): a DOUBLE-encoded key (`%2574oken`, which decodes
-       once to the literal `%74oken`, not `token`) is NOT a marker -- identical to how the URL
-       sanitizer leaves it -- so id and URL handling stay consistent and credential-free ids are not
-       over-redacted. `errors="replace"` makes malformed / non-UTF8 percent sequences (`%zz`, a
-       truncated `%e0`) total and non-throwing. The decoded view is used for DETECTION ONLY (see (c)
-       for redaction over the raw bytes); detection never calls `urllib` `.port`;
+       NOT expand the list; that expansion stays deferred as stash `06A59B1D`). **[R8] Classify parameter names over a BOUNDED, FAIL-CLOSED MULTI-LAYER decode, not a single pass:** a single `unquote` pass (R7) mirrored `parse_qsl` but INHERITED its single-layer blind spot -- a DOUBLE-encoded credential key such as `%2574oken=IDSECRET` decodes once to the literal `%74oken` (not `token`), so R7 returned it verbatim and the raw string still carried the literal secret `IDSECRET` into `metadata.source` and the ERROR log (PR #195 Copilot finding `PRRT_kwDOSsAX4c6h1D4y`; the URL path shared the leak because `_sanitize_url` re-encodes `%2574oken=IDSECRET` unchanged). Detection now runs a bounded decode loop over each parameter-name token: `layer_0 = raw_name`; `layer_{i+1} = urllib.parse.unquote(layer_i, encoding="utf-8", errors="replace")`; stop when a FIXED POINT is reached (`layer_{i+1} == layer_i`) or after `_MAX_CREDENTIAL_DECODE_LAYERS = 5` passes, whichever comes first. A name is a credential MARKER when `_is_credential_param` matches at ANY layer, so single- AND multi-layer percent-encodings of a credential key (`%74oken`, `%2574oken`, ...) are all recognized. **Termination is guaranteed:** every non-fixed-point pass strictly removes at least one decodable `%HH` escape, so the loop stabilizes within (number of nested valid escapes) passes, hard-bounded by the layer cap; the helper is bounded, total, and deterministic. `errors="replace"` makes malformed / non-UTF8 percent sequences (`%zz`, a truncated `%e0`) total and non-throwing (they reach a fixed point, match no credential name, and a credential-free id is returned verbatim). **[R8] Fail closed on residual encoding ambiguity:** if the loop hits the `_MAX_CREDENTIAL_DECODE_LAYERS` cap WITHOUT reaching a fixed point (the name is still decoding, so the fully-decoded name cannot be proven credential-free), treat the fragment as a marker and redact its value -- never pass it through; a name that reaches a fixed point still carrying literal `%` bytes (undecodable invalid escapes such as `%zz`) is NOT ambiguous and, absent a marker at any layer, is preserved verbatim. The decoded view is used for DETECTION ONLY (see (c) for redaction over the raw bytes); detection never calls `urllib` `.port`;
        (b) **no marker -> return `raw_id` byte-for-byte** (verbatim), so a credential-free id of ANY
        shape -- an absolute path such as `/source-a`, a `file://` value, or a fragment-bearing URL
        such as `https://host/x#frag` -- is preserved exactly (Closes PR #195 Copilot finding
@@ -230,9 +236,31 @@ Mapped against `.github/instructions/constitution.instructions.md` (actual princ
        RAW `build_source_key(config)` (unsanitized id + url) is fed to `make_job_id`, so `job_id`
        determinism is unchanged. (Closes PR #195 Copilot findings `PRRT_kwDOSsAX4c6h0dUG` /
        `PRRT_kwDOSsAX4c6h0dUO`.)
-     - For ALL other config types (`LocalFileSource`, `GitHubRepoSource`, `ManifestLocalSource`,
-       `ManifestGitSource`) return `build_source_key(config)` **byte-identical** (github_repo token
-       handling is DEFERRED, not implemented here).
+     - **[R8] Extend the sanitized contract to EVERY same-sink URL-bearing variant.** The source-fact
+       audit (see the R8 cycle section below) confirms `_execute_single_source`
+       (`src/docline/elt/execute.py:222-256`) routes ALL config types through `build_source_key(config)`
+       into the same `metadata.source` + ERROR-log sinks, and that `GitHubRepoSource`
+       (`github_repo:{repo_url}@{branch}:{path_glob}`) and `ManifestGitSource`
+       (`manifest_git:{id}:{url}@{branch}`) are BOTH URL-bearing and fetched via `_fetch_github`
+       (`execute.py:246`). So they are sanitized here, NOT deferred:
+       - `GitHubRepoSource`: sanitize `config.repo_url` via the same fail-closed `sanitize_source()`
+         wrapper (+ the R8 multi-layer URL guard) used for crawl urls, marker-gate `config.branch`
+         and `config.path_glob` via `sanitize_source_id`, and recompose
+         `github_repo:{sanitized_repo_url}@{sanitized_branch}:{sanitized_path_glob}`. This SUBSUMES
+         and CLOSES the former `79BF0AEC` github_repo deferral (reconciled/archived this cycle).
+       - `ManifestGitSource`: credential-redact `config.id` via `sanitize_source_id`, sanitize
+         `config.url` via the fail-closed url wrapper (+ R8 guard), marker-gate `config.branch`, and
+         recompose `manifest_git:{sanitized_id}:{sanitized_url}@{sanitized_branch}`. Closes PR #195
+         Copilot finding `PRRT_kwDOSsAX4c6h1D4t`.
+       - `ManifestLocalSource`: credential-redact `config.id` via `sanitize_source_id` for uniform
+         id handling across all manifest variants; `config.path` and `config.include` stay
+         byte-identical (filesystem components; path-embedded-secret redaction remains the
+         separately deferred `06A59B1D` residual).
+       - `LocalFileSource`: return `build_source_key(config)` **byte-identical** (filesystem paths;
+         no URL-credential sink; absolute-path disclosure is the separately deferred `06A59B1D` residual).
+       The git-variant coverage is authored as **Unit 1b** (task `072.004-T`) to hold each task
+       within the 2-hour rule; Unit 1 (task `072.001-T`) delivers the core helper, the R8 bounded
+       multi-layer decode primitive, and the crawl (`WebCrawlSource` / `ManifestUrlSource`) coverage.
      - Keep `_build_crawl_source_key` / `_crawl_option_parts` AS-IS as the single builder grammar
        reused by both `build_source_key` and the sanitizer, so there is no separate parse grammar to
        drift and no option-suffix peel is needed; no new `_CRAWL_OPTION_KEYS` constant is introduced.
@@ -256,8 +284,8 @@ Mapped against `.github/instructions/constitution.instructions.md` (actual princ
   absolute-path `id` (`/source-a`), (e) [R6] a credential-free fragment-bearing URL `id`
   (`https://host/x#frag`), and (f) [R6] a credential-free MALFORMED URL-shaped `id`
   (`https://host:notaport`, no marker) each returned VERBATIM (byte-for-byte, no path-redaction,
-  fragment retained, malformed port preserved with no port parse). (3) non-crawl configs (`GitHubRepoSource`, `LocalFileSource`) returned byte-identical
-  AND an empty-option credentialed `WebCrawlSource` sanitized. **[R7] Encoded-credential-name id scenarios (added):** (g) a percent-encoded credential-name id `srcA?%74oken=IDSECRET` (opaque, no scheme) AND its URL-shaped form `https://host/x?%74oken=IDSECRET` -- each decodes to `token` on the detection view -> SURGICALLY redacted to `srcA?%74oken=<redacted>` / `https://host/x?%74oken=<redacted>` (raw encoded key bytes preserved, only the value redacted over the raw string), `IDSECRET` ABSENT; (h) a DOUBLE-encoded id `srcA?%2574oken=IDSECRET` (decodes ONCE to the literal `%74oken`, not `token`) -> returned VERBATIM byte-for-byte, consistent with the URL sanitizer's own single-pass `parse_qsl` decode (pins the bounded single decode; no decode-until-stable loop); (i) a credential-free id carrying a malformed / non-UTF8 percent sequence (`srcA?note=%zz`, `srcA?b=%e0%80`) -> `unquote(..., errors="replace")` does not raise, no credential name matches, id returned VERBATIM; (j) a percent-encoded userinfo id `https://user%3Apass@host/x` (decodes to `user:pass@`) -> userinfo marker detected on the decoded view and stripped from the raw id, credential ABSENT.
+  fragment retained, malformed port preserved with no port parse). (3) a CREDENTIAL-FREE `GitHubRepoSource` and `LocalFileSource` returned byte-identical (a credential-free github_repo stays byte-identical even after Unit 1b; credentialed `github_repo` / `manifest_git` coverage and their redaction assertions live in Unit 1b / `072.004-T`)
+  AND an empty-option credentialed `WebCrawlSource` sanitized. **[R7] Encoded-credential-name id scenarios (added):** (g) a percent-encoded credential-name id `srcA?%74oken=IDSECRET` (opaque, no scheme) AND its URL-shaped form `https://host/x?%74oken=IDSECRET` -- each decodes to `token` on the detection view -> SURGICALLY redacted to `srcA?%74oken=<redacted>` / `https://host/x?%74oken=<redacted>` (raw encoded key bytes preserved, only the value redacted over the raw string), `IDSECRET` ABSENT; (h) [R8] a DOUBLE-encoded id `srcA?%2574oken=IDSECRET` (decodes over two layers -> `%74oken` -> `token`, recognized at layer 2 by the bounded multi-layer scan) -> SURGICALLY redacted to `srcA?%2574oken=<redacted>` (raw double-encoded key bytes preserved, only the value redacted), `IDSECRET` ABSENT -- closing the R7 single-pass encoding bypass (PR #195 finding `PRRT_kwDOSsAX4c6h1D4y`); (h2) [R8] a DEEP-encoded id whose credential name is still decoding at the `_MAX_CREDENTIAL_DECODE_LAYERS` cap -> value redacted (FAIL CLOSED on residual ambiguity), secret ABSENT; (i) a credential-free id carrying a malformed / non-UTF8 percent sequence (`srcA?note=%zz`, `srcA?b=%e0%80`) -> `unquote(..., errors="replace")` does not raise, no credential name matches, id returned VERBATIM; (j) a percent-encoded userinfo id `https://user%3Apass@host/x` (decodes to `user:pass@`) -> userinfo marker detected on the decoded view and stripped from the raw id, credential ABSENT.
 - **Posture:** test-first. Reuses vetted `sanitize_source` without altering it.
 
 ### Unit 2 — Author failing redaction test (tests; test-first RED)
@@ -270,7 +298,7 @@ Mapped against `.github/instructions/constitution.instructions.md` (actual princ
   AND from the written `metadata.json` text — the injected crawl failure MUST raise an exception
   whose message embeds the credentialed `config.url` (e.g. an error carrying `start_url`), so the
   `caplog.text` traceback assertion is a genuine RED and is NOT vacuously satisfied by a URL-free
-  message like `OSError("Network down")`; (c2) add a `ManifestUrlSource` whose `id` is a NON-URL-form credential-bearing string (`srcA?token=IDSECRET`, no scheme) and assert `IDSECRET` is ABSENT from both `caplog.text` and the written `metadata.json` (R5 regression for the non-URL-form-id closure); (c3) [R6] add a MALFORMED credentialed config whose URL would make `_sanitize_url` raise (`https://host:notaport?token=SECRET`) and assert `_execute_single_source` does NOT crash with a sanitizer `ValueError` (it proceeds to the normal fetch-failure path) and `SECRET` is ABSENT from both `caplog.text` and `metadata.json` (R6 totality/fail-closed regression); (c4) [R7] add a percent-encoded credential-name manifest `id` (`srcA?%74oken=IDSECRET`, opaque) and assert `IDSECRET` is ABSENT from both `caplog.text` and `metadata.json` -- proving decoded-name detection closes the encoding bypass (the raw marker scan would miss `%74oken`); (d) assert `job_id == make_job_id(build_source_key(config))`
+  message like `OSError("Network down")`; (c2) add a `ManifestUrlSource` whose `id` is a NON-URL-form credential-bearing string (`srcA?token=IDSECRET`, no scheme) and assert `IDSECRET` is ABSENT from both `caplog.text` and the written `metadata.json` (R5 regression for the non-URL-form-id closure); (c3) [R6] add a MALFORMED credentialed config whose URL would make `_sanitize_url` raise (`https://host:notaport?token=SECRET`) and assert `_execute_single_source` does NOT crash with a sanitizer `ValueError` (it proceeds to the normal fetch-failure path) and `SECRET` is ABSENT from both `caplog.text` and `metadata.json` (R6 totality/fail-closed regression); (c4) [R7] add a percent-encoded credential-name manifest `id` (`srcA?%74oken=IDSECRET`, opaque) and assert `IDSECRET` is ABSENT from both `caplog.text` and `metadata.json` -- proving decoded-name detection closes the encoding bypass (the raw marker scan would miss `%74oken`); (c5) [R8] add a DOUBLE-encoded credential-name manifest `id` (`srcA?%2574oken=IDSECRET`) and a `github_repo`/`manifest_git` config whose credentialed url uses a double-encoded credential key, asserting the secret value is ABSENT from both `caplog.text` and `metadata.json` -- proving the bounded multi-layer decode closes the encoding bypass on the id AND url paths and across the git variants; (d) assert `job_id == make_job_id(build_source_key(config))`
   recomputed independently from the raw credentialed key — this pin, NOT the credential-free parity
   test, is the raw-hash oracle: an impl that hashes the SANITIZED key MUST fail this assertion.
 - **Files:** `tests/elt/test_elt_real_execution.py`.
@@ -319,13 +347,23 @@ Mapped against `.github/instructions/constitution.instructions.md` (actual princ
   redaction cannot complete (never for a merely-malformed id); the separate `config.url` sanitize is
   wrapped fail-closed to `<source-url-redacted>` on a malformed URL. The helper is thus safe to call
   before the fetch `try` and inside the exception logger without crashing or masking.
-- **Decoded-name marker detection (R7)** -- `sanitize_source_id()` classifies credential parameter
-  names on a single-`unquote` decoded view mirroring `parse_qsl` (utf-8, `errors="replace"`, no
-  `.port`), so a percent-encoded credential key (`%74oken` -> `token`) is recognized and cannot
-  bypass the marker gate, while the decode is DETECTION-ONLY (returned id built from raw bytes) and
-  the single pass keeps id/URL handling consistent for double-encoded and malformed sequences without
-  over-redaction or non-termination. Reuses the existing vocabulary (no expansion; `06A59B1D` stays
+- **Bounded multi-layer decoded-name marker detection (R8)** -- `sanitize_source_id()` and the URL
+  guard classify credential parameter names over a BOUNDED multi-layer `unquote` decode (fixed point
+  or `_MAX_CREDENTIAL_DECODE_LAYERS = 5`, utf-8, `errors="replace"`, no `.port`), matching a marker
+  at ANY layer, so single- AND multi-layer percent-encoded credential keys (`%74oken`, `%2574oken`,
+  ...) are recognized rather than bypassing the gate (supersedes the R7 single-pass view, which
+  leaked double-encoded keys). Detection is DETECTION-ONLY (value built from raw bytes; a
+  marker-bearing fragment surgically redacted with its raw encoded key preserved); the loop is
+  bounded/terminating (each pass removes >=1 decodable escape) and fails closed (redact) when a name
+  is still decoding at the cap. Reuses the existing vocabulary (no expansion; `06A59B1D` stays
   deferred).
+- **Same-sink URL-bearing coverage extended to git variants (R8)** -- the source-fact audit confirms
+  `github_repo:` and `manifest_git:` keys reach the identical `_execute_single_source` metadata/log
+  sinks, so both are brought into the typed-config sanitizer (repo_url/url sanitized;
+  id/branch/path_glob marker-gated) rather than passed through. This subsumes and closes the former
+  `79BF0AEC` github_repo deferral (reconciled/archived this cycle); only filesystem keys
+  (`local_file:`, `manifest_local:` path components) remain byte-identical, with path-embedded-secret
+  redaction still the separately deferred `06A59B1D` residual.
 - **Sanitize representation, not the hashed key** — only way to satisfy both "no leak" and
   "job_id determinism" simultaneously.
 
@@ -368,6 +406,24 @@ Mapped against `.github/instructions/constitution.instructions.md` (actual princ
   non-throwing. Unit 1 and Unit 2 add encoded-key, double-encoded, malformed-percent, and
   encoded-userinfo regressions. `job_id` still hashes the raw key; vocabulary unchanged (`06A59B1D`
   deferred).
+- **Risk (CLOSED by the R8 bounded multi-layer detection):** the R7 single-`unquote` view mirrored
+  `parse_qsl` and inherited its single-layer blind spot -- a DOUBLE-encoded credential key
+  (`%2574oken=IDSECRET`, decoding once to literal `%74oken`) matched nothing, so the id/URL was
+  returned with the literal `IDSECRET` value intact in `metadata.source` and the ERROR log (PR #195
+  finding `PRRT_kwDOSsAX4c6h1D4y`; the URL path shared the leak because `_sanitize_url` re-encodes
+  `%2574oken=IDSECRET` unchanged). **Mitigation:** detection now runs a bounded multi-layer decode
+  (fixed point or `_MAX_CREDENTIAL_DECODE_LAYERS = 5`), matches a marker at ANY layer, surgically
+  redacts the value over the raw bytes (double-encoded key preserved, `IDSECRET` absent), and FAILS
+  CLOSED (redacts) on a name still decoding at the cap; termination is guaranteed (each pass removes
+  >=1 escape). Unit 1/1b/2 add double-encoded, deep-encoded fail-closed, and URL-path multi-layer
+  regressions. `job_id` still hashes the raw key; vocabulary unchanged (`06A59B1D` deferred).
+- **Risk (CLOSED by the R8 same-sink coverage):** `github_repo:` (deferred `79BF0AEC`) and
+  `manifest_git:` (PR #195 finding `PRRT_kwDOSsAX4c6h1D4t`) were pass-through, so a token in a git
+  repo URL reached the same sinks. **Mitigation:** both are now sanitized by the typed-config helper
+  (Unit 1b / `072.004-T`); `79BF0AEC` is reconciled/archived as subsumed. **Residual (still
+  deferred, holds scope):** `0F1A653C` (the string-arg `create_staging_job` default-fetch sink, a
+  materially distinct call path) and `06A59B1D` (vocabulary expansion + path-embedded secrets,
+  cross-path blast radius) remain active deferrals.
 - **Risk:** `exc_info` traceback re-leaks the URL. **Mitigation:** Unit 2 asserts absence against
   `caplog.text` (full record incl. traceback), forcing Unit 3 to close the traceback path.
 - **Risk:** silently changing `job_id`. **Mitigation:** determinism assertion + parity test.
@@ -382,7 +438,7 @@ Mapped against `.github/instructions/constitution.instructions.md` (actual princ
   the raw credentialed key to `metadata.json` and stdout (`cli.py:381`). This shipment fixes only
   `_execute_single_source` per strict D6E758F5 scope -> **deferred**, captured as stash **0F1A653C**
   (high). Surfaced by the Stage adversarial multi-model review (2026-09-12).
-- **Caveat:** `github_repo:` tokens are OUT OF SCOPE -> P-021 deferral watch, pass-through only.
+- **Caveat (updated R8):** `github_repo:` tokens are now IN SCOPE and sanitized (Unit 1b / `072.004-T`); the former `79BF0AEC` deferral is reconciled/archived as subsumed.
 - **Caveat:** pre-existing `metadata.json` files are not rewritten (historical-artifact note to
   closure).
 
@@ -729,3 +785,126 @@ marker-detection contract:
   detection closes the encoding bypass, detection-only decode preserves determinism and verbatim
   credential-free ids, single-pass bound guarantees termination, `errors="replace"` guarantees
   totality, cross-artifact consistency confirmed. Verdict: PASS.
+
+## PR #195 Copilot Remediation -- Cycle 5 (Revision R8)
+
+Cycle-5 Copilot review on PR #195 (operator remediation cycle 6) raised two unresolved
+same-contract-surface findings on the Stage-owned R7 plan, verified against the live PR review
+threads at HEAD `199e7a4` via a fully-paginated GraphQL enumeration (22 reviews, 18 review threads,
+`hasNextPage=false` on both; Copilot login `copilot-pull-request-reviewer`). Exactly TWO threads are
+unresolved (no additions since Ship's snapshot):
+
+- `PRRT_kwDOSsAX4c6h1D4t` (plan line 235, comment db `3998169888`): `ManifestGitSource` is URL-bearing
+  -- its unrestricted `url` is composed verbatim into `manifest_git:<id>:<url>@<branch>`
+  (`src/docline/elt/manifest_models.py:75-92`, `src/docline/elt/source_keys.py:41-42`) and
+  `_execute_single_source` persists/logs that key -- but the R7 contract left it in the byte-identical
+  pass-through set, so a token in a Git URL reaches the same sinks.
+- `PRRT_kwDOSsAX4c6h1D4y` (plan line 260, comment db `3998169896`): the R7 acceptance case (h)
+  returned a double-encoded id `srcA?%2574oken=IDSECRET` VERBATIM; decoding the key twice yields the
+  recognized `token` marker, so the literal secret is written to `metadata.source` and the ERROR log
+  -- an encoding bypass contradicting the plan's no-credential invariant.
+
+### Source-fact audit (read-only; every `build_source_key` component vs. the `_execute_single_source` sinks)
+
+`_execute_single_source` (`src/docline/elt/execute.py:222-256`) computes `source_key =
+build_source_key(config)` for ALL config types, writes `metadata.source = sanitize_source(source_key)`,
+and on failure logs `source_key` at ERROR -- one shared sink pair for every variant. `build_source_key`
+(`src/docline/elt/source_keys.py`) composes:
+
+| Config | source_key grammar | Unrestricted / URL-bearing components | Same sink? | R8 disposition |
+|---|---|---|---|---|
+| `LocalFileSource` | `local_file:{paths}` | filesystem paths (no URL cred) | yes | byte-identical pass-through (path-secret = `06A59B1D`) |
+| `WebCrawlSource` | `web_crawl:{url}:{opts}` | `url` (userinfo+query) | yes | sanitize url + R8 multi-layer guard (already in contract) |
+| `GitHubRepoSource` | `github_repo:{repo_url}@{branch}:{path_glob}` | `repo_url` (userinfo/query; git token), `branch`, `path_glob` | yes (`_fetch_github`) | **NOW sanitized (Unit 1b); subsumes `79BF0AEC`** |
+| `ManifestLocalSource` | `manifest_local:{id}:{path}:{includes}` | `id` (unrestricted), `path`/`includes` (filesystem) | yes | id marker-gated; path components byte-identical |
+| `ManifestUrlSource` | `manifest_url:{id}:{url}:{opts}` | `id`, `url` | yes | sanitize_source_id(id) + sanitize url + R8 guard (already) |
+| `ManifestGitSource` | `manifest_git:{id}:{url}@{branch}` | `id`, `url`, `branch` | yes (`_fetch_github`) | **NOW sanitized (Unit 1b); PR #195 `PRRT_kwDOSsAX4c6h1D4t`** |
+
+Audit conclusion: the same-sink URL-bearing set is {`web_crawl`, `manifest_url`, `github_repo`,
+`manifest_git`}. R7 covered only the first two; the audit shows the last two reach the identical sinks,
+so leaving them pass-through is a piecemeal omission. `local_file` / `manifest_local` are
+filesystem-only (no URL-credential sink); their path-embedded-secret exposure stays the separately
+deferred `06A59B1D` residual.
+
+### Classification (P-021 C1)
+
+BOTH findings are IN SCOPE -- same-contract-surface defects on the Stage-owned planning/backlog
+artifacts for feature 072-F / shipment 063-S (the typed-config `sanitize_source_key` /
+`sanitize_source_id` contract and its variant coverage). Per the operator's no-residual-risk
+authorization for this cycle, both are fixed in-cycle; NEITHER is deferred; no P-021 C2 capture is
+created. A known reachable credential leak (the double-encoding bypass) is not accepted merely because
+a different source variant is involved.
+
+### Fix (Revision R8)
+
+1. **Bounded multi-layer decoded-name detection.** `sanitize_source_id()` and the URL guard classify
+   credential parameter names over a BOUNDED multi-layer `unquote` decode -- `layer_{i+1} =
+   unquote(layer_i, encoding="utf-8", errors="replace")`, stopping at a fixed point or
+   `_MAX_CREDENTIAL_DECODE_LAYERS = 5`. A marker matched at ANY layer redacts the fragment value over
+   the RAW bytes (encoded key preserved). This supersedes the R7 single pass, which mirrored `parse_qsl`
+   and thus leaked double-encoded keys. Empirically confirmed: `parse_qsl("%2574oken=IDSECRET")` ->
+   key `%74oken` (unrecognized), value `IDSECRET` retained and re-encoded unchanged, so the single-pass
+   URL path leaked too.
+2. **Fail-closed on residual ambiguity.** If the decode loop hits the cap WITHOUT reaching a fixed
+   point, the name is treated as a marker and its value redacted (never passed through). A fixed-point
+   name still carrying invalid `%zz` / non-UTF8 escapes is NOT ambiguous and, absent a marker, is
+   preserved verbatim.
+3. **Termination / totality.** Each non-fixed-point pass removes >=1 decodable `%HH` escape, so the
+   loop stabilizes within the nested-escape count, hard-bounded by the cap; `errors="replace"` keeps
+   it non-throwing. Bounded, total, deterministic.
+4. **Same-sink coverage extended.** `sanitize_source_key()` now sanitizes `GitHubRepoSource`
+   (repo_url + branch + path_glob) and `ManifestGitSource` (id + url + branch), and marker-gates
+   `ManifestLocalSource.id`, reusing the same primitive. Only `local_file:` and the filesystem path
+   components of `manifest_local:` remain byte-identical.
+5. **Invariants preserved.** `make_job_id` still hashes the raw `build_source_key(config)` (job-id
+   determinism unchanged); `_CREDENTIAL_PARAM_PREFIXES` is NOT expanded (`06A59B1D` stays deferred);
+   `_sanitize_url` in `staging.py` is NOT modified (059-S blast radius held) -- the multi-layer URL
+   guard lives in `source_keys.py`.
+
+### Task restructure (2-hour rule)
+
+The expanded contract grows Unit 1 beyond the 2-hour envelope, so the helper work is split:
+- **Unit 1 / `072.001-T`** (Size S, Complexity high): core `sanitize_source_key` + `sanitize_source_id`
+  + the R8 `_MAX_CREDENTIAL_DECODE_LAYERS` bounded multi-layer decode primitive + fail-closed url
+  wrapper + multi-layer URL guard; crawl coverage (`WebCrawlSource`, `ManifestUrlSource`).
+- **Unit 1b / `072.004-T`** (NEW; Size S, Complexity medium): extend `sanitize_source_key` to
+  `GitHubRepoSource`, `ManifestGitSource`, and `ManifestLocalSource.id`, reusing the Unit 1 primitive;
+  depends on `072.001-T`.
+- **Unit 2 / `072.002-T`** now depends on both `072.001-T` and `072.004-T` (integration test covers all
+  variants incl. double-encoded and git-variant credentialed urls).
+- **Unit 3 / `072.003-T`** unchanged (wiring); depends on `072.002-T`.
+
+### Regressions specified
+
+Unit 1: case (h) double-encoded id now SURGICALLY redacted (`srcA?%2574oken=<redacted>`, `IDSECRET`
+absent); (h2) deep-encoded-beyond-cap id value redacted (fail closed); URL-path double-encoded query
+key redacted / fail-closed via the multi-layer guard. Unit 1b: `github_repo` / `manifest_git`
+credentialed repo_url/url + credentialed `id` redacted, credential-free branch/path preserved verbatim.
+Unit 2: double-encoded manifest `id` and a git-variant credentialed url assert the secret absent from
+`caplog.text` and `metadata.json`.
+
+### Stash reconciliation
+
+`79BF0AEC` (github_repo token/source-key deferral) is now demonstrably SUBSUMED by the R8 same-sink
+contract, so it is reconciled/archived as fixed-planned via `backlogit stash archive 79BF0AEC`
+(tombstone in `.backlogit/archive/stash.jsonl`; active stash 28 -> 27). The unrelated pre-existing
+timestamp-normalization working-copy diff on `0F1A653C` / `06A59B1D` is preserved byte-for-byte
+(verified: only `created_at` differs) and EXCLUDED from the fix commit. `0F1A653C` (string-arg
+default-fetch sink) and `06A59B1D` (vocabulary expansion) remain active deferrals -- genuinely
+distinct surfaces, not subsumed.
+
+### Artifacts updated
+
+This plan (frontmatter R8, Requirements Trace, Unit 1 detection + pass-through, Unit 1b via
+`072.004-T`, Unit 2, Decisions, Risks, this section), the decision doc (Option B R8 refinement,
+Chosen Direction, Done Looks Like, P-021 Deferral Watch), feature card 072-F, tasks
+072.001-T / 072.002-T / 072.003-T + new 072.004-T, and `.backlogit/archive/stash.jsonl` (`79BF0AEC`
+tombstone).
+
+### Independent review
+
+Targeted independent correctness + security review (this diff): the bounded multi-layer decode closes
+the double-encoding bypass on id AND url paths; fail-closed cap handles pathological nesting;
+termination and totality proven; the same-sink audit confirms git-variant coverage is complete and
+`79BF0AEC` is subsumed; determinism (raw-key hashing) and the 059-S / `06A59B1D` boundaries held.
+Verdict: PASS.
