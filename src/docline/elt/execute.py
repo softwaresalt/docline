@@ -81,11 +81,24 @@ _CRAWL_MANIFEST_NAME = "crawl-manifest.json"
 # match. Without it, the base `[^\s'"<>]+` run stops right before the
 # opening delimiter, leaving the quoted/bracketed credential value entirely
 # outside the matched span -- and therefore untouched by any redaction pass
-# that operates on the match text (see U-2).
-_HTTP_URL_RE = re.compile(r"https?://[^\s'\"<>]+(?:\"[^\"]*\"|'[^']*'|<[^>]*>)?", re.IGNORECASE)
+# that operates on the match text (see U-2). Each delimiter type also has an
+# "unterminated" fallback alternative (round-3 fix; Copilot thread
+# PRRT_kwDOSsAX4c6h76hW, comment PRRC_kwDOSsAX4c7ueCdW): when an exception
+# message opens a quote/bracket around a secret but never closes it before
+# the message ends, the terminated alternative (`"[^"]*"` etc.) cannot match
+# at all, so the opening delimiter is excluded from the base run and the
+# secret is left entirely outside the matched span. The fallback alternative
+# does not require a closing delimiter, but is still bounded -- it stops at
+# whitespace or end-of-string -- so it cannot run unbounded through unrelated
+# later text.
+_HTTP_URL_RE = re.compile(
+    r"https?://[^\s'\"<>]+"
+    r"(?:\"[^\"]*\"|\"[^\"\s]*|'[^']*'|'[^'\s]*|<[^>]*>|<[^>\s]*)?",
+    re.IGNORECASE,
+)
 _QUERY_PARAM_TOKEN_RE = re.compile(
     r"(?P<prefix>[?&;])(?P<name>[^=?\s&;#]+)="
-    r"(?P<value>\"[^\"]*\"|'[^']*'|<[^>]*>|[^?\s&;#'\"<>]*)"
+    r"(?P<value>\"[^\"]*\"|\"[^\"\s]*|'[^']*'|'[^'\s]*|<[^>]*>|<[^>\s]*|[^?\s&;#'\"<>]*)"
 )
 _log = logging.getLogger(__name__)
 

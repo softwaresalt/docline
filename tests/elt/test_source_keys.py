@@ -613,14 +613,87 @@ class TestUrlShapeGateSingleSlashScheme:
         """No regression: a normal double-slash URL is still recognized as URL-shaped."""
         assert _is_url_shaped("https://host/x") is True
 
-    def test_preserves_zero_slash_scheme_value_as_not_url_shaped(self) -> None:
-        """No regression (R-3 guard): a zero-slash ``scheme:value`` shape is not URL-shaped.
+    def test_zero_slash_scheme_value_is_now_url_shaped_but_unaffected_without_at_sign(
+        self,
+    ) -> None:
+        """Corrected contract (round-3): zero-slash schemes are url-shaped, but safe.
 
-        A bare ``scheme:value`` identifier with no slash at all (e.g. a branch
-        name like ``release:2026``) must remain classified as NOT url-shaped,
-        exactly as before this fix, to avoid re-introducing the kind of
-        over-broad-marker regression a prior remediation cycle for this file
-        had to fix (see ``_contains_userinfo_marker``/R-3 history above).
+        Prior to the round-3 fix, ``_is_url_shaped("release:2026")`` returned
+        ``False`` because ``_URL_SCHEME_RE`` required at least one slash after
+        the scheme colon. That gap is exactly what let a malformed zero-slash
+        credential URL (e.g. ``https:user:pass@host``) skip userinfo detection
+        entirely (see ``TestUrlShapeGateMalformedSlashCount`` below). Relaxing
+        the slash quantifier to zero-or-more means a bare ``scheme:value``
+        identifier like ``release:2026`` now correctly evaluates as url-shaped
+        too -- but the behavioral guarantee that matters (no corruption of a
+        credential-free identifier) still holds: redaction is gated on an
+        actual ``@`` being present in the authority segment
+        (``_contains_userinfo_marker``), not merely on the ``_is_url_shaped``
+        boolean, and ``"2026"`` (the authority segment for this value)
+        contains no ``@``.
         """
-        assert _is_url_shaped("release:2026") is False
+        assert _is_url_shaped("release:2026") is True
         assert sanitize_source_id("release:2026") == "release:2026"
+
+
+class TestUrlShapeGateMalformedSlashCount:
+    """Regression tests for the round-3 malformed-scheme slash-count gap.
+
+    ``_URL_SCHEME_RE`` previously required exactly one or two slashes after
+    the scheme colon (``:/{1,2}``). A malformed URL with ZERO slashes (e.g.
+    ``https:user:pass@host``) or with three-plus slashes (e.g.
+    ``https:////user:pass@host``) was therefore never recognized as
+    URL-shaped by ``_is_url_shaped``/``_authority_span``, so ``_strip_userinfo``
+    never even considered its userinfo and the credential leaked through both
+    ``_sanitize_url_field`` (this module) and ``_sanitize_exception_text``
+    (``docline.elt.execute``, which reuses ``sanitize_source_id`` and is
+    gated by the same ``_is_url_shaped`` check).
+    """
+
+    def test_zero_slash_malformed_scheme_is_url_shaped(self) -> None:
+        """_is_url_shaped recognizes a zero-slash malformed scheme with userinfo."""
+        assert _is_url_shaped("https:user:pass@host") is True
+
+    def test_strips_userinfo_from_zero_slash_malformed_scheme_url(self) -> None:
+        """_sanitize_url_field strips userinfo credentials from a zero-slash URL."""
+        sanitized = _sanitize_url_field("https:user:pass@host")
+
+        assert "pass" not in sanitized
+        assert sanitized == "https:host"
+
+    def test_four_slash_malformed_scheme_is_url_shaped(self) -> None:
+        """_is_url_shaped recognizes a four-slash malformed scheme with userinfo."""
+        assert _is_url_shaped("https:////user:pass@host") is True
+
+    def test_strips_userinfo_from_four_slash_malformed_scheme_url(self) -> None:
+        """_sanitize_url_field strips userinfo credentials from a four-slash URL."""
+        sanitized = _sanitize_url_field("https:////user:pass@host")
+
+        assert "pass" not in sanitized
+        assert sanitized == "https:////host"
+
+    def test_redacts_malformed_scheme_crawl_url_credentials_end_to_end(self) -> None:
+        """sanitize_source_key redacts a WebCrawlSource url with a malformed scheme.
+
+        Exercises the public entry point (not just the private helper) so the
+        fix is verified end-to-end for a real typed source config, matching
+        the ``WebCrawlSource.url`` field named in the confirmed bug report.
+        """
+        config = WebCrawlSource(
+            type="web_crawl",
+            url="https:////user:pass@host",
+        )
+
+        sanitized = sanitize_source_key(config)
+
+        assert sanitized == "web_crawl:https:////host"
+        assert "pass" not in sanitized
+
+    def test_preserves_second_zero_slash_credential_free_identifier(self) -> None:
+        """No regression: a second zero-slash, no-``@`` identifier stays unchanged."""
+        assert sanitize_source_id("topic:general") == "topic:general"
+
+    def test_preserves_no_colon_bare_at_sign_identifier(self) -> None:
+        """No regression: an identifier with no colon at all is completely unaffected."""
+        assert _is_url_shaped("release@2026") is False
+        assert sanitize_source_id("release@2026") == "release@2026"

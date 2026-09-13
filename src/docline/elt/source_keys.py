@@ -12,7 +12,7 @@ from docline.fetch.staging import _is_credential_param, sanitize_source
 _MAX_CREDENTIAL_DECODE_LAYERS = 5
 _SOURCE_ID_REDACTED = "<source-id-redacted>"
 _SOURCE_URL_REDACTED = "<source-url-redacted>"
-_URL_SCHEME_RE = re.compile(r"^[A-Za-z][A-Za-z0-9+.-]*:/{1,2}")
+_URL_SCHEME_RE = re.compile(r"^[A-Za-z][A-Za-z0-9+.-]*:/*")
 _QUERY_COMPONENT_SEPARATOR_RE = re.compile(r"([&?;])")
 
 
@@ -157,14 +157,27 @@ def _crawl_option_parts(
 
 
 def _sanitize_url_field(raw_url: str) -> str:
-    """Return a fail-closed sanitized URL field."""
+    """Return a fail-closed sanitized URL field.
+
+    Every branch below funnels through :func:`sanitize_source_id` before
+    returning. A malformed scheme with the "wrong" slash count (zero, or
+    three-plus, e.g. ``https:////user:pass@host``) still satisfies the naive
+    ``sanitized.lower().startswith(("http://", "https://"))`` literal-prefix
+    check below -- its first eight characters happen to line up -- even
+    though ``staging.sanitize_source``/``urlparse`` never actually recognize
+    a netloc for it and therefore never strip its userinfo. Routing the
+    ``http(s)://``-prefixed branch's result through the same marker-gated
+    ``sanitize_source_id`` call used by the fallback branch (round-3 fix,
+    see ``_URL_SCHEME_RE`` below) closes that residual gap without disturbing
+    already-well-formed URLs, for which ``sanitize_source_id`` is a no-op.
+    """
     stripped_url = _strip_reversed_query_credentials(raw_url)
     try:
         sanitized = sanitize_source(stripped_url)
     except ValueError:
         return _SOURCE_URL_REDACTED
     if sanitized.lower().startswith(("http://", "https://")):
-        return _remove_credential_query_params(sanitized)
+        sanitized = _remove_credential_query_params(sanitized)
     return sanitize_source_id(sanitized)
 
 
