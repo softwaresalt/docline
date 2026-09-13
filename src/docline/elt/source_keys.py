@@ -13,6 +13,7 @@ _MAX_CREDENTIAL_DECODE_LAYERS = 5
 _SOURCE_ID_REDACTED = "<source-id-redacted>"
 _SOURCE_URL_REDACTED = "<source-url-redacted>"
 _URL_SCHEME_RE = re.compile(r"^[A-Za-z][A-Za-z0-9+.-]*://")
+_QUERY_COMPONENT_SEPARATOR_RE = re.compile(r"([&?])")
 
 
 def build_source_key(config: SourceConfig) -> str:
@@ -200,6 +201,8 @@ def _contains_credential_marker(raw_value: str) -> bool:
 
 def _contains_userinfo_marker(raw_value: str) -> bool:
     """Return True when the authority portion contains userinfo credentials."""
+    if not _is_url_shaped(raw_value):
+        return False
     raw_authority = _authority_segment(raw_value)
     if raw_authority.count("@") != 1:
         return False
@@ -214,23 +217,27 @@ def _userinfo_has_marker(raw_userinfo: str) -> bool:
 
 def _iter_query_like_components(raw_value: str) -> tuple[str, ...]:
     """Return query-like components from *raw_value* for marker scanning."""
-    fragment_index = raw_value.find("#")
-    prefix = raw_value if fragment_index == -1 else raw_value[:fragment_index]
-    fragment = "" if fragment_index == -1 else raw_value[fragment_index + 1 :]
-
-    query_index = prefix.find("?")
-    query = "" if query_index == -1 else prefix[query_index + 1 :]
+    prefix, fragment_separator, fragment = raw_value.partition("#")
+    _, query_separator, query = prefix.partition("?")
     components: list[str] = []
-    if query_index != -1:
+    if query_separator:
         components.append(query)
-    if fragment_index != -1:
+    if fragment_separator:
         components.append(fragment)
     return tuple(components)
 
 
 def _query_component_has_credential_marker(component: str) -> bool:
     """Return True when a query-like component contains a credential key."""
-    return any(_token_has_credential_name(token) for token in component.split("&"))
+    return any(
+        _token_has_credential_name(token)
+        for token in _split_query_component_preserving_separators(component)[::2]
+    )
+
+
+def _split_query_component_preserving_separators(component: str) -> list[str]:
+    """Return alternating token/separator parts without normalizing delimiters."""
+    return _QUERY_COMPONENT_SEPARATOR_RE.split(component)
 
 
 def _is_credential_name(raw_name: str) -> bool:
@@ -250,6 +257,8 @@ def _is_credential_name(raw_name: str) -> bool:
 
 def _strip_userinfo(raw_value: str) -> str:
     """Strip credential-bearing userinfo from *raw_value* when present."""
+    if not _is_url_shaped(raw_value):
+        return raw_value
     authority_start, authority_end = _authority_span(raw_value)
     raw_authority = raw_value[authority_start:authority_end]
     if "@" not in raw_authority:
@@ -264,44 +273,30 @@ def _strip_userinfo(raw_value: str) -> str:
 
 def _redact_query_and_fragment_values(raw_value: str) -> str:
     """Redact credential values in the query and fragment portions of *raw_value*."""
-    fragment_index = raw_value.find("#")
-    fragment = None
-    prefix = raw_value
-    if fragment_index != -1:
-        prefix = raw_value[:fragment_index]
-        fragment = raw_value[fragment_index + 1 :]
-
-    query_index = prefix.find("?")
-
-    query = None
-    base = prefix
-    if query_index != -1:
-        base = prefix[:query_index]
-        query = prefix[query_index + 1 :]
+    prefix, fragment_separator, fragment = raw_value.partition("#")
+    base, query_separator, query = prefix.partition("?")
 
     parts = [base]
-    if query is not None:
-        parts.append("?")
+    if query_separator:
+        parts.append(query_separator)
         parts.append(_redact_query_component(query))
-    if fragment is not None:
-        parts.append("#")
+    if fragment_separator:
+        parts.append(fragment_separator)
         parts.append(_redact_query_component(fragment))
     return "".join(parts)
 
 
 def _redact_query_component(component: str) -> str:
-    """Redact credential values from a ``&``-joined query-like component."""
-    tokens: list[str] = []
-    for token in component.split("&"):
+    """Redact credential values from a query-like component without changing separators."""
+    parts = _split_query_component_preserving_separators(component)
+    for index in range(0, len(parts), 2):
+        token = parts[index]
         if "=" not in token:
-            tokens.append(token)
             continue
         name, _ = token.split("=", 1)
         if _is_credential_name(name):
-            tokens.append(f"{name}=<redacted>")
-        else:
-            tokens.append(token)
-    return "&".join(tokens)
+            parts[index] = f"{name}=<redacted>"
+    return "".join(parts)
 
 
 def _authority_segment(raw_value: str) -> str:

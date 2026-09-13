@@ -492,6 +492,36 @@ class TestEltFetchUrlSource:
         assert "SECRET" not in caplog.text
         assert "/docs?token=<redacted>" in failure_record.getMessage()
 
+    def test_url_fetch_failure_scrubs_reversed_scheme_less_credential_fragments(
+        self,
+        tmp_path: Path,
+        caplog,
+    ) -> None:
+        """execute_elt_fetch redacts later scheme-less credential query fragments."""
+        from docline.elt.execute import execute_elt_fetch
+
+        config_dir = tmp_path / ".elt" / "config"
+        config_dir.mkdir(parents=True)
+        (config_dir / "web.yaml").write_text(
+            "type: web_crawl\nurl: https://example.com/docs?token=SECRET\n",
+            encoding="utf-8",
+        )
+
+        error_message = "Max retries exceeded with url: /docs?detail=x?token=SECRET"
+
+        async def fake_crawl(start_url: str, config=None, progress=None) -> None:
+            del start_url, config, progress
+            raise OSError(error_message)
+
+        caplog.set_level(logging.ERROR, logger="docline.elt.execute")
+        with patch("docline.fetch.crawl.crawl", side_effect=fake_crawl):
+            execute_elt_fetch(config_dir, ".elt/staging", workspace_root=tmp_path)
+
+        failure_record = next(record for record in caplog.records if record.exc_info is not None)
+
+        assert "SECRET" not in caplog.text
+        assert "/docs?detail=x?token=<redacted>" in failure_record.getMessage()
+
     def test_url_fetch_failure_scrubs_exception_cause_traceback(
         self,
         tmp_path: Path,

@@ -394,11 +394,22 @@ class TestSanitizeSourceId:
         assert sanitized == "https://host/x"
         assert "TOKEN" not in sanitized
 
+    def test_preserves_non_url_identifier_with_bare_at_sign(self) -> None:
+        """sanitize_source_id preserves credential-free non-URL identifiers containing ``@``."""
+        assert sanitize_source_id("release@2026") == "release@2026"
+
     def test_redacts_non_url_identifier_before_second_query_delimiter(self) -> None:
         """sanitize_source_id redacts a credential before later ``?`` segments."""
         sanitized = sanitize_source_id("srcA?token=SECRET?detail=x")
 
         assert sanitized.startswith("srcA?token=<redacted>")
+        assert "SECRET" not in sanitized
+
+    def test_redacts_non_url_identifier_after_second_query_delimiter(self) -> None:
+        """sanitize_source_id redacts a credential after an earlier ``?`` segment."""
+        sanitized = sanitize_source_id("srcA?detail=x?token=SECRET")
+
+        assert sanitized == "srcA?detail=x?token=<redacted>"
         assert "SECRET" not in sanitized
 
     def test_redacts_percent_encoded_userinfo(self) -> None:

@@ -76,7 +76,10 @@ _ELT_GENERATED_DIR_PREFIXES: tuple[str, ...] = ("runtime-staging", "runtime-outp
 _STAGED_WEB_METADATA_SUFFIX = ".meta.json"
 _CRAWL_MANIFEST_NAME = "crawl-manifest.json"
 _HTTP_URL_RE = re.compile(r"https?://[^\s'\"<>]+")
-_QUERY_PARAM_TOKEN_RE = re.compile(r"(?P<prefix>[?&])(?P<name>[^=\s&#]+)=(?P<value>[^\s&#'\"<>]*)")
+_QUERY_PARAM_TOKEN_RE = re.compile(
+    r"(?P<prefix>[?&])(?P<name>[^=?\s&#]+)="
+    r"(?P<value>[^?\s&#'\"<>]*)"
+)
 _log = logging.getLogger(__name__)
 
 
