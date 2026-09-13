@@ -1,7 +1,18 @@
-"""Deterministic source-key builders for ELT staging jobs."""
+"""Deterministic and sanitized source-key builders for ELT staging jobs."""
+
+from __future__ import annotations
+
+import re
+from urllib.parse import unquote
 
 from docline.elt.manifest_models import ManifestGitSource, ManifestLocalSource, ManifestUrlSource
 from docline.elt.models import GitHubRepoSource, LocalFileSource, SourceConfig, WebCrawlSource
+from docline.fetch.staging import _is_credential_param, sanitize_source
+
+_MAX_CREDENTIAL_DECODE_LAYERS = 5
+_SOURCE_ID_REDACTED = "<source-id-redacted>"
+_SOURCE_URL_REDACTED = "<source-url-redacted>"
+_URL_SCHEME_RE = re.compile(r"^[A-Za-z][A-Za-z0-9+.-]*://")
 
 
 def build_source_key(config: SourceConfig) -> str:
@@ -43,6 +54,74 @@ def build_source_key(config: SourceConfig) -> str:
     raise TypeError(f"Unsupported source config type: {type(config)!r}")
 
 
+def sanitize_source_key(config: SourceConfig) -> str:
+    """Derive a credential-scrubbed staging key for persisted metadata.
+
+    Args:
+        config: Typed source configuration.
+
+    Returns:
+        A sanitized source key safe to persist in metadata and logs.
+    """
+    if isinstance(config, LocalFileSource):
+        return build_source_key(config)
+    if isinstance(config, WebCrawlSource):
+        return _build_crawl_source_key(
+            "web_crawl",
+            _sanitize_url_field(config.url),
+            max_depth=config.depth,
+            max_pages=config.max_pages,
+            domain_lock=config.domain_lock,
+            rate_limit_ms=config.rate_limit_ms,
+        )
+    if isinstance(config, GitHubRepoSource):
+        return (
+            f"github_repo:{_sanitize_url_field(config.repo_url)}@"
+            f"{sanitize_source_id(config.branch)}:{sanitize_source_id(config.path_glob)}"
+        )
+    if isinstance(config, ManifestLocalSource):
+        includes = ",".join(sorted(config.include))
+        return f"manifest_local:{sanitize_source_id(config.id)}:{config.path}:{includes}"
+    if isinstance(config, ManifestUrlSource):
+        return _build_crawl_source_key(
+            f"manifest_url:{sanitize_source_id(config.id)}",
+            _sanitize_url_field(config.url),
+            max_depth=config.max_depth,
+            max_pages=config.max_pages,
+            domain_lock=config.domain_lock,
+            rate_limit_ms=config.rate_limit_ms,
+        )
+    if isinstance(config, ManifestGitSource):
+        return (
+            f"manifest_git:{sanitize_source_id(config.id)}:{_sanitize_url_field(config.url)}@"
+            f"{sanitize_source_id(config.branch)}"
+        )
+    raise TypeError(f"Unsupported source config type: {type(config)!r}")
+
+
+def sanitize_source_id(raw_id: str) -> str:
+    """Redact credential markers from a manifest/source identifier.
+
+    Detection is marker-gated and non-throwing. Credential-free identifiers are
+    returned byte-for-byte, even when they resemble malformed URLs.
+
+    Args:
+        raw_id: Raw identifier to sanitize.
+
+    Returns:
+        The credential-scrubbed identifier, the original identifier when no
+        marker is present, or a fail-closed sentinel when redaction cannot be
+        completed safely.
+    """
+    if not _contains_credential_marker(raw_id):
+        return raw_id
+    try:
+        sanitized = _strip_userinfo(raw_id)
+        return _redact_query_and_fragment_values(sanitized)
+    except ValueError:
+        return _SOURCE_ID_REDACTED
+
+
 def _build_crawl_source_key(
     prefix: str,
     url: str,
@@ -76,4 +155,181 @@ def _crawl_option_parts(
     return parts
 
 
-__all__ = ["build_source_key"]
+def _sanitize_url_field(raw_url: str) -> str:
+    """Return a fail-closed sanitized URL field."""
+    try:
+        sanitized = sanitize_source(raw_url)
+    except ValueError:
+        return _SOURCE_URL_REDACTED
+    if sanitized.lower().startswith(("http://", "https://")):
+        return _remove_credential_query_params(sanitized)
+    return sanitized
+
+
+def _remove_credential_query_params(raw_url: str) -> str:
+    """Remove credential-bearing query tokens from a URL while preserving others."""
+    fragment_index = raw_url.find("#")
+    prefix = raw_url if fragment_index == -1 else raw_url[:fragment_index]
+    query_index = prefix.find("?")
+    if query_index == -1:
+        return prefix
+
+    base = prefix[:query_index]
+    query = prefix[query_index + 1 :]
+    kept_tokens = [token for token in query.split("&") if not _token_has_credential_name(token)]
+    if not kept_tokens or all(token == "" for token in kept_tokens):
+        return base
+    return f"{base}?{'&'.join(kept_tokens)}"
+
+
+def _token_has_credential_name(token: str) -> bool:
+    """Return True when a query token's key is credential-like."""
+    if "=" not in token:
+        return False
+    name, _ = token.split("=", 1)
+    return _is_credential_name(name)
+
+
+def _contains_credential_marker(raw_value: str) -> bool:
+    """Return True when *raw_value* contains credential-like markers."""
+    return _contains_userinfo_marker(raw_value) or any(
+        _query_component_has_credential_marker(component)
+        for component in _iter_query_like_components(raw_value)
+    )
+
+
+def _contains_userinfo_marker(raw_value: str) -> bool:
+    """Return True when the authority portion contains userinfo credentials."""
+    raw_authority = _authority_segment(raw_value)
+    if raw_authority.count("@") != 1:
+        return False
+    raw_userinfo, _ = raw_authority.split("@", 1)
+    return _userinfo_has_marker(raw_userinfo)
+
+
+def _userinfo_has_marker(raw_userinfo: str) -> bool:
+    """Return True when *raw_userinfo* is a present, unambiguous userinfo segment."""
+    return raw_userinfo != ""
+
+
+def _iter_query_like_components(raw_value: str) -> tuple[str, ...]:
+    """Return query-like components from *raw_value* for marker scanning."""
+    fragment_index = raw_value.find("#")
+    prefix = raw_value if fragment_index == -1 else raw_value[:fragment_index]
+    fragment = "" if fragment_index == -1 else raw_value[fragment_index + 1 :]
+
+    query_index = prefix.find("?")
+    query = "" if query_index == -1 else prefix[query_index + 1 :]
+    components: list[str] = []
+    if query_index != -1:
+        components.append(query)
+    if fragment_index != -1:
+        components.append(fragment)
+    return tuple(components)
+
+
+def _query_component_has_credential_marker(component: str) -> bool:
+    """Return True when a query-like component contains a credential key."""
+    return any(_token_has_credential_name(token) for token in component.split("&"))
+
+
+def _is_credential_name(raw_name: str) -> bool:
+    """Return True when *raw_name* matches credential markers on any decode layer."""
+    current = raw_name
+    if _is_credential_param(current):
+        return True
+    for _ in range(_MAX_CREDENTIAL_DECODE_LAYERS):
+        decoded = unquote(current, encoding="utf-8", errors="replace")
+        if decoded == current:
+            return False
+        current = decoded
+        if _is_credential_param(current):
+            return True
+    return True
+
+
+def _strip_userinfo(raw_value: str) -> str:
+    """Strip credential-bearing userinfo from *raw_value* when present."""
+    authority_start, authority_end = _authority_span(raw_value)
+    raw_authority = raw_value[authority_start:authority_end]
+    if "@" not in raw_authority:
+        return raw_value
+    if raw_authority.count("@") != 1:
+        raise ValueError("ambiguous authority userinfo")
+    raw_userinfo, raw_host = raw_authority.split("@", 1)
+    if not _userinfo_has_marker(raw_userinfo):
+        return raw_value
+    return f"{raw_value[:authority_start]}{raw_host}{raw_value[authority_end:]}"
+
+
+def _redact_query_and_fragment_values(raw_value: str) -> str:
+    """Redact credential values in the query and fragment portions of *raw_value*."""
+    fragment_index = raw_value.find("#")
+    fragment = None
+    prefix = raw_value
+    if fragment_index != -1:
+        prefix = raw_value[:fragment_index]
+        fragment = raw_value[fragment_index + 1 :]
+
+    query_index = prefix.find("?")
+
+    query = None
+    base = prefix
+    if query_index != -1:
+        base = prefix[:query_index]
+        query = prefix[query_index + 1 :]
+
+    parts = [base]
+    if query is not None:
+        parts.append("?")
+        parts.append(_redact_query_component(query))
+    if fragment is not None:
+        parts.append("#")
+        parts.append(_redact_query_component(fragment))
+    return "".join(parts)
+
+
+def _redact_query_component(component: str) -> str:
+    """Redact credential values from a ``&``-joined query-like component."""
+    tokens: list[str] = []
+    for token in component.split("&"):
+        if "=" not in token:
+            tokens.append(token)
+            continue
+        name, _ = token.split("=", 1)
+        if _is_credential_name(name):
+            tokens.append(f"{name}=<redacted>")
+        else:
+            tokens.append(token)
+    return "&".join(tokens)
+
+
+def _authority_segment(raw_value: str) -> str:
+    """Return the authority-like segment used for userinfo detection."""
+    authority_start, authority_end = _authority_span(raw_value)
+    return raw_value[authority_start:authority_end]
+
+
+def _authority_span(raw_value: str) -> tuple[int, int]:
+    """Return the start/end indexes of the authority-like portion."""
+    authority_start = 0
+    scheme_match = _URL_SCHEME_RE.match(raw_value)
+    if scheme_match is not None:
+        authority_start = scheme_match.end()
+    elif raw_value.startswith("//"):
+        authority_start = 2
+
+    authority_end = len(raw_value)
+    for separator in ("/", "?", "#"):
+        index = raw_value.find(separator, authority_start)
+        if index != -1:
+            authority_end = min(authority_end, index)
+    return authority_start, authority_end
+
+
+def _is_url_shaped(raw_value: str) -> bool:
+    """Return True when *raw_value* looks like a URL with an authority section."""
+    return raw_value.startswith("//") or _URL_SCHEME_RE.match(raw_value) is not None
+
+
+__all__ = ["build_source_key", "sanitize_source_id", "sanitize_source_key"]

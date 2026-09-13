@@ -41,16 +41,23 @@ import asyncio
 import hashlib
 import json
 import logging
+import re
 import shutil
 from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
+from types import TracebackType
 from urllib.parse import unquote, urlparse
 
 from docline.elt.config import discover_configs
 from docline.elt.manifest_models import ManifestGitSource, ManifestLocalSource, ManifestUrlSource
 from docline.elt.models import GitHubRepoSource, LocalFileSource, SourceConfig, WebCrawlSource
-from docline.elt.source_keys import build_source_key
+from docline.elt.source_keys import (
+    _is_credential_name,
+    build_source_key,
+    sanitize_source_id,
+    sanitize_source_key,
+)
 from docline.fetch.crawl import CrawlConfig
 from docline.fetch.models import SourceMetadata, StagingJob
 from docline.fetch.staging import build_cache_path, make_job_id, sanitize_source
@@ -68,6 +75,8 @@ from docline.schema.models import DoclineError
 _ELT_GENERATED_DIR_PREFIXES: tuple[str, ...] = ("runtime-staging", "runtime-output")
 _STAGED_WEB_METADATA_SUFFIX = ".meta.json"
 _CRAWL_MANIFEST_NAME = "crawl-manifest.json"
+_HTTP_URL_RE = re.compile(r"https?://[^\s'\"<>]+")
+_QUERY_PARAM_TOKEN_RE = re.compile(r"(?P<prefix>[?&])(?P<name>[^=\s&#]+)=(?P<value>[^\s&#'\"<>]*)")
 _log = logging.getLogger(__name__)
 
 
@@ -220,6 +229,7 @@ def _execute_single_source(
         success or ``complete=False`` if the fetch fails.
     """
     source_key = build_source_key(config)
+    sanitized_source_key = sanitize_source_key(config)
     job_id = make_job_id(source_key)
     cache_rel = build_cache_path(staging_dir, job_id)
     cache_abs = root / cache_rel
@@ -227,7 +237,7 @@ def _execute_single_source(
     files_dir.mkdir(parents=True, exist_ok=True)
 
     metadata = SourceMetadata(
-        source=sanitize_source(source_key),
+        source=sanitized_source_key,
         fetch_timestamp=datetime.now(UTC),
     )
 
@@ -249,10 +259,13 @@ def _execute_single_source(
     except Exception as err:  # noqa: BLE001
         if isinstance(err, CrawlStagedNothingError):
             frontier_truncated = err.frontier_truncated
+        scrubbed_error, scrubbed_exc_info = _scrub_exception_for_logging(config, err)
         _log.exception(
-            "ELT source execution failed for source_key=%s job_id=%s",
-            source_key,
+            "ELT source execution failed for source_key=%s job_id=%s error=%s",
+            sanitized_source_key,
             job_id,
+            scrubbed_error,
+            exc_info=scrubbed_exc_info,
         )
 
     job = StagingJob(
@@ -264,6 +277,129 @@ def _execute_single_source(
     )
     (cache_abs / "metadata.json").write_text(job.model_dump_json(indent=2), encoding="utf-8")
     return job
+
+
+def _scrub_exception_for_logging(
+    config: SourceConfig,
+    err: BaseException,
+) -> tuple[str, tuple[type[BaseException], BaseException, TracebackType | None]]:
+    """Return a scrubbed exception message and ``exc_info`` tuple for logging."""
+    logged_error = _clone_scrubbed_exception(config, err)
+    return str(logged_error), (type(logged_error), logged_error, logged_error.__traceback__)
+
+
+def _clone_scrubbed_exception(
+    config: SourceConfig,
+    err: BaseException,
+    memo: dict[int, BaseException] | None = None,
+) -> BaseException:
+    """Clone *err* while recursively scrubbing its cause/context chain."""
+    if memo is None:
+        memo = {}
+    err_id = id(err)
+    if err_id in memo:
+        return memo[err_id]
+
+    scrubbed_message = _scrub_exception_message(config, err)
+    if scrubbed_message == str(err) and err.__cause__ is None and err.__context__ is None:
+        return err
+
+    cloned = _clone_exception_with_message(err, scrubbed_message, force_clone=True)
+    memo[err_id] = cloned
+    if err.__cause__ is not None:
+        cloned.__cause__ = _clone_scrubbed_exception(config, err.__cause__, memo)
+    if err.__context__ is not None:
+        cloned.__context__ = _clone_scrubbed_exception(config, err.__context__, memo)
+    cloned.__suppress_context__ = err.__suppress_context__
+    notes = getattr(err, "__notes__", None)
+    if notes is not None:
+        setattr(cloned, "__notes__", list(notes))
+    return cloned
+
+
+def _scrub_exception_message(config: SourceConfig, err: BaseException) -> str:
+    """Redact credential-bearing config values from an exception message."""
+    message = str(err)
+    for raw_value, sanitized_value in sorted(
+        _exception_scrub_replacements(config),
+        key=lambda item: len(item[0]),
+        reverse=True,
+    ):
+        if raw_value and raw_value != sanitized_value:
+            message = message.replace(raw_value, sanitized_value)
+    message = _HTTP_URL_RE.sub(lambda match: _sanitize_exception_text(match.group(0)), message)
+    return _redact_query_param_fragments(message)
+
+
+def _exception_scrub_replacements(config: SourceConfig) -> list[tuple[str, str]]:
+    """Return raw-to-sanitized field replacements for a source config."""
+    replacements = [(build_source_key(config), sanitize_source_key(config))]
+    if isinstance(config, WebCrawlSource):
+        replacements.append((config.url, _sanitize_exception_text(config.url)))
+    elif isinstance(config, GitHubRepoSource):
+        replacements.extend(
+            [
+                (config.repo_url, _sanitize_exception_text(config.repo_url)),
+                (config.branch, _sanitize_exception_text(config.branch)),
+                (config.path_glob, _sanitize_exception_text(config.path_glob)),
+            ]
+        )
+    elif isinstance(config, ManifestLocalSource):
+        replacements.append((config.id, sanitize_source_id(config.id)))
+    elif isinstance(config, ManifestUrlSource):
+        replacements.extend(
+            [
+                (config.id, sanitize_source_id(config.id)),
+                (config.url, _sanitize_exception_text(config.url)),
+            ]
+        )
+    elif isinstance(config, ManifestGitSource):
+        replacements.extend(
+            [
+                (config.id, sanitize_source_id(config.id)),
+                (config.url, _sanitize_exception_text(config.url)),
+                (config.branch, _sanitize_exception_text(config.branch)),
+            ]
+        )
+    return replacements
+
+
+def _sanitize_exception_text(raw_value: str) -> str:
+    """Return a scrubbed text fragment safe to embed in failure logs."""
+    try:
+        sanitized = sanitize_source(raw_value)
+    except ValueError:
+        sanitized = raw_value
+    return sanitize_source_id(sanitized)
+
+
+def _redact_query_param_fragments(message: str) -> str:
+    """Redact credential-like query fragments even when no URL scheme is present."""
+    return _QUERY_PARAM_TOKEN_RE.sub(_redact_query_param_match, message)
+
+
+def _redact_query_param_match(match: re.Match[str]) -> str:
+    """Return a scrubbed query-parameter token when its name is credential-like."""
+    name = match.group("name")
+    if not _is_credential_name(name):
+        return match.group(0)
+    return f"{match.group('prefix')}{name}=<redacted>"
+
+
+def _clone_exception_with_message(
+    err: BaseException,
+    message: str,
+    *,
+    force_clone: bool = False,
+) -> BaseException:
+    """Clone *err* with a sanitized message while preserving traceback type."""
+    if not force_clone and message == str(err):
+        return err
+    try:
+        cloned = type(err)(message)
+    except Exception:  # noqa: BLE001
+        cloned = RuntimeError(message)
+    return cloned.with_traceback(err.__traceback__)
 
 
 # ---------------------------------------------------------------------------
