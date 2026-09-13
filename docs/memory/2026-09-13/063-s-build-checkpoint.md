@@ -4,9 +4,10 @@
 **Feature:** 072-F
 **Branch:** `feat/063-s-sanitize-credential-bearing-source-key-on-elt-error-persistence-paths`
 **Commit 1:** `e4273df` — fix(072-F): sanitize credential-bearing source_key on ELT error/persistence paths (cycle-1)
-**Commit 2:** pending — post-remediation cycle-2 fixes (R-1/R-2/R-3) + P-021 deferred captures (R-4/R-5/R-6)
+**Commit 2:** `ec22a89` — post-remediation cycle-2 fixes (R-1/R-2/R-3) + P-021 deferred captures (R-4/R-5/R-6)
+**Commit 3:** `dcd51f5` — final-confirmation cycle-3 fixes (C-1/U-1/U-2) + P-021 deferred captures (U-3/M-1)
 
-## Status: implementation + 2 review-remediation cycles complete, pre-PR
+## Status: implementation + 3 review-remediation cycles complete (circuit-breaker limit reached), pre-PR
 
 ## Items completed
 - 072.001-T, 072.002-T, 072.003-T, 072.004-T — all `done` (auto-archived by backlogit to `.backlogit/archive/`).
@@ -109,6 +110,53 @@ based on Ship's own thorough independent verification (line-by-line diff review 
 pass + direct reproduction of every fix), given 2 full adversarial-review agent rounds
 already occurred and all remaining items are advisory/cosmetic/architecturally unreachable.
 
+## Final confirmation review (3rd and final adversarial-review pass, on committed HEAD `ec22a89`)
+Report: `docs/closure/2026-09-13-sanitize-source-key-elt-error-paths-final-confirmation-review.md`
+
+Result: **BLOCKED**. Confirmed R-1/R-2/R-3 held with no regression, but surfaced 3 NEW
+HIGH-confidence real credential-leak bugs (all independently reproduced by Ship via direct
+Python execution — the report disclosed that its own reviewer subagents lacked shell
+execution access, so Ship did not trust the report without independent reproduction):
+- **C-1 (CRITICAL)**: reversed multi-`?` query credentials (e.g. `host/x?detail=x?token=SECRET`)
+  survived in URL-*value*-field sanitization (`_sanitize_url_field`/`_sanitize_exception_text`)
+  because `staging.sanitize_source()` (untouched, pre-existing) uses `parse_qsl` which splits
+  only on `&`, hiding the credential from its own filter and then percent-encoding — but not
+  redacting — the literal secret. Fixed via a new `?`/`&`-aware pre-pass,
+  `_strip_reversed_query_credentials()` (source_keys.py), that drops credential-named tokens
+  BEFORE the value ever reaches `sanitize_source()` — closing the gap entirely within
+  `source_keys.py`/`execute.py`, without touching `staging.py`.
+- **U-1 (CRITICAL)**: an ambiguous authority (2+ `@` characters) bypassed
+  `sanitize_source_id`'s credential marker gate entirely, returning the identifier completely
+  unredacted — worse than the documented fail-closed sentinel, and made `_strip_userinfo`'s
+  existing `ValueError` fail-closed path dead code. Fixed by changing
+  `_contains_userinfo_marker` to treat any `@`-containing authority as a marker.
+- **U-2 (MAJOR)**: a credential value directly adjacent to a quote/angle-bracket (e.g.
+  `token="SECRET"`) was matched as an empty value by `_HTTP_URL_RE`/`_QUERY_PARAM_TOKEN_RE`
+  (both deliberately exclude quotes/brackets to avoid over-matching), leaving the quoted
+  secret entirely outside the matched span. Fixed by extending both regexes to optionally
+  consume a directly-adjacent quoted/bracketed span as part of the match.
+- **U-3** (P021-deferred, stash `4CEE1EA5`): `_is_url_shaped`'s bare `//`-prefix rule
+  over-triggers userinfo stripping on a narrow non-URL identifier shape — confirmed
+  data-corruption-only (no credential leak; `build_source_key`/job identity unaffected).
+- **M-1** (P021-deferred, stash `1B5CEF80`): documentation-precision note narrowing the
+  "currently unreachable" wording on existing entries `95BD0DC7`/`709BDB53` — advisory only.
+
+C-1/U-1/U-2 were remediated in **review-fix cycle 3** (the 3rd and final cycle per the Ship
+circuit breaker) via TDD, independently re-verified by Ship: line-by-line diff review, direct
+Python reproduction of each fix AND every prior-cycle regression control (R-1/R-2/R-3, the
+cycle-1 U-1/U-2/C-2 cases, plus a no-over-match control), full gate re-run (2288 passed, up
+from 2282). U-3/M-1 were deferred via P-021 capture (mandatory discovery lookup performed
+first — zero reuse candidates found) since both are low-severity/advisory and this is the
+final allowed review-fix cycle.
+
+**Review gate closure**: With the 3rd (final) review-fix cycle exhausted and all HIGH/CRITICAL
+findings across 3 full adversarial-review rounds fixed and independently verified, the review
+gate is now closed. No further adversarial-review agent invocation will be run (would exceed
+the 3-cycle circuit breaker); Local Review Readiness for the current HEAD (`dcd51f5`) is based
+on Ship's own thorough independent verification. Outcome: **READY_WITH_FOLLOWUPS** — 5
+follow-up stash entries scoped to this shipment's findings remain open at LOW priority:
+`95BD0DC7` (R-4), `709BDB53` (R-5), `6076A65E` (R-6), `4CEE1EA5` (U-3), `1B5CEF80` (M-1).
+
 ## Stash carry-forward (operator-authorized, P-021-unrelated) + legitimate new P-021 captures
 `.backlogit/stash.jsonl` carries TWO independent kinds of change, kept carefully separated
 across commits:
@@ -117,21 +165,22 @@ across commits:
    began). Preserved byte-for-byte, kept unstaged/uncommitted throughout cycle-1 (confirmed
    via `git hash-object` → `b5af14cba77579ba3f4c56d84f637bdc17d89da7` match against the
    original target blob).
-2. **New legitimate P-021 deferred-scope captures (committed)**: `95BD0DC7` (R-4),
-   `709BDB53` (R-5), `6076A65E` (R-6) — added via `backlogit stash add` per the mandatory
-   Step 4.4a threadless-path capture procedure. Since `backlogit stash add` appends to the
-   same file as the carry-forward diff, committing these 3 new entries required constructing
-   a commit-target blob = `git show HEAD:.backlogit/stash.jsonl` (unmodified, i.e. still
-   carrying the ORIGINAL `.0000000Z` timestamps) + the 3 new JSON lines appended, staged
-   directly into the index via `git hash-object -w` + `git update-index --cacheinfo` —
-   without touching the working-tree file at all. This keeps the working tree exactly as
-   it was (carry-forward diff intact, unstaged) while the commit only adds the 3 new
-   entries. Verified: `git diff --cached` shows only the 3 new `+` lines (no timestamp
-   change); `git diff` (working tree vs. index) shows only the 2-line timestamp
-   normalization (no new-entry lines) — the two change sets are now cleanly disjoint.
-   Must continue to be carried via targeted `git stash push -- .backlogit/stash.jsonl` /
-   `pop` across any further branch switches (none anticipated before merge, since Ship
-   stays on the feature branch through Step 5).
+2. **New legitimate P-021 deferred-scope captures (committed)**: cycle-2 commit `ec22a89`
+   added `95BD0DC7` (R-4), `709BDB53` (R-5), `6076A65E` (R-6); cycle-3 commit `dcd51f5`
+   added `4CEE1EA5` (U-3), `1B5CEF80` (M-1) — all via `backlogit stash add` per the
+   mandatory Step 4.4a threadless-path capture procedure. Since `backlogit stash add`
+   appends to the same file as the carry-forward diff, committing these new entries
+   required constructing a commit-target blob each time = `git show HEAD:.backlogit/stash.jsonl`
+   (unmodified, i.e. still carrying the ORIGINAL `.0000000Z` timestamps) + the new JSON
+   lines appended, staged directly into the index via `git hash-object -w` + `git
+   update-index --cacheinfo` — without touching the working-tree file at all. This keeps
+   the working tree exactly as it was (carry-forward diff intact, unstaged) while each
+   commit only adds its own new entries. Verified after both commits: `git diff --cached`
+   shows only the new `+` lines (no timestamp change); `git diff` (working tree vs. index)
+   shows only the 2-line timestamp normalization (no new-entry lines) — the two change
+   sets remain cleanly disjoint throughout. Must continue to be carried via targeted
+   `git stash push -- .backlogit/stash.jsonl` / `pop` across any further branch switches
+   (none anticipated before merge, since Ship stays on the feature branch through Step 5).
 
 ## Decisions with rationale
 - Combined harness generation (Step 2) and build (Step 4.2) into one delegated TDD pass
@@ -148,12 +197,25 @@ across commits:
   a P-021 violation in the other direction.
 - Single commit covers all 4 tasks + the review-remediation cycle, since they share the
   same 4 files and were developed as one coherent implementation increment.
+- Ran a 3rd (final) adversarial-review pass specifically because §1.9.4 Check 1 requires
+  the reviewed HEAD to match the PR's actual `headRefOid` — cycle-2's self-verification
+  alone would not have produced a review record for the exact HEAD ultimately presented.
+  This 3rd pass found 3 more genuine CRITICAL/MAJOR credential-leak bugs, confirming the
+  value of running it rather than treating cycle-2's fixes as sufficient without a fresh
+  agent-review pass. All 3 findings were independently reproduced via direct Python
+  execution before delegating fixes, since the reviewing subagent disclosed it lacked
+  shell/Python execution access for its own verification.
+- Reached the 3-cycle review-fix circuit breaker limit exactly at cycle 3, with all
+  HIGH/CRITICAL findings fixed and only LOW-severity/advisory items remaining — the
+  intended terminal state per the circuit breaker's "accept remaining P2/P3 as backlog
+  items, commit" guidance. No 4th adversarial-review cycle is run; Local Review Readiness
+  for current HEAD `dcd51f5` rests on Ship's own thorough independent verification instead.
 
 ## Next steps
-1. Step 5 PR Lifecycle: final quality gate pass (done above), local review readiness
-   record for current HEAD (post-cycle-2 commit), PR body with `## Local Review Readiness`
-   block citing both review reports, all 7 fixes, and the 3 deferred P-021 entries,
-   invoke `pr-lifecycle` skill.
+1. Step 5 PR Lifecycle: final quality gate pass (done — 2288 passed, 17 skipped), local
+   review readiness record for current HEAD `dcd51f5`, PR body with `## Local Review
+   Readiness` block citing all 3 review reports, all 10 fixes across 3 cycles, and the 5
+   deferred P-021 entries scoped to this shipment, invoke `pr-lifecycle` skill.
 2. P-018 copilot-review gate, P-014 local-review-readiness gate, then present PR to
    operator and **wait for explicit merge approval** — `merge_approval_pre_authorized: false`
    and `admin_fallback_pre_authorized: false` per the DARK_MODE_ACTIVE contract, so Ship
@@ -165,6 +227,9 @@ across commits:
    source-artifact cleanup for `source_stash_id`/`source_deliberation_id` on 072-F if present).
 
 ## Blockers/open questions
-None currently blocking. All quality gates green (2282 passed, 17 skipped); review gate
-closed after 2 remediation cycles (no residual P0/P1; 3 remaining low-severity items
-deferred via P-021 capture with zero live exploit paths). Proceeding to PR creation.
+None currently blocking. All quality gates green (2288 passed, 17 skipped); review gate
+closed after 3 remediation cycles (circuit-breaker limit reached) — no residual P0/P1;
+5 remaining low-severity/advisory items deferred via P-021 capture with zero live
+exploit paths (2 architecturally-unreachable hardening items, 1 confirmed-cosmetic
+idempotency defect, 1 data-corruption-only narrow edge case, 1 documentation-precision
+note). Proceeding to PR creation.
