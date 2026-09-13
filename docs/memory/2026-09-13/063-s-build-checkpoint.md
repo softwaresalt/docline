@@ -157,6 +157,25 @@ on Ship's own thorough independent verification. Outcome: **READY_WITH_FOLLOWUPS
 follow-up stash entries scoped to this shipment's findings remain open at LOW priority:
 `95BD0DC7` (R-4), `709BDB53` (R-5), `6076A65E` (R-6), `4CEE1EA5` (U-3), `1B5CEF80` (M-1).
 
+> **PR-review-phase addendum (2026-09-13, HEAD `c9d474a`+) — Copilot findings, not
+> readdressed here**: this section captures the PRE-PR local adversarial-review outcome
+> only. The subsequent GitHub-hosted Copilot code-review phase on PR #198 (post-PR,
+> distinct from the above) surfaced 5 MORE rounds of findings and produced 4 ADDITIONAL
+> deferred/residual-risk stash entries beyond the 5 listed above:
+> `A6D7EEB9` (round 3, percent-encoded query separators, out-of-scope per C1),
+> `96E6C3F2` (round 4, fragment-only credential leak, deferred by circuit breaker),
+> `7D7222E3` (round 4, nested URL-as-query-value leak, out-of-scope C1 + circuit
+> breaker), and `E462E1F0` (round 5, non-URL identifier corruption regression from
+> round 3's own fix — **HIGH priority residual risk**, same-contract-surface/C3(i)
+> in-scope but deferred solely by the circuit breaker; inert against real production
+> source_key schemes). See
+> `docs/memory/2026-09-13/063-s-build-checkpoint-round3.md` for the full, current,
+> authoritative accounting of all PR-review-phase findings, fixes, and deferrals — the
+> current total across BOTH review phases (pre-PR local + post-PR Copilot) is **9
+> deferred/residual-risk stash entries**, not 5. Any PR readiness summary or `##
+> Local Review Readiness` block must cite the round-3 checkpoint (or this addendum) for
+> the complete, up-to-date list, not this section alone.
+
 ## Stash carry-forward (operator-authorized, P-021-unrelated) + legitimate new P-021 captures
 `.backlogit/stash.jsonl` carries TWO independent kinds of change, kept carefully separated
 across commits:
