@@ -6,7 +6,12 @@ import pytest
 
 from docline.elt.manifest_models import ManifestGitSource, ManifestLocalSource, ManifestUrlSource
 from docline.elt.models import GitHubRepoSource, LocalFileSource, WebCrawlSource
-from docline.elt.source_keys import build_source_key, sanitize_source_id, sanitize_source_key
+from docline.elt.source_keys import (
+    _sanitize_url_field,
+    build_source_key,
+    sanitize_source_id,
+    sanitize_source_key,
+)
 from docline.fetch.staging import make_job_id
 
 _SOURCE_URL_REDACTED = "<source-url-redacted>"
@@ -472,3 +477,86 @@ class TestSanitizeSourceId:
         raw_id = "https://host/x?other=1"
 
         assert sanitize_source_id(raw_id) == raw_id
+
+
+class TestSanitizeUrlFieldNonHttpSchemes:
+    """Regression tests for the PR #198 non-http(s) scheme credential leak.
+
+    ``docline.fetch.staging.sanitize_source`` only rewrites ``http://``/
+    ``https://`` URLs, ``file://`` URLs, and absolute local file paths; every
+    other scheme (``ftp://``, ``ssh://``, ``git://``, etc.) is returned
+    completely unchanged per its own docstring rule 4. ``_sanitize_url_field``
+    must route that untouched value through the marker-gated
+    ``sanitize_source_id`` before returning it, so non-http(s) userinfo
+    credentials are still stripped instead of leaking verbatim.
+    """
+
+    def test_strips_ftp_scheme_userinfo_credentials(self) -> None:
+        """_sanitize_url_field strips userinfo credentials from an ftp:// URL."""
+        sanitized = _sanitize_url_field("ftp://user:secretpass@host.example.com/path")
+
+        assert sanitized == "ftp://host.example.com/path"
+        assert "secretpass" not in sanitized
+
+    def test_strips_ssh_scheme_userinfo_credentials(self) -> None:
+        """_sanitize_url_field strips userinfo credentials from an ssh:// URL."""
+        sanitized = _sanitize_url_field("ssh://user:secretpass@host.example.com/repo")
+
+        assert sanitized == "ssh://host.example.com/repo"
+        assert "secretpass" not in sanitized
+
+    def test_redacts_non_http_scheme_crawl_url_credentials_end_to_end(self) -> None:
+        """sanitize_source_key redacts a WebCrawlSource url with a non-http(s) scheme.
+
+        Exercises the public entry point (not just the private helper) so the
+        fix is verified end-to-end for a real typed source config, matching
+        the ``WebCrawlSource.url`` field named in the confirmed bug report.
+        """
+        config = WebCrawlSource(
+            type="web_crawl",
+            url="ssh://user:secretpass@host.example.com/repo",
+        )
+
+        sanitized = sanitize_source_key(config)
+
+        assert sanitized == "web_crawl:ssh://host.example.com/repo"
+        assert "secretpass" not in sanitized
+        assert "user:secretpass@" not in sanitized
+
+    def test_preserves_http_scheme_credential_removal_regression(self) -> None:
+        """No regression: the http(s) branch still uses _remove_credential_query_params.
+
+        This function's http(s) branch is untouched by the fix (the final
+        ``return`` line only runs for non-http(s) schemes), so this is a
+        safety-net confirmation of already-covered behavior rather than new
+        logic: userinfo credentials and credential-named query params are
+        still stripped from an http(s) URL.
+        """
+        sanitized = _sanitize_url_field("https://user:secretpass@host/x?token=SECRET&other=1")
+
+        assert sanitized == "https://host/x?other=1"
+        assert "secretpass" not in sanitized
+        assert "SECRET" not in sanitized
+
+    def test_preserves_non_url_shaped_credential_free_identifier(self) -> None:
+        """No regression: a non-URL-shaped, credential-free identifier is untouched.
+
+        ``docs/source/file.md`` has no ``@``/``?``/``#`` markers and no ``//``
+        or ``scheme://`` prefix, so neither ``sanitize_source`` nor the newly
+        added ``sanitize_source_id`` call has anything to rewrite.
+        """
+        raw_value = "docs/source/file.md"
+
+        assert _sanitize_url_field(raw_value) == raw_value
+
+    def test_preserves_already_redacted_local_path_sentinel(self) -> None:
+        """No regression: the local-path redaction sentinel passes through unchanged.
+
+        ``sanitize_source`` rewrites a ``file://`` URL to the
+        ``<local-path-redacted>`` sentinel before ``_sanitize_url_field``'s
+        final line runs; that sentinel has no ``@``/``?``/``#`` markers, so
+        the new ``sanitize_source_id`` call returns it byte-for-byte unchanged.
+        """
+        sanitized = _sanitize_url_field("file:///etc/secret/path")
+
+        assert sanitized == "<local-path-redacted>"

@@ -165,7 +165,7 @@ def _sanitize_url_field(raw_url: str) -> str:
         return _SOURCE_URL_REDACTED
     if sanitized.lower().startswith(("http://", "https://")):
         return _remove_credential_query_params(sanitized)
-    return sanitized
+    return sanitize_source_id(sanitized)
 
 
 def _strip_reversed_query_credentials(raw_value: str) -> str:
