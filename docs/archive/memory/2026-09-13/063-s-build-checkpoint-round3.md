@@ -212,7 +212,7 @@ Deferred/residual-risk entries from this shipment's PR review now total:
 > `c547f93`)**: `E462E1F0` and `E89DC095` were subsequently both FIXED (not merely
 > deferred) via an explicit, tightly-bounded operator authorization for exactly ONE
 > additional review-fix cycle after the 3-cycle circuit breaker halted at round 7 — see
-> `docs/memory/2026-09-13/063-s-halt-review-loop-report.md`'s Resolution section for the
+> `docs/archive/memory/2026-09-13/063-s-halt-review-loop-report.md`'s Resolution section for the
 > full fix disposition. Both stash entries remain in `.backlogit/stash.jsonl` as a
 > historical record of the original Copilot findings but no longer describe an open
 > residual risk requiring operator merge-time disposition. A separate, distinct P-021

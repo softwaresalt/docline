@@ -47,7 +47,7 @@ comments listed for operator" action, rather than reflexively resolved.
 
 ## Current, accurate, FINAL accounting of deferred/residual-risk entries (10 total)
 
-**Pre-PR local adversarial review (5, all LOW priority, from `docs/memory/2026-09-13/063-s-build-checkpoint.md`)**:
+**Pre-PR local adversarial review (5, all LOW priority, from `docs/archive/memory/2026-09-13/063-s-build-checkpoint.md`)**:
 - `95BD0DC7` (R-4): exception `__notes__` unscrubbed — verified architecturally unreachable today (no `add_note()` call sites in repo).
 - `709BDB53` (R-5): `ExceptionGroup` chains not traversed — verified architecturally unreachable today (no `TaskGroup`/`ExceptionGroup`/`gather` usage in repo).
 - `6076A65E` (R-6): non-idempotent redaction can produce duplicated `<redacted>` sentinels — cosmetic log-quality only, no credential exposure.
@@ -150,8 +150,8 @@ just-applied allowlist). It was captured as stash entry `BF028CAE` via the stand
 threadless-path P-021 C2 procedure for Stage triage/deliberation, and is NOT part of
 the operator's `E462E1F0`/`E89DC095` authorization.
 
-**Round-7 checkpoint correction**: `docs/memory/2026-09-13/063-s-build-checkpoint.md`
-and `docs/memory/2026-09-13/063-s-build-checkpoint-round3.md` were both corrected to
+**Round-7 checkpoint correction**: `docs/archive/memory/2026-09-13/063-s-build-checkpoint.md`
+and `docs/archive/memory/2026-09-13/063-s-build-checkpoint-round3.md` were both corrected to
 account for `E89DC095` (the "4 additional"/"9 total" → "5 additional"/"10 total"
 discrepancy the two round-7 threads flagged), with an explicit note that `E462E1F0` and
 `E89DC095` are now fixed (this commit) rather than open residual risks — this is the
