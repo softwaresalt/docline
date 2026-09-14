@@ -7,13 +7,13 @@ tasks:
     - 072.003-T
     - 072.004-T
 feature_pr: 199
-closure_pr: null
+closure_pr: 200
 merge_commit: 3933dfc335e19bcd602bf104e82728268ae83156
 merged_at: "2026-09-14T03:02:32Z"
 reviewed_head: f1f5f8fd82fe83cc8095e210eac5ba47ccaf60cb
 closure_merge_commit: null
 closure_reviewed_head: null
-closure_status: READY_WITH_CONDITIONS
+closure_status: READY
 compaction_status: done
 ---
 
@@ -42,15 +42,27 @@ shipment remain the authoritative source of detail:
 
 ## Closure Status
 
-**READY_WITH_CONDITIONS** — restated verbatim from the narrative closure record's own
-"Closure Status" section:
+**READY** — shipment `063-S`'s own substantive releasability is complete: all required
+runtime-verification evidence passed, the shipped feature (`072-F`) is fully archived, and
+no blocking (P0/P1) risk remains against the shipped code. This mirrors the convention
+established by `060-S`/`061-S`/`062-S`'s thin-pointer artifacts, none of which modeled
+"this closure PR itself still needs approval" as a `READY_WITH_CONDITIONS` gating
+condition — that is the ordinary, always-present state of any not-yet-merged closure PR,
+not a defect in the shipment's own releasability, and `closure_merge_commit`/
+`closure_reviewed_head` are the fields that track it (see the note below).
 
-* Condition 1 (informational, non-blocking): 14 residual P-021 deferred-scope-expansion
-  stash entries remain open for Stage triage/deliberation; none are P0/P1.
-* Condition 2: this post-merge closure branch/PR requires its own separate explicit
-  operator approval before merge — not yet obtained as of this writing. `closure_pr`,
-  `closure_merge_commit`, and `closure_reviewed_head` above are `null` until that PR is
-  opened and merged.
+Informational, non-blocking residual risk (reconciled, corrected count — see
+[`2026-09-13-sanitize-source-key-elt-error-paths-closure.md`](2026-09-13-sanitize-source-key-elt-error-paths-closure.md)
+for the full reconciliation): of 18 total `shipment=063-S`-tagged P-021 deferred-scope-
+expansion stash entries, 2 (`E462E1F0`, `E89DC095`) were fixed pre-merge via commit
+`c547f93` and no longer describe open risk; 16 remain open for Stage triage/deliberation
+(none P0/P1), comprising the 12 still-open pre-existing entries plus 4 newly captured this
+closure session from PR #199's own documented follow-up findings (`9D44B6F3`, `1C433464`,
+`E7878B1B`, `E0B6EE0D`).
+
+This post-merge closure PR (`closure_pr: 200` above) requires its own separate explicit
+operator approval before merge — not yet obtained as of this writing. `closure_merge_commit`
+and `closure_reviewed_head` above are `null` until that PR merges (see the note below).
 
 ## Compaction Status (P-020)
 

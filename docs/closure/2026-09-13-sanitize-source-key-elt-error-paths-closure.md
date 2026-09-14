@@ -10,7 +10,7 @@ feature_pr: 199
 feature_merge_commit: 3933dfc335e19bcd602bf104e82728268ae83156
 reviewed_head: f1f5f8fd82fe83cc8095e210eac5ba47ccaf60cb
 compaction_status: done
-closure_status: READY_WITH_CONDITIONS
+closure_status: READY
 ---
 
 # 063-S / 072-F Post-Merge Closure
@@ -111,31 +111,43 @@ See
   deliberation ID found in `072-F`'s `custom_fields`, description, or
   references matching the deliberation-ID pattern. No further action.
 
-## Residual Follow-Ups (already captured — no new stash entries)
+## Residual Follow-Ups (reconciled — includes 4 newly captured this closure session)
 
-The following P-021 deferred-scope-expansion stash entries were captured
-during pre-merge build/review work for this shipment (and, for entries
-inherited from superseded PR #198's lineage, during that PR's review cycles)
-and remain **unchanged** by this closure — Ship creates no new stash entries
-here because nothing new was identified by runtime-verification or
-operational-closure beyond what is already recorded:
+The following P-021 deferred-scope-expansion stash entries are `shipment=063-S`-tagged.
+Fourteen were captured during pre-merge build/review work for this shipment (and, for
+entries inherited from superseded PR #198's lineage, during that PR's review cycles).
+Four more (`9D44B6F3`, `1C433464`, `E7878B1B`, `E0B6EE0D`) are newly captured during this
+closure session: PR #199's own `## Local Review Readiness` body text documented these as
+follow-up findings without formally stashing them, and this closure session performs that
+threadless-path P-021 C2 capture (Ship Step 6 item 6 — follow-ups identified by the
+closure artifact must be stashed). Of the 14 pre-existing entries, 2 (`E462E1F0`,
+`E89DC095`) were fixed pre-merge via commit `c547f93` (known-scheme-allowlist fix) and no
+longer describe open residual risk — they are retained below as a historical record only,
+per Ship's role boundary (Ship may create new stash entries but does not edit, archive, or
+remove existing ones; stash entry lifecycle/disposition remains Stage-only). **Reconciled
+total: 18 tagged entries, 2 fixed/historical, 16 open for Stage triage/deliberation** (none
+P0/P1).
 
-| ID | Priority | Summary |
-|---|---|---|
-| `0F1A653C` | high | Default (non-`--execute`) docline fetch path still has an unsanitized `source_key` sink (`orchestrate_fetch`/`create_staging_job`) |
-| `06A59B1D` | medium | `_CREDENTIAL_PARAM_PREFIXES` coverage expansion (password/pwd/passwd/client_secret/refresh_token/code) |
-| `95BD0DC7` | low | Exception `__notes__` (PEP 678) not scrubbed by `_clone_scrubbed_exception` (currently unreachable — no `add_note` call sites) |
-| `709BDB53` | low | `ExceptionGroup`/`BaseExceptionGroup` chains not traversed by scrubbing (currently unreachable — no `TaskGroup`/`gather` usage) |
-| `6076A65E` | low | Non-idempotent redaction passes can duplicate `<redacted>` sentinels |
-| `4CEE1EA5` | low | `_is_url_shaped` over-broad bare `//`-prefix detection |
-| `1B5CEF80` | low | "Architecturally unreachable" characterization on 95BD0DC7/709BDB53 needs periodic re-verification |
-| `A6D7EEB9` | (see entry) | Percent-encoded query-separator hides a nested credential |
-| `96E6C3F2` | (see entry) | `#`-fragment credential in exception scrubbers (deferred at #198's 3-cycle circuit-breaker limit) |
-| `7D7222E3` | (see entry) | Nested URL as a query value bypasses outer-authority-only scrub |
-| `E462E1F0` | high | `_URL_SCHEME_RE` relaxation (`:/*`) widened matching (known-scheme-allowlist fix landed; residual risk recorded) |
-| `E89DC095` | high | `_URL_SCHEME_RE` scheme-name character class excludes underscore |
-| `BF028CAE` | (see entry) | F2 residual from the E462E1F0/E89DC095 fix, deferred |
-| `12925B3B` | (see entry) | Round-8 disputed/false-positive credential-leak claim on `sanitize_source_id`, deferred with discovery-lookup result |
+| ID | Priority | Status | Summary |
+|---|---|---|---|
+| `0F1A653C` | high | open | Default (non-`--execute`) docline fetch path still has an unsanitized `source_key` sink (`orchestrate_fetch`/`create_staging_job`) |
+| `06A59B1D` | medium | open | `_CREDENTIAL_PARAM_PREFIXES` coverage expansion (password/pwd/passwd/client_secret/refresh_token/code) |
+| `95BD0DC7` | low | open | Exception `__notes__` (PEP 678) not scrubbed by `_clone_scrubbed_exception` (currently unreachable — no `add_note` call sites) |
+| `709BDB53` | low | open | `ExceptionGroup`/`BaseExceptionGroup` chains not traversed by scrubbing (currently unreachable — no `TaskGroup`/`gather` usage) |
+| `6076A65E` | low | open | Non-idempotent redaction passes can duplicate `<redacted>` sentinels |
+| `4CEE1EA5` | low | open | `_is_url_shaped` over-broad bare `//`-prefix detection |
+| `1B5CEF80` | low | open | "Architecturally unreachable" characterization on 95BD0DC7/709BDB53 needs periodic re-verification |
+| `A6D7EEB9` | (see entry) | open | Percent-encoded query-separator hides a nested credential |
+| `96E6C3F2` | (see entry) | open | `#`-fragment credential in exception scrubbers (deferred at #198's 3-cycle circuit-breaker limit) |
+| `7D7222E3` | (see entry) | open | Nested URL as a query value bypasses outer-authority-only scrub |
+| `E462E1F0` | high | **fixed (`c547f93`)** | `_URL_SCHEME_RE` relaxation (`:/*`) widened matching — closed via known-scheme allowlist; no longer open residual risk |
+| `E89DC095` | high | **fixed (`c547f93`)** | `_URL_SCHEME_RE` scheme-name character class excludes underscore — closed via known-scheme allowlist; no longer open residual risk |
+| `BF028CAE` | (see entry) | open | F2 residual from the E462E1F0/E89DC095 fix, deferred |
+| `12925B3B` | (see entry) | open | Round-8 disputed/false-positive credential-leak claim on `sanitize_source_id`, deferred with discovery-lookup result |
+| `9D44B6F3` | medium | open (new) | Unicode format-category (`Cf`) character (e.g. U+200B, U+FEFF, U+2060) bypasses the `lstrip()`-based leading-whitespace fail-closed guard in `_sanitize_url_field` |
+| `1C433464` | medium | open (new) | `_contains_userinfo_marker`'s ambiguous-authority (`count("@") != 1`) branch is unconditionally fail-closed while the single-`@` branch is allowlist-gated — a safe-direction (over-redaction) asymmetry |
+| `E7878B1B` | low | open (new, advisory) | Possible redundancy between `_remove_credential_query_params` and `_strip_reversed_query_credentials` |
+| `E0B6EE0D` | low | open (new, advisory) | Pre-existing cross-module private-symbol imports (`_is_credential_name`, `_strip_reversed_query_credentials`) from `source_keys.py` into `execute.py` |
 
 All entries carry `requires_deliberation` flags and provisional priorities
 per P-021 C6 — re-prioritization and any decision to pick up this work
@@ -157,15 +169,19 @@ machine-readable pointer record.
 
 ## Closure Status
 
-**READY_WITH_CONDITIONS**
+**READY** — shipment `063-S`'s own substantive releasability is complete: all required
+runtime-verification evidence passed (see above), the shipped feature (`072-F`) is fully
+archived, and no blocking (P0/P1) risk remains against the shipped code. The 16 open
+residual deferred-scope-expansion stash entries recorded above are informational and
+non-blocking — none are P0/P1 and none gate this shipment's releasability; re-prioritization
+and any decision to pick them up remains Stage-only (P-021 C6).
 
-* **Condition 1** (informational, not blocking): the 14 residual deferred
-  stash entries above remain open for Stage triage/deliberation; none are
-  P0/P1 and none block this shipment's releasability.
-* **Condition 2**: the post-merge closure PR (this branch,
-  `post-merge/063-s-sanitize-credential-bearing-source-key`) requires its own
-  separate explicit operator approval before merge — not yet obtained as of
-  this writing.
+This post-merge closure PR (this branch, `post-merge/063-s-sanitize-credential-bearing-
+source-key`) requires its own separate explicit operator approval before merge — not yet
+obtained as of this writing. That approval requirement is the ordinary, always-present
+state of any not-yet-merged closure PR and does not gate `063-S`'s own releasability
+status; see `docs/closure/063-S-072-F-post-merge-closure.md`'s `closure_merge_commit`/
+`closure_reviewed_head` fields (left `null` until this PR merges) for how that is tracked.
 
 ## Monitoring / Rollback (release-observability)
 
@@ -186,6 +202,11 @@ machine-readable pointer record.
 
 ## Follow-Up Tasks Stashed by This Closure
 
-None — all identified follow-ups were already captured as stash entries prior
-to this closure session (see Residual Follow-Ups above). No new stash items
-created.
+Four new P-021 deferred-scope-expansion stash entries were captured during this closure
+session (`9D44B6F3`, `1C433464`, `E7878B1B`, `E0B6EE0D`) — see Residual Follow-Ups above
+for full detail. These are threadless-path captures (PR #199's own body text documented
+them as follow-up findings without formally stashing them at the time); Ship Step 6 item 6
+requires stashing follow-ups identified by the closure artifact, so this closure session
+performs that capture. All 14 previously-existing residual entries remain unchanged
+(Ship's role boundary permits creating new stash entries but not editing, archiving, or
+removing existing ones).
