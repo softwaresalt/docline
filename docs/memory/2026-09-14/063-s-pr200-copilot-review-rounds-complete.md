@@ -39,15 +39,23 @@ reaching `SATISFIED`.
   body readiness block to HEAD `d558030c5bd969ad818ee2e3f8679879835a1368`, replied, and
   resolved. No new commit was needed for this round.
 
-All 13 Copilot findings across 3 rounds are now replied-to and resolved. `autoharness gate
-copilot-review 200` returns `SATISFIED` at HEAD `d558030c5bd969ad818ee2e3f8679879835a1368`.
+All 13 Copilot findings across 3 rounds were replied-to and resolved as of pre-checkpoint
+HEAD `d558030c5bd969ad818ee2e3f8679879835a1368` — i.e., before this checkpoint file itself
+was added as a new commit. `autoharness gate copilot-review 200` reported `SATISFIED` at
+that HEAD. This checkpoint file's own commit necessarily advances the PR to a new HEAD not
+yet covered by that review; **the PR body, not this file, is the live source of truth for
+current gate/readiness status** — re-query `autoharness gate copilot-review 200` and the
+PR body's Local Review Readiness block for the actual current state rather than relying on
+this historical narrative.
 
-## Current state / halt point
+## State as of this checkpoint (historical, not a live status claim)
 
-PR #200: OPEN, MERGEABLE, `mergeStateStatus: CLEAN`, all CI checks green/correctly-skipped
-(docs-only PR), `ci gate: SUCCESS`, Copilot review gate `SATISFIED`. **Halting here** —
-PR #200 requires its own separate, explicit operator approval before merge (the PR #199
-approval does not transfer). No merge attempted.
+PR #200 (as of pre-checkpoint HEAD `d558030`): OPEN, MERGEABLE, `mergeStateStatus: CLEAN`,
+all CI checks green/correctly-skipped (docs-only PR), `ci gate: SUCCESS`, Copilot review
+gate `SATISFIED`. PR #200 requires its own separate, explicit operator approval before
+merge (the PR #199 approval does not transfer). No merge attempted. This session
+continued past this checkpoint to address any findings raised against the checkpoint
+commit itself; see the PR body and live gate output for the actual current state.
 
 ## Carry-forward artifacts — final verification
 

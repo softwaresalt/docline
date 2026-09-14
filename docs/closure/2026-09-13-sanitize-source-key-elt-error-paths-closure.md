@@ -125,7 +125,7 @@ closure artifact must be stashed). Of the 14 pre-existing entries, 2 (`E462E1F0`
 longer describe open residual risk — they are retained below as a historical record only,
 per Ship's role boundary (Ship may create new stash entries but does not edit, archive, or
 remove existing ones; stash entry lifecycle/disposition remains Stage-only). **Reconciled
-total: 18 tagged entries, 2 fixed/historical, 16 open for Stage triage/deliberation** (none
+total: 18 tagged entries, 2 fixed/historical, 16 open for Stage triage** (none
 P0/P1).
 
 | ID | Priority | Status | Summary |
@@ -149,9 +149,12 @@ P0/P1).
 | `E7878B1B` | low | open (new, advisory) | Possible redundancy between `_remove_credential_query_params` and `_strip_reversed_query_credentials` |
 | `E0B6EE0D` | low | open (new, advisory) | Pre-existing cross-module private-symbol imports (`_is_credential_name`, `_strip_reversed_query_credentials`) from `source_keys.py` into `execute.py` |
 
-All entries carry `requires_deliberation` flags and provisional priorities
-per P-021 C6 — re-prioritization and any decision to pick up this work
-remains Stage-only.
+All entries carry a `requires_deliberation` flag and a provisional priority
+per P-021 C6. 14 of the 16 open entries declare `requires_deliberation: true`; the 2
+newly captured advisory entries (`E7878B1B`, `E0B6EE0D`) declare
+`requires_deliberation: false` — all 16 still require ordinary Stage triage, but only the
+14 additionally require deliberation. Re-prioritization and any decision to pick up this
+work remains Stage-only.
 
 ## Compaction Status (P-020)
 
@@ -187,14 +190,25 @@ status; see `docs/closure/063-S-072-F-post-merge-closure.md`'s `closure_merge_co
 
 * **Healthy signal**: no credential-bearing `source_key` values appear in
   `metadata.json` or ELT ERROR-level logs for any fetch source type.
-* **Failure signal**: a raw userinfo (`user:pass@`) or credential query
-  parameter (`token=`, `password=`, etc.) observed in persisted metadata or
+* **Failure signal (credential leak)**: a raw userinfo (`user:pass@`) or credential query
+  parameter observed in persisted metadata or
   logs for `web_crawl:`/`manifest_url:`/`github_repo:`/`manifest_git:`
   sources.
-* **Rollback trigger**: any confirmed credential leak via the sanitizer paths
-  touched by this shipment.
-* **Rollback procedure**: revert merge commit `3933dfc335e19bcd602bf104e82728268ae83156`
-  on `main`; re-open PR #199 or file a new fix shipment.
+* **Failure signal (regression)**: an unrelated functional break in ELT fetch/persistence
+  (e.g. a crash, incorrect `source_key` value, or metadata corruption) that is clearly
+  attributable to this shipment's sanitizer changes rather than to a residual leak.
+* **Credential-leak disposition (fix-forward, not revert)**: this shipment's own purpose was
+  closing a credential-leak gap, so reverting merge commit
+  `3933dfc335e19bcd602bf104e82728268ae83156` in response to a leak signal would remove the
+  sanitizer entirely and restore the broader, pre-fix leak surface -- a strictly worse
+  outcome than the residual gap being investigated. A confirmed leak must be triaged and
+  patched fix-forward (new fix shipment against the specific sanitizer gap; the residual
+  P-021 stash entries above are the starting point for known gaps such as `9D44B6F3`'s
+  Unicode-format-char bypass), never remediated by reverting this shipment.
+* **Regression disposition (revert permitted)**: only for a verified regression signal that
+  is independently confirmed not to re-expose credentials may reverting merge commit
+  `3933dfc335e19bcd602bf104e82728268ae83156` on `main` be used as the rollback procedure;
+  re-open PR #199 or file a new fix shipment afterward.
 * **Validation window**: next 2 weeks of ELT fetch runs across configured
   source types (operator-observed; no automated dashboard exists for this
   CLI/library surface).

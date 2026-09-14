@@ -55,10 +55,12 @@ Informational, non-blocking residual risk (reconciled, corrected count — see
 [`2026-09-13-sanitize-source-key-elt-error-paths-closure.md`](2026-09-13-sanitize-source-key-elt-error-paths-closure.md)
 for the full reconciliation): of 18 total `shipment=063-S`-tagged P-021 deferred-scope-
 expansion stash entries, 2 (`E462E1F0`, `E89DC095`) were fixed pre-merge via commit
-`c547f93` and no longer describe open risk; 16 remain open for Stage triage/deliberation
-(none P0/P1), comprising the 12 still-open pre-existing entries plus 4 newly captured this
+`c547f93` and no longer describe open risk; 16 remain open for Stage triage (none P0/P1),
+comprising the 12 still-open pre-existing entries plus 4 newly captured this
 closure session from PR #199's own documented follow-up findings (`9D44B6F3`, `1C433464`,
-`E7878B1B`, `E0B6EE0D`).
+`E7878B1B`, `E0B6EE0D`). Of these 16, 14 declare `requires_deliberation: true`; the 2
+newly captured advisory entries (`E7878B1B`, `E0B6EE0D`) declare
+`requires_deliberation: false` — all 16 still require ordinary Stage triage.
 
 This post-merge closure PR (`closure_pr: 200` above) requires its own separate explicit
 operator approval before merge — not yet obtained as of this writing. `closure_merge_commit`
