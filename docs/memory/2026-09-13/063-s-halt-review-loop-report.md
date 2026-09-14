@@ -112,3 +112,64 @@ bare-scheme-with-`@` identifier shape.
 
 Ship remains on the feature branch, has made no further pushes since `0447851`, and will
 not open another reactive documentation/code cycle without explicit operator direction.
+
+## Resolution (2026-09-13, operator-authorized bounded extension)
+
+The operator reviewed this halt report and issued an explicit, tightly-bounded
+authorization covering exactly the two open items above, with merge and admin fallback
+both explicitly withheld:
+
+1. **`E462E1F0`/`E89DC095` (item 2, option (c))**: the operator authorized Ship to fix
+   both as a deliberate, one-time, bounded exception to the circuit breaker — extending
+   the review-fix budget by exactly ONE additional cycle, not an unbounded re-opening.
+2. **Round-7 threads (item 1, option (b))**: the operator authorized exactly ONE final
+   bounded checkpoint-count correction, with an explicit instruction not to react to any
+   further staleness findings after that.
+3. Both authorizations were explicit, scoped, and did not extend to any other deferred
+   entry (`0F1A653C`, `06A59B1D`, `A6D7EEB9`, `96E6C3F2`, `7D7222E3` remain out of scope
+   and untouched).
+
+**Fix applied**: `E462E1F0` and `E89DC095` were both fixed in commit `c547f93` on this
+branch. The fix replaced the previously-proposed "colon-in-userinfo" heuristic with a
+known-scheme allowlist gate for loose-authority (non-`//`, non-exactly-two-slash)
+matches, matching Copilot's own suggested remediation direction. A mandated 3-reviewer
+adversarial review of the draft fix (see
+`docs/closure/2026-09-13-sanitize-source-key-elt-error-paths-e462e1f0-e89dc095-adversarial-review.md`)
+caught a live false-negative regression (F1) in an earlier iteration of the fix before
+it was committed; the committed design (known-scheme allowlist) closes both target
+findings without that regression, verified via new regression tests plus direct
+hand-tracing of every case in this report and in the adversarial review. All quality
+gates (ruff check, ruff format --check, pyright, full pytest, `python -m build`) passed
+against the committed fix.
+
+A third finding from that same adversarial review, F2 (a latent, non-live compound-
+prefix authority-truncation gap — verified NOT reachable via any current production
+call site), was out of scope for this bounded cycle per P-021 C1 (it requires a
+materially different authority-span re-architecture, not a mechanical extension of the
+just-applied allowlist). It was captured as stash entry `BF028CAE` via the standard
+threadless-path P-021 C2 procedure for Stage triage/deliberation, and is NOT part of
+the operator's `E462E1F0`/`E89DC095` authorization.
+
+**Round-7 checkpoint correction**: `docs/memory/2026-09-13/063-s-build-checkpoint.md`
+and `docs/memory/2026-09-13/063-s-build-checkpoint-round3.md` were both corrected to
+account for `E89DC095` (the "4 additional"/"9 total" → "5 additional"/"10 total"
+discrepancy the two round-7 threads flagged), with an explicit note that `E462E1F0` and
+`E89DC095` are now fixed (this commit) rather than open residual risks — this is the
+one bounded correction the operator authorized; per the operator's explicit
+instruction, Ship will NOT react further to any subsequent count-only feedback on these
+files.
+
+**In-flight after this Resolution section is committed** (per the operator's explicit
+instruction, this file is intentionally not re-edited to chase the exact final state
+below — doing so would reproduce the same non-converging documentation-lag pattern this
+halt report itself describes): commit the docs correction (including this section),
+push, reply to and resolve the two round-7 threads referencing the pushed commit, wait
+for CI, run the P-018 `autoharness gate copilot-review` gate, update the PR body's
+`## Local Review Readiness` block, and run the P-014 §1.9 readiness gate. **Merge is
+NOT authorized** (`merge_approval_pre_authorized: false`, `admin_fallback_pre_authorized:
+false` remain in force). Any new substantive (non-count-only) finding surfaced during
+this remaining work is classified per P-021 and halted/deferred, not fixed, per the
+operator's explicit "do not enter another reactive review-fix loop" instruction. The
+authoritative record of the final HEAD, CI status, P-018 verdict, and open-thread count
+is Ship's final report to the operator for this session, and the PR's own updated
+Local Review Readiness block — not a further edit to this file.

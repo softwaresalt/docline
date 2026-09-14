@@ -199,6 +199,27 @@ Deferred/residual-risk entries from this shipment's PR review now total:
   but deferred by circuit breaker; HIGH priority residual risk; inert against real
   production schemes**)
 
+> **Round-6/round-7 documentation-lag correction (2026-09-13)**: this section was
+> written after round 5 and never updated when round 6 surfaced a 5th finding,
+> `E89DC095` (underscore-scheme credential leak, same `_URL_SCHEME_RE` character-class
+> surface as `E462E1F0`, opposite failure mode). The correct count at round 6/7 is
+> **5** deferred/residual-risk entries from this shipment's PR review, not 4; the
+> "4 deferred/residual-risk entries" and "its severity classification" references in
+> the Next Steps section below predate `E89DC095` and should be read as 5 entries with
+> `E462E1F0` **and** `E89DC095` both called out prominently.
+>
+> **Resolution update (2026-09-13, operator-authorized bounded extension, commit
+> `c547f93`)**: `E462E1F0` and `E89DC095` were subsequently both FIXED (not merely
+> deferred) via an explicit, tightly-bounded operator authorization for exactly ONE
+> additional review-fix cycle after the 3-cycle circuit breaker halted at round 7 — see
+> `docs/memory/2026-09-13/063-s-halt-review-loop-report.md`'s Resolution section for the
+> full fix disposition. Both stash entries remain in `.backlogit/stash.jsonl` as a
+> historical record of the original Copilot findings but no longer describe an open
+> residual risk requiring operator merge-time disposition. A separate, distinct P-021
+> finding (`BF028CAE`) was captured for a latent, non-live gap (adversarial-review
+> finding F2) surfaced by the mandated review of this fix cycle's own diff; it is
+> unrelated to this round-6/7 count correction.
+
 ## Next steps
 
 1. Continue polling the P-018 `autoharness gate copilot-review` gate for HEAD (next
@@ -207,8 +228,10 @@ Deferred/residual-risk entries from this shipment's PR review now total:
    since the 3-cycle fix limit was reached in round 3.
 2. Once satisfied: run the P-014 §1.9 readiness gate for the final HEAD (full local
    build evidence already captured via `python -m build`; follow-up handling covers all
-   4 deferred/residual-risk entries above, with `E462E1F0` called out prominently given
-   its severity classification and in-scope-but-circuit-breaker-deferred status).
+   5 deferred/residual-risk entries above (see round-6/7 correction), with `E462E1F0`
+   and `E89DC095` called out prominently given their severity classification and
+   circuit-breaker-deferred status at the time — both are now fixed per the resolution
+   update above).
 3. Present PR readiness summary to operator, EXPLICITLY surfacing the `E462E1F0`
    regression as a known, verified, high-severity-class residual risk requiring
    informed operator disposition; wait for explicit merge approval

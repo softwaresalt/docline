@@ -160,21 +160,32 @@ follow-up stash entries scoped to this shipment's findings remain open at LOW pr
 > **PR-review-phase addendum (2026-09-13, HEAD `c9d474a`+) — Copilot findings, not
 > readdressed here**: this section captures the PRE-PR local adversarial-review outcome
 > only. The subsequent GitHub-hosted Copilot code-review phase on PR #198 (post-PR,
-> distinct from the above) surfaced 5 MORE rounds of findings and produced 4 ADDITIONAL
+> distinct from the above) surfaced 5 MORE rounds of findings and produced 5 ADDITIONAL
 > deferred/residual-risk stash entries beyond the 5 listed above:
 > `A6D7EEB9` (round 3, percent-encoded query separators, out-of-scope per C1),
 > `96E6C3F2` (round 4, fragment-only credential leak, deferred by circuit breaker),
 > `7D7222E3` (round 4, nested URL-as-query-value leak, out-of-scope C1 + circuit
-> breaker), and `E462E1F0` (round 5, non-URL identifier corruption regression from
-> round 3's own fix — **HIGH priority residual risk**, same-contract-surface/C3(i)
-> in-scope but deferred solely by the circuit breaker; inert against real production
-> source_key schemes). See
+> breaker), `E462E1F0` (round 5, non-URL identifier corruption regression from
+> round 3's own fix), and `E89DC095` (round 6, underscore-scheme credential leak) —
+> making the current total across BOTH review phases (pre-PR local + post-PR Copilot)
+> **10 deferred/residual-risk stash entries**, not 9.
+>
+> **Resolution update (2026-09-13, operator-authorized bounded extension, commit
+> `c547f93`)**: `E462E1F0` and `E89DC095` were both FIXED (not merely deferred) via an
+> explicit, tightly-bounded operator authorization for exactly ONE additional review-fix
+> cycle after the 3-cycle circuit breaker halted at round 7 — see
+> `docs/memory/2026-09-13/063-s-halt-review-loop-report.md`'s Resolution section for the
+> full fix disposition. Both stash entries remain in `.backlogit/stash.jsonl` as a
+> historical record of the original Copilot findings but no longer describe an open
+> residual risk. A separate, distinct P-021 finding (`BF028CAE`, F2 — a latent,
+> non-live compound-prefix authority-truncation gap surfaced by the mandated adversarial
+> review of this fix cycle's own diff) was captured for Stage triage and is unrelated to
+> the round-7 count correction above. See
 > `docs/memory/2026-09-13/063-s-build-checkpoint-round3.md` for the full, current,
-> authoritative accounting of all PR-review-phase findings, fixes, and deferrals — the
-> current total across BOTH review phases (pre-PR local + post-PR Copilot) is **9
-> deferred/residual-risk stash entries**, not 5. Any PR readiness summary or `##
-> Local Review Readiness` block must cite the round-3 checkpoint (or this addendum) for
-> the complete, up-to-date list, not this section alone.
+> authoritative accounting of all PR-review-phase findings, fixes, and deferrals. Any PR
+> readiness summary or `## Local Review Readiness` block must cite the round-3
+> checkpoint (or this addendum) for the complete, up-to-date list, not this section
+> alone.
 
 ## Stash carry-forward (operator-authorized, P-021-unrelated) + legitimate new P-021 captures
 `.backlogit/stash.jsonl` carries TWO independent kinds of change, kept carefully separated
