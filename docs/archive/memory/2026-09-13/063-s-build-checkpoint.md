@@ -174,14 +174,14 @@ follow-up stash entries scoped to this shipment's findings remain open at LOW pr
 > `c547f93`)**: `E462E1F0` and `E89DC095` were both FIXED (not merely deferred) via an
 > explicit, tightly-bounded operator authorization for exactly ONE additional review-fix
 > cycle after the 3-cycle circuit breaker halted at round 7 — see
-> `docs/memory/2026-09-13/063-s-halt-review-loop-report.md`'s Resolution section for the
+> `docs/archive/memory/2026-09-13/063-s-halt-review-loop-report.md`'s Resolution section for the
 > full fix disposition. Both stash entries remain in `.backlogit/stash.jsonl` as a
 > historical record of the original Copilot findings but no longer describe an open
 > residual risk. A separate, distinct P-021 finding (`BF028CAE`, F2 — a latent,
 > non-live compound-prefix authority-truncation gap surfaced by the mandated adversarial
 > review of this fix cycle's own diff) was captured for Stage triage and is unrelated to
 > the round-7 count correction above. See
-> `docs/memory/2026-09-13/063-s-build-checkpoint-round3.md` for the full, current,
+> `docs/archive/memory/2026-09-13/063-s-build-checkpoint-round3.md` for the full, current,
 > authoritative accounting of all PR-review-phase findings, fixes, and deferrals. Any PR
 > readiness summary or `## Local Review Readiness` block must cite the round-3
 > checkpoint (or this addendum) for the complete, up-to-date list, not this section
