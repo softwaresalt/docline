@@ -296,31 +296,671 @@ class TestEltFetchUrlSource:
         assert jobs[0].complete is False
 
     def test_url_fetch_failure_logs_source_key_and_job_id(self, tmp_path: Path, caplog) -> None:
-        """execute_elt_fetch logs crawl failures with source and job context."""
+        """execute_elt_fetch logs failures with sanitized source keys and raw job IDs."""
+        from docline.elt.execute import execute_elt_fetch
+        from docline.elt.manifest_models import ManifestUrlSource
+        from docline.elt.models import GitHubRepoSource, WebCrawlSource
+        from docline.elt.source_keys import build_source_key, sanitize_source_key
+        from docline.fetch.staging import make_job_id
+        from docline.readers.github import GitHubFetchError
+
+        def read_metadata_text(workspace_root: Path, job: StagingJob) -> str:
+            """Return the staged metadata.json text for *job*."""
+            return (workspace_root / job.cache_path / "metadata.json").read_text(encoding="utf-8")
+
+        caplog.set_level(logging.ERROR, logger="docline.elt.execute")
+        cases = [
+            {
+                "name": "crawl-credential-url",
+                "config_path": "web.yaml",
+                "config_yaml": (
+                    "type: web_crawl\n"
+                    "url: https://user:pass@example.com/docs?token=SECRET&other=1\n"
+                ),
+                "config": WebCrawlSource(
+                    type="web_crawl",
+                    url="https://user:pass@example.com/docs?token=SECRET&other=1",
+                ),
+                "absent_tokens": ["SECRET", "user:pass@"],
+                "expected_failure_text": "simulated crawl failure",
+                "runner": "crawl",
+            },
+            {
+                "name": "manifest-url-id-token",
+                "config_path": "web.sources.yaml",
+                "config_yaml": (
+                    "sources:\n"
+                    "  - id: srcA?token=IDSECRET\n"
+                    "    type: url\n"
+                    "    url: https://user:pass@example.com/docs?token=SECRET&other=1\n"
+                ),
+                "config": ManifestUrlSource(
+                    type="url",
+                    id="srcA?token=IDSECRET",
+                    url="https://user:pass@example.com/docs?token=SECRET&other=1",
+                ),
+                "absent_tokens": ["IDSECRET", "SECRET", "user:pass@"],
+                "expected_failure_text": "simulated crawl failure",
+                "runner": "crawl",
+            },
+            {
+                "name": "crawl-malformed-credential-url",
+                "config_path": "web.yaml",
+                "config_yaml": "type: web_crawl\nurl: https://host:notaport?token=SECRET\n",
+                "config": WebCrawlSource(
+                    type="web_crawl",
+                    url="https://host:notaport?token=SECRET",
+                ),
+                "absent_tokens": ["SECRET"],
+                "expected_failure_text": "simulated crawl failure",
+                "runner": "crawl",
+            },
+            {
+                "name": "manifest-url-id-percent-encoded-token",
+                "config_path": "web.sources.yaml",
+                "config_yaml": (
+                    "sources:\n"
+                    "  - id: srcA?%74oken=IDSECRET\n"
+                    "    type: url\n"
+                    "    url: https://example.com/docs\n"
+                ),
+                "config": ManifestUrlSource(
+                    type="url",
+                    id="srcA?%74oken=IDSECRET",
+                    url="https://example.com/docs",
+                ),
+                "absent_tokens": ["IDSECRET"],
+                "expected_failure_text": "simulated crawl failure",
+                "runner": "crawl",
+            },
+            {
+                "name": "manifest-url-id-double-encoded-token",
+                "config_path": "web.sources.yaml",
+                "config_yaml": (
+                    "sources:\n"
+                    "  - id: srcA?%2574oken=IDSECRET\n"
+                    "    type: url\n"
+                    "    url: https://example.com/docs\n"
+                ),
+                "config": ManifestUrlSource(
+                    type="url",
+                    id="srcA?%2574oken=IDSECRET",
+                    url="https://example.com/docs",
+                ),
+                "absent_tokens": ["IDSECRET"],
+                "expected_failure_text": "simulated crawl failure",
+                "runner": "crawl",
+            },
+            {
+                "name": "github-repo-double-encoded-token",
+                "config_path": "repo.yaml",
+                "config_yaml": (
+                    "type: github_repo\n"
+                    "repo_url: https://user:pass@github.com/org/repo.git?%2574oken=SECRET&other=1\n"
+                    'branch: "main"\n'
+                    'path_glob: "**/*.md"\n'
+                ),
+                "config": GitHubRepoSource(
+                    type="github_repo",
+                    repo_url=("https://user:pass@github.com/org/repo.git?%2574oken=SECRET&other=1"),
+                    branch="main",
+                    path_glob="**/*.md",
+                ),
+                "absent_tokens": ["SECRET", "user:pass@"],
+                "expected_failure_text": "Network error fetching",
+                "runner": "github",
+            },
+        ]
+
+        for case in cases:
+            caplog.clear()
+            workspace_root = tmp_path / case["name"]
+            config_dir = workspace_root / ".elt" / "config"
+            config_dir.mkdir(parents=True)
+            (config_dir / case["config_path"]).write_text(case["config_yaml"], encoding="utf-8")
+
+            if case["runner"] == "crawl":
+
+                async def fake_crawl(start_url: str, config=None, progress=None) -> None:
+                    del config, progress
+                    raise OSError(f"simulated crawl failure for {start_url}")
+
+                with patch("docline.fetch.crawl.crawl", side_effect=fake_crawl):
+                    jobs = execute_elt_fetch(
+                        config_dir, ".elt/staging", workspace_root=workspace_root
+                    )
+            else:
+
+                def fake_fetch_github(
+                    repo_url: str,
+                    branch: str,
+                    include_patterns: list[str],
+                ) -> list[tuple[str, str]]:
+                    del include_patterns
+                    raise GitHubFetchError(f"Network error fetching {repo_url}: branch={branch}")
+
+                with patch("docline.elt.execute.fetch_github_files", side_effect=fake_fetch_github):
+                    jobs = execute_elt_fetch(
+                        config_dir, ".elt/staging", workspace_root=workspace_root
+                    )
+
+            assert len(jobs) == 1
+            job = jobs[0]
+            metadata_text = read_metadata_text(workspace_root, job)
+
+            assert job.complete is False
+            assert job.job_id == make_job_id(build_source_key(case["config"]))
+            assert job.metadata.source == sanitize_source_key(case["config"])
+            assert case["expected_failure_text"] in caplog.text
+            assert any(
+                job.job_id in record.message
+                and job.metadata.source in record.message
+                and record.exc_info is not None
+                for record in caplog.records
+            )
+            for secret in case["absent_tokens"]:
+                assert secret not in caplog.text
+                assert secret not in metadata_text
+
+    def test_url_fetch_failure_scrubs_scheme_less_credential_fragments(
+        self,
+        tmp_path: Path,
+        caplog,
+    ) -> None:
+        """execute_elt_fetch redacts scheme-less credential query fragments."""
         from docline.elt.execute import execute_elt_fetch
 
         config_dir = tmp_path / ".elt" / "config"
         config_dir.mkdir(parents=True)
         (config_dir / "web.yaml").write_text(
-            "type: web_crawl\nurl: https://example.com\n", encoding="utf-8"
+            "type: web_crawl\nurl: https://example.com/docs?token=SECRET\n",
+            encoding="utf-8",
         )
 
-        async def fake_crawl(start_url: str, config=None, progress=None):
+        error_message = "Max retries exceeded with url: /docs?token=SECRET"
+
+        async def fake_crawl(start_url: str, config=None, progress=None) -> None:
             del start_url, config, progress
-            raise OSError("Network down")
+            raise OSError(error_message)
 
         caplog.set_level(logging.ERROR, logger="docline.elt.execute")
         with patch("docline.fetch.crawl.crawl", side_effect=fake_crawl):
-            jobs = execute_elt_fetch(config_dir, ".elt/staging", workspace_root=tmp_path)
+            execute_elt_fetch(config_dir, ".elt/staging", workspace_root=tmp_path)
 
-        assert len(jobs) == 1
-        assert jobs[0].complete is False
-        assert any(
-            jobs[0].job_id in record.message
-            and jobs[0].metadata.source in record.message
-            and record.exc_info is not None
-            for record in caplog.records
+        failure_record = next(record for record in caplog.records if record.exc_info is not None)
+
+        assert "SECRET" not in caplog.text
+        assert "/docs?token=<redacted>" in failure_record.getMessage()
+
+    def test_url_fetch_failure_scrubs_reversed_scheme_less_credential_fragments(
+        self,
+        tmp_path: Path,
+        caplog,
+    ) -> None:
+        """execute_elt_fetch redacts later scheme-less credential query fragments."""
+        from docline.elt.execute import execute_elt_fetch
+
+        config_dir = tmp_path / ".elt" / "config"
+        config_dir.mkdir(parents=True)
+        (config_dir / "web.yaml").write_text(
+            "type: web_crawl\nurl: https://example.com/docs?token=SECRET\n",
+            encoding="utf-8",
         )
+
+        error_message = "Max retries exceeded with url: /docs?detail=x?token=SECRET"
+
+        async def fake_crawl(start_url: str, config=None, progress=None) -> None:
+            del start_url, config, progress
+            raise OSError(error_message)
+
+        caplog.set_level(logging.ERROR, logger="docline.elt.execute")
+        with patch("docline.fetch.crawl.crawl", side_effect=fake_crawl):
+            execute_elt_fetch(config_dir, ".elt/staging", workspace_root=tmp_path)
+
+        failure_record = next(record for record in caplog.records if record.exc_info is not None)
+
+        assert "SECRET" not in caplog.text
+        assert "/docs?detail=x?token=<redacted>" in failure_record.getMessage()
+
+    def test_url_fetch_failure_scrubs_reversed_full_url_credential_fragments(
+        self,
+        tmp_path: Path,
+        caplog,
+    ) -> None:
+        """execute_elt_fetch redacts a reversed ?-joined credential inside a full URL.
+
+        Regression test for C-1: when the credential-bearing text embedded in the
+        exception message is itself a full ``https://`` URL (matched whole by
+        ``_HTTP_URL_RE``), ``_sanitize_exception_text`` used to hand the raw text
+        straight to ``staging.sanitize_source`` first. That helper's
+        ``parse_qsl``-based query parser only treats ``&`` as a token boundary, so
+        a second ``?`` embedded in a value hid the credential from its filter and
+        left the secret merely percent-encoded (not redacted) after ``urlencode``.
+        """
+        from docline.elt.execute import execute_elt_fetch
+
+        config_dir = tmp_path / ".elt" / "config"
+        config_dir.mkdir(parents=True)
+        (config_dir / "web.yaml").write_text(
+            "type: web_crawl\nurl: https://example.com/other\n",
+            encoding="utf-8",
+        )
+
+        error_message = (
+            "Max retries exceeded with url: https://example.com/docs?detail=x?token=SECRETTOKEN123"
+        )
+
+        async def fake_crawl(start_url: str, config=None, progress=None) -> None:
+            del start_url, config, progress
+            raise OSError(error_message)
+
+        caplog.set_level(logging.ERROR, logger="docline.elt.execute")
+        with patch("docline.fetch.crawl.crawl", side_effect=fake_crawl):
+            execute_elt_fetch(config_dir, ".elt/staging", workspace_root=tmp_path)
+
+        failure_record = next(record for record in caplog.records if record.exc_info is not None)
+
+        assert "SECRETTOKEN123" not in caplog.text
+        assert "https://example.com/docs?detail=x" in failure_record.getMessage()
+
+    def test_url_fetch_failure_scrubs_uppercase_scheme_credential_url(
+        self,
+        tmp_path: Path,
+        caplog,
+    ) -> None:
+        """execute_elt_fetch redacts userinfo in an uppercase-scheme URL.
+
+        Regression test for PR #198 Finding A: ``_HTTP_URL_RE`` only matched a
+        lowercase ``http``/``https`` scheme prefix, so an uppercase-scheme URL
+        (e.g. ``HTTPS://user:pass@host/path``) embedded in an exception message
+        was never extracted for credential scrubbing at all and reached the
+        error log with its userinfo credential completely unredacted.
+        """
+        from docline.elt.execute import execute_elt_fetch
+
+        config_dir = tmp_path / ".elt" / "config"
+        config_dir.mkdir(parents=True)
+        (config_dir / "web.yaml").write_text(
+            "type: web_crawl\nurl: https://example.com/other\n",
+            encoding="utf-8",
+        )
+
+        error_message = "Connection failed to HTTPS://user:secretpass@host.example.com/path"
+
+        async def fake_crawl(start_url: str, config=None, progress=None) -> None:
+            del start_url, config, progress
+            raise OSError(error_message)
+
+        caplog.set_level(logging.ERROR, logger="docline.elt.execute")
+        with patch("docline.fetch.crawl.crawl", side_effect=fake_crawl):
+            execute_elt_fetch(config_dir, ".elt/staging", workspace_root=tmp_path)
+
+        failure_record = next(record for record in caplog.records if record.exc_info is not None)
+
+        assert "secretpass" not in caplog.text
+        assert "Connection failed to https://host.example.com/path" in failure_record.getMessage()
+
+    def test_url_fetch_failure_scrubs_semicolon_separated_scheme_less_credential_fragments(
+        self,
+        tmp_path: Path,
+        caplog,
+    ) -> None:
+        """execute_elt_fetch redacts a ``;``-separated scheme-less credential fragment.
+
+        Regression test for PR #198 Finding B: ``;`` is a legacy-but-still-valid
+        query-parameter separator that ``_QUERY_PARAM_TOKEN_RE`` did not treat as
+        a token boundary, so a ``;``-joined credential token (e.g.
+        ``?detail=1;token=SECRET``) was absorbed into the preceding token's value
+        and never recognized as an independently redactable name/value pair.
+        """
+        from docline.elt.execute import execute_elt_fetch
+
+        config_dir = tmp_path / ".elt" / "config"
+        config_dir.mkdir(parents=True)
+        (config_dir / "web.yaml").write_text(
+            "type: web_crawl\nurl: https://example.com/docs?token=SECRET\n",
+            encoding="utf-8",
+        )
+
+        error_message = "Max retries exceeded with url: /docs?detail=1;token=SECRETXYZ"
+
+        async def fake_crawl(start_url: str, config=None, progress=None) -> None:
+            del start_url, config, progress
+            raise OSError(error_message)
+
+        caplog.set_level(logging.ERROR, logger="docline.elt.execute")
+        with patch("docline.fetch.crawl.crawl", side_effect=fake_crawl):
+            execute_elt_fetch(config_dir, ".elt/staging", workspace_root=tmp_path)
+
+        failure_record = next(record for record in caplog.records if record.exc_info is not None)
+
+        assert "SECRETXYZ" not in caplog.text
+        assert "/docs?detail=1;token=<redacted>" in failure_record.getMessage()
+
+    def test_url_fetch_failure_scrubs_semicolon_separated_full_url_credential_fragments(
+        self,
+        tmp_path: Path,
+        caplog,
+    ) -> None:
+        """execute_elt_fetch redacts a ``;``-separated credential inside a full URL.
+
+        Regression test for PR #198 Finding B: the same ``;``-as-separator gap
+        also affected ``source_keys._QUERY_COMPONENT_SEPARATOR_RE``, used by
+        ``_strip_reversed_query_credentials`` ahead of
+        ``staging.sanitize_source`` (whose own ``parse_qsl``-based query parser
+        only treats ``&`` as a token boundary). A ``;``-joined credential token
+        embedded in a full URL therefore passed straight through both layers
+        unredacted.
+        """
+        from docline.elt.execute import execute_elt_fetch
+
+        config_dir = tmp_path / ".elt" / "config"
+        config_dir.mkdir(parents=True)
+        (config_dir / "web.yaml").write_text(
+            "type: web_crawl\nurl: https://example.com/other\n",
+            encoding="utf-8",
+        )
+
+        error_message = (
+            "Max retries exceeded with url: https://example.com/docs?detail=1;token=SECRETTOKEN456"
+        )
+
+        async def fake_crawl(start_url: str, config=None, progress=None) -> None:
+            del start_url, config, progress
+            raise OSError(error_message)
+
+        caplog.set_level(logging.ERROR, logger="docline.elt.execute")
+        with patch("docline.fetch.crawl.crawl", side_effect=fake_crawl):
+            execute_elt_fetch(config_dir, ".elt/staging", workspace_root=tmp_path)
+
+        failure_record = next(record for record in caplog.records if record.exc_info is not None)
+
+        assert "SECRETTOKEN456" not in caplog.text
+        assert "https://example.com/docs?detail=1" in failure_record.getMessage()
+
+    def test_url_fetch_failure_scrubs_quote_adjacent_credential_values(
+        self,
+        tmp_path: Path,
+        caplog,
+    ) -> None:
+        """execute_elt_fetch redacts a credential value directly adjacent to a quote.
+
+        Regression test for U-2: ``_HTTP_URL_RE`` deliberately excludes quotes and
+        angle brackets from its match so it doesn't over-match across quoted/
+        bracketed log delimiters, but that meant a value like ``token="SECRET"``
+        matched only up to ``token=`` (an empty value), leaving the quoted secret
+        text completely outside the matched span -- and therefore untouched by
+        any redaction pass.
+        """
+        from docline.elt.execute import execute_elt_fetch
+
+        config_dir = tmp_path / ".elt" / "config"
+        config_dir.mkdir(parents=True)
+        (config_dir / "web.yaml").write_text(
+            "type: web_crawl\nurl: https://example.com/other\n",
+            encoding="utf-8",
+        )
+
+        error_message = 'Failed to fetch https://example.com/docs?token="SECRETTOKEN123"'
+
+        async def fake_crawl(start_url: str, config=None, progress=None) -> None:
+            del start_url, config, progress
+            raise OSError(error_message)
+
+        caplog.set_level(logging.ERROR, logger="docline.elt.execute")
+        with patch("docline.fetch.crawl.crawl", side_effect=fake_crawl):
+            execute_elt_fetch(config_dir, ".elt/staging", workspace_root=tmp_path)
+
+        failure_record = next(record for record in caplog.records if record.exc_info is not None)
+
+        assert "SECRETTOKEN123" not in caplog.text
+        assert "https://example.com/docs" in failure_record.getMessage()
+
+    def test_url_fetch_failure_scrubs_exception_cause_traceback(
+        self,
+        tmp_path: Path,
+        caplog,
+    ) -> None:
+        """execute_elt_fetch preserves chained tracebacks while scrubbing credentials."""
+        from docline.elt.execute import execute_elt_fetch
+
+        class CredentialBearingError(RuntimeError):
+            """Raised by the mocked crawl with a credential-bearing URL."""
+
+        class WrapperError(RuntimeError):
+            """Raised with a clean wrapper message around the root cause."""
+
+        config_dir = tmp_path / ".elt" / "config"
+        config_dir.mkdir(parents=True)
+        (config_dir / "web.yaml").write_text(
+            "type: web_crawl\nurl: https://example.com/docs?token=SECRET&other=1\n",
+            encoding="utf-8",
+        )
+
+        async def fake_crawl(start_url: str, config=None, progress=None) -> None:
+            del config, progress
+            try:
+                raise CredentialBearingError(f"credential leak from {start_url}")
+            except CredentialBearingError as err:
+                raise WrapperError("clean wrapper message") from err
+
+        caplog.set_level(logging.ERROR, logger="docline.elt.execute")
+        with patch("docline.fetch.crawl.crawl", side_effect=fake_crawl):
+            execute_elt_fetch(config_dir, ".elt/staging", workspace_root=tmp_path)
+
+        failure_record = next(
+            record
+            for record in caplog.records
+            if "clean wrapper message" in record.getMessage() and record.exc_info is not None
+        )
+        formatted_traceback = logging.Formatter().format(failure_record)
+
+        assert "SECRET" not in caplog.text
+        assert "SECRET" not in formatted_traceback
+        assert (
+            "CredentialBearingError: credential leak from https://example.com/docs?other=1"
+            in formatted_traceback
+        )
+        assert "WrapperError: clean wrapper message" in formatted_traceback
+        assert (
+            "The above exception was the direct cause of the following exception:"
+            in formatted_traceback
+        )
+
+    def test_url_fetch_failure_scrubs_unterminated_double_quote_credential_values(
+        self,
+        tmp_path: Path,
+        caplog,
+    ) -> None:
+        """execute_elt_fetch redacts a credential inside an unterminated double quote.
+
+        Regression test for round-3 Copilot finding (thread
+        PRRT_kwDOSsAX4c6h76hW, comment PRRC_kwDOSsAX4c7ueCdW): when an
+        exception message opens a ``"`` around a secret but never closes it
+        anywhere in the rest of the message, the terminated
+        ``"[^"]*"`` alternative in ``_HTTP_URL_RE`` cannot match at all, so the
+        opening quote is excluded from the base URL run and the secret is left
+        completely outside the matched span -- surviving both ``_HTTP_URL_RE``
+        and the later ``_QUERY_PARAM_TOKEN_RE`` pass untouched.
+        """
+        from docline.elt.execute import execute_elt_fetch
+
+        config_dir = tmp_path / ".elt" / "config"
+        config_dir.mkdir(parents=True)
+        (config_dir / "web.yaml").write_text(
+            "type: web_crawl\nurl: https://example.com/other\n",
+            encoding="utf-8",
+        )
+
+        error_message = 'Failed to fetch https://example.com/docs?token="SECRET'
+
+        async def fake_crawl(start_url: str, config=None, progress=None) -> None:
+            del start_url, config, progress
+            raise OSError(error_message)
+
+        caplog.set_level(logging.ERROR, logger="docline.elt.execute")
+        with patch("docline.fetch.crawl.crawl", side_effect=fake_crawl):
+            execute_elt_fetch(config_dir, ".elt/staging", workspace_root=tmp_path)
+
+        failure_record = next(record for record in caplog.records if record.exc_info is not None)
+
+        assert "SECRET" not in caplog.text
+        assert "SECRET" not in failure_record.getMessage()
+
+    def test_url_fetch_failure_scrubs_unterminated_angle_bracket_credential_values(
+        self,
+        tmp_path: Path,
+        caplog,
+    ) -> None:
+        """execute_elt_fetch redacts a credential inside an unterminated angle bracket.
+
+        Regression test for round-3 Copilot finding (thread
+        PRRT_kwDOSsAX4c6h76hW, comment PRRC_kwDOSsAX4c7ueCdW): the same
+        unterminated-delimiter gap also affects ``<...>``-bracketed secrets
+        (e.g. a log-style placeholder that never closes) via the
+        ``<[^>]*>`` alternative in ``_HTTP_URL_RE``.
+        """
+        from docline.elt.execute import execute_elt_fetch
+
+        config_dir = tmp_path / ".elt" / "config"
+        config_dir.mkdir(parents=True)
+        (config_dir / "web.yaml").write_text(
+            "type: web_crawl\nurl: https://example.com/other\n",
+            encoding="utf-8",
+        )
+
+        error_message = "Failed to fetch https://example.com/docs?token=<SECRET"
+
+        async def fake_crawl(start_url: str, config=None, progress=None) -> None:
+            del start_url, config, progress
+            raise OSError(error_message)
+
+        caplog.set_level(logging.ERROR, logger="docline.elt.execute")
+        with patch("docline.fetch.crawl.crawl", side_effect=fake_crawl):
+            execute_elt_fetch(config_dir, ".elt/staging", workspace_root=tmp_path)
+
+        failure_record = next(record for record in caplog.records if record.exc_info is not None)
+
+        assert "SECRET" not in caplog.text
+        assert "SECRET" not in failure_record.getMessage()
+
+    def test_url_fetch_failure_scrubs_unterminated_quote_scheme_less_credential_fragments(
+        self,
+        tmp_path: Path,
+        caplog,
+    ) -> None:
+        """execute_elt_fetch redacts an unterminated-quote credential with no URL scheme.
+
+        Regression test for round-3 Copilot finding (thread
+        PRRT_kwDOSsAX4c6h76hW, comment PRRC_kwDOSsAX4c7ueCdW): exercises
+        ``_QUERY_PARAM_TOKEN_RE``/``_redact_query_param_fragments`` directly
+        (no ``https://`` prefix present, so ``_HTTP_URL_RE`` never matches),
+        confirming the same unterminated-delimiter fallback closes the gap
+        there too.
+        """
+        from docline.elt.execute import execute_elt_fetch
+
+        config_dir = tmp_path / ".elt" / "config"
+        config_dir.mkdir(parents=True)
+        (config_dir / "web.yaml").write_text(
+            "type: web_crawl\nurl: https://example.com/other\n",
+            encoding="utf-8",
+        )
+
+        error_message = 'Malformed request ?token="SECRET'
+
+        async def fake_crawl(start_url: str, config=None, progress=None) -> None:
+            del start_url, config, progress
+            raise OSError(error_message)
+
+        caplog.set_level(logging.ERROR, logger="docline.elt.execute")
+        with patch("docline.fetch.crawl.crawl", side_effect=fake_crawl):
+            execute_elt_fetch(config_dir, ".elt/staging", workspace_root=tmp_path)
+
+        failure_record = next(record for record in caplog.records if record.exc_info is not None)
+
+        assert "SECRET" not in caplog.text
+        assert "?token=<redacted>" in failure_record.getMessage()
+
+    def test_url_fetch_failure_still_scrubs_terminated_quote_credential_values(
+        self,
+        tmp_path: Path,
+        caplog,
+    ) -> None:
+        """No regression: a well-formed, properly closed quoted value is still redacted.
+
+        Guards against the round-3 unterminated-delimiter fallback alternative
+        (added immediately after each terminated alternative in the
+        alternation) accidentally taking priority over -- or otherwise
+        disturbing -- the existing terminated-delimiter match when a real
+        closing quote is present later in the text.
+        """
+        from docline.elt.execute import execute_elt_fetch
+
+        config_dir = tmp_path / ".elt" / "config"
+        config_dir.mkdir(parents=True)
+        (config_dir / "web.yaml").write_text(
+            "type: web_crawl\nurl: https://example.com/other\n",
+            encoding="utf-8",
+        )
+
+        error_message = 'Failed to fetch https://example.com/docs?token="SECRETTOKEN789" done'
+
+        async def fake_crawl(start_url: str, config=None, progress=None) -> None:
+            del start_url, config, progress
+            raise OSError(error_message)
+
+        caplog.set_level(logging.ERROR, logger="docline.elt.execute")
+        with patch("docline.fetch.crawl.crawl", side_effect=fake_crawl):
+            execute_elt_fetch(config_dir, ".elt/staging", workspace_root=tmp_path)
+
+        failure_record = next(record for record in caplog.records if record.exc_info is not None)
+
+        assert "SECRETTOKEN789" not in caplog.text
+        assert "https://example.com/docs done" in failure_record.getMessage()
+
+    def test_url_fetch_failure_scrubs_malformed_zero_slash_scheme_credential_values(
+        self,
+        tmp_path: Path,
+        caplog,
+    ) -> None:
+        """execute_elt_fetch redacts userinfo in a zero-slash malformed-scheme URL.
+
+        Regression test for the round-3 malformed-scheme finding (finding B,
+        the exact ``https:user:pass@host`` example): ``_URL_SCHEME_RE``
+        previously required one or two slashes after the scheme colon, so a
+        malformed zero-slash URL was never recognized as URL-shaped and its
+        userinfo credential reached the error log unredacted. Because
+        ``_HTTP_URL_RE`` requires a literal ``https?://`` prefix (which this
+        malformed value lacks), this scenario is exercised via the
+        ``WebCrawlSource.url`` config-field replacement path in
+        ``_exception_scrub_replacements`` -- which routes through
+        ``_sanitize_exception_text``/``sanitize_source_id`` -- rather than
+        via the generic ``_HTTP_URL_RE`` message scan.
+        """
+        from docline.elt.execute import execute_elt_fetch
+
+        config_dir = tmp_path / ".elt" / "config"
+        config_dir.mkdir(parents=True)
+        (config_dir / "web.yaml").write_text(
+            "type: web_crawl\nurl: https:user:pass@host\n",
+            encoding="utf-8",
+        )
+
+        error_message = "Connection failed to https:user:pass@host"
+
+        async def fake_crawl(start_url: str, config=None, progress=None) -> None:
+            del start_url, config, progress
+            raise OSError(error_message)
+
+        caplog.set_level(logging.ERROR, logger="docline.elt.execute")
+        with patch("docline.fetch.crawl.crawl", side_effect=fake_crawl):
+            execute_elt_fetch(config_dir, ".elt/staging", workspace_root=tmp_path)
+
+        failure_record = next(record for record in caplog.records if record.exc_info is not None)
+
+        assert "pass" not in caplog.text
+        assert "Connection failed to https:host" in failure_record.getMessage()
 
     def test_web_crawl_orchestrate_and_execute_share_job_key(self, tmp_path: Path) -> None:
         """orchestrate_fetch and execute_elt_fetch stay in crawl key parity."""
