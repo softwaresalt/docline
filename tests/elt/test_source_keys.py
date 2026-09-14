@@ -1,0 +1,947 @@
+"""Unit tests for ELT source-key sanitization helpers."""
+
+from urllib.parse import quote
+
+import pytest
+
+from docline.elt.manifest_models import ManifestGitSource, ManifestLocalSource, ManifestUrlSource
+from docline.elt.models import GitHubRepoSource, LocalFileSource, WebCrawlSource
+from docline.elt.source_keys import (
+    _is_url_shaped,
+    _sanitize_url_field,
+    build_source_key,
+    sanitize_source_id,
+    sanitize_source_key,
+)
+from docline.fetch.staging import make_job_id
+
+_SOURCE_URL_REDACTED = "<source-url-redacted>"
+
+
+def _encode_name_layers(raw_name: str, layers: int) -> str:
+    """Return *raw_name* with its percent signs encoded *layers* times."""
+    current = raw_name
+    for _ in range(layers):
+        current = quote(current, safe="")
+    return current
+
+
+class TestSanitizeSourceKey:
+    """Tests for typed-config source-key sanitization."""
+
+    def test_redacts_crawl_url_credentials_and_preserves_options(self) -> None:
+        """sanitize_source_key removes crawl URL credentials but keeps suffix options."""
+        config = WebCrawlSource(
+            type="web_crawl",
+            url="https://user:pass@host/x?token=SECRET&other=1",
+            depth=2,
+            max_pages=5,
+            domain_lock=False,
+            rate_limit_ms=250,
+        )
+
+        sanitized = sanitize_source_key(config)
+
+        assert sanitized == (
+            "web_crawl:https://host/x?other=1:depth=2:max_pages=5:"
+            "domain_lock=false:rate_limit_ms=250"
+        )
+        assert "SECRET" not in sanitized
+        assert "user:pass@" not in sanitized
+
+    def test_redacts_reversed_multi_query_delimiter_crawl_url_credentials(self) -> None:
+        """sanitize_source_key drops a credential hidden behind a reversed ?-joined token.
+
+        Regression test for C-1: ``parse_qsl`` (used internally by
+        ``staging.sanitize_source``) only splits query components on ``&``, so a
+        second ``?`` embedded inside a value (e.g. ``?detail=x?token=SECRET``) makes
+        the entire ``x?token=SECRET`` text the value of ``detail``, hiding
+        ``token=SECRET`` from the credential-param filter and leaving the literal
+        secret unredacted (merely percent-encoded) after ``urlencode`` runs.
+        """
+        config = WebCrawlSource(
+            type="web_crawl",
+            url="https://host/x?detail=x?token=SECRETTOKEN123",
+            depth=0,
+            max_pages=None,
+            domain_lock=True,
+            rate_limit_ms=0,
+        )
+
+        sanitized = sanitize_source_key(config)
+
+        assert "SECRETTOKEN123" not in sanitized
+        assert sanitized == "web_crawl:https://host/x?detail=x"
+
+    def test_redacts_semicolon_separated_crawl_url_credentials(self) -> None:
+        """sanitize_source_key drops a credential hidden behind a ``;``-joined token.
+
+        Regression test for PR #198 Finding B: ``urllib.parse.parse_qsl`` (used
+        internally by ``staging.sanitize_source``) only splits query components
+        on ``&`` -- a modern Python security fix removed ``;`` as a default
+        separator -- so a legacy-but-still-valid ``;``-joined query string (e.g.
+        ``?detail=1;token=SECRET``) makes the entire ``1;token=SECRET`` text the
+        single value of ``detail``, hiding ``token=SECRET`` from the
+        credential-param filter entirely.
+        """
+        config = WebCrawlSource(
+            type="web_crawl",
+            url="https://host/x?detail=1;token=SECRETTOKEN123",
+            depth=0,
+            max_pages=None,
+            domain_lock=True,
+            rate_limit_ms=0,
+        )
+
+        sanitized = sanitize_source_key(config)
+
+        assert "SECRETTOKEN123" not in sanitized
+        assert sanitized == "web_crawl:https://host/x?detail=1"
+
+    def test_redacts_malformed_crawl_url_without_raising(self) -> None:
+        """sanitize_source_key fails closed for malformed crawl URLs."""
+        config = WebCrawlSource(
+            type="web_crawl",
+            url="https://host:notaport?token=SECRET",
+        )
+
+        sanitized = sanitize_source_key(config)
+
+        assert sanitized == f"web_crawl:{_SOURCE_URL_REDACTED}"
+        assert "SECRET" not in sanitized
+
+    @pytest.mark.parametrize(
+        ("raw_id", "expected_id"),
+        [
+            (
+                "https://user:pass@host/source?token=IDSECRET",
+                "https://host/source?token=<redacted>",
+            ),
+            ("srcA?token=IDSECRET", "srcA?token=<redacted>"),
+            (
+                "https://host:notaport?token=IDSECRET",
+                "https://host:notaport?token=<redacted>",
+            ),
+            ("/source-a", "/source-a"),
+            ("https://host/x#frag", "https://host/x#frag"),
+            ("https://host:notaport", "https://host:notaport"),
+        ],
+    )
+    def test_manifest_url_source_uses_sanitized_ids(self, raw_id: str, expected_id: str) -> None:
+        """Manifest URL source keys sanitize IDs without parsing malformed ports."""
+        config = ManifestUrlSource(
+            type="url",
+            id=raw_id,
+            url="https://example.com/docs",
+        )
+
+        sanitized = sanitize_source_key(config)
+
+        assert sanitized == f"manifest_url:{expected_id}:https://example.com/docs"
+        assert "IDSECRET" not in sanitized
+        assert "user:pass@" not in sanitized
+
+    @pytest.mark.parametrize(
+        "config",
+        [
+            GitHubRepoSource(
+                type="github_repo",
+                repo_url="https://github.com/org/repo",
+                branch="main",
+                path_glob="**/*.md",
+            ),
+            LocalFileSource(type="local_file", paths=["docs/a.md", "docs/b.md"]),
+        ],
+    )
+    def test_preserves_credential_free_non_url_configs_in_unit_scope(self, config) -> None:
+        """Unit-1 scope leaves credential-free GitHub/local variants unchanged."""
+        assert sanitize_source_key(config) == build_source_key(config)
+
+    def test_redacts_credentialed_crawl_url_with_default_options(self) -> None:
+        """sanitize_source_key keeps empty crawl option suffixes absent after redaction."""
+        config = WebCrawlSource(
+            type="web_crawl",
+            url="https://user:pass@host/x?token=SECRET",
+        )
+
+        sanitized = sanitize_source_key(config)
+
+        assert sanitized == "web_crawl:https://host/x"
+        assert "SECRET" not in sanitized
+        assert "user:pass@" not in sanitized
+
+    def test_does_not_change_raw_build_source_key(self) -> None:
+        """sanitize_source_key does not mutate the raw build_source_key contract."""
+        config = WebCrawlSource(
+            type="web_crawl",
+            url="https://user:pass@host/x?token=SECRET",
+            max_pages=3,
+        )
+
+        raw_before = build_source_key(config)
+        sanitized = sanitize_source_key(config)
+        raw_after = build_source_key(config)
+
+        assert raw_before == raw_after
+        assert "SECRET" in raw_before
+        assert "SECRET" not in sanitized
+
+    @pytest.mark.parametrize(
+        ("repo_url", "expected_repo_url"),
+        [
+            (
+                "https://user:pass@github.com/org/repo.git?token=SECRET&other=1",
+                "https://github.com/org/repo.git?other=1",
+            ),
+            (
+                "https://user:pass@github.com/org/repo.git?%2574oken=SECRET&other=1",
+                "https://github.com/org/repo.git?other=1",
+            ),
+        ],
+    )
+    def test_redacts_github_repo_url_credentials(
+        self,
+        repo_url: str,
+        expected_repo_url: str,
+    ) -> None:
+        """GitHub repo keys redact credential-bearing repo URLs."""
+        config = GitHubRepoSource(
+            type="github_repo",
+            repo_url=repo_url,
+            branch="main",
+            path_glob="docs/**/*.md",
+        )
+
+        sanitized = sanitize_source_key(config)
+
+        assert sanitized == f"github_repo:{expected_repo_url}@main:docs/**/*.md"
+        assert "SECRET" not in sanitized
+        assert "user:pass@" not in sanitized
+
+    @pytest.mark.parametrize(
+        ("raw_id", "expected_id"),
+        [
+            ("srcA?token=IDSECRET", "srcA?token=<redacted>"),
+            ("srcA?%74oken=IDSECRET", "srcA?%74oken=<redacted>"),
+            ("srcA?%2574oken=IDSECRET", "srcA?%2574oken=<redacted>"),
+        ],
+    )
+    def test_redacts_manifest_git_url_and_id_credentials(
+        self,
+        raw_id: str,
+        expected_id: str,
+    ) -> None:
+        """Manifest git keys redact both manifest IDs and repository URLs."""
+        config = ManifestGitSource(
+            type="git",
+            id=raw_id,
+            url="https://user:pass@github.com/org/repo.git?token=SECRET&other=1",
+            branch="main",
+        )
+
+        sanitized = sanitize_source_key(config)
+
+        assert sanitized == (
+            f"manifest_git:{expected_id}:https://github.com/org/repo.git?other=1@main"
+        )
+        assert "IDSECRET" not in sanitized
+        assert "SECRET" not in sanitized
+        assert "user:pass@" not in sanitized
+
+    def test_redacts_manifest_local_id_and_preserves_path_and_includes(self) -> None:
+        """Manifest local keys redact IDs while keeping filesystem fields byte-identical."""
+        config = ManifestLocalSource(
+            type="local",
+            id="srcA?token=IDSECRET",
+            path="docs/source",
+            include=["README.md", "**/*.md"],
+        )
+
+        sanitized = sanitize_source_key(config)
+
+        assert sanitized == "manifest_local:srcA?token=<redacted>:docs/source:**/*.md,README.md"
+        assert "IDSECRET" not in sanitized
+        assert ":docs/source:" in sanitized
+        assert sanitized.endswith(":**/*.md,README.md")
+
+    @pytest.mark.parametrize(
+        "config",
+        [
+            GitHubRepoSource(
+                type="github_repo",
+                repo_url="https://github.com/org/repo.git",
+                branch="main",
+                path_glob="docs/**/*.md",
+            ),
+            ManifestGitSource(
+                type="git",
+                id="source-a",
+                url="https://github.com/org/repo.git",
+                branch="main",
+            ),
+            ManifestLocalSource(
+                type="local",
+                id="source-a",
+                path="docs/source",
+                include=["**/*.md"],
+            ),
+        ],
+    )
+    def test_preserves_credential_free_git_and_manifest_variants(self, config) -> None:
+        """Credential-free git and manifest variants stay byte-identical."""
+        assert sanitize_source_key(config) == build_source_key(config)
+
+    @pytest.mark.parametrize(
+        "config",
+        [
+            GitHubRepoSource(
+                type="github_repo",
+                repo_url="https://user:pass@github.com/org/repo.git?token=SECRET",
+                branch="main",
+                path_glob="docs/**/*.md",
+            ),
+            ManifestGitSource(
+                type="git",
+                id="srcA?token=IDSECRET",
+                url="https://user:pass@github.com/org/repo.git?token=SECRET",
+                branch="main",
+            ),
+            ManifestLocalSource(
+                type="local",
+                id="srcA?token=IDSECRET",
+                path="docs/source",
+                include=["**/*.md"],
+            ),
+        ],
+    )
+    def test_preserves_raw_job_id_input_for_new_variants(self, config) -> None:
+        """sanitize_source_key leaves raw build_source_key/make_job_id inputs deterministic."""
+        raw_before = build_source_key(config)
+        sanitized = sanitize_source_key(config)
+        raw_after = build_source_key(config)
+
+        assert raw_before == raw_after
+        assert make_job_id(raw_before) == make_job_id(raw_after)
+        assert raw_before != sanitized
+
+    @pytest.mark.parametrize(
+        ("raw_branch", "expected_branch"),
+        [
+            ("main?token=SECRET", "main?token=<redacted>"),
+            ("main?%2574oken=SECRET", "main?%2574oken=<redacted>"),
+        ],
+    )
+    def test_redacts_github_repo_branch_credentials(
+        self,
+        raw_branch: str,
+        expected_branch: str,
+    ) -> None:
+        """GitHub repo branch values flow through sanitize_source_id."""
+        config = GitHubRepoSource(
+            type="github_repo",
+            repo_url="https://github.com/org/repo.git",
+            branch=raw_branch,
+            path_glob="**/*.md",
+        )
+
+        sanitized = sanitize_source_key(config)
+
+        assert sanitized == f"github_repo:https://github.com/org/repo.git@{expected_branch}:**/*.md"
+        assert "SECRET" not in sanitized
+
+    @pytest.mark.parametrize(
+        ("raw_path_glob", "expected_path_glob"),
+        [
+            ("**/*.md?token=SECRET", "**/*.md?token=<redacted>"),
+            ("**/*.md?%2574oken=SECRET", "**/*.md?%2574oken=<redacted>"),
+        ],
+    )
+    def test_redacts_github_repo_path_glob_credentials(
+        self,
+        raw_path_glob: str,
+        expected_path_glob: str,
+    ) -> None:
+        """GitHub repo path globs flow through sanitize_source_id."""
+        config = GitHubRepoSource(
+            type="github_repo",
+            repo_url="https://github.com/org/repo.git",
+            branch="main",
+            path_glob=raw_path_glob,
+        )
+
+        sanitized = sanitize_source_key(config)
+
+        assert sanitized == f"github_repo:https://github.com/org/repo.git@main:{expected_path_glob}"
+        assert "SECRET" not in sanitized
+
+    @pytest.mark.parametrize(
+        ("raw_branch", "expected_branch"),
+        [
+            ("main?token=SECRET", "main?token=<redacted>"),
+            ("main?%2574oken=SECRET", "main?%2574oken=<redacted>"),
+        ],
+    )
+    def test_redacts_manifest_git_branch_credentials(
+        self,
+        raw_branch: str,
+        expected_branch: str,
+    ) -> None:
+        """Manifest git branch values flow through sanitize_source_id."""
+        config = ManifestGitSource(
+            type="git",
+            id="source-a",
+            url="https://github.com/org/repo.git",
+            branch=raw_branch,
+        )
+
+        sanitized = sanitize_source_key(config)
+
+        assert sanitized == (
+            f"manifest_git:source-a:https://github.com/org/repo.git@{expected_branch}"
+        )
+        assert "SECRET" not in sanitized
+
+
+class TestSanitizeSourceId:
+    """Tests for marker-gated source ID sanitization."""
+
+    @pytest.mark.parametrize(
+        ("raw_id", "expected"),
+        [
+            ("srcA?%74oken=IDSECRET", "srcA?%74oken=<redacted>"),
+            (
+                "https://host/x?%74oken=IDSECRET",
+                "https://host/x?%74oken=<redacted>",
+            ),
+            ("srcA?%2574oken=IDSECRET", "srcA?%2574oken=<redacted>"),
+        ],
+    )
+    def test_redacts_percent_encoded_credential_name_values(
+        self,
+        raw_id: str,
+        expected: str,
+    ) -> None:
+        """sanitize_source_id preserves encoded keys while redacting their values."""
+        sanitized = sanitize_source_id(raw_id)
+
+        assert sanitized == expected
+        assert "IDSECRET" not in sanitized
+
+    def test_fails_closed_when_name_is_still_decoding_at_cap(self) -> None:
+        """sanitize_source_id redacts when a credential key is still decoding at the cap."""
+        raw_key = _encode_name_layers("%74oken", 6)
+        raw_id = f"srcA?{raw_key}=IDSECRET"
+
+        sanitized = sanitize_source_id(raw_id)
+
+        assert sanitized == f"srcA?{raw_key}=<redacted>"
+        assert "IDSECRET" not in sanitized
+
+    @pytest.mark.parametrize("raw_id", ["srcA?note=%zz", "srcA?b=%e0%80"])
+    def test_preserves_credential_free_malformed_percent_values(self, raw_id: str) -> None:
+        """sanitize_source_id keeps malformed percent sequences when no marker is present."""
+        assert sanitize_source_id(raw_id) == raw_id
+
+    def test_strips_colonless_userinfo(self) -> None:
+        """sanitize_source_id strips a single colon-less userinfo token."""
+        sanitized = sanitize_source_id("https://TOKEN@host/x")
+
+        assert sanitized == "https://host/x"
+        assert "TOKEN" not in sanitized
+
+    def test_preserves_non_url_identifier_with_bare_at_sign(self) -> None:
+        """sanitize_source_id preserves credential-free non-URL identifiers containing ``@``."""
+        assert sanitize_source_id("release@2026") == "release@2026"
+
+    def test_redacts_non_url_identifier_before_second_query_delimiter(self) -> None:
+        """sanitize_source_id redacts a credential before later ``?`` segments."""
+        sanitized = sanitize_source_id("srcA?token=SECRET?detail=x")
+
+        assert sanitized.startswith("srcA?token=<redacted>")
+        assert "SECRET" not in sanitized
+
+    def test_redacts_non_url_identifier_after_second_query_delimiter(self) -> None:
+        """sanitize_source_id redacts a credential after an earlier ``?`` segment."""
+        sanitized = sanitize_source_id("srcA?detail=x?token=SECRET")
+
+        assert sanitized == "srcA?detail=x?token=<redacted>"
+        assert "SECRET" not in sanitized
+
+    def test_redacts_percent_encoded_userinfo(self) -> None:
+        """sanitize_source_id strips percent-encoded userinfo after decoded-view detection."""
+        sanitized = sanitize_source_id("https://user%3Apass@host/x")
+
+        assert sanitized == "https://host/x"
+        assert "user%3Apass" not in sanitized
+
+    def test_fails_closed_for_ambiguous_multi_at_authority(self) -> None:
+        """sanitize_source_id redacts to the fail-closed sentinel for a 2-``@`` authority.
+
+        Regression test for U-1: ``_contains_userinfo_marker`` used to return
+        ``False`` whenever the authority held more than one ``@``, which skipped
+        ``sanitize_source_id``'s marker gate entirely and returned the raw
+        credential-bearing identifier byte-for-byte unchanged -- worse than the
+        documented fail-closed sentinel behaviour that ``_strip_userinfo`` already
+        implements (but could never reach) for this exact ambiguous shape.
+        """
+        raw_id = "https://" + "user" + ":" + "pass" + "@evil@host/x"
+
+        sanitized = sanitize_source_id(raw_id)
+
+        assert "pass" not in sanitized
+        assert sanitized == "<source-id-redacted>"
+
+    def test_preserves_single_at_userinfo_redaction(self) -> None:
+        """sanitize_source_id still redacts a genuine single-``@`` authority (no regression)."""
+        sanitized = sanitize_source_id("https://user:pass@host/x")
+
+        assert sanitized == "https://host/x"
+        assert "pass" not in sanitized
+
+    def test_preserves_credential_free_identifier_with_no_at_sign(self) -> None:
+        """sanitize_source_id passes through a credential-free, ``@``-free identifier."""
+        raw_id = "https://host/x?other=1"
+
+        assert sanitize_source_id(raw_id) == raw_id
+
+
+class TestSanitizeUrlFieldNonHttpSchemes:
+    """Regression tests for the PR #198 non-http(s) scheme credential leak.
+
+    ``docline.fetch.staging.sanitize_source`` only rewrites ``http://``/
+    ``https://`` URLs, ``file://`` URLs, and absolute local file paths; every
+    other scheme (``ftp://``, ``ssh://``, ``git://``, etc.) is returned
+    completely unchanged per its own docstring rule 4. ``_sanitize_url_field``
+    must route that untouched value through the marker-gated
+    ``sanitize_source_id`` before returning it, so non-http(s) userinfo
+    credentials are still stripped instead of leaking verbatim.
+    """
+
+    def test_strips_ftp_scheme_userinfo_credentials(self) -> None:
+        """_sanitize_url_field strips userinfo credentials from an ftp:// URL."""
+        sanitized = _sanitize_url_field("ftp://user:secretpass@host.example.com/path")
+
+        assert sanitized == "ftp://host.example.com/path"
+        assert "secretpass" not in sanitized
+
+    def test_strips_ssh_scheme_userinfo_credentials(self) -> None:
+        """_sanitize_url_field strips userinfo credentials from an ssh:// URL."""
+        sanitized = _sanitize_url_field("ssh://user:secretpass@host.example.com/repo")
+
+        assert sanitized == "ssh://host.example.com/repo"
+        assert "secretpass" not in sanitized
+
+    def test_redacts_non_http_scheme_crawl_url_credentials_end_to_end(self) -> None:
+        """sanitize_source_key redacts a WebCrawlSource url with a non-http(s) scheme.
+
+        Exercises the public entry point (not just the private helper) so the
+        fix is verified end-to-end for a real typed source config, matching
+        the ``WebCrawlSource.url`` field named in the confirmed bug report.
+        """
+        config = WebCrawlSource(
+            type="web_crawl",
+            url="ssh://user:secretpass@host.example.com/repo",
+        )
+
+        sanitized = sanitize_source_key(config)
+
+        assert sanitized == "web_crawl:ssh://host.example.com/repo"
+        assert "secretpass" not in sanitized
+        assert "user:secretpass@" not in sanitized
+
+    def test_preserves_http_scheme_credential_removal_regression(self) -> None:
+        """No regression: the http(s) branch still uses _remove_credential_query_params.
+
+        This function's http(s) branch is untouched by the fix (the final
+        ``return`` line only runs for non-http(s) schemes), so this is a
+        safety-net confirmation of already-covered behavior rather than new
+        logic: userinfo credentials and credential-named query params are
+        still stripped from an http(s) URL.
+        """
+        sanitized = _sanitize_url_field("https://user:secretpass@host/x?token=SECRET&other=1")
+
+        assert sanitized == "https://host/x?other=1"
+        assert "secretpass" not in sanitized
+        assert "SECRET" not in sanitized
+
+    def test_preserves_non_url_shaped_credential_free_identifier(self) -> None:
+        """No regression: a non-URL-shaped, credential-free identifier is untouched.
+
+        ``docs/source/file.md`` has no ``@``/``?``/``#`` markers and no ``//``
+        or ``scheme://`` prefix, so neither ``sanitize_source`` nor the newly
+        added ``sanitize_source_id`` call has anything to rewrite.
+        """
+        raw_value = "docs/source/file.md"
+
+        assert _sanitize_url_field(raw_value) == raw_value
+
+    def test_preserves_already_redacted_local_path_sentinel(self) -> None:
+        """No regression: the local-path redaction sentinel passes through unchanged.
+
+        ``sanitize_source`` rewrites a ``file://`` URL to the
+        ``<local-path-redacted>`` sentinel before ``_sanitize_url_field``'s
+        final line runs; that sentinel has no ``@``/``?``/``#`` markers, so
+        the new ``sanitize_source_id`` call returns it byte-for-byte unchanged.
+        """
+        sanitized = _sanitize_url_field("file:///etc/secret/path")
+
+        assert sanitized == "<local-path-redacted>"
+
+
+class TestUrlShapeGateSingleSlashScheme:
+    """Regression tests for the PR #198 Finding C single-slash scheme gap.
+
+    ``_URL_SCHEME_RE`` previously required exactly two slashes after the
+    scheme colon (``scheme://``), so a malformed single-slash URL (e.g. a
+    typo like ``https:/user:pass@host/path``) was never recognized as
+    URL-shaped by ``_is_url_shaped``/``_authority_span``, and its userinfo
+    credential skipped the marker-gated detection entirely.
+    """
+
+    def test_single_slash_scheme_is_url_shaped(self) -> None:
+        """_is_url_shaped recognizes a malformed single-slash scheme URL."""
+        assert _is_url_shaped("https:/user:pass@host/path") is True
+
+    def test_strips_userinfo_from_single_slash_scheme_url(self) -> None:
+        """_sanitize_url_field strips userinfo credentials from a single-slash URL."""
+        sanitized = _sanitize_url_field("https:/user:secretpass@host.example.com/path")
+
+        assert "secretpass" not in sanitized
+        assert sanitized == "https:/host.example.com/path"
+
+    def test_preserves_double_slash_scheme_is_url_shaped(self) -> None:
+        """No regression: a normal double-slash URL is still recognized as URL-shaped."""
+        assert _is_url_shaped("https://host/x") is True
+
+    def test_zero_slash_scheme_value_is_now_url_shaped_but_unaffected_without_at_sign(
+        self,
+    ) -> None:
+        """Corrected contract (round-3): zero-slash schemes are url-shaped, but safe.
+
+        Prior to the round-3 fix, ``_is_url_shaped("release:2026")`` returned
+        ``False`` because ``_URL_SCHEME_RE`` required at least one slash after
+        the scheme colon. That gap is exactly what let a malformed zero-slash
+        credential URL (e.g. ``https:user:pass@host``) skip userinfo detection
+        entirely (see ``TestUrlShapeGateMalformedSlashCount`` below). Relaxing
+        the slash quantifier to zero-or-more means a bare ``scheme:value``
+        identifier like ``release:2026`` now correctly evaluates as url-shaped
+        too -- but the behavioral guarantee that matters (no corruption of a
+        credential-free identifier) still holds: redaction is gated on an
+        actual ``@`` being present in the authority segment
+        (``_contains_userinfo_marker``), not merely on the ``_is_url_shaped``
+        boolean, and ``"2026"`` (the authority segment for this value)
+        contains no ``@``.
+        """
+        assert _is_url_shaped("release:2026") is True
+        assert sanitize_source_id("release:2026") == "release:2026"
+
+
+class TestUrlShapeGateMalformedSlashCount:
+    """Regression tests for the round-3 malformed-scheme slash-count gap.
+
+    ``_URL_SCHEME_RE`` previously required exactly one or two slashes after
+    the scheme colon (``:/{1,2}``). A malformed URL with ZERO slashes (e.g.
+    ``https:user:pass@host``) or with three-plus slashes (e.g.
+    ``https:////user:pass@host``) was therefore never recognized as
+    URL-shaped by ``_is_url_shaped``/``_authority_span``, so ``_strip_userinfo``
+    never even considered its userinfo and the credential leaked through both
+    ``_sanitize_url_field`` (this module) and ``_sanitize_exception_text``
+    (``docline.elt.execute``, which reuses ``sanitize_source_id`` and is
+    gated by the same ``_is_url_shaped`` check).
+    """
+
+    def test_zero_slash_malformed_scheme_is_url_shaped(self) -> None:
+        """_is_url_shaped recognizes a zero-slash malformed scheme with userinfo."""
+        assert _is_url_shaped("https:user:pass@host") is True
+
+    def test_strips_userinfo_from_zero_slash_malformed_scheme_url(self) -> None:
+        """_sanitize_url_field strips userinfo credentials from a zero-slash URL."""
+        sanitized = _sanitize_url_field("https:user:pass@host")
+
+        assert "pass" not in sanitized
+        assert sanitized == "https:host"
+
+    def test_four_slash_malformed_scheme_is_url_shaped(self) -> None:
+        """_is_url_shaped recognizes a four-slash malformed scheme with userinfo."""
+        assert _is_url_shaped("https:////user:pass@host") is True
+
+    def test_strips_userinfo_from_four_slash_malformed_scheme_url(self) -> None:
+        """_sanitize_url_field strips userinfo credentials from a four-slash URL."""
+        sanitized = _sanitize_url_field("https:////user:pass@host")
+
+        assert "pass" not in sanitized
+        assert sanitized == "https:////host"
+
+    def test_redacts_malformed_scheme_crawl_url_credentials_end_to_end(self) -> None:
+        """sanitize_source_key redacts a WebCrawlSource url with a malformed scheme.
+
+        Exercises the public entry point (not just the private helper) so the
+        fix is verified end-to-end for a real typed source config, matching
+        the ``WebCrawlSource.url`` field named in the confirmed bug report.
+        """
+        config = WebCrawlSource(
+            type="web_crawl",
+            url="https:////user:pass@host",
+        )
+
+        sanitized = sanitize_source_key(config)
+
+        assert sanitized == "web_crawl:https:////host"
+        assert "pass" not in sanitized
+
+    def test_preserves_second_zero_slash_credential_free_identifier(self) -> None:
+        """No regression: a second zero-slash, no-``@`` identifier stays unchanged."""
+        assert sanitize_source_id("topic:general") == "topic:general"
+
+    def test_preserves_no_colon_bare_at_sign_identifier(self) -> None:
+        """No regression: an identifier with no colon at all is completely unaffected."""
+        assert _is_url_shaped("release@2026") is False
+        assert sanitize_source_id("release@2026") == "release@2026"
+
+
+class TestUrlShapeGateLooseAuthorityUserinfoGuard:
+    """Regression tests for stash entry E462E1F0 (PR #198 round-5 Copilot finding).
+
+    Round 3's ``_URL_SCHEME_RE`` relaxation (``:/{1,2}`` -> ``:/*``) made
+    ``_is_url_shaped`` return ``True`` for any bare ``scheme:value`` identifier.
+    Because ``_contains_userinfo_marker``/``_strip_userinfo`` previously treated
+    *any* non-empty text before an ``@`` in that loose (non-``//``, non-exactly-
+    two-slash) authority segment as genuine userinfo, an arbitrary colon-prefixed
+    identifier containing ``@`` (e.g. a manifest ID like ``release:owner@2026``)
+    was silently corrupted to ``release:2026`` -- violating the documented
+    byte-for-byte-preservation contract for credential-free identifiers, even
+    though no genuine URL or credential was present.
+
+    The fix (see ``_has_authoritative_userinfo_context``) narrows a *loose*
+    (non-``//``, non-exactly-two-slash) authority match to only be
+    authoritative when the scheme name is one of a small, already-tested set
+    of recognized network schemes (``_LOOSE_AUTHORITY_KNOWN_SCHEMES``) --
+    directly matching the Copilot review's own suggested remediation
+    ("narrow zero-slash malformed-URL detection to the URL schemes/fields
+    that need it"). A strict authority (``//...`` or ``scheme://...``) is
+    unaffected by scheme name and keeps the pre-existing non-empty-userinfo
+    behavior regardless.
+
+    An earlier draft of this fix used an "internal colon in userinfo"
+    heuristic instead of a known-scheme allowlist; a follow-up adversarial
+    review (see
+    ``docs/closure/2026-09-13-sanitize-source-key-elt-error-paths-e462e1f0-e89dc095-adversarial-review.md``,
+    finding F1) found that heuristic silently stopped stripping a bare,
+    colon-less credential token under loose authority (e.g.
+    ``https:TOKEN@host``) -- a genuine new false negative reachable through
+    both ``_sanitize_url_field`` and ``_sanitize_exception_text``. The
+    known-scheme-allowlist design closes E462E1F0 without that regression;
+    see ``TestUrlShapeGateLooseAuthorityKnownSchemeStillStrips`` below for the
+    explicit regression guard.
+    """
+
+    def test_preserves_zero_slash_scheme_identifier_with_colonless_at_userinfo(self) -> None:
+        """No corruption: reported example, zero-slash scheme + colon-less userinfo."""
+        assert sanitize_source_id("release:owner@2026") == "release:owner@2026"
+
+    def test_preserves_single_slash_scheme_identifier_with_colonless_at_userinfo(self) -> None:
+        """No corruption: single-slash malformed scheme + colon-less userinfo."""
+        assert sanitize_source_id("release:/owner@2026") == "release:/owner@2026"
+
+    def test_preserves_three_slash_scheme_identifier_with_colonless_at_userinfo(self) -> None:
+        """No corruption at the exact strict/loose boundary: three slashes (one more
+        than the strict ``scheme://`` two-slash case) is still a loose match for an
+        unrecognized scheme, so a colon-free, credential-free identifier stays
+        byte-for-byte unchanged."""
+        assert sanitize_source_id("release:///owner@2026") == "release:///owner@2026"
+
+    def test_preserves_four_slash_scheme_identifier_with_colonless_at_userinfo(self) -> None:
+        """No corruption: four-slash malformed scheme + colon-less userinfo."""
+        assert sanitize_source_id("release:////owner@2026") == "release:////owner@2026"
+
+    def test_still_strips_loose_scheme_userinfo_with_internal_colon(self) -> None:
+        """No regression: a genuine malformed credential URL (userinfo carrying an
+        internal colon, e.g. ``user:pass``) is still detected and stripped under a
+        loose (non-``//``) authority match for a recognized scheme."""
+        sanitized = sanitize_source_id("https:owner:secret@2026")
+
+        assert sanitized == "https:2026"
+        assert "secret" not in sanitized
+
+    def test_release_owner_at_sign_is_still_url_shaped(self) -> None:
+        """No contract change to `_is_url_shaped` itself: it remains True for a
+        bare zero-slash scheme value; only the userinfo-marker gate is narrowed."""
+        assert _is_url_shaped("release:owner@2026") is True
+
+
+class TestUrlShapeGateLooseAuthorityKnownSchemeStillStrips:
+    """Regression tests for adversarial-review finding F1 (see
+    ``docs/closure/2026-09-13-sanitize-source-key-elt-error-paths-e462e1f0-e89dc095-adversarial-review.md``).
+
+    A bare, single-token, colon-less credential (e.g. a bearer token used as a
+    colon-less username) under a *loose* authority match for a RECOGNIZED
+    network scheme must still be stripped -- unlike the credential-free,
+    colon-less identifiers in ``TestUrlShapeGateLooseAuthorityUserinfoGuard``,
+    which all use scheme names outside ``_LOOSE_AUTHORITY_KNOWN_SCHEMES``.
+    Without this guard, an "internal colon in userinfo" heuristic (an earlier
+    draft of the E462E1F0 fix) would also stop stripping this genuinely
+    credential-bearing shape -- exactly the false negative F1 identified,
+    reachable via both ``_sanitize_url_field`` (persisted ``metadata.source``)
+    and ``_sanitize_exception_text`` (ELT error log).
+    """
+
+    def test_strips_bare_token_userinfo_under_zero_slash_known_scheme(self) -> None:
+        """A bare bearer-token credential under a zero-slash known-scheme malformed
+        URL is still stripped (no internal colon in the userinfo required)."""
+        sanitized = sanitize_source_id("https:TOKEN@host")
+
+        assert sanitized == "https:host"
+        assert "TOKEN" not in sanitized
+
+    def test_strips_bare_token_userinfo_field_end_to_end(self) -> None:
+        """Exercises the actual persisted-field entry point (not just the ID
+        helper) for the same bare-token, zero-slash malformed-URL shape."""
+        sanitized = _sanitize_url_field("https:TOKEN@host.example.com/path")
+
+        assert sanitized == "https:host.example.com/path"
+        assert "TOKEN" not in sanitized
+
+    def test_strips_bare_token_userinfo_under_single_slash_known_scheme(self) -> None:
+        """A bare bearer-token credential under a single-slash known-scheme
+        malformed URL is still stripped."""
+        sanitized = sanitize_source_id("https:/TOKEN@host")
+
+        assert sanitized == "https:/host"
+        assert "TOKEN" not in sanitized
+
+    def test_strips_bare_token_userinfo_under_four_slash_known_scheme(self) -> None:
+        """A bare bearer-token credential under a four-slash known-scheme
+        malformed URL is still stripped."""
+        sanitized = sanitize_source_id("https:////TOKEN@host")
+
+        assert sanitized == "https:////host"
+        assert "TOKEN" not in sanitized
+
+
+class TestUrlShapeGateUnderscoreScheme:
+    """Regression tests for stash entry E89DC095 (PR #198 round-6 Copilot finding).
+
+    ``_URL_SCHEME_RE``'s scheme-name character class excluded ``_``, so an
+    underscore-containing scheme never matched the pattern at all:
+    ``_is_url_shaped`` returned ``False``, the marker gate never ran, and
+    userinfo credentials passed through completely unsanitized.
+    """
+
+    def test_underscore_scheme_is_url_shaped(self) -> None:
+        """_is_url_shaped now recognizes an underscore-containing scheme."""
+        assert _is_url_shaped("custom_scheme://user:pass@host") is True
+
+    def test_strips_userinfo_from_underscore_scheme_url(self) -> None:
+        """sanitize_source_id strips userinfo credentials from an underscore-scheme URL."""
+        sanitized = sanitize_source_id("custom_scheme://user:pass@host")
+
+        assert sanitized == "custom_scheme://host"
+        assert "pass" not in sanitized
+
+    def test_preserves_underscore_scheme_credential_free_identifier(self) -> None:
+        """No regression: a credential-free underscore-scheme identifier is unchanged."""
+        assert sanitize_source_id("custom_scheme://host/x") == "custom_scheme://host/x"
+
+    def test_preserves_zero_slash_underscore_scheme_identifier_with_colonless_at_userinfo(
+        self,
+    ) -> None:
+        """No corruption: an underscore-containing scheme is not itself one of
+        ``_LOOSE_AUTHORITY_KNOWN_SCHEMES``, so a zero-slash malformed match with a
+        colon-less userinfo is preserved unchanged, exactly like any other
+        unrecognized scheme (see ``TestUrlShapeGateLooseAuthorityUserinfoGuard``).
+        This documents an intentional, narrow scoping boundary -- not a gap this
+        shipment's reported findings (both of which use a strict ``scheme://``
+        double-slash reproduction for the underscore case) require closing."""
+        assert sanitize_source_id("custom_scheme:owner@2026") == "custom_scheme:owner@2026"
+
+    def test_preserves_existing_production_underscore_scheme_prefix(self) -> None:
+        """No regression: passing a real production ``prefix:url`` key (which is never
+        actually routed through this function as a whole in production -- only the
+        typed ``.url`` sub-field is -- but is checked here directly for safety) with
+        no embedded credential marker stays byte-for-byte unchanged."""
+        assert sanitize_source_id("web_crawl:https://host/x") == "web_crawl:https://host/x"
+
+
+class TestSanitizeUrlFieldLeadingWhitespace:
+    """Regression tests for the leading-whitespace-defeats-anchored-detection gap.
+
+    ``_URL_SCHEME_RE`` is anchored with ``^`` by design (see
+    ``_has_authoritative_userinfo_context``'s docstring), so a value with
+    leading whitespace before its scheme (e.g. ``" https://TOKEN@host/path"``)
+    never matches at all: ``_is_url_shaped`` returns ``False`` and every
+    downstream marker check (``_contains_userinfo_marker``,
+    ``_contains_credential_marker``) is skipped entirely, so
+    ``sanitize_source_id`` takes its early-return, credential-marker-free path
+    and returns the value byte-for-byte unchanged -- leaking the raw
+    credential. ``_sanitize_url_field`` now guards against this up front by
+    checking the ``lstrip()``-ed value for a credential marker before running
+    its existing pipeline, and fails closed to ``_SOURCE_URL_REDACTED`` when
+    one is found, rather than attempting to strip-and-reprocess (this field is
+    a sanitized display/audit key, not the raw fetch URL, so whitespace
+    fidelity is not required). This guard is scoped to the URL-field entry
+    point only -- the shared ``_is_url_shaped``/``sanitize_source_id``
+    general-identifier path used by ``branch``/``path_glob``/manifest ``id``
+    values is untouched, to avoid the same misdetection/corruption risk
+    documented at stash entry E462E1F0.
+    """
+
+    def test_leading_space_prefixed_credentialed_url_is_redacted(self) -> None:
+        """_sanitize_url_field redacts a leading-space-prefixed URL with userinfo."""
+        sanitized = _sanitize_url_field(" https://TOKEN@example.com/path")
+
+        assert sanitized == _SOURCE_URL_REDACTED
+        assert "TOKEN" not in sanitized
+
+    def test_leading_space_prefixed_credentialed_crawl_url_end_to_end_is_redacted(
+        self,
+    ) -> None:
+        """sanitize_source_key redacts a WebCrawlSource url with leading-space credentials.
+
+        Exercises the public entry point (not just the private helper) so the
+        fix is verified end-to-end for a real typed source config, matching the
+        ``WebCrawlSource.url`` field named in the confirmed bug report.
+        """
+        config = WebCrawlSource(
+            type="web_crawl",
+            url=" https://TOKEN@example.com/path",
+        )
+
+        sanitized = sanitize_source_key(config)
+
+        assert sanitized == f"web_crawl:{_SOURCE_URL_REDACTED}"
+        assert "TOKEN" not in sanitized
+
+    def test_leading_tab_prefixed_credentialed_url_is_redacted(self) -> None:
+        """_sanitize_url_field redacts a leading-tab-prefixed URL with userinfo."""
+        sanitized = _sanitize_url_field("\thttps://TOKEN@example.com/path")
+
+        assert sanitized == _SOURCE_URL_REDACTED
+        assert "TOKEN" not in sanitized
+
+    def test_leading_newline_prefixed_credentialed_url_is_redacted(self) -> None:
+        """_sanitize_url_field redacts a leading-newline-prefixed URL with userinfo."""
+        sanitized = _sanitize_url_field("\nhttps://TOKEN@example.com/path")
+
+        assert sanitized == _SOURCE_URL_REDACTED
+        assert "TOKEN" not in sanitized
+
+    def test_leading_space_prefixed_credential_free_url_is_not_redacted(self) -> None:
+        """No false positive: a leading-space-prefixed URL with NO credentials is
+        passed through by the existing (unmodified) pipeline unchanged -- the new
+        guard only fires when the lstripped value actually contains a credential
+        marker, so a benign leading-whitespace-prefixed URL is not affected."""
+        sanitized = _sanitize_url_field(" https://example.com/path")
+
+        assert sanitized != _SOURCE_URL_REDACTED
+        assert sanitized == " https://example.com/path"
+
+    def test_leading_whitespace_non_url_shaped_identifier_is_unaffected(self) -> None:
+        """No regression: a leading-whitespace-prefixed value that is not URL-shaped
+        at all (no scheme, no ``//``) behaves exactly as before -- it is not
+        URL-shaped even after lstrip, so the new guard never fires, and this
+        function's existing (non-redacting) behavior for non-URL text is
+        unchanged."""
+        sanitized = _sanitize_url_field(" not-a-url-at-all")
+
+        assert sanitized != _SOURCE_URL_REDACTED
+        assert "not-a-url-at-all" in sanitized
