@@ -129,8 +129,14 @@ narrowed to structured-access-credential coverage + benign-path preservation; pl
 deliberation, feature, shipment, and memory updated with the operator decision and
 REJECTED-alternatives record; DAG rebuilt to two test-first streams
 (`073.001-T`/`073.007-T`→`073.002-T`, `073.003-T`/`073.008-T`→`073.004-T`).
+> SUPERSEDED (2026-09-15 final correction, P0 merge): the two-code-task topology above is
+> stale. Code tasks 073.002-T + 073.004-T are MERGED into one atomic production task
+> (073.002-T survivor; 073.004-T retired/blocked, out of manifest). All five test tasks
+> (073.001-T, 073.003-T, 073.007-T, 073.008-T, 073.009-T) precede the single 073.002-T and
+> green together when it completes. See `stage-064-s-final-correction-merge.md`.
 
 Updated status: the review-cap BLOCK is CLEARED by operator decision. Shipment
-`064-S` is a 7-item, parent-first, queued, unclaimed manifest. Changes remain
-UNCOMMITTED for Orchestrator review; Ship is not invoked. Readiness after
-Orchestrator commit + fresh review: **READY** (no in-scope path work remains).
+`064-S` is a 7-item, parent-first, queued, unclaimed manifest. Per Finding 8, Stage
+OWNS and COMMITS its own planning/backlog/memory artifacts on `chore/stage-064-s`
+(the Orchestrator does not commit Stage artifacts); Ship is not invoked. Readiness
+after Stage commit + fresh review: **READY** (no in-scope path work remains).

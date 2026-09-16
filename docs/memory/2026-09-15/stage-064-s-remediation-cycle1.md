@@ -1,8 +1,16 @@
 # Stage remediation memory — 064-S / 073-F review-fix cycle 1
 
+> **SUPERSEDED (2026-09-15 final correction, commit-ownership + merge).** Two records
+> below are stale: (1) the handoff "left uncommitted for Orchestrator review / Orchestrator
+> to commit" is REVERSED per Finding 8 — Stage OWNS and COMMITS its own planning/backlog/
+> memory artifacts on `chore/stage-064-s`; the Orchestrator only coordinates review, the
+> remote staging gate, and the Ship handoff. (2) The topology predates the P0 green-gate
+> fix (two code tasks 073.002-T+073.004-T merged into one; 7-item manifest). Current state:
+> `docs/memory/2026-09-15/stage-064-s-final-correction-merge.md`.
+
 **Date:** 2026-09-15
 **Agent:** Stage (planning/decomposition; role boundary preserved — no code/test written, no build, no PR, no shipment claim, no Ship invocation)
-**Branch:** chore/stage-064-s (single worktree; HEAD cdcf718 NOT amended; edits left uncommitted for Orchestrator review)
+**Branch:** chore/stage-064-s (single worktree; HEAD cdcf718 NOT amended; edits left uncommitted at that cycle — SUPERSEDED: Stage now owns/commits its own artifacts, see top banner)
 **Authorization:** DARK_MODE_ACTIVE scope = 064-S; merge-preauthorization = false; admin-fallback = false
 **Trigger:** standard review + 4-reviewer adversarial review returned BLOCKED on the first-cut 064-S staging artifacts (P1 findings).
 
@@ -72,4 +80,6 @@ genuinely different-contract issue surfaced; nothing new deferred.
 ## Next action for Orchestrator
 
 Review the uncommitted staging edits and commit on chore/stage-064-s (Stage did not commit).
+> SUPERSEDED per Finding 8: Stage OWNS and COMMITS its own staging edits on
+> chore/stage-064-s; the Orchestrator does not commit Stage artifacts.
 Shipment 064-S remains queued and ready to hand to Ship after commit. Readiness: READY.

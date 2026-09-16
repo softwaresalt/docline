@@ -50,10 +50,15 @@ preserved.
    typed, non-leaking exception (no whole-key sentinel, no raw-key echo); keyword-only
    param; bare-URL compat retained only where paths are preserved and structured creds
    sanitized.
-5. **Satisfiable A2+B2 composition gate.** 073.009-T is the final live default-stdout
-   composition test (userinfo + all recognized new names), written first, blocking
-   BOTH 073.002-T and 073.004-T; 073.007-T = stream-A userinfo subset, 073.008-T =
-   stream-B WARNING subset; milestones honest; width isolation and 2-hour rule kept.
+5. **Satisfiable A2+B2 composition gate (single merged production task).** 073.009-T is
+   the final live default-stdout composition test (userinfo + all recognized new names),
+   written first, gating the SINGLE MERGED production task 073.002-T; 073.007-T =
+   concern-A userinfo subset, 073.008-T = concern-B WARNING subset. Because A2 and B2
+   are ONE atomic code task (2026-09-15 P0 green-gate fix — two separate code tasks could
+   not each green the composition gate), 073.009-T and every other test task green
+   together when 073.002-T lands; former stream-B code task 073.004-T is retired/merged
+   into 073.002-T. Milestones honest; the 2-hour rule yields to the stronger
+   per-task-green invariant while the merged task stays one cohesive domain.
 6. **LocalFileSource / ManifestLocalSource.** Local paths, include patterns, and
    manifest IDs are PRESERVED byte-for-byte; only explicitly-secret typed fields (none
    present) would be redacted.
@@ -142,6 +147,11 @@ forward lineage into the backlog is:
 |---|---|---|
 | `0F1A653C` (bug/high, default-path sink) | 073-F ▸ stream A ▸ `073.001-T` (test) + `073.002-T` (code) | 064-S |
 | `06A59B1D` (task/med, coverage expansion) | 073-F ▸ stream B `073.003-T`+`073.004-T` (query names) and stream C `073.005-T`+`073.006-T` (path-embedded) | 064-S |
+
+> **Final-state note (2026-09-15 final correction):** this table records the original
+> 2026-09-14 harvest lineage. Current disposition: stream B's code task `073.004-T` is
+> MERGED into the single production task `073.002-T` (retired/blocked, out of manifest);
+> stream C (`073.005-T`/`073.006-T`) is REJECTED/retired. Executable manifest = 7 items.
 
 **Tool limitation (reported, not worked around):** backlogit exposes no schema
 field or operation to persist an archived-stash → work-item forward pointer.
@@ -358,18 +368,18 @@ retired non-destructively** (tasks 073.005-T/073.006-T set to blocked, removed f
 shipment 064-S). Docline leaves URL path components unchanged; path-secret detection
 is an upstream DLP concern. See the top Operator-Decision Revision section.
 
-**Sequencing (real dependencies only):** within each executable stream (A and B),
-code lands after its test (test-first): `073.002-T→{073.001-T,073.007-T,073.009-T}` and
-`073.004-T→{073.003-T,073.008-T,073.009-T}`. The final live default-stdout composition
-gate `073.009-T` (A2+B2) is a genuine test-first prerequisite that blocks BOTH code
-tasks (Finding 5), so it is enumerated in each code task's dependency set above. Stream A
-and Stream B are otherwise independent (no direct cross-stream edge; they converge only
-at the shared `073.009-T` gate). Stream C is retired, so its former
-`073.006-T→073.004-T` behavioral edge and all stream-C test-first edges are removed
-(2026-09-15 operator decision). The
-first-cut B-on-A ordering edge was already removed (H5). A is still the acute P0-class
-sink and SHOULD be executed first, but that is an execution-order preference for Ship,
-not a backlog `blocks` dependency.
+**Sequencing (real dependencies only):** all test tasks are authored first
+(test-first) and the SINGLE MERGED production task `073.002-T` lands after ALL of them:
+`073.002-T→{073.001-T,073.003-T,073.007-T,073.008-T,073.009-T}`. The final live
+default-stdout composition gate `073.009-T` (A2+B2) is a genuine test-first prerequisite
+(Finding 5); because A2 and B2 are ONE atomic code task (2026-09-15 P0 green-gate fix),
+completing `073.002-T` greens the composition gate and every other test task together in
+a single verifiable step. Former separate stream-B code task `073.004-T` is
+retired/merged into `073.002-T` (edges removed, out of shipment). Stream C is retired,
+so its former `073.006-T→073.004-T` behavioral edge and all stream-C test-first edges are
+removed (2026-09-15 operator decision). The first-cut B-on-A ordering edge was already
+removed (H5). The merged task remains a single cohesive credential-redaction domain;
+width isolation yields to the stronger per-task-green invariant.
 
 ### Minimal safe contract (invariants)
 
@@ -409,12 +419,24 @@ SUPERSEDED. The FINAL grammar:
 * **Legacy/cloud markers** (individually enumerated, case-insensitive EXACT match):
   `token`, `access_token`, `auth_token`, `refresh_token`, `api_key`, `apikey`, `key`,
   `secret`, `client_secret`, `auth`, `authorization`, `sig`, `signature`,
-  `x-amz-credential`, `x-amz-signature`, `x-amz-security-token`, `x-goog-signature`.
-  Each real credential-name variant is enumerated in its own right (e.g. `auth_token`
-  and `access_token` are listed explicitly rather than caught by an `auth`/`token`
-  prefix), so coverage parity for real credentials is preserved WITHOUT the prefix
-  false positives — `tokenizer`/`keynote`/`secretary`/`authorship`/`signal` no longer
-  match.
+  `x-amz-credential`, `x-amz-signature`, `x-amz-security-token`, `x-goog-signature`,
+  `x-goog-credential`, `awsaccesskeyid`. The names present in the current
+  `_CREDENTIAL_PARAM_PREFIXES` constant (`token`, `access_token`, `key`, `api_key`,
+  `secret`, `auth`, `sig`, `signature`, `x-amz-credential`, `x-amz-signature`,
+  `x-amz-security-token`, `x-goog-signature`) are preserved by individual enumeration;
+  the real-credential names previously caught only by the `startswith("auth")` prefix
+  (`auth_token`, `authorization`) are enumerated to keep prior coverage; and
+  `refresh_token`, `apikey`, `client_secret`, `x-goog-credential`, `awsaccesskeyid` are
+  the intended additional legacy/cloud names. Each real credential-name variant is
+  enumerated in its own right, so coverage parity/expansion for real credentials is
+  preserved WITHOUT the prefix false positives — `tokenizer`/`keynote`/`secretary`/
+  `authorship`/`signal` no longer match.
+* **Completeness boundary (Finding 7):** this vocabulary is NOT claimed universally
+  complete. Names outside it — vendor-specific credential params not enumerated, and
+  suffixed/prefixed variants of real names that the retired `startswith` heuristic used
+  to catch (e.g. `token_v2`, `access_token2`, `my_api_key`) — are INTENTIONALLY NOT
+  redacted absent explicit product support. This is an accepted residual (recorded in
+  Risks and Mitigations), not a silent gap; benign prefix fixtures assert it.
 * **Newly added markers** (`password`, `pwd`, `passwd`, `client_secret`,
   `refresh_token`, `code`): use **case-insensitive EXACT equality**, NOT
   `startswith`. Delimiter-boundary (`_`) matching is explicitly REJECTED because
@@ -580,6 +602,11 @@ this shipment), so no new P-021 entry is warranted.
 > so the EXECUTABLE topology is now TWO width-isolated streams (A and B), each
 > test-first, fully independent of each other. The 3-stream analysis below is
 > historical; the genuine `073.006-T→073.004-T` C-on-B edge is removed with stream C.
+> **Further superseded (2026-09-15 final correction):** the A2/B2 CODE tasks are no
+> longer independent — they are MERGED into ONE atomic production task 073.002-T (the P0
+> green-gate fix); 073.004-T is retired/blocked. The "two independent code streams"
+> phrasing above is historical. Current authoritative topology: the FINAL Operator
+> Contract at the top of this file and the plan's Dependency Graph.
 
 With H1 (exact-match grammar for every new name) and H2 (full path-secret
 grammar) added, the original single stream-B code task (`_CREDENTIAL_PARAM_PREFIXES`

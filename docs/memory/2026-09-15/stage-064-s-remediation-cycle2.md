@@ -1,8 +1,16 @@
 # Stage remediation memory — 064-S / 073-F review-fix cycle 2 (FINAL)
 
+> **SUPERSEDED (2026-09-15 final correction, commit-ownership + merge).** Two records
+> below are stale: (1) the handoff "left uncommitted for Orchestrator review / Orchestrator
+> to commit" is REVERSED per Finding 8 — Stage OWNS and COMMITS its own planning/backlog/
+> memory artifacts on `chore/stage-064-s`; the Orchestrator only coordinates review, the
+> remote staging gate, and the Ship handoff. (2) The topology predates the P0 green-gate
+> fix (two code tasks 073.002-T+073.004-T merged into one; 7-item manifest). Current state:
+> `docs/memory/2026-09-15/stage-064-s-final-correction-merge.md`.
+
 **Date:** 2026-09-15
 **Agent:** Stage (planning/decomposition; role boundary preserved — no code/test written, no build, no PR, no shipment claim, no Ship invocation)
-**Branch:** chore/stage-064-s (single worktree; HEAD cdcf718 NOT amended; edits left uncommitted for Orchestrator review)
+**Branch:** chore/stage-064-s (single worktree; HEAD cdcf718 NOT amended; edits left uncommitted at that cycle — SUPERSEDED: Stage now owns/commits its own artifacts, see top banner)
 **Authorization:** DARK_MODE_ACTIVE scope = 064-S; merge-preauthorization = false; admin-fallback = false
 **Trigger:** post-remediation adversarial re-review cycle 1 returned BLOCKED with 4 unique P1 + 5 P2/P3 findings. This is the FINAL allowed remediation cycle (plan-review-attempt 3; remediation-cycle 2).
 
@@ -67,5 +75,7 @@ and genuine-dependency remediation (artificial 073.004-T→073.002-T stays remov
 ## Next action for Orchestrator
 
 Review the uncommitted cycle-2 staging edits and commit on chore/stage-064-s (Stage did not commit).
+> SUPERSEDED per Finding 8: Stage OWNS and COMMITS its own staging edits on
+> chore/stage-064-s; the Orchestrator does not commit Stage artifacts.
 Shipment 064-S remains queued with a complete 9-item parent-first manifest and is ready to hand to Ship
 after commit. No in-scope P1 remains deferred. Readiness: **READY**.

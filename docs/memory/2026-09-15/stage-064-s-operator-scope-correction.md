@@ -5,14 +5,29 @@ agent: "stage"
 shipment: "064-S"
 feature: "073-F"
 branch: "chore/stage-064-s"
-status: "ready-pending-orchestrator-commit"
+status: "superseded"
+superseded_by: "docs/memory/2026-09-15/stage-064-s-final-correction-merge.md"
+superseded_reason: "P0 green-gate fix: the two code tasks 073.002-T+073.004-T were merged into one atomic production task 073.002-T; manifest is now 7 items; Stage owns and commits its own artifacts (no Orchestrator commit)."
+commit_ownership: "stage"
 ---
+
+> **SUPERSEDED (2026-09-15 final correction).** Two facts recorded below are now stale
+> and are corrected by `docs/memory/2026-09-15/stage-064-s-final-correction-merge.md`:
+> (1) the manifest/DAG below shows TWO code tasks (073.002-T + 073.004-T) — they are now
+> MERGED into the SINGLE production task 073.002-T (073.004-T retired/merged, out of
+> manifest, edges removed), so the manifest is 7 items and 073.002-T depends on all five
+> test tasks; (2) any "pending Orchestrator commit" / "Orchestrator to commit" language
+> is REVERSED — Stage OWNS and COMMITS its own planning/backlog/memory artifacts on
+> `chore/stage-064-s`; the Orchestrator only coordinates review, the remote staging gate,
+> and the Ship handoff. The scope-correction decision itself (path redaction REJECTED)
+> remains authoritative.
 
 # Stage session — 064-S / 073-F operator-directed scope correction
 
 **Role boundary preserved:** planning/backlog/artifact edits only. No production or
-test code written, no build/test run, no shipment claimed, no PR created, no commit,
-no Ship invocation. All changes left UNCOMMITTED for Orchestrator review.
+test code written, no build/test run, no shipment claimed, no PR created, no Ship
+invocation. Stage COMMITS its own planning/backlog/memory artifacts on
+`chore/stage-064-s` (does not push, does not claim the shipment).
 
 ## Authoritative operator decision
 
@@ -115,8 +130,9 @@ structured access credentials, incl. low-entropy query `code`/`password`). Decis
 
 ## Next action for Orchestrator
 
-Review and commit the uncommitted staging edits on `chore/stage-064-s`, run a fresh
-current-HEAD review, then hand shipment 064-S to Ship. Stage did not commit, claim,
-build, or invoke Ship.
+Coordinate review of the Stage-committed edits on `chore/stage-064-s`, run the remote
+staging gate, then hand shipment 064-S to Ship. Stage has COMMITTED its own
+planning/backlog/memory artifacts (no push); the Orchestrator does NOT commit Stage
+artifacts, does not claim the shipment, and does not build or invoke Ship.
 
-## Readiness: READY (pending Orchestrator commit + fresh review)
+## Readiness: READY (Stage-committed; superseded by the 2026-09-15 final-correction merge — see banner)

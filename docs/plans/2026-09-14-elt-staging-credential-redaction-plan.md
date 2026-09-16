@@ -34,14 +34,21 @@ tags:
 
 1. **Explicit exact-match vocabulary (replaces all `startswith`).** The query-name
    matcher recognizes an EXPLICIT, case-insensitive credential-name vocabulary by
-   EXACT equality; the legacy `startswith`/prefix heuristic is REPLACED. Legacy/cloud
-   variants are individually enumerated (token, access_token, auth_token,
-   refresh_token, api_key, apikey, key, secret, client_secret, auth, authorization,
-   sig, signature, x-amz-credential, x-amz-signature, x-amz-security-token,
-   x-goog-signature) plus the new names (password, pwd, passwd, code). Benign
+   EXACT equality; the legacy `startswith`/prefix heuristic is REPLACED. The existing
+   recognized names are preserved by INDIVIDUAL enumeration (token, access_token, key,
+   api_key, secret, auth, sig, signature, x-amz-credential, x-amz-signature,
+   x-amz-security-token, x-goog-signature); the real-credential names previously caught
+   only by the `startswith("auth")` prefix are enumerated to keep prior coverage
+   (auth_token, authorization); the intended additional legacy/cloud names are added
+   (refresh_token, apikey, client_secret, x-goog-credential, awsaccesskeyid) plus the
+   new names (password, pwd, passwd, code). This vocabulary is NOT claimed universally
+   complete: unknown/vendor-specific names and suffixed/prefixed variants (e.g.
+   `token_v2`) that exact-match no longer catches are INTENTIONALLY NOT redacted absent
+   explicit product support (recorded as accepted residual). Benign
    preservation tests cover tokenizer, keynote, secretary, authorship, signal,
    password_policy, pwd_length, client_secretary, codec, code_version, passwd_file,
-   refresh_token_ttl and case variants. See Unit B1/B2 and deliberation H1.
+   refresh_token_ttl and case variants, plus benign prefix fixtures. See Unit B1/B2 and
+   deliberation H1.
 2. **Bounded decode — query NAMES only, both sanitizer paths.** Bounded
    percent-decoding is applied to query-parameter NAMES on BOTH the string and typed
    sanitizer paths: re-check the vocabulary after each layer, max 5 layers, fail
@@ -56,13 +63,20 @@ tags:
    that does NOT echo the raw key. Bare-URL compatibility remains only where it
    preserves paths and sanitizes structured userinfo/query credentials correctly. The
    parameter is keyword-only. See Unit A2 and deliberation H3.
-5. **Satisfiable A2+B2 composition gate.** The final live default-stdout integration
-   test 073.009-T proves the A2+B2 composition (userinfo AND all recognized new
-   credential query-param names) across the URL-bearing source kinds. It is written
-   first, blocks BOTH 073.002-T and 073.004-T, and its milestones are honest (userinfo
-   green after A2, new-names green after B2, full green after both). 073.007-T is the
-   stream-A userinfo subset; 073.008-T is the stream-B WARNING subset. Width isolation
-   and the 2-hour rule are preserved.
+5. **Satisfiable A2+B2 composition gate (single merged production task).** The final
+   live default-stdout integration test 073.009-T proves the A2+B2 composition (userinfo
+   AND all recognized new credential query-param names) across the URL-bearing source
+   kinds. It is written first and is a leaf gate for the SINGLE MERGED production task
+   073.002-T. Because A2 (userinfo sink) and B2 (vocabulary) are now ONE atomic
+   production task, 073.009-T — and every other test task (073.001-T, 073.003-T,
+   073.007-T, 073.008-T) — goes GREEN together in one verifiable step when 073.002-T
+   completes. This is the 2026-09-15 P0 GREEN-GATE FIX: two separate code tasks could
+   not each green the composition gate (a per-task-green / test-first violation), so the
+   former stream-B code task 073.004-T is merged into 073.002-T. 073.007-T is the
+   stream-A userinfo subset; 073.008-T is the stream-B WARNING subset. The 2-hour rule
+   yields here to the stronger per-task-green invariant; the merged task stays a single
+   cohesive credential-redaction domain (see Unit A2/B2 merge note and Justified residual
+   risk).
 6. **LocalFileSource / ManifestLocalSource matrix.** Local paths and include patterns
    are PRESERVED; manifest IDs are PRESERVED under this operator contract. Only
    explicitly-secret typed fields (if any) are redacted; there is no URL credential to
@@ -85,17 +99,20 @@ the handoff to Ship. Any earlier "left uncommitted for Orchestrator review" or
 ### Rebuilt executable DAG (test-first only; acyclic; parent-first shipment)
 
 ```text
-073.001-T ──blocks──> 073.002-T   (stream A: helper test → code)
-073.007-T ──blocks──> 073.002-T   (stream A: live-stdout userinfo subset → code)
-073.009-T ──blocks──> 073.002-T   (final A2+B2 composition gate → code)
-073.003-T ──blocks──> 073.004-T   (stream B: helper test → code)
-073.008-T ──blocks──> 073.004-T   (stream B: live-WARNING subset → code)
-073.009-T ──blocks──> 073.004-T   (final A2+B2 composition gate → code)
+073.001-T ──blocks──> 073.002-T   (concern A: helper test → merged code)
+073.003-T ──blocks──> 073.002-T   (concern B: helper test → merged code)
+073.007-T ──blocks──> 073.002-T   (concern A: live-stdout userinfo subset → merged code)
+073.008-T ──blocks──> 073.002-T   (concern B: live-WARNING subset → merged code)
+073.009-T ──blocks──> 073.002-T   (final A2+B2 composition gate → merged code)
 ```
 
 Leaves (no upstream deps): 073.001-T, 073.003-T, 073.007-T, 073.008-T, 073.009-T.
-Streams A and B are independent; 073.009-T is the shared final composition test.
-The graph is acyclic and every edge is a genuine test-first prerequisite.
+073.002-T is the SINGLE MERGED production task (A2 typed sink wiring + B2 exact-match
+vocabulary/decode). All five test tasks are red on HEAD and go GREEN together when
+073.002-T completes — a single atomic verifiable green state, satisfying the test-first
+per-task-green invariant. Former separate stream-B code task 073.004-T is retired/merged
+into 073.002-T (status=blocked, edges removed, out of shipment). The graph is acyclic and
+every edge is a genuine test-first prerequisite.
 
 ## Operator-Decision Revision — 2026-09-15 (AUTHORITATIVE; supersedes cycles 1–3 path work)
 
@@ -139,13 +156,18 @@ The graph is acyclic and every edge is a genuine test-first prerequisite.
 
 ### Executable scope after the revision
 
-* **Stream A (KEPT)** — default (non-`--execute`) source-key sink: thread
+* **Concern A (KEPT)** — default (non-`--execute`) source-key sink: thread
   `sanitize_source_key(config)` into `create_staging_job`/`orchestrate_fetch`
-  (073.001-T helper test → 073.002-T code; 073.007-T live-stdout integration test,
+  (073.001-T helper test; 073.007-T live-stdout integration test,
   narrowed to structured access credentials + benign-path preservation).
-* **Stream B (KEPT)** — exact-match credential QUERY-parameter name expansion
-  (073.003-T helper test → 073.004-T code; 073.008-T live-WARNING integration test,
+* **Concern B (KEPT)** — exact-match credential QUERY-parameter name expansion
+  (073.003-T helper test; 073.008-T live-WARNING integration test,
   structured access credentials only).
+* **Single merged production task** — both concerns are implemented by ONE atomic
+  code task 073.002-T (A2 typed sink wiring + B2 exact-match vocabulary/decode across
+  staging.py, orchestrate.py, source_keys.py); the final composition gate 073.009-T
+  greens when it completes. Former separate stream-B code task 073.004-T is
+  retired/merged into 073.002-T (2026-09-15 P0 green-gate fix).
 * **Stream C (RETIRED/REJECTED)** — 073.005-T + 073.006-T removed from shipment.
 * **Job-ID residual risk (RETAINED)** — H4/H4-C2 still applies: it concerns the raw
   `build_source_key` digest of structured access credentials (incl. low-entropy
@@ -164,17 +186,26 @@ rejection — resolved by removing all path percent-decoding.
 
 ### Rebuilt executable DAG (test-first only; acyclic; parent-first shipment)
 
+> **SUPERSEDED by the top FINAL Operator Contract DAG (2026-09-15 P0 green-gate fix).**
+> The prior two-code-task graph (073.001-T/073.007-T→073.002-T and
+> 073.003-T/073.008-T→073.004-T) is replaced: the two code tasks are MERGED into the
+> single production task 073.002-T. The authoritative graph below matches the top
+> FINAL Operator Contract.
+
 ```text
-073.001-T ──blocks──> 073.002-T   (stream A: helper test → code, test-first)
-073.007-T ──blocks──> 073.002-T   (stream A: live-stdout integration test → code, test-first)
-073.003-T ──blocks──> 073.004-T   (stream B: helper test → code, test-first)
-073.008-T ──blocks──> 073.004-T   (stream B: live-WARNING integration test → code, test-first)
+073.001-T ──blocks──> 073.002-T   (concern A: helper test → merged code, test-first)
+073.003-T ──blocks──> 073.002-T   (concern B: helper test → merged code, test-first)
+073.007-T ──blocks──> 073.002-T   (concern A: live-stdout integration test → merged code, test-first)
+073.008-T ──blocks──> 073.002-T   (concern B: live-WARNING integration test → merged code, test-first)
+073.009-T ──blocks──> 073.002-T   (final A2+B2 composition gate → merged code, test-first)
 ```
 
-Leaves (no upstream deps): 073.001-T, 073.003-T, 073.007-T, 073.008-T. All four
-stream-C edges (`073.006-T→073.005-T`, `073.006-T→073.004-T`, `073.006-T→073.007-T`)
-are removed. Stream A and Stream B are fully independent; the graph is acyclic and
-every edge is a genuine test-first prerequisite.
+Leaves (no upstream deps): 073.001-T, 073.003-T, 073.007-T, 073.008-T, 073.009-T. The
+single merged production task 073.002-T greens all five test tasks together in one
+atomic verifiable step. Former stream-B code task 073.004-T is retired/merged into
+073.002-T; all stream-C edges (`073.006-T→073.005-T`, `073.006-T→073.004-T`,
+`073.006-T→073.007-T`) are removed. The graph is acyclic and every edge is a genuine
+test-first prerequisite.
 
 ## Problem Frame
 
@@ -211,6 +242,13 @@ Two distinct credential-exposure gaps remain on the ELT staging surface after
 | ~~Redact path-embedded secrets, fail-closed, benign paths intact (H2)~~ | **REJECTED — 2026-09-15 operator decision; `_sanitize_url` leaves URL paths byte-for-byte unchanged** | ~~C2~~ (retired) |
 | ~~Prove path grammar exact outputs + fail-closed~~ | **REJECTED — retired with stream C** | ~~C1~~ (retired) |
 | Ordinary URL paths preserved byte-for-byte (operator decision) | Assert benign paths (`/authentication/overview`, `/tokenizer/config`, `/keys/rotation`, `/docs/100%25-off`) unchanged in metadata.source/stdout | A1, AI |
+| Vocabulary is not universally complete (Finding 7) | Enumerate existing names + auth_token/authorization + refresh_token/apikey/client_secret/x-goog-credential/awsaccesskeyid + password/pwd/passwd/code; record unknown/variant names as intentionally-unredacted accepted residual; benign prefix fixtures | B2, B1 |
+
+> **Unit → task mapping (2026-09-15 P0 green-gate fix):** conceptual code Units **A2**
+> and **B2** are BOTH delivered by the SINGLE MERGED production task **073.002-T**
+> (files `staging.py`, `orchestrate.py`, `source_keys.py`). Test Units A1→073.001-T,
+> B1→073.003-T, AI→073.007-T, BI→073.008-T, CI→073.009-T. Former separate stream-B code
+> task 073.004-T is retired/merged into 073.002-T.
 
 ## Implementation Units
 
@@ -232,7 +270,13 @@ Two distinct credential-exposure gaps remain on the ELT staging surface after
 * **Exit state:** test exists and fails on HEAD demonstrating the in-memory
   `metadata.source` leak; the live stdout leak is demonstrated by AI/`073.007-T`.
 
-### Unit A2 — Thread typed sanitized key into `create_staging_job` (code domain)
+### Unit A2 — Thread typed sanitized key into `create_staging_job` (code domain) — part of merged 073.002-T
+
+> **MERGED (2026-09-15 P0 green-gate fix):** Units A2 and B2 are delivered by the
+> SINGLE production task **073.002-T**. The composition gate 073.009-T only greens once
+> both userinfo (A2) and vocabulary (B2) land, so a single atomic code task is required
+> for per-task green. Files below combine with B2's; the typed-preservation work also
+> touches `src/docline/elt/source_keys.py`.
 
 * **Change:** Add **keyword-only** `sanitized_source: str | None = None` to
   `create_staging_job` (declared after `*`, so it can never bind positionally).
@@ -248,8 +292,11 @@ Two distinct credential-exposure gaps remain on the ELT staging surface after
   make_job_id(source)` unchanged (raw). Update `orchestrate_fetch` to import
   `sanitize_source_key` and call
   `create_staging_job(build_source_key(config), staging_dir, sanitized_source=sanitize_source_key(config))`.
-* **Files:** `src/docline/fetch/staging.py`, `src/docline/elt/orchestrate.py` (2 files).
-* **Functions:** `create_staging_job`, `orchestrate_fetch` (2).
+* **Files:** `src/docline/fetch/staging.py`, `src/docline/elt/orchestrate.py`,
+  `src/docline/elt/source_keys.py` (3 files — shared with B2 in the merged 073.002-T;
+  source_keys.py carries the typed-field preservation of Finding 3).
+* **Functions:** `create_staging_job`, `orchestrate_fetch`, `sanitize_source_key` /
+  `_sanitize_url_field` / `_remove_credential_query_params` (typed preservation).
 * **Posture:** test-first (A1 must pass after this change).
 * **Exit state:** A1 passes; existing staging/execute tests still green
   (existing bare-string positional callers unaffected — keyword-only proof).
@@ -282,21 +329,26 @@ Two distinct credential-exposure gaps remain on the ELT staging surface after
 * **Posture:** test-first (must fail on HEAD for the new coverage).
 * **Exit state:** tests exist and fail on HEAD for the new coverage.
 
-### Unit B2 — Expand `_CREDENTIAL_PARAM_PREFIXES` + exact-match new markers (code domain)
+### Unit B2 — Expand credential vocabulary + exact-match new markers (code domain) — part of merged 073.002-T
 
-* **Change:** Add `password`, `pwd`, `passwd`, `client_secret`, `refresh_token`,
-  `code` to the credential vocabulary. In `_is_credential_param`, apply the H1
+* **Change:** Add `password`, `pwd`, `passwd`, `code` (and the intended additional
+  legacy/cloud names `refresh_token`, `apikey`, `client_secret`, `x-goog-credential`,
+  `awsaccesskeyid`) to the credential vocabulary. In `_is_credential_param`, apply the H1
   grammar (Finding 1): REPLACE the `startswith` heuristic with an explicit,
-  case-insensitive, EXACT-match vocabulary; individually enumerate the legacy/cloud
-  variants (token, access_token, auth_token, refresh_token, api_key, apikey, key,
-  secret, client_secret, auth, authorization, sig, signature, x-amz-credential,
-  x-amz-signature, x-amz-security-token, x-goog-signature) alongside the new names;
-  match every name by case-insensitive EXACT equality (delimiter-`_` boundary
-  rejected — see H1 benign fixtures). Apply the bounded query-NAME decode (≤5 layers,
-  fail-closed over-cap) on BOTH the string and typed sanitizer paths (Finding 2). No
-  path handling and no query-value decoding in this unit.
-* **Files:** `src/docline/fetch/staging.py` (1 file).
-* **Functions:** `_CREDENTIAL_PARAM_PREFIXES` (data), `_is_credential_param` (≤2).
+  case-insensitive, EXACT-match vocabulary; preserve the existing recognized names by
+  INDIVIDUAL enumeration (token, access_token, key, api_key, secret, auth, sig,
+  signature, x-amz-credential, x-amz-signature, x-amz-security-token, x-goog-signature),
+  enumerate the names previously caught only by `startswith("auth")` to keep coverage
+  (auth_token, authorization), and add the new/additional names above; match every name
+  by case-insensitive EXACT equality (delimiter-`_` boundary rejected — see H1 benign
+  fixtures). The vocabulary is NOT universally complete — unknown/variant names are
+  intentionally not redacted (Finding 7, accepted residual). Apply the bounded query-NAME
+  decode (≤5 layers, fail-closed over-cap) on BOTH the string and typed sanitizer paths
+  (Finding 2). No path handling and no query-value decoding in this unit.
+* **Files:** `src/docline/fetch/staging.py` (shared with A2 in the merged 073.002-T;
+  the shared matcher is reused by `source_keys.py`).
+* **Functions:** the credential-name vocabulary constant (data), `_is_credential_param`,
+  and the shared bounded-decode matcher reused by `source_keys._is_credential_name`.
 * **Posture:** test-first (B1 must pass after this change).
 * **Exit state:** B1 passes; existing sanitizer and 059-S/063-S tests still green.
 
@@ -412,12 +464,13 @@ Two distinct credential-exposure gaps remain on the ELT staging surface after
 * **Files:** one test file under `tests/` (e.g. `tests/elt/test_fetch_cli_stdout_composition.py`).
 * **Scenarios:** parametrized over the applicable URL source kinds × (userinfo +
   recognized new names incl. one encoded name).
-* **Posture:** test-first (FAILS on HEAD; the userinfo portion passes after `073.002-T`
-  and the credential-name portion passes after `073.004-T` — FULL green requires BOTH).
-* **Dependencies:** genuine test-first prerequisite — `073.009-T` blocks BOTH
-  `073.002-T` and `073.004-T`.
-* **Exit state:** test exists, fails on HEAD; FULL green only after both A2 (`073.002-T`)
-  and B2 (`073.004-T`) land.
+* **Posture:** test-first (FAILS on HEAD; because A2 and B2 are the SINGLE merged
+  production task 073.002-T, the userinfo AND credential-name assertions all go green
+  together when 073.002-T lands — one atomic verifiable green state).
+* **Dependencies:** genuine test-first prerequisite — `073.009-T` blocks the single
+  merged production task `073.002-T`.
+* **Exit state:** test exists, fails on HEAD; FULL green when the merged production task
+  `073.002-T` (A2+B2) lands.
 
 ### Unit BI — Integration test: live WARNING/error sink new-name coverage (test domain; finding #2)
 
@@ -435,67 +488,54 @@ Two distinct credential-exposure gaps remain on the ELT staging surface after
 * **Scenarios:** parametrized over the six new credential names × the four
   URL-bearing source kinds (one logical live-sink surface; within the 2-hour
   test-domain boundary, finding F-03).
-* **Posture:** characterization-first (FAILS on HEAD for the new names; green after B2).
-* **Exit state:** test exists, fails on HEAD, passes after `073.004-T`.
+* **Posture:** characterization-first (FAILS on HEAD for the new names; green after the merged 073.002-T).
+* **Exit state:** test exists, fails on HEAD, passes after the merged production task `073.002-T`.
 
 ## Dependency Graph (no cycles)
 
-> **SUPERSEDED (2026-09-15 operator decision).** The graph below is the historical
-> cycle-3 graph that included the now-retired stream C. The AUTHORITATIVE executable
-> DAG is in the top **Operator-Decision Revision** section: only
-> `073.001-T→073.002-T`, `073.007-T→073.002-T`, `073.003-T→073.004-T`,
-> `073.008-T→073.004-T` remain. All stream-C edges (`073.006-T→073.005-T`,
-> `073.006-T→073.004-T`, `073.006-T→073.007-T`) are removed. The block below is
-> retained only as a historical record.
+> **RECONCILED to the top FINAL Operator Contract DAG (2026-09-15 P0 green-gate fix).**
+> The two former code tasks 073.002-T (A2) and 073.004-T (B2) are MERGED into the single
+> production task 073.002-T; 073.004-T is retired/merged (status=blocked, edges removed,
+> out of shipment). Stream C (073.005-T/073.006-T) is REJECTED/retired and out of the
+> graph. The authoritative executable DAG is below and matches the top FINAL Operator
+> Contract section exactly.
 
 ```text
-A1 ──blocks──> A2            (stream A: default-path sink, test-first)
-AI ──blocks──> A2            (stream A: live-stdout integration test, test-first; H2-C2/finding #2)
-B1 ──blocks──> B2            (stream B: query-name expansion, test-first)
-BI ──blocks──> B2            (stream B: live-WARNING integration test, test-first; finding #2)
-C1 ──blocks──> C2            (stream C: path-secret grammar, test-first)
-                B2 ──blocks──> C2   (C reuses B's expanded vocabulary + exact matcher)
-                AI ──blocks──> C2   (AI's DIRECT path-secret fixture is green only after C2; test-first; finding F-04)
+A1 ──blocks──> A2/B2 (073.002-T)   (concern A helper test → merged code, test-first)
+B1 ──blocks──> A2/B2 (073.002-T)   (concern B helper test → merged code, test-first)
+AI ──blocks──> A2/B2 (073.002-T)   (concern A live-stdout userinfo subset → merged code, test-first)
+BI ──blocks──> A2/B2 (073.002-T)   (concern B live-WARNING subset → merged code, test-first)
+CI ──blocks──> A2/B2 (073.002-T)   (final A2+B2 composition gate → merged code, test-first)
 ```
 
-Backlog IDs: A1=`073.001-T`, A2=`073.002-T`, B1=`073.003-T`, B2=`073.004-T`,
-C1=`073.005-T`, C2=`073.006-T`, AI=`073.007-T` (stream A live-stdout integration
-test), BI=`073.008-T` (stream B live-WARNING integration test).
+Backlog IDs: A1=`073.001-T`, B1=`073.003-T`, AI=`073.007-T` (concern A live-stdout
+integration test), BI=`073.008-T` (concern B live-WARNING integration test),
+CI=`073.009-T` (final A2+B2 composition gate), merged code = `073.002-T`. Retired/out of
+graph: `073.004-T` (merged into 073.002-T), `073.005-T`/`073.006-T` (stream C rejected).
 
-* `073.002-T depends_on 073.001-T` (test-first within stream A)
+* `073.002-T depends_on 073.001-T` (test-first: in-memory sink + typed-field preservation)
+* `073.002-T depends_on 073.003-T` (test-first: exact-match vocabulary + bounded decode)
 * `073.002-T depends_on 073.007-T` (test-first: the live default-path stdout
-  integration test — real `cli.py:381` sink — is green only after A2 routes through
-  `sanitize_source_key`; finding #2 removes A1's live-stdout overclaim)
-* `073.004-T depends_on 073.003-T` (test-first within stream B)
-* `073.004-T depends_on 073.008-T` (test-first: the live WARNING/error integration
-  test — real `_remove_credential_query_params` sink — is green only after B2 adds
-  the new credential names; finding #2 removes B1's live-WARNING overclaim)
-* `073.006-T depends_on 073.005-T` (test-first within stream C)
-* `073.006-T depends_on 073.004-T` (**genuine behavioral**: stream C's
-  path-segment marker gate consumes stream B's expanded credential vocabulary and
-  exact-match matcher as the single source of truth; C1's `/client_secret/…` path
-  case passes only after B2 lands)
-* `073.006-T depends_on 073.007-T` (**test-first for the direct path-secret
-  fixture**: the live-stdout integration test's path-embedded-secret assertion —
-  cycle-3 finding F-04 — is green only after C2 lands the `_sanitize_url` path
-  redaction, which reaches the default-path stdout via
-  `sanitize_source_key`→`_sanitize_url_field`→`sanitize_source`→`_sanitize_url`.
-  Stream A's `073.002-T` is NOT coupled to stream C — only the path-secret milestone
-  of the shared live test `073.007-T` is; `073.002-T` still depends only on
-  `073.001-T`+`073.007-T` for the userinfo/query milestone)
+  integration test — real `cli.py:381` sink — is green only after the merged code routes
+  through `sanitize_source_key`)
+* `073.002-T depends_on 073.008-T` (test-first: the live WARNING/error integration
+  test — real `_remove_credential_query_params` sink — is green only after the merged
+  code adds the new credential names)
+* `073.002-T depends_on 073.009-T` (test-first: the final A2+B2 live default-stdout
+  composition gate is green only after the merged code lands both userinfo and vocabulary)
 
-`073.007-T` and `073.008-T` have no upstream dependencies (authored first,
-characterization-first: both FAIL on HEAD demonstrating the live leak, then go
-green after their stream's code task; `073.007-T` is depended-upon by both
-`073.002-T` — userinfo/query milestone — and `073.006-T` — path-secret milestone —
-but has no upstream deps of its own). Every added edge is a genuine test-first
-prerequisite; no execution-ordering-only edge is introduced.
+All five test tasks (`073.001-T`, `073.003-T`, `073.007-T`, `073.008-T`, `073.009-T`)
+have no upstream dependencies (authored first, characterization/test-first: all FAIL on
+HEAD demonstrating the leak, then go GREEN together when the single merged production
+task `073.002-T` lands). Every edge is a genuine test-first prerequisite; no
+execution-ordering-only edge is introduced.
 
-**Removed edge:** the first-cut `073.004-T depends_on 073.002-T` (B-on-A) was
-same-file (`staging.py`) contention + P0-before-P2 risk-ordering — an execution
-preference, not a behavioral `blocks` dependency — and is removed (H5). Stream A
-remains independent of B and C; Ship SHOULD still execute A first as the acute
-P0-class sink, but that ordering is not encoded as a backlog edge.
+**Merge rationale (P0 green-gate fix):** the composition gate `073.009-T` only greens
+once BOTH userinfo redaction and the expanded vocabulary land, so two separate code
+tasks could not each produce a green suite (a per-task-green / test-first violation).
+Merging A2+B2 into one atomic production task makes every test task green in a single
+verifiable step. Width isolation yields to the stronger per-task-green invariant; the
+merged task remains a single cohesive credential-redaction domain.
 
 The graph is acyclic and every edge is test-first or a genuine behavioral
 prerequisite.
@@ -557,6 +597,21 @@ prerequisite.
   no data migration, no rollback coupling (pure code + tests, no persisted-state
   format change). Owner: ELT staging maintainer. Validation window: one green CI run
   on the shipment PR.
+* **Post-release synthetic observation window (credential-safe):** for one full
+  ELT-staging release cycle after merge (a bounded 7-day / first-N-production-runs
+  window, whichever comes first), run a scheduled SYNTHETIC `docline fetch` (default,
+  non-`--execute`) over a fixture config whose URLs carry KNOWN synthetic credentials
+  (synthetic userinfo + each recognized credential query-param name) and assert the
+  emitted stdout/metadata contains NONE of those known synthetic credential tokens.
+  The observation NEVER logs, echoes, or stores raw source credentials or raw source
+  keys — it asserts ABSENCE of pre-known synthetic tokens and emits only a
+  boolean/count result (pass = zero tokens observed), so no real or synthetic secret is
+  ever written to logs. **Rollback trigger:** if the synthetic probe observes ANY known
+  credential token in stdout/metadata/WARNING text (probe FAILS), OR a production
+  incident reports a credential in Docline-generated output, revert the merged
+  production commit (073.002-T) — restoring the already-shipped 063-S behavior — and
+  re-open 073-F. The trigger fires on the boolean probe result and the incident signal
+  ONLY; it does not depend on and never emits raw secret values.
 
 ## Source-Kind x Sink Test Matrix (finding P1-2)
 
@@ -630,7 +685,7 @@ policies. Added in remediation cycle 2 (finding #6).
 | Principle | How this plan complies |
 |---|---|
 | I. Safety-First Python | New `sanitized_source: str \| None` is type-hinted and keyword-only; no new untyped surfaces; ruff-clean expectation carried into the code ACs; fail-closed **typed exceptions** (not whole-key sentinels) on compound-key omission. |
-| II. Test-First Development (NON-NEGOTIABLE) | Every executable code task is gated by preceding test tasks via `blocks` edges (post-2026-09-15 revision): 073.001-T/073.007-T→073.002-T and 073.003-T/073.008-T→073.004-T. Tests must fail on HEAD (red) before code (green). Enforces P-002/P-004. (The former stream-C edges 073.005-T/073.007-T→073.006-T and 073.004-T→073.006-T are removed with the retired path work.) |
+| II. Test-First Development (NON-NEGOTIABLE) | The single merged production code task 073.002-T is gated by ALL five preceding test tasks via `blocks` edges (2026-09-15 P0 green-gate fix): 073.001-T/073.003-T/073.007-T/073.008-T/073.009-T → 073.002-T. Tests must fail on HEAD (red) before code (green), and the whole suite greens together in one atomic step when 073.002-T completes (per-task-green satisfied). Enforces P-002/P-004. (Former separate stream-B code task 073.004-T is merged into 073.002-T; the former stream-C edges are removed with the retired path work.) |
 | III. Workspace Isolation & Security Boundaries | The plan's entire purpose is preventing credential leakage into stdout/logs/metadata; no secrets are placed in committed files; fixtures use synthetic credentials. |
 | IV. CLI Workspace Containment (NON-NEGOTIABLE) | All Stage edits are confined to the repo working tree (`docs/`, `.backlogit/`); no writes outside cwd. |
 | V. Structured Observability | Deliberation, plan, task ACs, session memory, and intercom-style broadcasts provide traceable records; TOOL_DEGRADED markers recorded for degraded review dispatch. |
@@ -690,7 +745,7 @@ policies. Added in remediation cycle 2 (finding #6).
   config migration; no destructive action).
 * external integration / operator checkpoint / external dependency — **absent**.
 * high runtime / rollout / rollback risk — **absent** (pure code + tests; trivially
-  revertible by reverting the two commits).
+  revertible by reverting the single merged production commit plus its test commits).
 
 Conclude: **Requires plan hardening: yes** (security/compliance-sensitive signal present).
 
@@ -756,11 +811,12 @@ migration actions to harden.
   * `change_kind` — local edit to security-sensitive control code (no migration,
     no destructive step, no external call).
   * `rollback` / containment — pure code + tests, no persisted-format or schema
-    change; trivially revertible by reverting the two implementation commits
-    (A2, B2). Cache paths/`job_id` are unchanged (H4 determinism guard), so a
-    revert needs no cache migration. Blast radius is contained to the sanitizer
-    surface; if a regression is found post-merge, revert restores the exact prior
-    (already-shipped 063-S) behavior. Additive-only redaction means a partial
+    change; trivially revertible by reverting the single merged production commit
+    (A2+B2 in 073.002-T) plus its test commits. Cache paths/`job_id` are unchanged
+    (H4 determinism guard), so a revert needs no cache migration. Blast radius is
+    contained to the sanitizer surface; if a regression is found post-merge, revert
+    restores the exact prior (already-shipped 063-S) behavior. Additive-only redaction
+    means a partial
     landing can only redact more, never less.
   * `approval_required` — yes for execution (security-sensitive, ActionRisk high).
 * **ActionRisk:** **high** — security/credential-redaction-correctness behavior on

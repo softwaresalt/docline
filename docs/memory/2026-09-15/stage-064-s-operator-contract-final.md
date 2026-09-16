@@ -1,3 +1,22 @@
+---
+title: "064-S / 073-F FINAL operator contract rewrite"
+date: "2026-09-15"
+agent: "stage"
+shipment: "064-S"
+feature: "073-F"
+branch: "chore/stage-064-s"
+status: "superseded"
+superseded_by: "docs/memory/2026-09-15/stage-064-s-final-correction-merge.md"
+superseded_reason: "P0 green-gate fix merged the two code tasks (073.002-T + 073.004-T) into a single atomic production task 073.002-T; manifest is now 7 items."
+commit_ownership: "stage"
+---
+
+> **PARTIALLY SUPERSEDED (2026-09-15 final correction).** The handoff below is correct
+> (Stage owns and commits its own artifacts). But the manifest/DAG below is STALE: it
+> shows TWO code tasks and an 8-item manifest. They are now MERGED — the single
+> production task 073.002-T implements both A2 and B2, 073.004-T is retired/merged, and
+> the manifest is 7 items. See `docs/memory/2026-09-15/stage-064-s-final-correction-merge.md`.
+
 # Stage session memory — 064-S/073-F FINAL operator contract rewrite
 
 **Date:** 2026-09-15

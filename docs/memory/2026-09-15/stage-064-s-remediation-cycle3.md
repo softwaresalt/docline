@@ -7,10 +7,17 @@
 > now REJECTED and retired, the manifest is 7 items, and the DAG is two test-first
 > streams. See `064-s-dark-factory-review-cap-halt.md` → "Operator-Decision Resolution"
 > and `stage-064-s-operator-scope-correction.md` for the current state.
+>
+> **Further superseded (2026-09-15 final correction).** The two-code-task topology named
+> below is also stale: the P0 green-gate fix MERGED code tasks 073.002-T + 073.004-T into
+> one atomic production task (073.002-T survivor; 073.004-T retired/blocked, out of manifest).
+> And per Finding 8 the "commit by Orchestrator / Stage did not commit" handoff is REVERSED —
+> Stage OWNS and COMMITS its own artifacts on `chore/stage-064-s`. Current authoritative
+> record: `docs/memory/2026-09-15/stage-064-s-final-correction-merge.md`.
 
 **Date:** 2026-09-15
 **Agent:** Stage (planning/decomposition; role boundary preserved — no code/test written, no build, no PR, no shipment claim, no Ship invocation)
-**Branch:** chore/stage-064-s (single worktree; HEAD cdcf718 NOT amended; edits left uncommitted for Orchestrator review)
+**Branch:** chore/stage-064-s (single worktree; HEAD cdcf718 NOT amended; edits left uncommitted at that cycle — SUPERSEDED: Stage now owns/commits its own artifacts, see top banner)
 **Authorization:** DARK_MODE_ACTIVE scope = 064-S; merge-preauthorization = false; admin-fallback = false. **Operator explicitly authorized ONE additional bounded Stage correction/re-review cycle** beyond the normal 2-cycle budget (cycle 2 was the recorded FINAL cycle; the dark-factory run halted at the review cap per `064-s-dark-factory-review-cap-halt.md`).
 **Trigger:** final-cycle adversarial review left four unresolved P1 planning defects (blocking findings 1–4) + one non-blocking residual. Operator chose the "one bounded correction pass" disposition.
 
@@ -21,6 +28,8 @@ under P-021 C1 (no scope expansion; no deferral). Scope held exactly to 064-S / 
 No genuinely different-contract issue surfaced; nothing new deferred. No in-scope P1
 remains open. Recommendation: **READY** (pending fresh current-HEAD review + commit by
 Orchestrator; Stage did not commit).
+> SUPERSEDED per Finding 8 + P0 merge: Stage OWNS and COMMITS its own artifacts on
+> chore/stage-064-s; the single merged production task is 073.002-T (073.004-T retired).
 
 ## Findings dispositions (full tables in plan `## Remediation & Re-Review — cycle 3` and deliberation `## Remediation cycle 3`)
 
