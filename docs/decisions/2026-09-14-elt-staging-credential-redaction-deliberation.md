@@ -391,10 +391,16 @@ width isolation yields to the stronger per-task-green invariant.
 2. `job_id` MUST remain derived from the raw `build_source_key` (determinism /
    cache-path stability preserved; identical between default and execute paths).
 3. No change to `create_staging_job`'s existing string-only behavior for
-   genuine bare URL/path strings when `sanitized_source` is not supplied — but
+   genuine bare URL strings when `sanitized_source` is not supplied — but
    the fallback MUST fail closed on compound source-key prefixes (see the
    hardened API contract below); it may never silently pass a compound
-   credentialed key through the no-op branch.
+   credentialed key through the no-op branch. COMPATIBILITY IS BARE URL ONLY
+   (Finding P1, 2026-09-16): `sanitize_source` currently redacts `file://` and
+   absolute/UNC/Windows-drive local paths to `<local-path-redacted>`, which
+   contradicts the operator contract — the production task changes/removes those
+   local-path redaction branches so bare local filesystem paths and `file://`
+   input are PRESERVED byte-for-byte, and its query filtering becomes surgical
+   raw-token removal (not parse_qsl/urlencode) so benign query bytes are preserved.
 4. Coverage expansion is strictly additive — it may only redact more, never less —
    and must not introduce false-positive corruption of benign params/paths.
 
@@ -553,9 +559,15 @@ is preserved by construction instead:
     Finding 4; never call the no-op `sanitize_source` on a compound key). This
     removes the known unsafe path and never substitutes a redaction sentinel for a
     raised error.
-  * Else (genuine bare URL/path string) → existing `sanitize_source(source)`
-    behavior, preserving backward compatibility for the existing bare-string
-    test callers (which never pass compound keys).
+  * Else (genuine bare URL string, or a bare local filesystem path / `file://`
+    input) → existing `sanitize_source(source)` behavior AFTER the Finding-P1
+    correction: structured http/https userinfo/query credentials are removed
+    (surgical raw-token query filtering, benign bytes preserved) while URL paths
+    AND bare local filesystem paths / `file://` inputs are preserved BYTE-FOR-BYTE
+    (the `<local-path-redacted>` sentinel is removed). Preserves backward
+    compatibility for the existing bare-string test callers (which never pass
+    compound keys); the contradicting `<local-path-redacted>` test assertions are
+    updated to the byte-preservation contract.
 * `orchestrate_fetch` ALWAYS passes `sanitized_source=sanitize_source_key(config)`,
   so the default production path never relies on the fallback at all.
 
@@ -832,11 +844,17 @@ is backed by an executable test, and A1/B1 are narrowed to their true (helper) l
   all-four coverage matching the four matrix rows that attribute BI to it (cycle-3
   finding F-03; parametrized 4 kinds × 9 names, within the 2-hour test-domain
   boundary), not a single source-kind-agnostic case. It ALSO asserts error-output
-  PROVENANCE byte-preservation: `config.branch` / `config.path_glob` / manifest
-  `config.id` / local `path` / `include` — which the execute.py composition
-  INDEPENDENTLY passes through `sanitize_source_id`/`_sanitize_exception_text` — are
-  preserved BYTE-FOR-BYTE in the composed WARNING/error text, so only structured
+  PROVENANCE byte-preservation for the fields GENUINELY COMPOSED INTO THIS SINK:
+  `config.branch` / `config.path_glob` / manifest `config.id` — which the execute.py
+  composition INDEPENDENTLY passes through `sanitize_source_id`/`_sanitize_exception_text`
+  — are preserved BYTE-FOR-BYTE in the composed WARNING/error text, so only structured
   URL/typed credentials are removed and non-credential provenance is never mangled.
+  SINK-SCOPE HONESTY (Finding P1, 2026-09-16): the WARNING/error composition emits ONLY
+  url/repo_url, branch, path_glob, and manifest id per source kind (ManifestLocalSource
+  composes ONLY config.id; LocalFileSource is not in the replacement set), so local
+  filesystem `path` and `include` patterns are NEVER composed into this sink and are NOT
+  asserted here — their byte-preservation is proven at the typed serialization surface by
+  073.001-T.
   Green only after the single merged production task 073.002-T lands (test-first:
   `073.002-T depends_on 073.008-T`; the execute.py provenance-preservation change is
   the 4th file in 073.002-T's scope).
@@ -885,10 +903,11 @@ pass. The **operator then explicitly authorized ONE additional bounded Stage
 correction/re-review cycle** for shipment 064-S (scope held exactly to 064-S / 073-F).
 This section is that operator-authorized exceptional cycle; it supersedes cycle 2's
 "FINAL cycle" language solely by that explicit authorization. Scope is unchanged; no
-related P-021 entry is absorbed; Stage authored only planning/backlog artifacts (that
-earlier cycle left them uncommitted; the FINAL 2026-09-15 operator-contract correction
-is committed by Stage on `chore/stage-064-s` — see the top Operator Contract, Finding
-8). All five final-cycle residuals are
+related P-021 entry is absorbed; Stage authored only planning/backlog artifacts and —
+per the corrected Finding 8 ownership model — COMMITS them itself on
+`chore/stage-064-s` (the earlier "left them uncommitted for Orchestrator review" wording
+is SUPERSEDED; the 2026-09-15/2026-09-16 corrections are committed by Stage — see the top
+Operator Contract, Finding 8). All five final-cycle residuals are
 resolved here as same-contract-surface completions (P-021 C1); none deferred.
 
 ### Cycle-3 finding dispositions

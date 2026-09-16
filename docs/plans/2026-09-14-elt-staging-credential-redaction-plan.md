@@ -287,10 +287,20 @@ Two distinct credential-exposure gaps remain on the ELT staging surface after
   `manifest_git:`, `manifest_local:`, `local_file:`) **RAISE a typed, non-leaking
   exception** (e.g. `CredentialRedactionError`) whose `str()` echoes neither the raw
   key nor any credential substring — the whole-key sentinel fallback is REMOVED;
-  otherwise use the existing `sanitize_source(source)` for genuine bare URL/path
-  strings, retained only because that branch preserves URL paths byte-for-byte while
-  sanitizing structured userinfo/query credentials. `job_id =
-  make_job_id(source)` unchanged (raw). Update `orchestrate_fetch` to import
+    otherwise use the existing `sanitize_source(source)` for genuine bare URL
+    strings. COMPATIBILITY IS BARE URL ONLY (Finding P1, 2026-09-16 correction): the
+    `sanitize_source` string path currently REDACTS `file://` and absolute/UNC/Windows-drive
+    local paths to `<local-path-redacted>`, which CONTRADICTS the operator contract (local
+    filesystem paths are preserved provenance). This task MUST change/remove those local-path
+    redaction branches so a bare local-path/`file://` input is PRESERVED byte-for-byte, and the
+    contradicting `<local-path-redacted>` assertions in tests/fetch/test_staging.py and
+    tests/elt/test_source_keys.py are updated to the byte-preservation contract. The retained
+    branch sanitizes ONLY structured http/https userinfo/query credentials while preserving URL
+    paths byte-for-byte; local-path input flows through unchanged. Additionally, the string
+    path's query filtering MUST be SURGICAL raw-token removal (not `parse_qsl`+`urlencode`
+    round-trip, which normalizes benign query bytes) so benign query parts are preserved
+    byte-for-byte. `job_id =
+    make_job_id(source)` unchanged (raw). Update `orchestrate_fetch` to import
   `sanitize_source_key` and call
   `create_staging_job(build_source_key(config), staging_dir, sanitized_source=sanitize_source_key(config))`.
   Additionally, in `src/docline/elt/execute.py` the exception/log composition
@@ -303,8 +313,12 @@ Two distinct credential-exposure gaps remain on the ELT staging surface after
   contract, Finding 3 error-output extension). Change the composition to remove ONLY
   structured URL/typed credentials (userinfo + recognized query-param NAMES on
   `config.url`/`config.repo_url` + typed secret fields) while leaving branch /
-  path_glob / manifest ID / local path / include byte-for-byte — even when they contain
-  credential-looking text.
+    path_glob / manifest ID byte-for-byte — even when they contain
+    credential-looking text. NOTE (Finding P1 sink-scope honesty): the WARNING/error sink
+    composes ONLY url/repo_url, branch, path_glob, and manifest id per source kind
+    (ManifestLocalSource composes ONLY config.id; LocalFileSource is not in the replacement
+    set), so local filesystem PATH and INCLUDE patterns are NEVER composed into this sink —
+    their byte-preservation is proven at the typed serialization surface by 073.001-T, NOT here.
 * **Files:** `src/docline/fetch/staging.py`, `src/docline/elt/orchestrate.py`,
   `src/docline/elt/source_keys.py`, `src/docline/elt/execute.py` (4 files — shared with
   B2 in the merged 073.002-T; source_keys.py carries the typed-field preservation of
@@ -477,7 +491,10 @@ Two distinct credential-exposure gaps remain on the ELT staging surface after
   `client_secret`, `refresh_token`, `code`, `apikey`, `x-goog-credential`,
   `awsaccesskeyid`, including at least one percent-encoded query NAME (e.g.
   `%70assword`) — across the four URL-bearing source kinds, while ordinary paths and
-  benign params are preserved byte-for-byte. This is the honest composition gate: it
+  benign query parts are preserved BYTE-FOR-BYTE against parse_qsl/urlencode
+  normalization — representative percent spelling (`%20` stays `%20`, not `+`; literal
+  `%25` intact), `&` separators, and blank/valueless params (a valueless `flag` does not
+  gain `=`). This is the honest composition gate: it
   proves the A2+B2 composition that no single stream-scoped test proves alone.
 * **Files:** one test file under `tests/` (e.g. `tests/elt/test_fetch_cli_stdout_composition.py`).
 * **Scenarios:** parametrized over the four URL source kinds × (userinfo + EVERY
@@ -502,10 +519,16 @@ Two distinct credential-exposure gaps remain on the ELT staging surface after
   (a) the FULL new credential vocabulary
   (`password`/`pwd`/`passwd`/`client_secret`/`refresh_token`/`code`/`apikey`/
   `x-goog-credential`/`awsaccesskeyid`) is dropped from the emitted text on each, and
-  (b) the composition BYTE-PRESERVES non-credential provenance — source `branch`,
-  `path_glob`, manifest `id`, local filesystem `path`, and `include` patterns — even
+  (b) the composition BYTE-PRESERVES non-credential provenance GENUINELY COMPOSED INTO THIS
+  SINK — source `branch`, `path_glob`, and manifest `id` — even
   when those fields contain credential-looking text, removing only structured URL
-  userinfo + recognized credential query-param NAMES + typed secret fields. This backs
+  userinfo + recognized credential query-param NAMES + typed secret fields. SINK-SCOPE
+  HONESTY (Finding P1, 2026-09-16 correction): the `execute.py` WARNING/error composition
+  emits ONLY url/repo_url, branch, path_glob, and manifest id per source kind
+  (ManifestLocalSource composes ONLY config.id; LocalFileSource is not in the replacement
+  set), so local filesystem PATH and INCLUDE patterns are NEVER composed into this live sink
+  and MUST NOT be asserted here — their byte-preservation is proven at the typed serialization
+  surface by 073.001-T. This backs
   the live-WARNING (WE) invariant AND the error-output provenance-preservation invariant
   with an executable test instead of attributing live coverage to the helper-level B1,
   and gives explicit all-four coverage matching the four matrix rows that attribute BI to
@@ -637,7 +660,10 @@ prerequisite.
   alongside benign provenance fields (branch / path_glob / manifest ID / local path /
   include), and asserts (a) the emitted stdout / metadata / WARNING-error text contains
   NONE of the known synthetic credential tokens, and (b) the benign provenance fields are
-  emitted byte-for-byte. The probe NEVER logs, echoes, or stores raw source credentials
+  emitted byte-for-byte on the surface that composes each (branch / path_glob / manifest
+  ID across stdout / metadata / WARNING-error; local path / include on the stdout /
+  metadata typed-serialization surface only — they are not composed into the WARNING-error
+  sink). The probe NEVER logs, echoes, or stores raw source credentials
   or raw source keys — it asserts ABSENCE of pre-known synthetic tokens and emits only a
   boolean/count result (pass = zero tokens observed), so no real or synthetic secret is
   ever written to logs.
@@ -735,8 +761,12 @@ Notes and honest scope boundaries:
   the FULL new vocabulary
   (`password`/`pwd`/`passwd`/`client_secret`/`refresh_token`/`code`/`apikey`/
   `x-goog-credential`/`awsaccesskeyid`) drops from that path AND that non-credential
-  provenance — `branch` / `path_glob` / manifest `id` / local `path` / `include` — is
-  BYTE-PRESERVED in the composed text (error-output provenance-preservation finding).
+  provenance GENUINELY COMPOSED INTO THIS SINK — `branch` / `path_glob` / manifest `id` — is
+  BYTE-PRESERVED in the composed text (error-output provenance-preservation finding). Local
+  filesystem `path` and `include` patterns are NOT composed into the WE sink for any source
+  kind (ManifestLocalSource composes ONLY config.id; LocalFileSource is not in the replacement
+  set), so they are NOT asserted at WE — their byte-preservation is proven at the typed
+  serialization surface by 073.001-T (Finding P1, 2026-09-16 sink-scope honesty correction).
   The `execute.py` composition INDEPENDENTLY applies `sanitize_source_id` /
   `_sanitize_exception_text` to `config.branch` / `config.path_glob` / `config.id`, so
   the provenance-preservation change lands in the single merged production task
@@ -976,9 +1006,12 @@ FINAL Operator Contract and the deliberation's H1):
    `_sanitize_exception_text`), so error/log text drops the FULL new vocabulary
    (`password`/`pwd`/`passwd`/`client_secret`/`refresh_token`/`code`/`apikey`/
    `x-goog-credential`/`awsaccesskeyid`) AND byte-preserves non-credential provenance
-   (`branch` / `path_glob` / manifest `id` / local `path` / `include`) in the composed
+   GENUINELY COMPOSED INTO THIS SINK (`branch` / `path_glob` / manifest `id`) in the composed
    WARNING/error text — backed by the live integration test BI/073.008-T (B1 covers the
-   matcher at the helper/unit level only; no live coverage is attributed to it).
+   matcher at the helper/unit level only; no live coverage is attributed to it). Local
+   filesystem `path` and `include` patterns are NOT composed into the WARNING/error sink and
+   are NOT asserted here — their byte-preservation is proven at the typed serialization
+   surface by 073.001-T (Finding P1, 2026-09-16 sink-scope honesty correction).
 4. **Path preservation (REPLACES the former H2/H2-C2 path-redaction criterion —
    REJECTED 2026-09-15):** `_sanitize_url` leaves the URL PATH component unchanged.
    Ordinary paths — `/authentication/overview`, `/tokenizer/config`,
@@ -1000,15 +1033,29 @@ FINAL Operator Contract and the deliberation's H1):
    them, plus benign paths — are NOT redacted.
 7. **Typed-field preservation + fail-closed raise (operator contract, Findings 3/4):**
    the typed sanitizer sanitizes URL fields + explicitly-secret typed fields while
-   byte-preserving branch / path_glob / manifest ID / local path / include fields;
-   the `execute.py` WARNING/error composition likewise byte-preserves those same
-   provenance fields while removing only structured URL/typed credentials
-   (error-output provenance-preservation finding, backed by BI/073.008-T);
+   byte-preserving branch / path_glob / manifest ID / local path / include fields
+   (typed serialization surface, backed by A1/073.001-T);
+   the `execute.py` WARNING/error composition byte-preserves the provenance fields it
+   actually composes — branch / path_glob / manifest ID — while removing only structured
+   URL/typed credentials (error-output provenance-preservation finding, backed by
+   BI/073.008-T); local path / include are NOT composed into the WARNING/error sink and are
+   proven byte-preserved at the typed surface by A1/073.001-T, not at WE (Finding P1,
+   2026-09-16 sink-scope honesty correction);
    and `create_staging_job` RAISES a typed non-leaking exception (no whole-key
    sentinel, no raw-key echo) when a compound source key is passed without
    `sanitized_source`. Backed by A1/073.001-T (typed-field preservation),
    BI/073.008-T (error-output provenance preservation), and
    A2/073.002-T (raise-on-omission).
+8. **Benign query byte-preservation + bare-URL-only compatibility (operator contract,
+   Finding P1/P2, 2026-09-16):** the string sanitizer's query filtering is SURGICAL raw-token
+   removal (not `parse_qsl`+`urlencode` round-trip), so benign query parts are preserved
+   BYTE-FOR-BYTE — representative percent spelling (`%20` stays `%20`, not `+`; literal `%25`
+   intact), `&` separators, and blank/valueless params (a valueless `flag` does not gain `=`)
+   — on both the string and typed (live default-stdout) paths; and `sanitize_source`
+   compatibility is BARE URL ONLY — a bare local filesystem path (POSIX/UNC/Windows-drive)
+   and a `file://` input are PRESERVED byte-for-byte (the `<local-path-redacted>` sentinel is
+   REMOVED; local paths are preserved provenance). Backed by 073.003-T (helper-level query +
+   local-path preservation) and 073.009-T (live default-stdout benign-query byte-preservation).
 
 ### Review-gate capability note
 
@@ -1032,9 +1079,9 @@ silently dropped. The remaining inline persona pool still meets coverage.
 
 ```text
 branch: chore/stage-064-s
-worktrees: single — `C:/Source/GitHub/docline  cdcf718  [chore/stage-064-s]` (no parallel/implementation worktrees; P-016 single-active preserved)
-HEAD-at-staging: cdcf718 (staging artifacts commit)
-remediation-cycle-1-HEAD: cdcf718 (prior cycle left edits uncommitted; the FINAL 2026-09-15 operator-contract correction is committed by Stage on chore/stage-064-s — Finding 8)
+worktrees: single — `C:/Source/GitHub/docline  cb34426  [chore/stage-064-s]` (no parallel/implementation worktrees; P-016 single-active preserved)
+HEAD-at-staging: cb34426 (current committed staging/remediation HEAD)
+remediation-cycle-4-HEAD: cb34426 (cycle-1..4 corrections committed by Stage on chore/stage-064-s; nothing left uncommitted awaiting Orchestrator — Finding 8 and 2026-09-16 P2 committed-state correction)
 DARK_MODE_ACTIVE scope: 064-S | merge-preauthorization: false | admin-fallback: false
 ```
 
@@ -1199,8 +1246,10 @@ deferring or auto-applying another fix pass. The **operator then explicitly auth
 ONE additional bounded Stage correction/re-review cycle** for shipment 064-S, scope
 held exactly to 064-S / 073-F. This section is that operator-authorized exceptional
 cycle. It does not widen scope, absorb any related P-021 entry, or write product/test
-code; Stage authored only planning/backlog artifacts and left them uncommitted for
-Orchestrator review. This supersedes cycle 2's "FINAL cycle" language solely by that
+code; Stage authored only planning/backlog artifacts and — per the corrected Finding 8
+ownership model — COMMITS them itself on chore/stage-064-s (the earlier "left them
+uncommitted for Orchestrator review" handoff wording is SUPERSEDED; see the cycle-4
+committed-state correction below). This supersedes cycle 2's "FINAL cycle" language solely by that
 explicit operator authorization.
 
 dispatch_mode: single-agent-declared-degradation (markers below)
@@ -1221,7 +1270,7 @@ completions (P-021 C1); none deferred. No new in-scope P1 remains.
 
 | Persona | Result |
 |---|---|
-| Constitution Reviewer | PASS — scope held to 064-S/073-F; operator-authorized exceptional cycle recorded; P-001/P-010 boundary intact (planning artifacts only, uncommitted); test-first edges preserved. |
+| Constitution Reviewer | PASS — scope held to 064-S/073-F; operator-authorized exceptional cycle recorded; P-001/P-010 boundary intact (planning artifacts only, committed by Stage per Finding 8); test-first edges preserved. |
 | Python Reviewer | PASS — iterative per-layer `%`-escape validation is a pure-function contract over stdlib `unquote`; helper-vs-live A1/AI split is sound; new path-secret fixture is test-domain only. |
 | Scope Boundary Auditor | PASS — no related stash entry absorbed; 073.007-T/073.008-T stay within 2-hour/width rule; no new scope introduced; F-04 edge is a genuine test-first prerequisite, not execution ordering. |
 | Learnings Researcher | PASS — corrections consistent with 063-S typed-sanitizer contract and prior cycles; no contradiction with prior closure. |
@@ -1244,3 +1293,71 @@ completions (P-021 C1); none deferred. No new in-scope P1 remains.
 <!-- operator-authorized-exceptional-cycle: 064-S -->
 <!-- TOOL_DEGRADED: reviewer-subagent-dispatch -->
 <!-- TOOL_DEGRADED: anchor-review-model -->
+
+## Remediation & Re-Review — cycle 4 (OPERATOR-AUTHORIZED bounded correction; adversarial BLOCKED → resolved)
+
+**Cycle context.** A fresh report-only adversarial review returned BLOCKED with 2 P1,
+3 P2, and 1 P3 findings against the operator contract ("Make it so"): Docline redacts
+ONLY structured source-access credentials; document body content, URL paths, local
+filesystem paths, include patterns, branches, globs, IDs, benign query fields, and all
+ordinary provenance are preserved byte-for-byte — NO arbitrary content/path secret
+scanning. The operator explicitly authorized ONE bounded Stage correction/re-review
+cycle, scope held exactly to 064-S / 073-F. This section is that cycle. It does not
+widen scope, absorb any related P-021 entry, change the seven-item manifest or the
+five-test-to-one-production DAG, or write product/test code; Stage authored only
+planning/backlog artifacts and COMMITS them itself on chore/stage-064-s (Finding 8).
+
+dispatch_mode: single-agent-declared-degradation (markers below)
+re-review disposition: all in-scope P1 (and all P2/P3) resolved as same-contract-surface
+corrections (P-021 C1). None deferred. No new in-scope P0/P1 surfaced.
+
+### Cycle-4 finding dispositions
+
+| # | Finding (sev) | Disposition | Where resolved |
+|---|---|---|---|
+| C4-1 (P1) | 073.002-T wording retained "bare URL/path string compatibility" via `sanitize_source(source)`, which currently redacts `file://`/absolute local paths — contradicts the contract | PLANNING_CONTRACT_FIXED — compatibility narrowed to BARE URL ONLY; the task/plan now REQUIRE changing/removing the `sanitize_source` local-path redaction branches so bare local-path/`file://` input is PRESERVED byte-for-byte; contradicting `<local-path-redacted>` test assertions (tests/fetch/test_staging.py, tests/elt/test_source_keys.py) flagged for update; new ACs (10)/(11) added | 073.002-T (bare-URL wording + ACs 10–12); plan Unit A2 + criterion 8 |
+| C4-2 (P1) | 073.008-T claimed live WARNING/error proof for local paths/includes, but the WE sink never composes those fields (plan matrix marks them n/a) — dishonest/unexecutable | PLANNING_CONTRACT_FIXED — removed local-path/include from the live WE byte-preservation claim (a)/(b) and AC (1)/(4); WE proof reduced to branch/path_glob/manifest id (the only fields genuinely composed); local-path/include byte-preservation relocated to the typed serialization surface (073.001-T) | 073.008-T (sink-scope honesty note + AC 4); plan Unit BI + matrix WE note + criteria 3/7 |
+| C4-3 (P2) | 073.009-T benign query preservation not pinned byte-for-byte against parse_qsl/urlencode normalization | PLANNING_CONTRACT_FIXED — added raw-query byte-preservation ACs/tests: representative percent spelling (`%20`/`%25`), `&` separators, blank/valueless params, asserted unchanged in real stdout (surgical token removal, not re-serialization) | 073.009-T (body + AC 6); 073.002-T AC 11 + BOUNDED-DECODE note; plan Unit CI + criterion 8 |
+| C4-4 (P2) | 073.003-T lacked an exact five-layer benign boundary case | PLANNING_CONTRACT_FIXED — added an EXACT-CAP BENIGN boundary case (benign name stabilizing within the 5-layer cap → PRESERVED) while RETAINING the over-cap credential-like/benign-looking fail-closed case; also added helper-level benign-query + local-path byte-preservation ACs | 073.003-T (BOUNDED DECODE + ACs 5–7) |
+| C4-5 (P2) | 064-S stale wording implied artifacts left uncommitted for Orchestrator review | RESOLVED_IN_STAGING_ARTIFACTS — 064-S description adds an explicit CURRENT STATE (2026-09-16) clarification: all Stage artifacts (incl. cycle-4 corrections) are committed by Stage; nothing awaits Orchestrator; manifest + DAG unchanged | 064-S.md description; plan provenance block + cycle-3 body wording |
+| C4-6 (P3) | 073.001-T pinned superseded commit cdcf718 | RESOLVED_IN_STAGING_ARTIFACTS — replaced "current HEAD cdcf718" with "current HEAD"; plan provenance block updated cdcf718→cb34426 with current committed-state note | 073.001-T (AC 2); plan branch/worktree topology evidence block |
+
+### Re-review persona confirmation (inline, cycle 4)
+
+Dispatch ran in single-agent declared-degradation mode (no reviewer-subagent dispatch
+surface in this Stage session); every selected persona rubric was applied inline. Anchor
+route (`openai`/`gpt-5.6-sol`) unavailable → same-model inline Architecture Strategist
+rubric; the anchor slot is recorded, never silently dropped.
+
+| Persona | Result |
+|---|---|
+| Constitution Reviewer | PASS — scope held to 064-S/073-F; Stage role boundary intact (planning/backlog artifacts only, committed by Stage; no src/test/config edits, no shipment claim/push/PR); manifest + DAG unchanged; P-001/P-010/P-016 preserved. |
+| Python Reviewer | PASS — surgical raw-query token removal (not parse_qsl/urlencode) is a sound pure-string contract preserving benign bytes; bare-URL-only + local-path passthrough is coherent; bounded-decode exact-cap semantics correct against the real 5-layer loop; changes are planning-contract only. |
+| Scope Boundary Auditor | PASS — all six corrections are same-contract-surface completions (P-021 C1) within existing tasks/files/DAG; no new task, no manifest change, no related P-021 entry absorbed; four-file production scope of 073.002-T unchanged. |
+| Learnings Researcher | PASS — corrections consistent with the operator contract (structured-credential-only redaction) and the 063-S typed-sanitizer behavior verified in source; no contradiction with prior cycles. |
+| Architecture Strategist | PASS (anchor route unavailable → same-model inline) — sink-scope honesty (WE composes only url/repo_url/branch/path_glob/id) matches execute.py `_exception_scrub_replacements`; typed-vs-live proof split is architecturally correct; graph remains acyclic and unchanged. |
+| Security Lens Reviewer | PASS (triggered: credential/secrets) — narrowing compatibility to bare-URL-only and preserving local paths/benign query bytes matches the authoritative contract without weakening structured-credential redaction (userinfo + recognized query-param names + typed secret fields still removed on all paths); no new leak surface introduced. |
+
+**Re-review verdict: PASS** — all in-scope P1 resolved (C4-1, C4-2); all P2/P3 resolved
+(C4-3, C4-4, C4-5, C4-6). No in-scope P0/P1 remains unresolved or silently deferred.
+
+### Residual / out-of-scope (captured, NOT fixed here)
+
+* H4 raw-source `job_id` confirmation-oracle — accepted residual risk (unchanged by cycle 4).
+* Intentional accepted false-positive residual: a benign-looking query NAME still
+  transforming past the 5-layer decode cap fails closed (redacted) — accepted by contract.
+* Intentionally-unredacted-variant residual (exact-match vocabulary): suffixed/prefixed
+  real-credential variants (`token_v2`, `access_token2`, `my_api_key`, `x-amz-credential-v4`)
+  are preserved by design absent explicit product support (Finding 7).
+* Archived-stash→work-item tool pointer — backlogit limitation; durable prose traceability.
+* `79BF0AEC`, `E89DC095`, `9D44B6F3`, `E7878B1B`, `95BD0DC7`, `709BDB53` — distinct-contract
+  P-021 entries, remain active/archived, out of 064-S scope. No new different-contract issue
+  surfaced during cycle 4. **No in-scope P1 remains unresolved or silently deferred.**
+
+<!-- plan-review-attempt: 5 -->
+<!-- remediation-cycle: 4 -->
+<!-- operator-authorized-exceptional-cycle: 064-S -->
+<!-- TOOL_DEGRADED: reviewer-subagent-dispatch -->
+<!-- TOOL_DEGRADED: anchor-review-model -->
+<!-- adversarial-review-cycle-4-verdict: PASS -->
+<!-- HEAD-at-cycle-4-staging: cb34426 -->
