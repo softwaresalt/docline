@@ -1,5 +1,18 @@
 # Stage session memory — ELT staging credential redaction (0F1A653C + 06A59B1D)
 
+> **REVISION POINTER (2026-09-15 operator scope correction).** The scope described
+> below evolved across review cycles 1–3 and was then narrowed by an authoritative
+> operator decision: Docline redacts ONLY structured access credentials (URL
+> user-info + recognized credential query params + typed secret config fields);
+> path-embedded secret redaction and document-content scanning are REJECTED. Stream C
+> (073.005-T/073.006-T) is retired; the current record is
+> `stage-064-s-operator-scope-correction.md`. **A subsequent authoritative FINAL
+> operator contract (2026-09-15) then fixed the executable grammar and handoff —
+> explicit exact-match credential-name vocabulary, both-path bounded query-NAME decode,
+> raise-not-sentinel typed exception, typed provenance-field preservation, a satisfiable
+> A2+B2 composition gate (073.009-T), and Stage-commits-its-own-artifacts handoff. The
+> authoritative current record is `stage-064-s-operator-contract-final.md`.**
+
 **Date:** 2026-09-14
 **Agent:** Stage (route: claude-opus-4.8 / anthropic / high)
 **Operator directive:** "Stage batch: deliberate 0F1A653C + 06A59B1D"
@@ -18,10 +31,16 @@
 
 * **Duplicate detection (unconditional): CLEAN for both.** Adjacent sanitizer entries
   E89DC095 / 9D44B6F3 / E7878B1B are genuinely distinct; left ACTIVE in stash. No merge/archive of duplicates.
-* **Late-identifier reconciliation:** shipment 063-S → PR **#200** recovered from Ship-owned
-  closure record `2026-09-13-sanitize-source-key-elt-error-paths-closure.md` (lines 133-134 carry both as open deferrals).
-  thread=N/A, comment=N/A, task=N/A **STAND as truthful terminal records** (surfaced by Stage
-  adversarial review 2026-09-12, pre-PR; distinct un-tasked sinks). Non-blocking enrichment; entries updated in place.
+* **Late-identifier reconciliation:** shipment 063-S shipped via implementation
+  **PR #199** (reviewed HEAD `f1f5f8f`); the deferred-finding provenance for both
+  entries was published through the **closure narrative accompanying closure PR #200**
+  (Ship-owned closure record `2026-09-13-sanitize-source-key-elt-error-paths-closure.md`,
+  lines 133-134 carry both as open deferrals). PR #199 = implementation; PR #200 =
+  post-merge closure documentation (no product code). thread=N/A, comment=N/A,
+  task=N/A **STAND as truthful terminal records** (surfaced by Stage
+  adversarial review 2026-09-12, pre-PR; distinct un-tasked sinks). Non-blocking
+  enrichment; entries updated in place. (Provenance corrected in 064-S remediation
+  cycles 1 and 2 — finding #7.)
 
 ## Deliberation decision (validated against HEAD)
 
