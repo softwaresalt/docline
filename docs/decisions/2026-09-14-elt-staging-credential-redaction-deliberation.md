@@ -820,18 +820,37 @@ is backed by an executable test, and A1/B1 are narrowed to their true (helper) l
   `metadata.source` + reconstructed JSON only (A1's live-stdout wording removed; the
   live stdout sink is solely 073.007-T).
 * **073.008-T** (stream B, test domain): assert the live WARNING/error text produced
-  via `source_keys._remove_credential_query_params` (the 059-S path) drops the
-  NEWLY added credential names (`password`/`pwd`/`passwd`/`client_secret`/
-  `refresh_token`/`code`) for EACH of the four URL-bearing source kinds
+  via the execute.py exception/log composition
+  (`_scrub_exception_for_logging`/`_scrub_exception_message`/
+  `_exception_scrub_replacements`/`_sanitize_exception_text`, which chains the shared
+  `source_keys._remove_credential_query_params` matcher and emits through the
+  `_log.exception(...)` sink — the 059-S/063-S WARNING/error path) drops the FULL
+  set of newly added credential NAMES
+  (`password`/`pwd`/`passwd`/`client_secret`/`refresh_token`/`code`/`apikey`/
+  `x-goog-credential`/`awsaccesskeyid`) for EACH of the four URL-bearing source kinds
   (WebCrawlSource, ManifestUrlSource, GitHubRepoSource, ManifestGitSource) — explicit
   all-four coverage matching the four matrix rows that attribute BI to it (cycle-3
-  finding F-03; parametrized 4 kinds × 6 names, within the 2-hour test-domain
-  boundary), not a single source-kind-agnostic case. Green only after 073.004-T lands
-  (test-first: `073.004-T depends_on 073.008-T`).
+  finding F-03; parametrized 4 kinds × 9 names, within the 2-hour test-domain
+  boundary), not a single source-kind-agnostic case. It ALSO asserts error-output
+  PROVENANCE byte-preservation: `config.branch` / `config.path_glob` / manifest
+  `config.id` / local `path` / `include` — which the execute.py composition
+  INDEPENDENTLY passes through `sanitize_source_id`/`_sanitize_exception_text` — are
+  preserved BYTE-FOR-BYTE in the composed WARNING/error text, so only structured
+  URL/typed credentials are removed and non-credential provenance is never mangled.
+  Green only after the single merged production task 073.002-T lands (test-first:
+  `073.002-T depends_on 073.008-T`; the execute.py provenance-preservation change is
+  the 4th file in 073.002-T's scope).
 
-EX (exception/cause/context) coverage stays honestly `n/a` for these URL paths — the
-exception-scrubbing sinks (`95BD0DC7`, `709BDB53`) are separate unreachable 063-S
-residuals, NOT claimed or tested here. No overclaim remains.
+EX (exception CAUSE/CONTEXT chain) coverage stays honestly `n/a` for these URL paths
+— the exception cause/context CHAIN-object scrubbing sinks (`95BD0DC7`, `709BDB53`,
+`_clone_scrubbed_exception`/PEP-678 `__notes__`/ExceptionGroup traversal) are separate
+unreachable 063-S residuals, NOT claimed or tested here. This is DISTINCT from the WE
+column: the exception MESSAGE composition that feeds the `_log.exception(...)`
+WARNING/error TEXT (`_scrub_exception_message` in execute.py) IS in scope for both
+credential-name redaction AND provenance byte-preservation, and is tested by
+BI/073.008-T. The EX `n/a` refers only to the unreachable cause/context chain-object
+scrubbing, not to the reachable execute.py message-composition sink. No overclaim
+remains.
 
 ### Cycle-2 finding dispositions
 
@@ -878,7 +897,7 @@ resolved here as same-contract-surface completions (P-021 C1); none deferred.
 |---|---|---|---|
 | F-01 (P1) | A1/073.001-T still overclaim live CLI stdout + source-kind coverage | PLANNING_CONTRACT_FIXED — A1/073.001-T restricted to helper-level in-memory `metadata.source` + reconstructed `model_dump` JSON; live-stdout wording removed; source kinds aligned exactly to the four AI/matrix use; live stdout kept SOLELY in 073.007-T; plan matrix SO column cites only AI/073.007-T (A1 reconstructed-JSON moved to M) | plan Unit A1 + matrix + notes; 073.001-T ACs |
 | F-02 (P1) | Percent escapes validated only before the first decode, not after every layer | PLANNING_CONTRACT_FIXED — iterative per-layer malformed-escape validation (before AND after every decode layer); pinned nested-malformed fail-closed rows `/token/%252`→`<path-redacted>` (`%252`→`%2`) and `/token/%25ZZ`→`<path-redacted>` (`%25ZZ`→`%ZZ`); bounded multilayer + over-cap consistent across deliberation H2-C2, plan Unit C1/C2 + criterion 4, 073.005-T/073.006-T | H2-C2 steps 1–2 + pinned table (this doc); plan; 073.005-T/073.006-T |
-| F-03 (P1) | 073.008-T does not exercise all four URL-bearing source kinds the WE matrix claims | PLANNING_CONTRACT_FIXED — 073.008-T + plan Unit BI exercise the live WARNING/error path for all four URL-bearing source kinds × six new names (within the 2-hour test-domain boundary); matrix and task now agree | Live-sink coverage bullet (this doc); plan Unit BI + matrix; 073.008-T ACs |
+| F-03 (P1) | 073.008-T does not exercise all four URL-bearing source kinds the WE matrix claims | PLANNING_CONTRACT_FIXED — 073.008-T + plan Unit BI exercise the live WARNING/error path for all four URL-bearing source kinds × the full new-name vocabulary (9 names; final-correction round extended this from the original six to the complete set and added execute.py error-output provenance byte-preservation) (within the 2-hour test-domain boundary); matrix and task now agree | Live-sink coverage bullet (this doc); plan Unit BI + matrix; 073.008-T ACs |
 | F-04 (P1) | Live-stdout path-secret matrix cell covered compositionally, not directly | PLANNING_CONTRACT_FIXED — 073.007-T + plan Unit AI add a DIRECT path-embedded-secret fixture (exact secret-absence + `/token/<redacted>`) on the real `cli.py:381` stdout; matrix SO path-secret cell cites AI/073.007-T direct; genuine test-first edge `073.006-T depends_on 073.007-T` added (acyclic; stream A code stays decoupled from stream C) | Live-sink coverage bullet (this doc); plan Unit AI + matrix + dependency graph; 073.006-T/073.007-T |
 | F-05 (P3) | Job-ID revisit proposal recommends HMAC over the SANITIZED key (retains collisions) | RESOLVED_IN_STAGING_ARTIFACTS — H4-C2 rollback/revisit trigger corrected to a keyed construction (HMAC) over the RAW canonical source key with explicit key-management + cache-migration requirements; HMAC-over-sanitized explicitly rejected (reintroduces same-structure cache-poisoning collisions) | H4-C2 trigger (this doc); plan criterion 5 + Constitution Check residual |
 

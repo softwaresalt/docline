@@ -46,10 +46,11 @@ verifiable green state on its own, so no single code task could satisfy the comp
 
 - **Merged** former code tasks 073.002-T (A2 typed sink wiring) and 073.004-T (B2 exact-match
   vocabulary + bounded query-NAME decode) into ONE atomic production task, **073.002-T**
-  (survivor). It implements BOTH concerns across `staging.py`, `orchestrate.py`, and
-  `src/docline/elt/source_keys.py`, plus typed-sanitizer preservation of non-credential
-  provenance (branch / path_glob / manifest ID / local path / include) while sanitizing URL
-  fields and typed secret fields only.
+  (survivor). It implements BOTH concerns across `staging.py`, `orchestrate.py`,
+  `src/docline/elt/source_keys.py`, and `src/docline/elt/execute.py` (FOUR files — see
+  the final adversarial-finding correction round below), plus typed-sanitizer
+  preservation of non-credential provenance (branch / path_glob / manifest ID / local
+  path / include) while sanitizing URL fields and typed secret fields only.
 - **Retired 073.004-T non-destructively**: status=blocked, all dependency edges removed,
   removed from shipment 064-S manifest, RETIRED banner + `superseded`/`merged` labels. NOT
   deleted.
@@ -114,6 +115,58 @@ verifiable green state on its own, so no single code task could satisfy the comp
   enclosed in superseding banners).
 - Markdown/template lint — see `backlogit docs lint` run; new/edited memory frontmatter valid.
 - Stage-local review — zero unresolved P0/P1 (verdict recorded in session summary).
+
+## Final adversarial-finding correction round (2026-09-15, Stage-owned; branch `chore/stage-064-s`)
+
+A final adversarial review of this shipment surfaced three P1 findings plus five P2/P3
+items. All resolved in-scope (064-S/073-F only) as same-contract completions; no code/test
+written, no shipment claim, no PR/push/merge, no Ship invocation, no touch of unrelated
+063-S memory.
+
+- **P1 #1 — Error-output provenance preservation (execute.py).** The execute.py exception/log
+  composition (`_scrub_exception_for_logging` / `_scrub_exception_message` /
+  `_exception_scrub_replacements` / `_sanitize_exception_text`, emitted via `_log.exception(...)`)
+  INDEPENDENTLY applies `sanitize_source_id` / `_sanitize_exception_text` to `config.branch`,
+  `config.path_glob`, and manifest `config.id`. Expanded task **073.002-T** file scope to a
+  FOURTH file — `src/docline/elt/execute.py` — with an added PART A″ requiring that real
+  WARNING/error composition PRESERVE branch / path_glob / manifest ID / local path / include
+  BYTE-FOR-BYTE while removing only structured URL/typed credentials. Live WARNING test
+  **073.008-T** updated (same test file/domain, still one test task — no new task added) to
+  prove this. Genuine dependency `073.002-T depends_on 073.008-T` preserved. Matrix + exposure
+  analysis updated (incl. a recorded OUT-OF-SCOPE disposition for the PROCESS-stage
+  `source`/`source_url` processed-document consumers, `app.py`, tracked for P-021 follow-up).
+- **P1 #2 — Final live-stdout composition vocabulary (073.009-T).** Expanded the final
+  composition gate to cover EVERY new recognized name in the final vocabulary — including
+  `apikey`, `x-goog-credential`, and `awsaccesskeyid` — plus at least one percent-encoded
+  query-NAME case (`%70assword`). Plan Unit CI vocabulary aligned exactly.
+- **P1 #3 — Unsafe rollback replaced by safe containment / roll-forward.** Every
+  revert-to-063-S procedure removed (Runtime Verification, risky-action classification, Plan
+  Hardening Signals). Replaced with a SAFE CONTAINMENT + ROLL-FORWARD procedure: stop the
+  affected fetch execution → revoke/rotate possibly-exposed credentials → suppress/omit the
+  source output or deploy a safe whole-field redaction hotfix → PRESERVE the five test guards →
+  roll forward. Revert-to-063-S is explicitly PROHIBITED as a rollback destination (it would
+  REINTRODUCE the known default-path leak 0F1A653C). Disposition of all five test tasks stated:
+  all PRESERVED, none reverted.
+- **P2/P3 #4 — 073.002-T chronology.** `updated_at` refreshed through a supported body-preserving
+  backlogit mutation (`backlogit update 073.002-T --priority high`, same value) as the FINAL
+  mutation after all body edits — timestamp never hand-edited.
+- **P2/P3 #5 — Concrete monitoring window.** 7 days OR first 10 production runs, whichever comes
+  first; owner = ELT staging maintainer; defined cadence; credential-safe synthetic probes that
+  never log raw secrets.
+- **P2/P3 #6 — Terminal pointer.** Older session memory
+  (`docs/memory/2026-09-14/stage-073-elt-credential-redaction-session.md`) terminal pointer now
+  names THIS record (`stage-064-s-final-correction-merge.md`), not the superseded
+  operator-contract record.
+- **P1 #7 — Exhaustive live WARNING/error vocabulary.** 073.008-T covers the COMPLETE new
+  vocabulary (9 names: `password`/`pwd`/`passwd`/`client_secret`/`refresh_token`/`code`/`apikey`/
+  `x-goog-credential`/`awsaccesskeyid`), within the existing single test-task boundary.
+- **#8 — Prose consistency.** File-count/manifest/DAG prose corrected across plan, deliberation,
+  feature 073-F, and shipment 064-S to the 4-file production scope. Single atomic production task
+  and seven-item manifest UNCHANGED. Retired tasks 073.004/005/006 remain blocked and outside
+  the shipment.
+
+**Product boundary preserved:** structured access credentials only; all body/path/identifier/
+provenance fields immutable unless explicitly typed secret or structured URL credential.
 
 ## Orchestrator next step
 

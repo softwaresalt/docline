@@ -11,7 +11,14 @@
 > explicit exact-match credential-name vocabulary, both-path bounded query-NAME decode,
 > raise-not-sentinel typed exception, typed provenance-field preservation, a satisfiable
 > A2+B2 composition gate (073.009-T), and Stage-commits-its-own-artifacts handoff. The
-> authoritative current record is `stage-064-s-operator-contract-final.md`.**
+> authoritative current record is `stage-064-s-final-correction-merge.md` (the
+> 2026-09-15 final correction that MERGED the two code tasks into one atomic production
+> task and — in its final adversarial-finding correction round — expanded task 073.002-T
+> to a 4-file scope including `src/docline/elt/execute.py` for error-output provenance
+> byte-preservation, extended the live WARNING/stdout composition gates 073.008-T/073.009-T
+> to the full new credential-name vocabulary, and replaced the unsafe revert-to-063-S
+> rollback with a safe containment/roll-forward procedure plus a concrete monitoring
+> window).**
 
 **Date:** 2026-09-14
 **Agent:** Stage (route: claude-opus-4.8 / anthropic / high)
