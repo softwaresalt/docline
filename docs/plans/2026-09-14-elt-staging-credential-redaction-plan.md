@@ -29,6 +29,19 @@ tags:
   (2) query-parameter NAMES in an explicit, case-insensitive recognized credential
   vocabulary; (3) typed configuration fields explicitly designated secret.
 * All benign query parameters and all provenance are preserved.
+* **2026-09-24 in-scope P1 correction (typed pre-pass):** "benign query"
+  includes raw `;`, repeated `&`, empty tokens, blank/valueless fields, percent
+  spelling and benign fragment text. A credential-free typed URL must be
+  byte-identical through `_strip_reversed_query_credentials` AND the completed
+  `_sanitize_url_field`. Removing a recognized credential token in a query or
+  fragment instead preserves every *surviving* benign span, with only that token
+  and ONE adjacent delimiter removed (preceding delimiter preferred; following
+  delimiter when the token is first). Preserve untouched empty `?`/`#`
+  introducers; remove the introducer only when its sole credential token was
+  removed. Preserve raw benign authority bytes (`HOST:080`, not `host:80`)
+  even when URL userinfo is removed. Embedded/reversed/duplicated
+  `?token=SECRET` remains a mandatory
+  leak guard. No path/value/document-body redaction is authorized.
 
 ### Consensus findings — resolution mapping (authoritative)
 
@@ -246,7 +259,8 @@ Two distinct credential-exposure gaps remain on the ELT staging surface after
 
 > **Unit → task mapping (2026-09-15 P0 green-gate fix):** conceptual code Units **A2**
 > and **B2** are BOTH delivered by the SINGLE MERGED production task **073.002-T**
-> (files `staging.py`, `orchestrate.py`, `source_keys.py`). Test Units A1→073.001-T,
+> (files `staging.py`, `orchestrate.py`, `source_keys.py`, `execute.py` — four
+> files, including the WARNING/error provenance-preservation change). Test Units A1→073.001-T,
 > B1→073.003-T, AI→073.007-T, BI→073.008-T, CI→073.009-T. Former separate stream-B code
 > task 073.004-T is retired/merged into 073.002-T.
 
@@ -299,7 +313,26 @@ Two distinct credential-exposure gaps remain on the ELT staging surface after
     paths byte-for-byte; local-path input flows through unchanged. Additionally, the string
     path's query filtering MUST be SURGICAL raw-token removal (not `parse_qsl`+`urlencode`
     round-trip, which normalizes benign query bytes) so benign query parts are preserved
-    byte-for-byte. `job_id =
+    byte-for-byte. **Do not stop at staging.py:** `_sanitize_url_field` in source_keys.py
+    calls `_strip_reversed_query_credentials` BEFORE `sanitize_source`. The current
+    `[::2]` selection from `_split_query_component_preserving_separators` discards
+    `;`, repeated `&`, and empty tokens even when NO credential is found
+    (`?a=1;b=2` → `?a=1&b=2`; `?a=1&&b=2` → `?a=1&b=2`). Require an
+    identity-preserving no-credential fast path or equivalent raw-span filter
+    across query AND fragment. For mixed credentials, remove only the recognized
+    token and its immediately preceding delimiter, or immediately following
+    delimiter for a first token; retain all other raw separators and benign
+    tokens, including empty/valueless/percent-spelled tokens. Retain untouched
+    empty `?`/`#`, and strip an introducer only if its sole credential token was
+    removed. Reconcile `_remove_credential_query_params` (currently strips
+    fragments) and `staging._sanitize_url` (currently discards fragments and
+    normalizes via urlunparse) to keep benign fragment bytes. Keep removal of
+    embedded/reversed `?token=SECRET`, `;token=SECRET` and duplicated `?`
+    credential tokens. Also preserve raw benign authority spelling:
+    `staging._sanitize_url` currently rebuilds netloc from `parsed.hostname`
+    and `parsed.port`, changing `HOST:080` to `host:80`; slice only the
+    structured userinfo from raw authority without rewriting the surviving
+    host/port. Do not decode URL paths or query values. `job_id =
     make_job_id(source)` unchanged (raw). Update `orchestrate_fetch` to import
   `sanitize_source_key` and call
   `create_staging_job(build_source_key(config), staging_dir, sanitized_source=sanitize_source_key(config))`.
@@ -307,26 +340,44 @@ Two distinct credential-exposure gaps remain on the ELT staging surface after
   (`_scrub_exception_message` / `_exception_scrub_replacements` /
   `_sanitize_exception_text` / `_redact_query_param_fragments` /
   `_strip_reversed_query_credentials`, emitted through the `_log.exception(...)`
-  WARNING/error sink) currently applies `sanitize_source_id` to `config.id` (manifest
-  ID) and `_sanitize_exception_text` to `config.branch` / `config.path_glob`; these are
-  PROVENANCE and MUST be byte-preserved in the composed WARNING/error text (operator
-  contract, Finding 3 error-output extension). Change the composition to remove ONLY
-  structured URL/typed credentials (userinfo + recognized query-param NAMES on
-  `config.url`/`config.repo_url` + typed secret fields) while leaving branch /
-    path_glob / manifest ID byte-for-byte — even when they contain
-    credential-looking text. NOTE (Finding P1 sink-scope honesty): the WARNING/error sink
-    composes ONLY url/repo_url, branch, path_glob, and manifest id per source kind
-    (ManifestLocalSource composes ONLY config.id; LocalFileSource is not in the replacement
-    set), so local filesystem PATH and INCLUDE patterns are NEVER composed into this sink —
-    their byte-preservation is proven at the typed serialization surface by 073.001-T, NOT here.
+  WARNING/error sink) currently routes `config.id`, `config.branch` and
+  `config.path_glob` through redacting text replacements even though these are
+  PROVENANCE. Distinguish two real channels: `_execute_single_source` emits
+  controlled `sanitize_source_key(config)` as structured `source_key=%s` and
+  metadata; preserve branch/path_glob/manifest ID bytes THERE. Drop their
+  redacting replacements from `_exception_scrub_replacements`. Conversely
+  `error=%s` and formatted `exc_info` contain UNTRUSTED free-form exception
+  text, cause, context, notes and ExceptionGroup child messages: KEEP
+  the config URL/userinfo replacements,
+  embedded `_HTTP_URL_RE` scrub and standalone
+  `_redact_query_param_fragments` on all untrusted text, even when the
+  configured URL is clean. Never restore a typed benign-looking substring
+  into error prose by matching bytes (the same bytes can be an untrusted
+  credential); arbitrary exception prose carries NO byte-preservation
+  guarantee. Scrub copied `__notes__` AND recursively scrub
+  `ExceptionGroup.exceptions`, including clean-outer-message fast paths;
+  if group reconstruction is unsafe, substitute a non-leaking generic
+  typed exception WITHOUT original children before formatting. Handle
+  a raising `__str__` at the scrub/log boundary with the same non-leaking
+  typed fallback so an error still produces an incomplete job, not a
+  dropped log or a success-shaped response.
+  Preserve safe exception type/context/traceback if possible; if untrusted
+  rendering cannot safely be scrubbed, emit a bounded non-leaking generic
+  typed failure, not a success-shaped fallback. Existing manifest-ID-as-
+  secret assertions in `tests/elt/test_elt_real_execution.py` must be
+  reconciled with benign typed ID preservation, using distinct synthetic
+  credentials for absence assertions. No document-body, URL path, local
+  filesystem path or typed glob scanning. Local filesystem PATH/INCLUDE are
+  not structured WE fields; 073.001-T covers their typed serialization.
 * **Files:** `src/docline/fetch/staging.py`, `src/docline/elt/orchestrate.py`,
   `src/docline/elt/source_keys.py`, `src/docline/elt/execute.py` (4 files — shared with
   B2 in the merged 073.002-T; source_keys.py carries the typed-field preservation of
   Finding 3; execute.py carries the WARNING/error error-output provenance preservation).
 * **Functions:** `create_staging_job`, `orchestrate_fetch`, `sanitize_source_key` /
   `_sanitize_url_field` / `_remove_credential_query_params` (typed preservation),
-  `_exception_scrub_replacements` / `_scrub_exception_message` / `_sanitize_exception_text`
-  (execute.py error-output provenance preservation).
+  `_exception_scrub_replacements` / `_scrub_exception_message` /
+  `_clone_scrubbed_exception` (execute.py trust-boundary scrubbing, including
+  cause/context/notes).
 * **Posture:** test-first (A1 must pass after this change).
 * **Exit state:** A1 passes; existing staging/execute tests still green
   (existing bare-string positional callers unaffected — keyword-only proof).
@@ -352,7 +403,23 @@ Two distinct credential-exposure gaps remain on the ELT staging surface after
   typed sanitizers — `%70assword`→`password` (1 layer),
   `%2570assword`→`%70assword`→`password` (2 layers), a deeper still-valid layered case
   within the 5-layer cap, and an over-cap case (>5 layers still transforming) that
-  fails closed — with no path or query-value decoding.
+  fails closed — with no path or query-value decoding. Add direct test-first
+  calls to typed `_strip_reversed_query_credentials` and `_sanitize_url_field`
+  for credential-free `?a=1;b=2`, `?a=1&&b=2`, benign fragment `;`/`&&`,
+  empty `?`/`#`, percent spelling and flag/x=; the first two fail on HEAD
+  independently of staging. Separately test mixed recognized query/fragment
+  credential removal (including embedded/reversed/duplicated `?token=SECRET`
+  and encoded credential names) while asserting only surviving benign spans
+  stay byte-identical: `?a=1;token=SECRET;b=2` → `?a=1;b=2`,
+  `?a=1&&token=SECRET;b=2` → `?a=1&;b=2`,
+  `#note=x?token=SECRET&flag` → `#note=x&flag`. Check the
+  string sanitizer and `_remove_credential_query_params` do not reserialize
+  benign queries or discard benign fragments. Pin first-token fallback
+  outputs `?token=SECRET;flag` → `?flag` and
+  `#token=SECRET&note=x` → `#note=x`. Pin a raw benign
+  authority fixture `https://HOST:080/p?a=1;b=2#note` unchanged
+  at both string and typed URLs, and `user:pass@HOST:080` → `HOST:080`
+  with the surviving host/port bytes unchanged.
 * **Files:** one test file under `tests/` (e.g. extend `tests/fetch/test_staging_sanitize.py`).
 * **Scenarios:** parametrized (grouped: new-name exact redaction, benign
   near-match passthrough, existing-prefix additive, percent-encoded new marker).
@@ -496,6 +563,16 @@ Two distinct credential-exposure gaps remain on the ELT staging surface after
   `%25` intact), `&` separators, and blank/valueless params (a valueless `flag` does not
   gain `=`). This is the honest composition gate: it
   proves the A2+B2 composition that no single stream-scoped test proves alone.
+  At this REAL sink, assert extracted JSON `metadata.source` actually embeds
+  the typed URL for WebCrawlSource / ManifestUrlSource before claiming typed
+  query preservation: credential-free `?a=1;b=2` and `?a=1&&b=2`
+  MUST survive byte-identically (red on HEAD). In separate mixed-credential
+  query/fragment cases assert that credential values (including an embedded
+  or duplicated `?token=SECRET`) disappear while benign `;`, repeated `&`,
+  `flag`/`x=`, `%20`/`%25` and fragment text remain unchanged except for
+  one adjacent delimiter at each removed token. Never assert whole-query
+  identity after removing a credential; never credit a source field that
+  stdout does not actually emit.
 * **Files:** one test file under `tests/` (e.g. `tests/elt/test_fetch_cli_stdout_composition.py`).
 * **Scenarios:** parametrized over the four URL source kinds × (userinfo + EVERY
   recognized new name in the final vocabulary + at least one percent-encoded name).
@@ -519,24 +596,39 @@ Two distinct credential-exposure gaps remain on the ELT staging surface after
   (a) the FULL new credential vocabulary
   (`password`/`pwd`/`passwd`/`client_secret`/`refresh_token`/`code`/`apikey`/
   `x-goog-credential`/`awsaccesskeyid`) is dropped from the emitted text on each, and
-  (b) the composition BYTE-PRESERVES non-credential provenance GENUINELY COMPOSED INTO THIS
-  SINK — source `branch`, `path_glob`, and manifest `id` — even
-  when those fields contain credential-looking text, removing only structured URL
-  userinfo + recognized credential query-param NAMES + typed secret fields. SINK-SCOPE
-  HONESTY (Finding P1, 2026-09-16 correction): the `execute.py` WARNING/error composition
-  emits ONLY url/repo_url, branch, path_glob, and manifest id per source kind
-  (ManifestLocalSource composes ONLY config.id; LocalFileSource is not in the replacement
-  set), so local filesystem PATH and INCLUDE patterns are NEVER composed into this live sink
-  and MUST NOT be asserted here — their byte-preservation is proven at the typed serialization
-  surface by 073.001-T. This backs
-  the live-WARNING (WE) invariant AND the error-output provenance-preservation invariant
-  with an executable test instead of attributing live coverage to the helper-level B1,
-  and gives explicit all-four coverage matching the four matrix rows that attribute BI to
-  each (cycle-3 finding F-03).
+  (b) the CONTROLLED typed `source_key=%s` log argument and metadata
+  BYTE-PRESERVE `branch`, `path_glob`, and manifest `id` even when
+  credential-looking (`feat/token`, `**/*?token=*`, `src?token=BENIGN`);
+  `error=%s` and formatted `exc_info` are UNTRUSTED, not structured typed
+  provenance, and need not preserve these same bytes. Add RED fixtures for
+  standalone recognized `?token=SECRET` in the untrusted message with NO
+  configured credentialed URL, and for cause/context/`__notes__` rendered in
+  the real traceback. `__notes__` ARE reachable: `_clone_scrubbed_exception`
+  copies them verbatim, and its fast path may return the original with notes.
+  `ExceptionGroup` children are likewise printed by Python traceback
+  formatting, even with a clean outer message; scrub recursively or
+  replace the whole group with a safe generic typed failure without raw
+  child references. Scrub notes even if the outer message is already
+  clean. Guard a raising `__str__` so the error handler still logs and
+  returns an incomplete job. Assert a distinct
+  synthetic credential is absent from `caplog.text`, `record.getMessage()`
+  and traceback, while safe exception type/context remain if representable.
+  Where provenance-looking bytes in exception prose are indistinguishable
+  from secrets, allow conservative non-leaking generic typed error text;
+  never splice known benign typed bytes back into untrusted prose. Reconcile
+  old `test_elt_real_execution.py` assertions treating a manifest ID
+  `srcA?token=IDSECRET` as a secret: preserve the typed ID but check distinct
+  URL/error secrets for absence. The old claim that replacement-list fields
+  are separately *composed* into the warning was false: they only substitute
+  free-form exception text. Local filesystem PATH and INCLUDE patterns are
+  NOT structured WE fields; their byte-preservation is covered by 073.001-T.
+  This backs the live WE invariant with real all-four-kind coverage.
 * **Files:** one test file under `tests/` (e.g. extend the 059-S WARNING-path test module).
-* **Scenarios:** parametrized over the nine new credential names × the four
-  URL-bearing source kinds, plus provenance byte-preservation assertions (one logical
-  live-sink surface; within the 2-hour test-domain boundary, one test file, finding F-03).
+* **Scenarios:** three logical groups in one test file: parametrized nine
+  new names × four URL kinds; typed provenance vs standalone untrusted
+  `?token=SECRET`; parametrized traceback safety (cause/context/notes/
+  ExceptionGroup children/raising `__str__` fallback). Includes
+  existing manifest-ID test reconciliation; no extra task or test file.
 * **Posture:** characterization-first (FAILS on HEAD for the new names and/or altered
   provenance; green after the merged 073.002-T).
 * **Exit state:** test exists, fails on HEAD, passes after the merged production task `073.002-T`.
@@ -660,10 +752,15 @@ prerequisite.
   alongside benign provenance fields (branch / path_glob / manifest ID / local path /
   include), and asserts (a) the emitted stdout / metadata / WARNING-error text contains
   NONE of the known synthetic credential tokens, and (b) the benign provenance fields are
-  emitted byte-for-byte on the surface that composes each (branch / path_glob / manifest
-  ID across stdout / metadata / WARNING-error; local path / include on the stdout /
-  metadata typed-serialization surface only — they are not composed into the WARNING-error
-  sink). The probe NEVER logs, echoes, or stores raw source credentials
+  emitted byte-for-byte on its CONTROLLED typed surface (branch / path_glob /
+  manifest ID in stdout / metadata / logged `source_key`, not arbitrary
+  `error` prose; local path / include on typed stdout / metadata only).
+  Exercise a separate untrusted synthetic exception/notes containing
+  standalone recognized `?token=SECRET` while the configured URL is clean;
+  assert it is absent from rendered log message and traceback. Use
+  DISTINCT synthetic strings for benign provenance and access credentials,
+  so a global absence check cannot contradict typed provenance preservation.
+  The probe NEVER logs, echoes, or stores raw source credentials
   or raw source keys — it asserts ABSENCE of pre-known synthetic tokens and emits only a
   boolean/count result (pass = zero tokens observed), so no real or synthetic secret is
   ever written to logs.
@@ -711,16 +808,17 @@ helper-only test (finding #2). Sinks: **M** = typed sanitization output
 (execute.py `_scrub_exception_for_logging` composition — `_scrub_exception_message` /
 `_exception_scrub_replacements` / `_sanitize_exception_text` /
 `_redact_query_param_fragments` — over the shared
-`source_keys._remove_credential_query_params` surface); **EX** = exceptions/causes/contexts.
+`source_keys._remove_credential_query_params` surface); **EX** = exceptions/causes/contexts/notes/ExceptionGroup children
+as rendered by the WE `exc_info` traceback (not a separate thrown-error sink).
 
 | Source kind | M | PM | SO (live) | WE (live) | EX |
 |---|---|---|---|---|---|
-| WebCrawlSource (userinfo + `?token=`) | inherited-063-S; A1 in-memory metadata.source + reconstructed `model_dump` JSON (helper) | inherited-063-S | **073.007-T** (userinfo subset) + **073.009-T** (A2+B2 composition) — live `cli.py:381` | **BI/073.008-T** (live WARNING, full new vocabulary + provenance byte-preservation, all four kinds); B1 matcher (helper unit) | n/a — no throw on this path |
-| ManifestUrlSource (userinfo + `?token=`) | inherited-063-S; A1 in-memory metadata.source + reconstructed `model_dump` JSON (helper) | inherited-063-S | **073.007-T** (userinfo subset) + **073.009-T** (A2+B2 composition) — live `cli.py:381` | **BI/073.008-T** (all four kinds); B1 helper | n/a |
-| GitHubRepoSource (token in `repo_url`) | inherited-063-S; A1 in-memory metadata.source + reconstructed `model_dump` JSON (helper) | inherited-063-S | **073.007-T** (userinfo subset) + **073.009-T** (A2+B2 composition) — live `cli.py:381` | **BI/073.008-T** (all four kinds); B1 helper | n/a |
-| ManifestGitSource (token in `url`) | inherited-063-S; A1 in-memory metadata.source + reconstructed `model_dump` JSON (helper) | inherited-063-S | **073.007-T** (userinfo subset) + **073.009-T** (A2+B2 composition) — live `cli.py:381` | **BI/073.008-T** (all four kinds); B1 helper | n/a |
+| WebCrawlSource (userinfo + `?token=`) | inherited-063-S; A1 in-memory metadata.source + reconstructed `model_dump` JSON (helper); B1 typed pre-pass `;`/`&&` no-credential identity and mixed query/fragment survivor bytes | inherited-063-S | **073.007-T** (userinfo subset) + **073.009-T** (A2+B2 composition + typed `metadata.source` query/fragment byte preservation) — live `cli.py:381` | **BI/073.008-T** (live WARNING: new vocabulary + controlled source_key provenance bytes; untrusted message/chain/notes scrubbed, all four kinds); B1 matcher (helper unit) | folded into BI/WE traceback; no outward throw |
+| ManifestUrlSource (userinfo + `?token=`) | inherited-063-S; A1 in-memory metadata.source + reconstructed `model_dump` JSON (helper); B1 typed pre-pass helper | inherited-063-S | **073.007-T** (userinfo subset) + **073.009-T** (A2+B2 composition + typed URL query-byte proof when emitted) — live `cli.py:381` | **BI/073.008-T** (typed manifest ID in source_key; untrusted text/notes scrubbed) | folded into BI/WE; no outward throw |
+| GitHubRepoSource (token in `repo_url`) | inherited-063-S; A1 in-memory metadata.source + reconstructed `model_dump` JSON (helper) | inherited-063-S | **073.007-T** (userinfo subset) + **073.009-T** (A2+B2 composition) — live `cli.py:381` | **BI/073.008-T** (typed branch/glob in source_key; untrusted text/chain scrubbed) | folded into BI/WE; no outward throw |
+| ManifestGitSource (token in `url`) | inherited-063-S; A1 in-memory metadata.source + reconstructed `model_dump` JSON (helper) | inherited-063-S | **073.007-T** (userinfo subset) + **073.009-T** (A2+B2 composition) — live `cli.py:381` | **BI/073.008-T** (typed ID/branch in source_key; untrusted text/notes scrubbed) | folded into BI/WE; no outward throw |
 | ~~Path-embedded secret (any URL kind)~~ | — | — | **REJECTED / RETIRED (2026-09-15 operator decision)** — Docline does NOT redact URL paths; ordinary paths are preserved byte-for-byte. AI/073.007-T instead asserts benign-path preservation. Former C1/C2 path grammar retired. | — | n/a |
-| LocalFileSource / ManifestLocalSource | local path / include patterns / manifest ID preserved byte-for-byte (operator contract, Finding 6); only explicitly-secret typed fields redacted (none present) | 063-S | n/a | n/a | n/a |
+| LocalFileSource / ManifestLocalSource | local path / include patterns / manifest ID preserved byte-for-byte (operator contract, Finding 6); only explicitly-secret typed fields redacted (none present) | 063-S | n/a | no four-URL-kind BI claim; manifest-local typed ID follows same structured-source_key rule if emitted | no separate throw |
 
 Notes and honest scope boundaries:
 
@@ -760,29 +858,25 @@ Notes and honest scope boundaries:
   F-03: explicit all-four coverage matching the four matrix rows). It asserts BOTH that
   the FULL new vocabulary
   (`password`/`pwd`/`passwd`/`client_secret`/`refresh_token`/`code`/`apikey`/
-  `x-goog-credential`/`awsaccesskeyid`) drops from that path AND that non-credential
-  provenance GENUINELY COMPOSED INTO THIS SINK — `branch` / `path_glob` / manifest `id` — is
-  BYTE-PRESERVED in the composed text (error-output provenance-preservation finding). Local
-  filesystem `path` and `include` patterns are NOT composed into the WE sink for any source
-  kind (ManifestLocalSource composes ONLY config.id; LocalFileSource is not in the replacement
-  set), so they are NOT asserted at WE — their byte-preservation is proven at the typed
-  serialization surface by 073.001-T (Finding P1, 2026-09-16 sink-scope honesty correction).
-  The `execute.py` composition INDEPENDENTLY applies `sanitize_source_id` /
-  `_sanitize_exception_text` to `config.branch` / `config.path_glob` / `config.id`, so
-  the provenance-preservation change lands in the single merged production task
-  073.002-T (execute.py is the 4th file in its scope). B1 is a helper unit test of the
-  shared `_is_credential_param` matcher; it is NOT credited with the live WARNING sink
-  (finding #2 — no live coverage attributed to helper-only
-  tests).
-* **EX** (exceptions/causes/contexts): the exception cause/context CHAIN scrubbing
-  (`_clone_scrubbed_exception`, PEP-678 `__notes__`, ExceptionGroup traversal) is a
-  separate, currently-unreachable 063-S residual (`95BD0DC7`, `709BDB53`) and is
-  explicitly NOT tested or claimed by this shipment. EX (the exception object's
-  cause/context chain) stays honestly `n/a`. NOTE: this is distinct from the WE column
-  — the exception MESSAGE composition that feeds the `_log.exception(...)` WARNING/error
-  TEXT (`_scrub_exception_message`) IS in scope for provenance byte-preservation and is
-  tested by BI/073.008-T; the EX `n/a` refers only to the unreachable cause/context
-  chain-object scrubbing, not to the reachable message-composition sink.
+  `x-goog-credential`/`awsaccesskeyid`) drops from untrusted text AND that
+  known benign typed `branch` / `path_glob` / manifest `id` bytes survive
+  in the separate `source_key` log argument and metadata. No promise to
+  preserve those bytes in exception prose. `_exception_scrub_replacements`
+  currently treats those typed fields as free-text replacements; correcting
+  this is part of 073.002-T (`execute.py`, 4th production file). Local
+  filesystem `path`/`include` are not structured WE fields (073.001-T
+  covers typed serialization). B1 is only helper matcher coverage.
+* **EX** is NOT an independent outbound exception sink: `_execute_single_source`
+  catches the exception, logs a scrubbed `exc_info`, and returns an incomplete
+  job. The real log formatter renders `__cause__`, `__context__`, and
+  PEP-678 `__notes__` in the WE sink: reachable and covered by BI/073.008-T.
+  The current clone copies notes verbatim, including on a safe-message
+  fast-return path; it also leaves ExceptionGroup children unsafe in a
+  clean-outer-message group. Treat these as in-scope log leaks, not unreachable
+  residual. Prior 063-S residuals `95BD0DC7`/`709BDB53` remain separate
+  for other general exception-tree surfaces NOT exercised by this
+  bounded `execute.py` live logging path; no universal exception-tree
+  safety claim.
 * **Processed-document `source` / `source_url` consumers (exposure inventory — recorded
   disposition):** beyond the ELT-staging sinks above, the PROCESS stage
   (`src/docline/app.py`) independently emits a fetched-URL–derived
@@ -922,6 +1016,15 @@ migration actions to harden.
   (cli.py:381), **logs**, and (execute path) **on-disk `metadata.json`**. Everything
   past that boundary is untrusted-observer territory (terminal capture, CI logs,
   shipped artifacts).
+  A SECOND boundary crosses from third-party/network exception message,
+  cause/context, `__notes__` and ExceptionGroup children (UNTRUSTED free text, even if it copies a
+  typed field) into `error=%s` and the formatted `_log.exception` traceback.
+  Do not turn off standalone recognized query-fragment filtering to preserve
+  typed provenance; show that provenance only in the controlled sanitized
+  `source_key`/metadata channel. `?token=SECRET` in untrusted prose is
+  redacted even if no configured URL contains it. Unknown custom exception
+  rendering must fail to a non-leaking generic typed error, without a success
+  response. No arbitrary document content or URL/local path inspection.
 * **Attack/leak vectors addressed:**
   1. Default-path stdout leak via unsanitized `metadata.source` (0F1A653C) — closed by A2.
   2. Credential query params outside the current prefix set
@@ -935,6 +1038,10 @@ migration actions to harden.
      stream C (C2 marker-gated path redaction) retired. Only structured access
      credentials (userinfo + recognized query params + typed secret fields) are
      redacted.
+  4. Standalone recognized credential query fragments in untrusted error
+     prose and reachable traceback notes/group children — kept under the
+     existing scrub, extended through cause/context/notes/group children
+     and raising-renderer fallback in BI/073.008-T and merged 073.002-T.
 * **Non-goals / explicitly out of scope (P-021, left stashed):** underscore-scheme
   regex gap (E89DC095), Unicode-Cf whitespace guard (9D44B6F3), query-function
   redundancy (E7878B1B), compound-prefix scheme matching in the string sanitizer.
@@ -944,7 +1051,7 @@ migration actions to harden.
 * **ProposedAction:**
   * `summary` — modify credential-redaction control code on the live default and
     shared ELT fetch paths (default-path sink threading, credential-name
-    vocabulary/matcher expansion, and error-output provenance preservation on the
+    vocabulary/matcher expansion, and error-output trust-boundary hygiene on the
     execute.py WARNING/error composition). Path-embedded secret redaction is
     REJECTED/retired (2026-09-15 operator decision) and is NOT part of this action.
   * `targets` — `src/docline/fetch/staging.py`, `src/docline/elt/orchestrate.py`,
@@ -964,8 +1071,11 @@ migration actions to harden.
     sink or deploy a safe whole-field redaction hotfix, preserve the five test guards,
     then roll forward). Cache paths/`job_id` are unchanged (H4 determinism guard), so no
     cache migration is needed. Blast radius is contained to the sanitizer + error-output
-    composition surface; additive-only redaction means a partial landing can only redact
-    more, never less — and never re-exposes a credential.
+    composition surface; this is NOT additive-only: replacing prefix matching with
+    exact-name matching deliberately stops redacting unsupported variants such
+    as `token_v2` (accepted residual). A partial production landing is unsafe;
+    keep the one-production-task atomic test-first release and re-run all five
+    test guards before rollout.
   * `approval_required` — yes for execution (security-sensitive, ActionRisk high).
 * **ActionRisk:** **high** — security/credential-redaction-correctness behavior on
   live fetch paths (per the strict-safety "high" level: security/compliance-
@@ -1005,13 +1115,20 @@ FINAL Operator Contract and the deliberation's H1):
    composition (`_scrub_exception_message` / `_exception_scrub_replacements` /
    `_sanitize_exception_text`), so error/log text drops the FULL new vocabulary
    (`password`/`pwd`/`passwd`/`client_secret`/`refresh_token`/`code`/`apikey`/
-   `x-goog-credential`/`awsaccesskeyid`) AND byte-preserves non-credential provenance
-   GENUINELY COMPOSED INTO THIS SINK (`branch` / `path_glob` / manifest `id`) in the composed
-   WARNING/error text — backed by the live integration test BI/073.008-T (B1 covers the
-   matcher at the helper/unit level only; no live coverage is attributed to it). Local
-   filesystem `path` and `include` patterns are NOT composed into the WARNING/error sink and
-   are NOT asserted here — their byte-preservation is proven at the typed serialization
-   surface by 073.001-T (Finding P1, 2026-09-16 sink-scope honesty correction).
+   `x-goog-credential`/`awsaccesskeyid`) from URL fields and untrusted
+   exception text. `source_key=%s` and metadata (controlled typed
+   `sanitize_source_key(config)`) byte-preserve benign `branch`/`path_glob`/
+   manifest `id`; `error=%s` and rendered traceback (message, cause,
+   context, `__notes__`, ExceptionGroup children) instead scrub standalone recognized
+   `?token=SECRET` EVEN with no configured credentialed URL. Never splice
+   raw benign typed substrings back into untrusted exception prose; allow
+   bounded generic typed failure if sanitization is ambiguous while
+   retaining safe diagnostic context where possible, including a throwing
+   `__str__` fallback that still logs an incomplete job. BI/073.008-T captures
+   the live output including formatted traceback and reconciles older
+   assertions treating a benign manifest ID as a secret. B1 is helper
+   matcher-only coverage. Local filesystem `path`/`include` are NOT
+   structured WARNING provenance; typed preservation is in 073.001-T.
 4. **Path preservation (REPLACES the former H2/H2-C2 path-redaction criterion —
    REJECTED 2026-09-15):** `_sanitize_url` leaves the URL PATH component unchanged.
    Ordinary paths — `/authentication/overview`, `/tokenizer/config`,
@@ -1035,23 +1152,30 @@ FINAL Operator Contract and the deliberation's H1):
    the typed sanitizer sanitizes URL fields + explicitly-secret typed fields while
    byte-preserving branch / path_glob / manifest ID / local path / include fields
    (typed serialization surface, backed by A1/073.001-T);
-   the `execute.py` WARNING/error composition byte-preserves the provenance fields it
-   actually composes — branch / path_glob / manifest ID — while removing only structured
-   URL/typed credentials (error-output provenance-preservation finding, backed by
-   BI/073.008-T); local path / include are NOT composed into the WARNING/error sink and are
-   proven byte-preserved at the typed surface by A1/073.001-T, not at WE (Finding P1,
-   2026-09-16 sink-scope honesty correction);
+   the `execute.py` WARNING/error log byte-preserves these fields ONLY in
+   its controlled typed `source_key=%s` argument and metadata (BI/073.008-T),
+   NOT in untrusted `error=%s` / traceback prose, where standalone
+   recognized credentials must instead be scrubbed even if their bytes
+   resemble known provenance; local path/include are NOT structured WE
+   fields and are proven at A1/073.001-T instead;
    and `create_staging_job` RAISES a typed non-leaking exception (no whole-key
    sentinel, no raw-key echo) when a compound source key is passed without
    `sanitized_source`. Backed by A1/073.001-T (typed-field preservation),
    BI/073.008-T (error-output provenance preservation), and
    A2/073.002-T (raise-on-omission).
 8. **Benign query byte-preservation + bare-URL-only compatibility (operator contract,
-   Finding P1/P2, 2026-09-16):** the string sanitizer's query filtering is SURGICAL raw-token
-   removal (not `parse_qsl`+`urlencode` round-trip), so benign query parts are preserved
-   BYTE-FOR-BYTE — representative percent spelling (`%20` stays `%20`, not `+`; literal `%25`
-   intact), `&` separators, and blank/valueless params (a valueless `flag` does not gain `=`)
-   — on both the string and typed (live default-stdout) paths; and `sanitize_source`
+   Finding P1/P2, 2026-09-16; typed pre-pass P1, 2026-09-24):** the string sanitizer
+   AND the typed `_strip_reversed_query_credentials` pre-pass filter raw spans
+   without `parse_qsl`+`urlencode` re-serialization. A credential-free typed
+   query/fragment is byte-identical (`?a=1;b=2`, `?a=1&&b=2`,
+   empty/valueless tokens, `%20`, `%25`, untouched `?`/`#`, raw
+   `HOST:080` spelling); mixed
+   credentials are removed (including reversed/duplicated `?token=SECRET`)
+   with only ONE immediately adjacent delimiter removed per token, retaining
+   every surviving benign raw span including fragment text. Require B1 direct
+   pre-pass + `_sanitize_url_field` assertions; CI tests live emitted typed
+   `metadata.source`. Never claim full-query identity when deleting a
+   credential. `sanitize_source`
    compatibility is BARE URL ONLY — a bare local filesystem path (POSIX/UNC/Windows-drive)
    and a `file://` input are PRESERVED byte-for-byte (the `<local-path-redacted>` sentinel is
    REMOVED; local paths are preserved provenance). Backed by 073.003-T (helper-level query +
@@ -1355,9 +1479,113 @@ rubric; the anchor slot is recorded, never silently dropped.
   surfaced during cycle 4. **No in-scope P1 remains unresolved or silently deferred.**
 
 <!-- plan-review-attempt: 5 -->
+
+## Plan Review — 2026-09-24 bounded typed-pre-pass correction
+
+dispatch_mode: multi-agent
+decision: FAIL
+
+**Routing disclosure:** Reviewer subagent dispatch worked (`TOOL_OK:
+reviewer-subagent-dispatch`). The configured `openai/gpt-5.6-sol` anchor
+was NOT explicitly dispatched in this bounded pass; the Architecture
+Strategist ran on its harness-default route. Do not represent this as an
+anchor-model review or use it for a PASS gate. A future authorized passing
+re-review must either dispatch the configured anchor or explicitly declare
+model-routing degradation with its fallback.
+
+**Gate rationale:** The newly authorized correction is specified in
+073.002-T/073.003-T/073.009-T and in the authoritative plan. Direct pre-pass
+tests now distinguish credential-free byte identity from mixed credential
+removal; string and typed sanitizers must retain benign query, fragment, and
+raw host/port bytes. The five-test-to-one-production graph and 064-S seven-item
+manifest remain unchanged. Plan hardening is required (security-sensitive
+credential redaction) and the existing Plan Hardening section applies. However,
+the review surfaced an unresolved P1 at the already-planned execute.py
+WARNING/error composition boundary. Per the operator's one bounded correction
+authorization, STOP here rather than extending this cycle to a different
+security-sink change or presenting the plan as harvest/Ship-ready.
+
+| Persona | Coverage / result |
+|---|---|
+| Constitution Reviewer | Dispatched; P1 raw-authority identity and P2 first-token separator tests corrected in the current 073.002/003 and plan before this gate; no remaining finding on the bounded typed correction. |
+| Python Reviewer | Dispatched; raw-authority reconstruction gap corrected in the current artifacts. |
+| Scope Boundary Auditor | Dispatched; P2 concern that fragments are not ordinary query parameters. Resolution: the existing typed pre-pass already scans query-like fragment tokens for recognized credential names; the authorized correction preserves that *existing* leak guard without introducing general fragment/content/path classification, and preserves all benign fragment bytes. |
+| Learnings Researcher | Dispatched; medium-confidence URL-address-safety learning is not applicable to raw query serialization; no directly relevant contrary compound guidance. |
+| Architecture Strategist | Dispatched; P1 unresolved: the pre-existing 073.002-T instruction to confine `_redact_query_param_fragments` to URL/typed-secret fields could disable standalone recognized credential query-fragment scrubbing in untrusted exception messages at the live error sink. |
+| Security Lens Reviewer | Dispatched; independently confirms that same P1. P2: reachable `BaseException.__notes__` are copied unchanged into `_log.exception` traceback text despite the plan treating EX notes as an out-of-scope unreachable residual; record for separate scope triage, not silently claim universal WARNING safety. |
+
+**Blocking P1 (NOT REMEDIATED by this bounded correction):** in
+`src/docline/elt/execute.py`, `_scrub_exception_message` currently calls
+`_redact_query_param_fragments(message)` on free-form error text; Part A″ of
+073.002-T directs confining this scrubber to URL/typed-secret fields to avoid
+over-redacting branch/path_glob/ID provenance. A free-form exception containing
+only `?token=SECRET` and no complete configured URL would then bypass the
+recognized-name guard and leak through `_log.exception`. Preserve both
+structured-provenance bytes and standalone credential scrubbing in a separately
+authorized, test-first same-sink correction (existing 073.008-T and 073.002-T
+are the relevant test/code units). Do not disable the fallback or broaden
+redaction into document body or URL path. The P2 `__notes__` observation
+requires separate scope adjudication against existing P-021 residuals.
+
+**Risk / boundary:** ProposedAction: revise only current 064-S/073-F planning
+artifacts for typed URL query/fragment byte preservation; ActionRisk: high
+(credential-redaction contract); approval_required: yes — operator's bounded
+authorization received; ActionResult: blocked at plan-review FAIL before
+commit or Ship handoff. No source/test/config edits, build, lint, claim,
+push, PR, or destructive action. Runtime verification and operational closure
+remain Ship-owned after a future passing plan gate. Prior accepted H4 job-ID
+oracle, exact-match unknown-name residual, and over-cap name-decoding residual
+are unchanged.
+
+<!-- plan-review-attempt: 6 -->
 <!-- remediation-cycle: 4 -->
 <!-- operator-authorized-exceptional-cycle: 064-S -->
 <!-- TOOL_DEGRADED: reviewer-subagent-dispatch -->
 <!-- TOOL_DEGRADED: anchor-review-model -->
 <!-- adversarial-review-cycle-4-verdict: PASS -->
 <!-- HEAD-at-cycle-4-staging: cb34426 -->
+
+## Plan Review — 2026-09-24 bounded error-output sink correction
+
+dispatch_mode: same-model-declared-degradation
+decision: PASS
+
+**Tool/capability record:** `TOOL_DEGRADED: backlogit MCP — registered CLI
+fallback: backlogit` (`backlogit sync` succeeded before semantic reads);
+`TOOL_OK: reviewer-subagent-dispatch` (five personas independently
+dispatched); `TOOL_DEGRADED: model-specific-review-routing — configured
+anchor_review was not explicitly dispatchable here; same-model rubric
+fallback, no cross-model/anchor claim`. Learnings Researcher checked
+`docs/compound/` (12 files; confidence low, no matching precedent).
+Agent-Native Parity Reviewer not triggered (no agent-facing/MCP contract
+change). No test/build/lint run by Stage.
+
+| Persona | Bounded finding / disposition |
+|---|---|
+| Constitution Reviewer | P2: prior additive-only partial-landing claim was false under exact-match vocabulary; risk text corrected to explicitly acknowledge `token_v2` accepted residual and require atomic release. No remaining P0/P1. |
+| Python Reviewer | P1: clean-message `ExceptionGroup` can leak a child through formatted traceback; P2: raising `__str__` may break the error handler. Both addressed in 073.002-T Part A″ / 073.008-T live RED criteria and Unit A2/BI, with recursive group scrub or detached non-leaking generic typed fallback, and incomplete-job verification. Narrow follow-up returned no remaining findings. |
+| Scope Boundary Auditor | PASS: same 073.008-T (test) → 073.002-T (single production unit), no new task/manifest edge, no document-body or URL/local-path scanning. |
+| Learnings Researcher | Low confidence / no relevant compound solutions; no contrary precedent. |
+| Architecture Strategist | PASS: controlled `sanitize_source_key(config)` log argument/metadata is separated from untrusted `error=%s` / formatted `exc_info`; standalone recognized `?token=SECRET` fallback remains active without configured URL. |
+| Security Lens Reviewer | PASS: live failure-sink coverage includes URL/query credentials, independently synthesized untrusted fragments, cause/context/notes and group children, with no unsafe raw reinsertion. Narrow follow-up returned no remaining findings. |
+
+**Verdict rationale:** The earlier attempt-6 P1 is closed WITHOUT confining
+`_redact_query_param_fragments` away from untrusted exception text. Byte
+preservation applies to the *controlled* `source_key` / metadata fields
+only; an identical byte sequence in an exception message remains untrusted
+and may be redacted or replaced by a non-leaking typed failure. The
+reachable `__notes__` and formatted `ExceptionGroup` child risks are now
+explicit test-first requirements in the same existing WARNING/error task.
+`tests/elt/test_elt_real_execution.py` manifest-ID-as-secret assertions
+must be reconciled using distinct benign typed IDs and synthetic access
+credentials; they cannot be blindly retained or removed. The existing
+`## Plan Hardening` threat/containment section covers the security signal,
+updated with the additional untrusted exception boundary. Earlier typed
+pre-pass work, accepted upstream source-data boundary, seven-item 064-S
+manifest, and five-test-to-one-production DAG are unchanged. No new
+unresolved P0/P1 was found in this bounded review. Runtime verification
+and operational closure remain Ship-owned; PASS gates planning only and
+does not imply implementation/tests passed.
+
+<!-- plan-review-attempt: 7 -->
+<!-- operator-authorized-exceptional-cycle: 064-S error-sink -->
