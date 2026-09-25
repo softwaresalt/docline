@@ -564,12 +564,18 @@ Two distinct credential-exposure gaps remain on the ELT staging surface after
   gain `=`). This is the honest composition gate: it
   proves the A2+B2 composition that no single stream-scoped test proves alone.
   At this REAL sink, assert extracted JSON `metadata.source` actually embeds
-  the typed URL for WebCrawlSource / ManifestUrlSource before claiming typed
-  query preservation: credential-free `?a=1;b=2` and `?a=1&&b=2`
-  MUST survive byte-identically (red on HEAD). In separate mixed-credential
-  query/fragment cases assert that credential values (including an embedded
-  or duplicated `?token=SECRET`) disappear while benign `;`, repeated `&`,
-  `flag`/`x=`, `%20`/`%25` and fragment text remain unchanged except for
+  URL for WebCrawlSource / ManifestUrlSource before claiming live-sink query
+  preservation: credential-free `?a=1;b=2` and `?a=1&&b=2`
+  MUST survive byte-identically (GREEN on HEAD at this live sink;
+  MUST NOT REGRESS after 073.002-T). On HEAD `orchestrate_fetch` passes
+  `build_source_key(config)` to `create_staging_job`, NOT
+  `sanitize_source_key(config)`; this live default-path fixture does not
+  exercise the typed pre-pass until 073.002-T wires it in. Direct typed
+  helper/pre-pass fixtures in B1/073.003-T ARE RED on HEAD. In separate
+  mixed-credential query/fragment cases assert that credential values
+  (including an embedded or duplicated `?token=SECRET`) disappear while
+  benign `;`, repeated `&`, `flag`/`x=`, `%20`/`%25` and fragment text
+  remain unchanged except for
   one adjacent delimiter at each removed token. Never assert whole-query
   identity after removing a credential; never credit a source field that
   stdout does not actually emit.
@@ -813,8 +819,8 @@ as rendered by the WE `exc_info` traceback (not a separate thrown-error sink).
 
 | Source kind | M | PM | SO (live) | WE (live) | EX |
 |---|---|---|---|---|---|
-| WebCrawlSource (userinfo + `?token=`) | inherited-063-S; A1 in-memory metadata.source + reconstructed `model_dump` JSON (helper); B1 typed pre-pass `;`/`&&` no-credential identity and mixed query/fragment survivor bytes | inherited-063-S | **073.007-T** (userinfo subset) + **073.009-T** (A2+B2 composition + typed `metadata.source` query/fragment byte preservation) — live `cli.py:381` | **BI/073.008-T** (live WARNING: new vocabulary + controlled source_key provenance bytes; untrusted message/chain/notes scrubbed, all four kinds); B1 matcher (helper unit) | folded into BI/WE traceback; no outward throw |
-| ManifestUrlSource (userinfo + `?token=`) | inherited-063-S; A1 in-memory metadata.source + reconstructed `model_dump` JSON (helper); B1 typed pre-pass helper | inherited-063-S | **073.007-T** (userinfo subset) + **073.009-T** (A2+B2 composition + typed URL query-byte proof when emitted) — live `cli.py:381` | **BI/073.008-T** (typed manifest ID in source_key; untrusted text/notes scrubbed) | folded into BI/WE; no outward throw |
+| WebCrawlSource (userinfo + `?token=`) | inherited-063-S; A1 in-memory metadata.source + reconstructed `model_dump` JSON (helper); B1 direct typed pre-pass `;`/`&&` no-credential identity RED on HEAD and mixed query/fragment survivor bytes | inherited-063-S | **073.007-T** (userinfo subset) + **073.009-T** (A2+B2 composition + live `metadata.source` query/fragment preservation; no-credential `;`/`&&` GREEN on HEAD, MUST NOT REGRESS after typed wiring) — live `cli.py:381` | **BI/073.008-T** (live WARNING: new vocabulary + controlled source_key provenance bytes; untrusted message/chain/notes scrubbed, all four kinds); B1 matcher (helper unit) | folded into BI/WE traceback; no outward throw |
+| ManifestUrlSource (userinfo + `?token=`) | inherited-063-S; A1 in-memory metadata.source + reconstructed `model_dump` JSON (helper); B1 direct typed pre-pass `;`/`&&` no-credential identity RED on HEAD | inherited-063-S | **073.007-T** (userinfo subset) + **073.009-T** (A2+B2 composition + live URL query-byte proof when emitted; no-credential `;`/`&&` GREEN on HEAD, MUST NOT REGRESS after typed wiring) — live `cli.py:381` | **BI/073.008-T** (typed manifest ID in source_key; untrusted text/notes scrubbed) | folded into BI/WE; no outward throw |
 | GitHubRepoSource (token in `repo_url`) | inherited-063-S; A1 in-memory metadata.source + reconstructed `model_dump` JSON (helper) | inherited-063-S | **073.007-T** (userinfo subset) + **073.009-T** (A2+B2 composition) — live `cli.py:381` | **BI/073.008-T** (typed branch/glob in source_key; untrusted text/chain scrubbed) | folded into BI/WE; no outward throw |
 | ManifestGitSource (token in `url`) | inherited-063-S; A1 in-memory metadata.source + reconstructed `model_dump` JSON (helper) | inherited-063-S | **073.007-T** (userinfo subset) + **073.009-T** (A2+B2 composition) — live `cli.py:381` | **BI/073.008-T** (typed ID/branch in source_key; untrusted text/notes scrubbed) | folded into BI/WE; no outward throw |
 | ~~Path-embedded secret (any URL kind)~~ | — | — | **REJECTED / RETIRED (2026-09-15 operator decision)** — Docline does NOT redact URL paths; ordinary paths are preserved byte-for-byte. AI/073.007-T instead asserts benign-path preservation. Former C1/C2 path grammar retired. | — | n/a |
@@ -1173,9 +1179,13 @@ FINAL Operator Contract and the deliberation's H1):
    credentials are removed (including reversed/duplicated `?token=SECRET`)
    with only ONE immediately adjacent delimiter removed per token, retaining
    every surviving benign raw span including fragment text. Require B1 direct
-   pre-pass + `_sanitize_url_field` assertions; CI tests live emitted typed
-   `metadata.source`. Never claim full-query identity when deleting a
-   credential. `sanitize_source`
+   pre-pass + `_sanitize_url_field` assertions; CI tests live emitted
+   `metadata.source`: the live no-credential `;`/`&&` cases are GREEN on
+   HEAD and MUST NOT REGRESS after typed wiring, while B1's direct
+   typed-pre-pass cases are RED on HEAD. On HEAD the default path passes
+   `build_source_key(config)`, not `sanitize_source_key(config)`; do not
+   claim the live sink currently exercises the typed pre-pass. Never claim
+   full-query identity when deleting a credential. `sanitize_source`
    compatibility is BARE URL ONLY — a bare local filesystem path (POSIX/UNC/Windows-drive)
    and a `file://` input are PRESERVED byte-for-byte (the `<local-path-redacted>` sentinel is
    REMOVED; local paths are preserved provenance). Backed by 073.003-T (helper-level query +
