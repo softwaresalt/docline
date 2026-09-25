@@ -957,8 +957,13 @@ policies. Added in remediation cycle 2 (finding #6).
   corrects that trigger to a **keyed construction over the RAW canonical source key**
   (HMAC over `build_source_key(config)`, NOT the sanitized key — which would retain
   same-structure collisions) with explicit key-management and cache-migration
-  requirements. No other deviation. This is
-  the sole residual; no principle is violated.
+  requirements. H4/H4-C2 is the sole **constitutional deviation** here — no principle
+  is violated — but it is **not** the only residual. The documented four-file
+  granularity deviation below, and the product-security residuals catalogued in the
+  cycle-4 *Residual / out-of-scope* inventory (bounded-decoder false-positive after the
+  5-layer cap, the intentionally-unredacted exact-match variants, and the still-open
+  two-adjacent-credential-token shared-separator ownership rule), remain separately
+  accepted or open. That inventory is the authoritative residual list.
 * **Four-file single production task (granularity deviation, documented)** — the merged
   production task 073.002-T spans FOUR files (`staging.py`, `orchestrate.py`,
   `source_keys.py`, `execute.py`), exceeding the nominal <3-file granularity guideline.
@@ -1347,7 +1352,7 @@ explicit accepted risk or out-of-scope P-021)
 
 | Persona | Result |
 |---|---|
-| Constitution Reviewer | PASS — new `## Constitution Check` maps I–XI + P-001/003/005/006/010/016/021; XI (merge) correctly deferred to Ship; sole residual (H4) justified. |
+| Constitution Reviewer | PASS — new `## Constitution Check` maps I–XI + P-001/003/005/006/010/016/021; XI (merge) correctly deferred to Ship; sole **constitutional** residual (H4) justified (product-security residuals catalogued separately in *Residual / out-of-scope*). |
 | Python Reviewer | PASS — decode-before-segmentation is a pure-function contract over stdlib `unquote`; keyword-only param and fail-closed sentinels sound; new integration tests are test-domain only. |
 | Scope Boundary Auditor | PASS — two added tasks are same-contract live-sink coverage (not new scope); no related stash entry absorbed; each new task within 2-hour/width rule. |
 | Learnings Researcher | PASS — provenance corrected (PR #199 impl / #200 closure) consistently across plan + memory; no contradiction with 063-S closure. |
@@ -1482,8 +1487,21 @@ rubric; the anchor slot is recorded, never silently dropped.
   transforming past the 5-layer decode cap fails closed (redacted) — accepted by contract.
 * Intentionally-unredacted-variant residual (exact-match vocabulary): suffixed/prefixed
   real-credential variants (`token_v2`, `access_token2`, `my_api_key`, `x-amz-credential-v4`)
-  are preserved by design absent explicit product support (Finding 7).
-* Archived-stash→work-item tool pointer — backlogit limitation; durable prose traceability.
+  are preserved by design absent explicit product support (Finding 7). Trade-off
+  unchanged: current staging prefix matching still protects the recognized credential
+  names; a future exact-match vocabulary would deliberately stop matching these variants.
+* **OPEN (P2, follow-up):** two-adjacent-credential-token shared-separator ownership rule.
+  When two recognized credential tokens are separated by a single delimiter (e.g. two
+  credential params sharing one `&`/`;`), the one-adjacent-delimiter removal rule does not
+  yet specify which side "owns" that shared delimiter once both tokens are redacted. This
+  is a planning-contract gap, not resolved here; it needs a deterministic pinned example
+  before `073.002-T`/`073.003-T` implementation begins (tracked for Stage). No product
+  contract change — structured-credential-only redaction, no arbitrary path/document scans.
+* Archived-stash→work-item tool pointer — the `harvested_artifact_id` pointer is now
+  backfilled into the archived JSONL records (both `0F1A653C` and `06A59B1D` → `073-F`),
+  so structured lineage exists in the archive alongside the durable prose traceability. The
+  only residual limitation is that backlogit's `stash archive` CLI cannot backfill the field
+  on an already-archived record, so the backfill was a manual edit followed by `backlogit sync`.
 * `79BF0AEC`, `E89DC095`, `9D44B6F3`, `E7878B1B`, `95BD0DC7`, `709BDB53` — distinct-contract
   P-021 entries, remain active/archived, out of 064-S scope. No new different-contract issue
   surfaced during cycle 4. **No in-scope P1 remains unresolved or silently deferred.**
