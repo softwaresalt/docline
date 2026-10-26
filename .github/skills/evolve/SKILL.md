@@ -1,4 +1,5 @@
 ---
+name: evolve
 description: "Promote mature instincts into reviewed learned instructions or skills while preserving evidence in .autoharness/continuous-learning/"
 ---
 
@@ -6,6 +7,8 @@ description: "Promote mature instincts into reviewed learned instructions or ski
 
 Promote a mature instinct into a discoverable learned artifact such as a
 `learned-*` instruction or skill draft.
+
+Follow `.github/instructions/continuous-learning.instructions.md` for capture, hygiene, and promotion threshold rules.
 
 ## When to Use
 

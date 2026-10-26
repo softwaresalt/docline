@@ -5,8 +5,9 @@ maturity: stable
 tools: read, search, terminal, edit
 max_subagent_tier: 3
 reasoning_effort: "high"
-model_provider: "anthropic"
-model_family: "claude-opus-4.8"
+model_provider: "google"
+model_family: "gemini-4-argon"
+context_tier: "long_context"
 subagent_depth: 0
 ---
 

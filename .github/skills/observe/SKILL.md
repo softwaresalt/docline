@@ -1,4 +1,5 @@
 ---
+name: observe
 description: "Capture recurring workflow observations into .autoharness/continuous-learning/ without relying on environment-specific hooks"
 ---
 
@@ -6,6 +7,8 @@ description: "Capture recurring workflow observations into .autoharness/continuo
 
 Capture a normalized observation about recurring agent or workflow behavior so it
 can later be clustered into reusable instincts.
+
+Follow `.github/instructions/continuous-learning.instructions.md` for capture, hygiene, and promotion threshold rules.
 
 ## When to Use
 

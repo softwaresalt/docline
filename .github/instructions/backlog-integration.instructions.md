@@ -20,6 +20,8 @@ This workspace uses **backlogit** for structured backlog management. All agents 
 
 Use these operations for all backlog interactions. The operation names are abstract — the actual tool names and parameters are mapped through the backlog registry.
 
+**Surface choice (P-012)**: an operation may declare an MCP tool, a CLI command, or both. Every declared surface is an equal supported surface: use either declared surface that works without trying the other first, report `TOOL_OK: {operation} via {mcp|cli}`, report `TOOL_DEGRADED` naming the failed and selected surfaces when the selected one fails and another declared surface works, and halt with `TOOL_UNAVAILABLE: {operation}` when none works. Never substitute an undeclared command or a filesystem or cache edit.
+
 ### Core Operations (All Tools)
 
 | Operation | MCP Tool | CLI Command | Purpose |
@@ -45,48 +47,48 @@ Use these operations for all backlog interactions. The operation names are abstr
 
 | Operation | MCP Tool | CLI Command | Purpose |
 |---|---|---|---|
-| `ack_hook_events` | `backlogit_ack_hook_events` | `` | ack hook events |
+| `ack_hook_events` | `backlogit_ack_hook_events` | `backlogit hooks ack --consumer-id {{consumer_id}} --seq {{seq}}` | ack hook events |
 | `add_dependency` | `backlogit_add_dependency` | `backlogit dep add {{task_id}} {{depends_on}} --type {{dep_type}}` | add dependency |
-| `add_link` | `backlogit_add_link` | `backlogit link add {{source_id}} {{target_id}} --type {{link_type}}` | add link |
-| `add_to_shipment` | `backlogit_add_to_shipment` | `` | add to shipment |
+| `add_link` | `backlogit_add_link` | `backlogit link add {{source_id}} {{target_id}} {{link_type}}` | add link |
+| `add_to_shipment` | `backlogit_add_to_shipment` | `backlogit shipment add {{shipment_id}} {{item_id}}` | add to shipment |
 | `adopt_item` | `backlogit_adopt_item` | `backlogit adopt {{item_id}} --parent {{new_parent_id}}` | adopt item |
-| `append_comment` | `backlogit_append_comment` | `` | append comment |
+| `append_comment` | `backlogit_append_comment` | `backlogit comment add {{id}} --actor {{actor}} --comment {{comment}}` | append comment |
 | `archive_item` | `backlogit_archive_item` | `backlogit archive {{id}}` | archive item |
 | `claim_shipment` | `backlogit_claim_shipment` | `backlogit shipment claim {{id}}` | claim shipment |
 | `cleanup_checkpoints` | `backlogit_cleanup_checkpoints` | `backlogit checkpoint cleanup` | cleanup checkpoints |
-| `create_checkpoint` | `backlogit_create_checkpoint` | `` | create checkpoint |
+| `create_checkpoint` | `backlogit_create_checkpoint` | `backlogit checkpoint create --state-dump {{state_dump}}` | create checkpoint |
 | `create_shipment` | `backlogit_create_shipment` | `backlogit shipment create --title {{title}} --items {{items}}` | create shipment |
-| `deliberate` | `backlogit_deliberate` | `` | deliberate |
+| `deliberate` | `backlogit_deliberate` | `backlogit deliberate {{stash_id}}` | deliberate |
 | `doctor` | `backlogit_doctor` | `backlogit doctor` | doctor |
 | `export_command_map` | `backlogit_export_command_map` | `` | export command map |
 | `fetch_stash` | `backlogit_fetch_stash` | `backlogit stash list` | fetch stash |
 | `get_checkpoint` | `backlogit_get_checkpoint` | `backlogit checkpoint get {{filename}}` | get checkpoint |
 | `get_dependencies` | `backlogit_get_dependencies` | `backlogit dep list {{task_id}}` | get dependencies |
 | `get_links` | `backlogit_get_links` | `backlogit link list {{id}}` | get links |
-| `get_metadata_catalog` | `backlogit_get_metadata_catalog` | `` | get metadata catalog |
+| `get_metadata_catalog` | `backlogit_get_metadata_catalog` | `backlogit metadata catalog` | get metadata catalog |
 | `get_queue` | `backlogit_get_queue` | `backlogit queue view` | get queue |
 | `get_shipment` | `backlogit_get_shipment` | `backlogit shipment get {{id}}` | get shipment |
 | `get_version` | `backlogit_get_version` | `` | get version |
-| `get_wit_metadata` | `backlogit_get_wit_metadata` | `` | get wit metadata |
+| `get_wit_metadata` | `backlogit_get_wit_metadata` | `backlogit metadata wit {{type}}` | get wit metadata |
 | `harvest_stash` | `backlogit_harvest_stash` | `backlogit stash harvest` | harvest stash |
 | `list_checkpoints` | `backlogit_list_checkpoints` | `backlogit checkpoint list` | list checkpoints |
 | `list_shipments` | `backlogit_list_shipments` | `backlogit shipment list` | list shipments |
-| `list_templates` | `backlogit_list_templates` | `` | list templates |
-| `list_types` | `backlogit_list_types` | `` | list types |
+| `list_templates` | `backlogit_list_templates` | `backlogit metadata templates` | list templates |
+| `list_types` | `backlogit_list_types` | `backlogit metadata types` | list types |
 | `log_telemetry` | `backlogit_log_telemetry` | `` | log telemetry |
 | `merge_sync` | `backlogit_merge_sync` | `` | merge sync |
-| `poll_hook_events` | `backlogit_poll_hook_events` | `` | poll hook events |
+| `poll_hook_events` | `backlogit_poll_hook_events` | `backlogit hooks poll --consumer-id {{consumer_id}}` | poll hook events |
 | `query` | `backlogit_query_sql` | `backlogit query {{sql}}` | query |
 | `remove_dependency` | `backlogit_remove_dependency` | `backlogit dep remove {{task_id}} {{depends_on}}` | remove dependency |
-| `remove_link` | `backlogit_remove_link` | `backlogit link remove {{source_id}} {{target_id}} --type {{link_type}}` | remove link |
+| `remove_link` | `backlogit_remove_link` | `backlogit link remove {{source_id}} {{target_id}} {{link_type}}` | remove link |
 | `resolve_checkpoint` | `backlogit_resolve_checkpoint` | `backlogit checkpoint resolve {{filename}}` | resolve checkpoint |
 | `return_blocked` | `backlogit_return_blocked` | `backlogit shipment return-blocked --shipment {{shipment_id}} --item {{item_id}} --reason {{reason}}` | return blocked |
-| `save_memory` | `backlogit_save_memory` | `` | save memory |
+| `save_memory` | `backlogit_save_memory` | `backlogit memory save --key {{key}} --summary {{summary}}` | save memory |
 | `ship_shipment` | `backlogit_ship_shipment` | `backlogit shipment ship {{id}}` | ship shipment |
-| `stash` | `backlogit_stash` | `backlogit stash add --text {{text}}` | stash |
-| `stash_archive` | `backlogit_stash_archive` | `` | stash archive |
-| `stash_edit` | `backlogit_stash_edit` | `` | stash edit |
-| `stash_get` | `backlogit_stash_get` | `` | stash get |
+| `stash` | `backlogit_stash` | `backlogit stash add -- {{text}}` | stash |
+| `stash_archive` | `backlogit_stash_archive` | `backlogit stash archive {{stash_id}}` | stash archive |
+| `stash_edit` | `backlogit_stash_edit` | `backlogit stash edit {{stash_id}}` | stash edit |
+| `stash_get` | `backlogit_stash_get` | `backlogit stash get {{stash_id}}` | stash get |
 | `stash_remove` | `backlogit_stash_remove` | `` | stash remove |
 | `sync_index` | `backlogit_sync_index` | `backlogit sync` | sync index |
 | `telemetry_harvest` | `backlogit_telemetry_harvest` | `` | telemetry harvest |

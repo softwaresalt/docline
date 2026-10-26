@@ -22,6 +22,12 @@ operations:
       parent_id: "parent_id"
       labels: "labels"
       assignee: "assigned_to"
+    # NOTE: backlogit 1.8.0's create_task surface (backlogit_create_item /
+    # `backlogit add`) has no size/complexity/size_source/size_ruleset_version
+    # parameters. Structured sizing metadata is applied via a follow-up
+    # update_task call (or two -- see update_task below), never at creation
+    # time. Do not add sizing params here without confirming the installed
+    # backlogit version's create surface actually accepts them.
 
   list_tasks:
     mcp_tool: "backlogit_list_items"
@@ -49,6 +55,17 @@ operations:
       labels: "labels"
       assignee: "assigned_to"
       priority: "priority"
+      size: "size"
+      complexity: "complexity"
+      size_source: "size_source"
+      size_ruleset_version: "size_ruleset_version"
+    # NOTE: backlogit 1.8.0 enforces two mutually exclusive, body-preserving
+    # mutation seams that cannot be combined with each other or with any other
+    # field update in one call:
+    #   1. size (+ size_source, size_ruleset_version together) -- one call.
+    #   2. complexity -- a separate call.
+    # Applying both size and complexity to a task therefore requires two
+    # update_task invocations, never one combined invocation.
 
   move_task:
     mcp_tool: "backlogit_move_item"
@@ -89,6 +106,7 @@ operations:
 
   append_comment:
     mcp_tool: "backlogit_append_comment"
+    cli_command: "backlogit comment add {{id}} --actor {{actor}} --comment {{comment}}"
     params:
       task_id: "item_id"
       actor: "actor"
@@ -101,12 +119,14 @@ operations:
 
   save_memory:
     mcp_tool: "backlogit_save_memory"
+    cli_command: "backlogit memory save --key {{key}} --summary {{summary}}"
     params:
       key: "key"
       summary: "summary"
 
   create_checkpoint:
     mcp_tool: "backlogit_create_checkpoint"
+    cli_command: "backlogit checkpoint create --state-dump {{state_dump}}"
     params:
       state_dump: "state_dump"
 
@@ -134,11 +154,13 @@ operations:
 
   poll_hook_events:
     mcp_tool: "backlogit_poll_hook_events"
+    cli_command: "backlogit hooks poll --consumer-id {{consumer_id}}"
     params:
       consumer_id: "consumer_id"
 
   ack_hook_events:
     mcp_tool: "backlogit_ack_hook_events"
+    cli_command: "backlogit hooks ack --consumer-id {{consumer_id}} --seq {{seq}}"
     params:
       consumer_id: "consumer_id"
       seq: "seq"
@@ -221,6 +243,7 @@ operations:
 
   add_to_shipment:
     mcp_tool: "backlogit_add_to_shipment"
+    cli_command: "backlogit shipment add {{shipment_id}} {{item_id}}"
     params:
       shipment_id: "shipment_id"
       item_id: "item_id"
@@ -237,7 +260,7 @@ operations:
 
   stash:
     mcp_tool: "backlogit_stash"
-    cli_command: "backlogit stash add --text {{text}}"
+    cli_command: "backlogit stash add -- {{text}}"
     params:
       text: "text"
       kind: "kind"
@@ -245,6 +268,7 @@ operations:
 
   stash_edit:
     mcp_tool: "backlogit_stash_edit"
+    cli_command: "backlogit stash edit {{stash_id}}"
     params:
       stash_id: "stash_id"
       text: "text"
@@ -253,6 +277,7 @@ operations:
 
   stash_get:
     mcp_tool: "backlogit_stash_get"
+    cli_command: "backlogit stash get {{stash_id}}"
     params:
       stash_id: "stash_id"
 
@@ -263,6 +288,7 @@ operations:
 
   stash_archive:
     mcp_tool: "backlogit_stash_archive"
+    cli_command: "backlogit stash archive {{stash_id}}"
     params:
       stash_id: "stash_id"
 
@@ -290,6 +316,7 @@ operations:
 
   deliberate:
     mcp_tool: "backlogit_deliberate"
+    cli_command: "backlogit deliberate {{stash_id}}"
     params:
       stash_id: "stash_id"
       title: "title"
@@ -303,7 +330,7 @@ operations:
 
   add_link:
     mcp_tool: "backlogit_add_link"
-    cli_command: "backlogit link add {{source_id}} {{target_id}} --type {{link_type}}"
+    cli_command: "backlogit link add {{source_id}} {{target_id}} {{link_type}}"
     params:
       source_id: "source_id"
       target_id: "target_id"
@@ -311,7 +338,7 @@ operations:
 
   remove_link:
     mcp_tool: "backlogit_remove_link"
-    cli_command: "backlogit link remove {{source_id}} {{target_id}} --type {{link_type}}"
+    cli_command: "backlogit link remove {{source_id}} {{target_id}} {{link_type}}"
     params:
       source_id: "source_id"
       target_id: "target_id"
@@ -344,17 +371,21 @@ operations:
 
   get_metadata_catalog:
     mcp_tool: "backlogit_get_metadata_catalog"
+    cli_command: "backlogit metadata catalog"
 
   get_wit_metadata:
     mcp_tool: "backlogit_get_wit_metadata"
+    cli_command: "backlogit metadata wit {{type}}"
     params:
       type: "type"
 
   list_types:
     mcp_tool: "backlogit_list_types"
+    cli_command: "backlogit metadata types"
 
   list_templates:
     mcp_tool: "backlogit_list_templates"
+    cli_command: "backlogit metadata templates"
 
   get_version:
     mcp_tool: "backlogit_get_version"
@@ -405,6 +436,10 @@ field_mapping:
   assignee: "assigned_to"
   priority: "priority"
   artifact_type: "artifact_type"
+  size: "size"
+  complexity: "complexity"
+  size_source: "size_source"
+  size_ruleset_version: "size_ruleset_version"
 
 status_values:
   queued: "queued"
@@ -435,3 +470,5 @@ features:
   discovery: true
   lifecycle_hygiene: true
   sizing: true
+  # Opt in only when the installed backlogit stamps the claim marker (154-S producer, scheduler-baseline-marker/v1); see P-002.8.
+  scheduler_baseline_claim: false

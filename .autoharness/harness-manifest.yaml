@@ -1,9 +1,9 @@
-schema_version: 1.0.0
+schema_version: 1.1.0
 installed_at: '2026-05-30T00:12:00-07:00'
-autoharness_version: 1.5.0
+autoharness_version: 1.6.0
 autoharness_home: <local-autoharness-home>
-profile_hash: cdb72306c40f07c75d18d1a1ca12a74a596a52fbdfacc06d6f3f9b28f891d6aa
-config_hash: 0d3d1b239f3f2527217b5e4f6ca5138e5bf06c78bc6cc5c34928dcd212026cd3
+profile_hash: c755322b4b5ac1511e4bff03a78d85a9cffcb8b05e21d8a4091b3d0a68db0bb9
+config_hash: d342c6a4a3c320ce0f007a4326562ae19879cdfc671f016dc58e86245cb72419
 install_preset: full
 primary_stack_pack: mcp-server
 stack_packs:
@@ -133,132 +133,132 @@ artifacts:
   artifact_type: config
   primitive: 9
   template: backlog/registries/backlogit.registry.yaml
-  checksum: 014dbfc9a27c79d3306e4469df0313a5962ee8a213b3077951f28f5f1982b649
+  checksum: f1fe8ea86d5da6b09e20cdddbad79f53159dd518847a3ce7516b78da7b4b41d8
 - path: .autoharness/config.yaml
   artifact_type: config
   primitive: 9
   template: harness-config.yaml.tmpl
-  checksum: 0d3d1b239f3f2527217b5e4f6ca5138e5bf06c78bc6cc5c34928dcd212026cd3
+  checksum: d342c6a4a3c320ce0f007a4326562ae19879cdfc671f016dc58e86245cb72419
 - path: .autoharness/workspace-profile.yaml
   artifact_type: config
   primitive: 9
   template: generated
-  checksum: cdb72306c40f07c75d18d1a1ca12a74a596a52fbdfacc06d6f3f9b28f891d6aa
+  checksum: c755322b4b5ac1511e4bff03a78d85a9cffcb8b05e21d8a4091b3d0a68db0bb9
 - path: .github/agents/_orchestrator.agent.md
   artifact_type: agent
   primitive: 5
   template: agents/_orchestrator.agent.md.tmpl
-  checksum: f1f7712114bcfe1aaa9f8819631f900ac19cddd27936e07b82d93b05e08644fb
+  checksum: 771fa31e29f625d3d22ac70a3674a84fa4623a02ac3f5972cde83bd441577b8b
 - path: .github/agents/_ship.agent.md
   artifact_type: agent
   primitive: 5
   template: agents/_ship.agent.md.tmpl
-  checksum: a85a817186c184343c79c66c25069b99b18930995a495315399e8c3c27ba2449
+  checksum: 3e696996bc9b36cfc8f7118b9fab98782e8d47d496ffddcddbd3e38fcfb2a20c
 - path: .github/agents/_stage.agent.md
   artifact_type: agent
   primitive: 5
   template: agents/_stage.agent.md.tmpl
-  checksum: 81fc981410162bcfd4fa76ef5c4c0951942ee78d11cac60e2f0cf8b22db2f424
+  checksum: a32700a18e86753d48bd0fdd4c5852ed9e334d5543f7dadeba47e1f7f989b0f6
 - path: .github/agents/subagents/adversarial-review.agent.md
   artifact_type: agent
   primitive: 3
   template: agents/adversarial-review.agent.md.tmpl
-  checksum: 83a6f1a92e815f2821edef83127415d73f31c418d5f0300fa47a6a5451e92a63
+  checksum: 701d7387014c746dcf13f0084805ff969cbec3d427c095b630894d1c1fbf405a
 - path: .github/agents/subagents/agent-native-parity-reviewer.agent.md
   artifact_type: agent
   primitive: 3
   template: agents/review/agent-native-parity-reviewer.agent.md.tmpl
-  checksum: e35b47708780d0cfc905a6f90f5bfa811bb53b39da7fb13fc2a8ab79fbbb8848
+  checksum: 3d11d01378e533612d72f1844f08f5ea4d4c3170c324e8188b2d3a08053cdb26
 - path: .github/agents/subagents/architecture-strategist.agent.md
   artifact_type: agent
   primitive: 3
   template: agents/review/architecture-strategist.agent.md.tmpl
-  checksum: 5306653b329bfa3b0ff1ed3656be39dee18e58c92b439da1a02dbc07f8fc2a18
+  checksum: abf1cc3327f92a88ca2f09e3991bd22644eb063bbb0eb85e9eba695db76a6615
 - path: .github/agents/subagents/concurrency-reviewer.agent.md
   artifact_type: agent
   primitive: 3
   template: agents/review/concurrency-reviewer.agent.md.tmpl
-  checksum: 297b560ec5de98bdb44fe4d1c4f9c8f815bcfff02b5eab574908f229988c9290
+  checksum: 35cbd9fa868354019697d4ef3838cb3cd8bb29d1d8fa0f908c8d87773b554d29
 - path: .github/agents/subagents/constitution-reviewer.agent.md
   artifact_type: agent
   primitive: 3
   template: agents/review/constitution-reviewer.agent.md.tmpl
-  checksum: f39f6d65a4cb69ca480dce466b8f3c1ff90811d5015397cfd88e58290b1e4f6a
+  checksum: 82799b3e0d13762bceea0348a0bab6fd10fb8a1d6a2d6967cbcddad1b0d4891b
 - path: .github/agents/subagents/correctness-reviewer.agent.md
   artifact_type: agent
   primitive: 3
   template: agents/review/correctness-reviewer.agent.md.tmpl
-  checksum: 3b97742a39225ec97f9a7d19cb61621358aab39d9149d5e8f37c055b46b8ce1f
+  checksum: e98e941c309484f40800ee43cff5541693697b23dfcb739fee6e96a6126578c1
 - path: .github/agents/subagents/learnings-researcher.agent.md
   artifact_type: agent
   primitive: 3
   template: agents/research/learnings-researcher.agent.md.tmpl
-  checksum: 7af39df5a28d5dcf72aab57be4841c3d6f5bc19fa9de9a13ce720034d63f579d
+  checksum: 1a965ed962a4d05969bdc2ec5ec865ab9fc163e24c9c176e1e3e48ccb95aa224
 - path: .github/agents/subagents/maintainability-reviewer.agent.md
   artifact_type: agent
   primitive: 3
   template: agents/review/maintainability-reviewer.agent.md.tmpl
-  checksum: 9f4c7aa2d4e15b83f39cb5b0e7b9615d427f8cd18a2f658e629bc100bc283f35
+  checksum: fa2d5113d88b19f05575e9695353997f70464df354f6ce22e015d6a90ab5d1e1
 - path: .github/agents/subagents/prompt-builder.agent.md
   artifact_type: agent
   primitive: 3
   template: agents/prompt-builder.agent.md.tmpl
-  checksum: 381d970102252cb776da97c5d6fe798e5e6e14f9a630f7ccf09ee0205b3b7fbe
+  checksum: f250091563aaa11f7d774e10a7b4f16becbc3732574e9f45992b84d7f4da3f2f
 - path: .github/agents/subagents/python-engineer.agent.md
   artifact_type: agent
   primitive: 3
   template: agents/language-engineer.agent.md.tmpl
-  checksum: de0aca6c19929a9fdcb585cae6e8072f6c3500216418210ecca09f7539aaaf96
+  checksum: 88833553930c908e55ab876e97e5156a658641bfba381ab6604aab4dbf09d0e0
 - path: .github/agents/subagents/python-reviewer.agent.md
   artifact_type: agent
   primitive: 3
   template: agents/review/technology-reviewer.agent.md.tmpl
-  checksum: 70a6cb57af30e1d4292fbf5c21516f670499a36e059f40babf3489239d920870
+  checksum: 0fdcb0c1fdf8daa6e718e9d6de49c71e894f306332d47cbfef972c3b85054ddc
 - path: .github/agents/subagents/schema-cli-docs-coupling-reviewer.agent.md
   artifact_type: agent
   primitive: 3
   template: agents/review/schema-cli-docs-coupling-reviewer.agent.md.tmpl
-  checksum: 373841d647777540796d655f9ae9579c55e36d8f66e899dacb5a5ff72d8f2883
+  checksum: 79c19a956c8bd32440502d438f6b2467a247a9bed93d9a94e8e61378714edd03
 - path: .github/agents/subagents/scope-boundary-auditor.agent.md
   artifact_type: agent
   primitive: 3
   template: agents/review/scope-boundary-auditor.agent.md.tmpl
-  checksum: 09f0b8e4bc52fa2211a0d4ef6463d96e0e5643f84165ecceb990f6c884c7211e
+  checksum: ae032830ff96446e6b906bb8a3379a9b7167ddb6130a0cc105317faf5e518e40
 - path: .github/agents/subagents/security-lens-reviewer.agent.md
   artifact_type: agent
   primitive: 3
   template: agents/review/security-lens-reviewer.agent.md.tmpl
-  checksum: eaff3e84ee8f2b79fef3e1a7556e6a8c1030694259bbf855beb24184c460b38a
+  checksum: b392f321a14cfb7899dc47cefecda1722925b08e3ed4694e635db19a4f86d023
 - path: .github/agents/subagents/security-reviewer.agent.md
   artifact_type: agent
   primitive: 3
   template: agents/review/security-reviewer.agent.md.tmpl
-  checksum: f490f3a12b47608fddb4e24399075ef844d48d94f7c33d022f8b22f2b4b3aa66
+  checksum: 2a2fba45678a3de48546b5de373393882403d6979759076be561e692acad361e
 - path: .github/agents/subagents/security-sentinel.agent.md
   artifact_type: agent
   primitive: 3
   template: agents/security-sentinel.agent.md.tmpl
-  checksum: c4dee817326a6b6052c0635eacd501b65394875fbc7c9652dacb51dd3a92d9c7
+  checksum: 8175842442d53ea357cc1ab134cdafac18f8d45a95011045a2102465670a8783
 - path: .github/agents/subagents/template-integrity-reviewer.agent.md
   artifact_type: agent
   primitive: 3
   template: agents/review/template-integrity-reviewer.agent.md.tmpl
-  checksum: ae3336fd9365552850325525bcf1aafb2668e660530a977d6d2181dd4f07499f
+  checksum: d2c359a44faf5be8921ba1d5cbf3a543a62d37491551604334c969d5b621c3ae
 - path: .github/copilot-instructions.md
   artifact_type: foundation
   primitive: 1
   template: foundation/copilot-instructions.md.tmpl
-  checksum: 3c2869009a7c553278b743177b3a4a3997533f5799fc2e9f53aa6a8425716682
+  checksum: abfa9b900aee5bb004477e59657bdc5ad31a0259c4d419dc58bf685fce47a0d9
 - path: .github/instructions/adversarial-review.instructions.md
   artifact_type: instruction
   primitive: 10
   template: instructions/adversarial-review.instructions.md.tmpl
-  checksum: 37b28931c1c9643db033b1ec0f2a2fd6889933965bd2baaebffe1e4da482dea4
+  checksum: 6e90b6a958d655e4f239a78aff34dc482fe2eceafbb0084999f88421681d4dd5
 - path: .github/instructions/agent-engram.instructions.md
   artifact_type: instruction
   primitive: 10
   template: instructions/agent-engram.instructions.md.tmpl
-  checksum: a3f0fd41709651834e56edf89b24335ca5f56b8cfa3d798df70babb1380c61f4
+  checksum: bafb0b119e8cbfb41b82090c914f65e12b34e2ed1d4f08b424b2bb77955889af
 - path: .github/instructions/architecture-doc.instructions.md
   artifact_type: instruction
   primitive: 9
@@ -268,7 +268,7 @@ artifacts:
   artifact_type: instruction
   primitive: 1
   template: instructions/backlog-integration.instructions.md.tmpl
-  checksum: 5e31848eecb229f2e350410925f6ea2d48ddb73c8604149be9a2bec5991d684d
+  checksum: 5b24bc0e3f77017c60e33419bf82f02a64aed8ab7c29cad63d9d2a8ed269157a
 - path: .github/instructions/backlogit-sql-schema.instructions.md
   artifact_type: instruction
   primitive: 10
@@ -283,7 +283,7 @@ artifacts:
   artifact_type: instruction
   primitive: 10
   template: instructions/backlogit.instructions.md.tmpl
-  checksum: 9e1a157db4d2e9d2ac2c501d13eeffc5586f9f097a4bdfe5ffc275c7192d2ce0
+  checksum: 6ae04351eccb8aa0ca34435b6c544670fe4442a852c26aaa4fbe08e4299d90b3
 - path: .github/instructions/capability-pack-enforcement.instructions.md
   artifact_type: instruction
   primitive: 10
@@ -298,7 +298,7 @@ artifacts:
   artifact_type: instruction
   primitive: 7
   template: instructions/circuit-breaker.instructions.md.tmpl
-  checksum: 5e0a6a43180edcabd37d7601adaafc04bf40337ddd2732769c9dcf81ac4d655e
+  checksum: 5949e75ef01ac1d5a20d19349ceb374ae2e3c1a79e7b7d33f1ccb36ca62b4591
 - path: .github/instructions/coding-discipline.instructions.md
   artifact_type: instruction
   primitive: 1
@@ -308,17 +308,17 @@ artifacts:
   artifact_type: instruction
   primitive: 1
   template: instructions/commit-message.instructions.md.tmpl
-  checksum: 04aaa0ffe915a0db4b9207cb48ba903081cc6852ba3d2a4b18af6ff89078a098
+  checksum: abf8e1de29b6fbc38b175cff11e1c51813c351ef42a8dfa2eb70be87d96cb368
 - path: .github/instructions/concurrency.instructions.md
   artifact_type: instruction
   primitive: 7
   template: instructions/concurrency.instructions.md.tmpl
-  checksum: e3a09c6ed5215be68bdb31344c6b3119147877e4a692349f58a464bb6b34d223
+  checksum: 18cb563d566e651f032f3a96e4df9d08f03d17939b253a78721aa3db73b49be7
 - path: .github/instructions/constitution.instructions.md
   artifact_type: foundation
   primitive: 1
   template: foundation/constitution.instructions.md.tmpl
-  checksum: e2a7f4e80e9917ce45aaeec8a1d92a1659e68eeaf69ae18ebe2cae0992043ee1
+  checksum: 8ebe63d99825e80cf295826ce02ed0aed54d5ef4ff6d967e10c103b600208173
 - path: .github/instructions/context-efficiency.instructions.md
   artifact_type: instruction
   primitive: 9
@@ -338,17 +338,17 @@ artifacts:
   artifact_type: instruction
   primitive: 5
   template: instructions/escalation-protocol.instructions.md.tmpl
-  checksum: 0facc938bfe97171b9e66c2f171f330fa02acef3854458281dbe74b861081174
+  checksum: cffc07d9ee8c87824130266c1ca7cbe24e5ed3cf8f59a5662182df8848b320f6
 - path: .github/instructions/git-merge.instructions.md
   artifact_type: instruction
   primitive: 1
   template: instructions/git-merge.instructions.md.tmpl
-  checksum: fa06c7b36ab3ff785ed003342dd52a92d3a8582ee8293d7f3a0a96d22f34b497
+  checksum: e505dc67528befd6f7aba988b57775bd403d00de1c860cb88cb3353ced154afc
 - path: .github/instructions/github-pr-automation.instructions.md
   artifact_type: instruction
   primitive: 1
   template: instructions/github-pr-automation.instructions.md.tmpl
-  checksum: a10a518801bd3c509de3a91912740f660efd5123c71cbccb30c4b2be9d03508e
+  checksum: bc5919483e377fb45c6c5372edd2888bf562809c04175b764a9c8371dcd0ff60
 - path: .github/instructions/graphtor-docs.instructions.md
   artifact_type: instruction
   primitive: 10
@@ -368,7 +368,7 @@ artifacts:
   artifact_type: instruction
   primitive: 1
   template: instructions/output-timestamps.instructions.md.tmpl
-  checksum: 10e6faa0ca0ec29bb34926e6f0374b0eefe600451713d806c6061e0beb227b69
+  checksum: c5d03cbc77166995a9e0f036133fb34dc8833ddd5947f2068b3cfd27e6eb389d
 - path: .github/instructions/prompt-builder.instructions.md
   artifact_type: instruction
   primitive: 1
@@ -388,12 +388,12 @@ artifacts:
   artifact_type: instruction
   primitive: 5
   template: instructions/role-enforcement.instructions.md.tmpl
-  checksum: fd3af24626eeecda69699937a395f898017f592546156d45a76edf76013f2a85
+  checksum: a0a68a99ba6434a52464dbc6e7a186aef7ba5b73eca75487348cd5c9ebc18587
 - path: .github/instructions/strict-safety.instructions.md
   artifact_type: instruction
   primitive: 10
   template: instructions/strict-safety.instructions.md.tmpl
-  checksum: 9f70e1c9978d1071a3460dd91f5b057401e26892b97a93b2d5c94eaaf4c0f790
+  checksum: 288e4003dc38754b78af79054deeaebaba6eaf4631db2a47f18b48400e01e27d
 - path: .github/instructions/technology-python.instructions.md
   artifact_type: instruction
   primitive: 1
@@ -409,21 +409,16 @@ artifacts:
   primitive: 1
   template: instructions/writing-style.instructions.md.tmpl
   checksum: 1fc5cdcb661bd09ec47193af6e6a50d8c36b1e2991c2164a4a6a33d2c630af79
-- path: .github/policies/policy-proposal.md
-  artifact_type: policy
-  primitive: 8
-  template: policies/policy-proposal.md.tmpl
-  checksum: 65db62479e8cbbdf3cf404e573f5c7a5f67df5aba53c23ed08c23c3f8cca5a91
 - path: .github/policies/workflow-policies.md
   artifact_type: policy
   primitive: 8
   template: policies/workflow-policies.md.tmpl
-  checksum: b0cca5851e6eb68f15040dbdb50cbe168b31092d28a8aac4132a51c5949e6ced
+  checksum: 511129342454c765142aacc4516ff344ecac767c07d2574e7a36cac8afc39a5b
 - path: .github/prompts/feature-flow-dark.prompt.md
   artifact_type: prompt
   primitive: 4
   template: prompts/feature-flow-dark.prompt.md.tmpl
-  checksum: 45f0f3a75ba5b9923e0f9e99328ddf9300401893340004792049e24229260b41
+  checksum: 9cf4c4000ae31217c8c486dfd04fbf62a740bf15830599b830b3f2860af32f61
 - path: .github/prompts/feature-flow-parallel.prompt.md
   artifact_type: prompt
   primitive: 4
@@ -443,122 +438,122 @@ artifacts:
   artifact_type: skill
   primitive: 6
   template: skills/brainstorm/SKILL.md.tmpl
-  checksum: a406cd1f059fd1a6b15af9b7c4f4d814c6ec4724aa9f89fa3a339ffd111efa4b
+  checksum: af89b9bd432714fe6c886b7daee21b90ee3d4c84144fa1bc58869f9a83464561
 - path: .github/skills/build-feature/SKILL.md
   artifact_type: skill
   primitive: 6
   template: skills/build-feature/SKILL.md.tmpl
-  checksum: 7231e51fbd59e7ad3b048358fa0e6b4a2dec0b727f2029ee2e0811e6df0b891f
+  checksum: 3d61d2d4102136eac9f280c5f05f68a85410045b1c6e5e4a797faf6b7bb88c9d
 - path: .github/skills/compact-context/SKILL.md
   artifact_type: skill
   primitive: 6
   template: skills/compact-context/SKILL.md.tmpl
-  checksum: 9f6c1fe9ade0ad1c39fc962f156cfe128f254bb79c1975c1c9cf3d1e639884a2
+  checksum: 1e6ae71b71b3a32d9640069e10974ed63385e172e02f1c28574e7a07cef525ee
 - path: .github/skills/compound-refresh/SKILL.md
   artifact_type: skill
   primitive: 6
   template: skills/compound-refresh/SKILL.md.tmpl
-  checksum: 99f849184442886817ffd58f0060428e62c510fb516c85e546b6cfbfd4f28e11
+  checksum: 528bde053f7fe53b21a33c1b4d1ea26aea95cf7ac15e7f80e5cec2cc9d56b1dc
 - path: .github/skills/compound/SKILL.md
   artifact_type: skill
   primitive: 6
   template: skills/compound/SKILL.md.tmpl
-  checksum: 0b6d0587fddddde91fdea085c1dc2bb4cc5c48130f7cf1a6659670b90c47639e
+  checksum: 73918cc4811ad40b59d2739d6941c227e2ce4ebfd8b90623970ffb2eda57c621
 - path: .github/skills/deliberate/SKILL.md
   artifact_type: skill
   primitive: 6
   template: skills/deliberate/SKILL.md.tmpl
-  checksum: 2f12d7d823bd3ec4e5960a764eed9e282637961d8ed7cabe1360378b82cbf4f9
+  checksum: f4f0c1b93524e488709462607bdc2097347c45c4af429cbbbb44234771993441
 - path: .github/skills/doc-review/SKILL.md
   artifact_type: skill
   primitive: 6
   template: skills/doc-review/SKILL.md.tmpl
-  checksum: 76510774aa24aba2cd0b7e890df44429fc85be7dc0aab1492a7c875833b15403
+  checksum: 26d309555b116b65f9755341e99cde5fc972d22ebebd332d3bc8d9425bedf26a
 - path: .github/skills/evolve/SKILL.md
   artifact_type: skill
   primitive: 6
   template: skills/evolve/SKILL.md.tmpl
-  checksum: cfc0ad402117c288651e10a9b4a34ed1a38da1c5a51e4c1865974cd243ef6928
+  checksum: ebc9fa47397475669100f041ca7d1ee40d90b87951e00be6a67594179481523d
 - path: .github/skills/file-lock/SKILL.md
   artifact_type: skill
   primitive: 6
   template: skills/file-lock/SKILL.md.tmpl
-  checksum: 92f9ab1fd3de3a5e2967e9aa9c4dea2f49c58589c892df04c47c892be3a0a563
+  checksum: 2d8a3a664254863a26ccfce9c4207ceb18c3257a41b0a90d864f8adb99fc79df
 - path: .github/skills/fix-ci/SKILL.md
   artifact_type: skill
   primitive: 6
   template: skills/fix-ci/SKILL.md.tmpl
-  checksum: 6849e3a648a28533798ee9e2dc41e20abd7634fe2e9d0b4f45f23209e4da2ff8
+  checksum: 47a3fef404e59024a2d2c01644024ce6bb55c5d725954308554bdc999bd79b3d
 - path: .github/skills/harness-architect/SKILL.md
   artifact_type: skill
   primitive: 6
   template: skills/harness-architect/SKILL.md.tmpl
-  checksum: 45728cf28ec49c4c41010c68905360e45f238531ecfe118d8eef4c49074975e9
+  checksum: 0aad44cd4a052376dd4032abec6a511c63b0ff0016aedea7cfcdaf5c853786e9
 - path: .github/skills/harness-doctor/SKILL.md
   artifact_type: skill
   primitive: 6
   template: skills/harness-doctor/SKILL.md.tmpl
-  checksum: 849f5059a9ed77fc405c73c6330fb06bebeb58dab5045482a89174c67dca4964
+  checksum: 9378b1fb2a9c7820a620409d64771558c56408062b9da38dd9a34b89cb3dc360
 - path: .github/skills/harvest/SKILL.md
   artifact_type: skill
   primitive: 6
   template: skills/harvest/SKILL.md.tmpl
-  checksum: 3b0c44ef13cc0755b1ac774475b0512cf4d0da4508389c058229abf8c5197d95
+  checksum: 335ff38a4baf3c2782addd68bafece49ade91e93c8db06f991f0ca6575930d3c
 - path: .github/skills/impl-plan/SKILL.md
   artifact_type: skill
   primitive: 6
   template: skills/impl-plan/SKILL.md.tmpl
-  checksum: 06853c07d8bb445bb82d487da1742b4acda0b72c261bb3f9ca71e92771f950c6
+  checksum: 760936229b200f68b5b03caabfe0f6ca0376decdc088856d4d50cd9eb58b1b6c
 - path: .github/skills/iterative-experiment/SKILL.md
   artifact_type: skill
   primitive: 6
   template: skills/iterative-experiment/SKILL.md.tmpl
-  checksum: d16ee90bdc02c2425f3bdf27ee9d9cd65d71abb7225ef0ff6edff4c98cdc4c86
+  checksum: 1f9f8f066c2f90fbb6c033b69e0426701197b3a7fe77c8a5d764a002be2eadee
 - path: .github/skills/learn/SKILL.md
   artifact_type: skill
   primitive: 6
   template: skills/learn/SKILL.md.tmpl
-  checksum: 211a3808294ad1584a51ce403939590f19121621776c66c516c8623acf9524ab
+  checksum: 0b6e4b6cc217afd0626e7a7b5769191d123ae2570576c93ce3c74c5c28d0c42f
 - path: .github/skills/observe/SKILL.md
   artifact_type: skill
   primitive: 6
   template: skills/observe/SKILL.md.tmpl
-  checksum: 763b621f5098004bcdbeeb04e553b2cd4716171e24a4c57e92e984ca0a902c1c
+  checksum: 13a491773f4be198074e970966c93ceef10efef4c89c0880146858e8862c333a
 - path: .github/skills/operational-closure/SKILL.md
   artifact_type: skill
   primitive: 6
   template: skills/operational-closure/SKILL.md.tmpl
-  checksum: 4044aed1ae261eaef6eeda893f2daeefd6750c4b1bff1722649ee95526ca97c9
+  checksum: efeaba5f298f722b4216053db3f1515216e5ba68707ef98be24e7463b3085114
 - path: .github/skills/plan-harden/SKILL.md
   artifact_type: skill
   primitive: 6
   template: skills/plan-harden/SKILL.md.tmpl
-  checksum: 5e0b5d81c4c0a5216c6369e14d36f83e0fb1e98447967b1f82187febc7988c2d
+  checksum: 6f9ce67776e99fd20acccdc8fa73126d34d4146d9841ec9c478c918006cd687c
 - path: .github/skills/plan-review/SKILL.md
   artifact_type: skill
   primitive: 6
   template: skills/plan-review/SKILL.md.tmpl
-  checksum: 5037d701f444f65211a380edadf1872c20b7691cd7c2f2fed18b655a1ed9d704
+  checksum: 070571657e41dc8478c91258773605acaf72f0d26e8befdee5c4a74cae8d87ce
 - path: .github/skills/pr-lifecycle/SKILL.md
   artifact_type: skill
   primitive: 6
   template: skills/pr-lifecycle/SKILL.md.tmpl
-  checksum: e98eaeb657161ff6e9596b5f4c82ad89b636af8e2c456091ec5e51f9764a2d66
+  checksum: 007fd7355e94ff2dbdafc978d501954b8d97e48700af26abaaf4972387029241
 - path: .github/skills/review/SKILL.md
   artifact_type: skill
   primitive: 6
   template: skills/review/SKILL.md.tmpl
-  checksum: d160b90c4bf7f83c554dde297c400022b955d5ccb5d405405fe292f5d40da199
+  checksum: ca055e08abaa6a7966a2485853a0fcb01da6c631abf8498c7ea4886ac48eda81
 - path: .github/skills/runtime-verification/SKILL.md
   artifact_type: skill
   primitive: 6
   template: skills/runtime-verification/SKILL.md.tmpl
-  checksum: b9f724368fc435b7bcc9ca57dd9263fda5d1116b014e77ade7cdc5b4aaec61e8
+  checksum: 3075813c77e286f55a530d488542f90e85d1c87f520463c796a23058306b39c9
 - path: .github/skills/safety-modes/SKILL.md
   artifact_type: skill
   primitive: 6
   template: skills/safety-modes/SKILL.md.tmpl
-  checksum: 12cff288698ddd5b2365ba5939eae148fe56240cf09af74d470402517a510942
+  checksum: cdd861c25f75377bfa738d02bc895dc4b500f1d4c09560b538f7950982cd6f93
 - path: .github/skills/security-audit/SKILL.md
   artifact_type: skill
   primitive: 6
@@ -568,42 +563,42 @@ artifacts:
   artifact_type: skill
   primitive: 6
   template: skills/shipment-reconcile/SKILL.md.tmpl
-  checksum: 6e8d6c5273a0c525ecf64150de215a123f317546f4bc6184f6140aad970e5efd
+  checksum: 7e488dd2e5cb105bc7969632db5efad39b5b31a56e4e768f335f745a54843974
 - path: .github/skills/skill-search/SKILL.md
   artifact_type: skill
   primitive: 6
   template: skills/skill-search/SKILL.md.tmpl
-  checksum: 4b5b4423eef36132a30108880409010fb25d1d3b2bbb5869eaa706955604b578
+  checksum: 40079c96d5669692ebad45c3fc3165c7d99aeff2611840eb28c6465c5dd45bef
 - path: .github/skills/spike/SKILL.md
   artifact_type: skill
   primitive: 6
   template: skills/spike/SKILL.md.tmpl
-  checksum: ca273f662a770d222fd7f0792bae6010c14ba581a8f9ab5bd7c93ea76b1da972
+  checksum: 1bd33a9348e0b2373edb6a16c86b0df1b71553e1d6defb37676cfd67696ba4e7
 - path: .github/workflows/ci.yml
   artifact_type: config
   primitive: 7
   template: ci/ci.yml.tmpl
-  checksum: 1b4326d9d1c37b19be00cfe9e0ba42e7efba3ba0465b0e6ac20468496dcf6315
+  checksum: e335834deeb709c77aa7293932478c3dcf8d4a0787a8bca34bad9871a118c7ee
 - path: .markdownlint.json
   artifact_type: config
   primitive: 7
   template: scripts/.markdownlint.json.tmpl
-  checksum: 5cb328173ca286c34d6eacb60cf58fe6f579fc4843d2cd6b47533bb5b1965e16
+  checksum: 40392c674cd1bee95e319d44ad7389562f9722e49fc5fcfefb9a09b45d0e4d46
 - path: AGENTS.md
   artifact_type: foundation
   primitive: 1
   template: foundation/AGENTS.md.tmpl
-  checksum: ba7cc5a3d20e91ec9887b518eb572b092f5f18fe7b1f6506795e459a82786e02
+  checksum: c219d204bfb0c693b5ee2473aaa7998a9e0c9ba6ad14f86fab82a3c6f3b40ef7
 - path: scripts/acquire_lock.ps1
   artifact_type: script
   primitive: 7
   template: skills/file-lock/scripts/acquire_lock.ps1
-  checksum: 14453d7e8a9c95ac5d917816b331c1a9fd6812a9ea1e49ac009c6f3bec7b5e3d
+  checksum: 75b85db5ac73dd935131f7319be2ea3b1e056b7447f99ab0c11af546d91f7cf2
 - path: scripts/acquire_lock.sh
   artifact_type: script
   primitive: 7
   template: skills/file-lock/scripts/acquire_lock.sh
-  checksum: 65c543969c5014f5c91623be6087986acaa57ef6e98eb5ea15b944962d8886e7
+  checksum: d53ee9beefdbc1388d78438a58342c2fb4a514872a25c7f4a2caa270dede67e7
 - path: scripts/ci-topology-check.sh
   artifact_type: script
   primitive: 7
@@ -618,37 +613,37 @@ artifacts:
   artifact_type: script
   primitive: 7
   template: scripts/pre-commit-markdownlint.sh.tmpl
-  checksum: 66d223e8102f82f52d9c4f89b36255660ea29026acd99772c2768c8ec98ea8f4
+  checksum: 35dfd83409b6d395fa075a8c5909e17ea9116d2977b3f66f86eda1d01588eb06
 - path: scripts/pre-commit-pipeline-topology.ps1
   artifact_type: script
   primitive: 7
   template: scripts/pre-commit-pipeline-topology.ps1.tmpl
-  checksum: 16e41f54e1dbfc0b9e2cfcde8aba982e9b3ed558affe849953d36d43339898cd
+  checksum: 64418d657453fe71e22834a10094dbcd547cd00a909e3f377b64a656b8a7fbc4
 - path: scripts/pre-commit-pipeline-topology.sh
   artifact_type: script
   primitive: 7
   template: scripts/pre-commit-pipeline-topology.sh.tmpl
-  checksum: 2f22d605a6af193d82c3498d5018af45026893e7f6d9dc66aaf5b5ad1af51fa5
+  checksum: 93dd00d6bbfc37447486be16e0fa9a79ba98127cbfed77504a3e4ff8bfc9643f
 - path: scripts/pre-push-quality-gates.ps1
   artifact_type: script
   primitive: 7
   template: scripts/pre-push-quality-gates.ps1.tmpl
-  checksum: 40aac91edee042e0eddc0d0301c787e583a666a0ebe1c75bd7818c6dfff0fadd
+  checksum: 896040a7fd84d3113e703100a8b8ee1bcc50315df3833efe85e12b5be5a5621c
 - path: scripts/pre-push-quality-gates.sh
   artifact_type: script
   primitive: 7
   template: scripts/pre-push-quality-gates.sh.tmpl
-  checksum: 4f34beffaf74a2b896b7c2285efb9d1065e800635a9aa13a4723dc1740ab8998
+  checksum: 10488dca31097df9a0e49c5712ab2218edf085ff7d4eedced369d956cb39df28
 - path: scripts/release_lock.ps1
   artifact_type: script
   primitive: 7
   template: skills/file-lock/scripts/release_lock.ps1
-  checksum: 3900e9d814a29f44837c67d461119c39afc96fdd9dc6f4efdbc0d0460bcdbe3c
+  checksum: a23fe044ce880bf30fa4a2570c39137e836917c45dc896adf63288a7ac5dd450
 - path: scripts/release_lock.sh
   artifact_type: script
   primitive: 7
   template: skills/file-lock/scripts/release_lock.sh
-  checksum: 975eefc6c944c93548988a87c158fa27d9683ea878b783a1e07d8ebd769a6b09
+  checksum: 7194ed051960a36b949d5d6f58f6054bc586c00ef93f6624fb335e7492a537c7
 - path: scripts/search.ps1
   artifact_type: script
   primitive: 7
@@ -658,7 +653,7 @@ artifacts:
   artifact_type: script
   primitive: 7
   template: skills/skill-search/scripts/search.sh
-  checksum: 43b464100063496fa1965e3e312c127d22aeb0c0ec9209906972a4ade465d430
+  checksum: 3578e44becdc9042895f661ae31a698a94832c63e37a84c658fbc382c3c4f941
 - path: start.ps1
   artifact_type: script
   primitive: 7
@@ -693,13 +688,13 @@ variables_used:
     * Implicit current-working-directory assumptions for locating schemas, fixtures, or output roots
 
     * Writing partially normalized artifacts before validation completes'
-  AUTOHARNESS_VERSION: 1.5.0
+  AUTOHARNESS_VERSION: 1.6.0
   BACKLOG_DIRECTORY: .backlogit
   BACKLOG_TOOL_NAME: backlogit
   BUILD_CHECK_COMMAND: python -m py_compile src/docline/__init__.py
   BUILD_COMMAND: python -m build
   BUILD_TOOL: pip
-  CI_AUTOHARNESS_INSTALL_COMMAND: pip install autoharness
+  CI_AUTOHARNESS_INSTALL_COMMAND: pip install autoharness==1.6.0
   CI_DEFAULT_BRANCH: main
   CI_DOCS_ONLY_PATHS: "              - '!docs/**'\n              - '!.backlogit/**'\n              - '!.autoharness/**'"
   CI_EXPENSIVE_JOB_NAME: quality gates
@@ -803,4 +798,51 @@ variables_used:
   TYPECHECK_TOOL: pyright
   UNIMPLEMENTED_MARKER: raise NotImplementedError("...")
   UNSAFE_POLICY: type hints required on all public interfaces
-tuned_at: '2026-08-31T09:54:44-07:00'
+  VARIABLE: <VARIABLE>
+  MODEL_ROUTING_TIER1: claude-haiku-5.5
+  TIER_1_FAMILY: claude-haiku-5.5
+  TIER_1_PROVIDER: anthropic
+  TIER_1_REASONING_EFFORT: xhigh
+  TIER_1_CONTEXT_TIER: long_context
+  MODEL_ROUTING_TIER2: claude-sonnet-5.5
+  TIER_2_FAMILY: claude-sonnet-5.5
+  TIER_2_PROVIDER: anthropic
+  TIER_2_REASONING_EFFORT: high
+  TIER_2_CONTEXT_TIER: long_context
+  MODEL_ROUTING_TIER3: gemini-4-argon
+  TIER_3_FAMILY: gemini-4-argon
+  TIER_3_PROVIDER: google
+  TIER_3_REASONING_EFFORT: high
+  TIER_3_CONTEXT_TIER: long_context
+  ORCHESTRATOR_FAMILY: claude-sonnet-5.5
+  ORCHESTRATOR_PROVIDER: anthropic
+  ORCHESTRATOR_REASONING_EFFORT: medium
+  ORCHESTRATOR_CONTEXT_TIER: long_context
+  STAGE_FAMILY: gemini-4-argon
+  STAGE_PROVIDER: google
+  STAGE_REASONING_EFFORT: high
+  STAGE_CONTEXT_TIER: long_context
+  SHIP_FAMILY: claude-sonnet-5.5
+  SHIP_PROVIDER: anthropic
+  SHIP_REASONING_EFFORT: medium
+  SHIP_CONTEXT_TIER: long_context
+  LEGACY_ESCALATION_FAMILY: ''
+  LEGACY_ESCALATION_PROVIDER: ''
+  LEGACY_ESCALATION_REASONING_EFFORT: ''
+  LEGACY_ESCALATION_CONTEXT_TIER: ''
+  STAGE_ESCALATION_FAMILY: gpt-6.1-sol
+  STAGE_ESCALATION_PROVIDER: openai
+  STAGE_ESCALATION_REASONING_EFFORT: high
+  STAGE_ESCALATION_CONTEXT_TIER: long_context
+  SHIP_ESCALATION_FAMILY: claude-sonnet-5.5
+  SHIP_ESCALATION_PROVIDER: anthropic
+  SHIP_ESCALATION_REASONING_EFFORT: high
+  SHIP_ESCALATION_CONTEXT_TIER: long_context
+  ESCALATION_FAMILY: gemini-4-argon
+  ESCALATION_PROVIDER: google
+  ESCALATION_REASONING_EFFORT: high
+  ESCALATION_CONTEXT_TIER: long_context
+  ANCHOR_REVIEW_PROVIDER: openai
+  ANCHOR_REVIEW_FAMILY: gpt-6.1-sol
+  ANCHOR_REVIEW_REASONING_EFFORT: high
+tuned_at: '2026-10-26T00:00:01Z'

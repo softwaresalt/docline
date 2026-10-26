@@ -32,7 +32,7 @@ instances across different model tiers:
 
 ## Anchor Reviewer Support
 
-When `openai` and `gpt-5.6-sol` are configured,
+When `openai` and `gpt-6.1-sol` are configured,
 launch an **Anchor Reviewer** as a separately identified reviewer slot before
 standard Tier 1/2/3 assignment. Pass `high` to the
 anchor reviewer when it is non-empty; an empty value means use the model default.

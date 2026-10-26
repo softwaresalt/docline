@@ -1,4 +1,5 @@
 ---
+name: learn
 description: "Cluster observations in .autoharness/continuous-learning/ into reusable instincts with evidence and confidence"
 ---
 
@@ -6,6 +7,8 @@ description: "Cluster observations in .autoharness/continuous-learning/ into reu
 
 Analyze captured observations and infer recurring instincts that may become
 future learned instructions or skills.
+
+Follow `.github/instructions/continuous-learning.instructions.md` for capture, hygiene, and promotion threshold rules.
 
 ## When to Use
 

@@ -5,12 +5,13 @@ maturity: stable
 tools: read, agent, search, edit
 max_subagent_tier: 1
 reasoning_effort: "high"
-model_provider: "anthropic"
-model_family: "claude-opus-4.8"
+model_provider: "google"
+model_family: "gemini-4-argon"
+context_tier: "long_context"
 alt_review_provider: "anthropic"
 alt_review_family: "claude-opus-4.8"
 anchor_review_provider: "openai"
-anchor_review_family: "gpt-5.6-sol"
+anchor_review_family: "gpt-6.1-sol"
 anchor_review_reasoning_effort: "high"
 subagent_depth: 2
 ---
@@ -35,7 +36,7 @@ may be a false positive — or a subtle issue that only one model caught. The pr
 preserves both signals with appropriate confidence labels, rather than losing unique
 findings or trusting any single model too much.
 
-Anchor Reviewer support (`openai` / `gpt-5.6-sol`)
+Anchor Reviewer support (`openai` / `gpt-6.1-sol`)
 adds a first-class reviewer route, defaulting to OpenAI GPT-5.6 Sol where supported,
 without replacing Tier 1/2/3 diversity. If the anchor route cannot be dispatched,
 record a declared fallback and continue only when the remaining reviewer pool still
@@ -74,7 +75,7 @@ model family.
 * `anchor_provider`: (Optional) Anchor reviewer provider. Overrides
   `openai` for this invocation.
 * `anchor_family`: (Optional) Anchor reviewer model family. Overrides
-  `gpt-5.6-sol` for this invocation.
+  `gpt-6.1-sol` for this invocation.
 * `anchor_reasoning_effort`: (Optional) Anchor reviewer reasoning effort.
   Overrides `high`; empty means use the model
   default.
@@ -128,7 +129,7 @@ Output file at `docs/closure/{YYYY-MM-DD}-{slug}-adversarial-review.md`.
    Record a declared fallback for the Anchor Reviewer whenever the anchor route is
    configured but unavailable.
 4. Apply anchor and alternate model provider assignments:
-   * Read `openai`, `gpt-5.6-sol`, and
+   * Read `openai`, `gpt-6.1-sol`, and
      `high` (or `anchor_provider`,
      `anchor_family`, and `anchor_reasoning_effort` input overrides). If provider
      and family are non-empty and dispatchable, launch the Anchor Reviewer as a
@@ -147,14 +148,14 @@ Output file at `docs/closure/{YYYY-MM-DD}-{slug}-adversarial-review.md`.
 
 | Reviewer | Default Route | Default Model | With Alternate Provider |
 |---|---|---|---|
-| Anchor Reviewer | Anchor review route | `gpt-5.6-sol` via `openai` with `high` when non-empty | unchanged; if unavailable, declared fallback |
-| Reviewer-A | Tier 1 (fast/cheap) | `claude-haiku-4.5` | unchanged |
-| Reviewer-B | Tier 2 (standard) | `claude-sonnet-5` | `claude-opus-4.8` via `anthropic` |
-| Reviewer-C | Tier 3 (frontier) | `claude-opus-4.8` | unchanged |
+| Anchor Reviewer | Anchor review route | `gpt-6.1-sol` via `openai` with `high` when non-empty | unchanged; if unavailable, declared fallback |
+| Reviewer-A | Tier 1 (fast/cheap) | `claude-haiku-5.5` | unchanged |
+| Reviewer-B | Tier 2 (standard) | `claude-sonnet-5.5` | `claude-opus-4.8` via `anthropic` |
+| Reviewer-C | Tier 3 (frontier) | `gemini-4-argon` | unchanged |
 | Reviewer-D | Tier 1 or Tier 2 variant | different from A/B/C | unchanged |
 | Reviewer-E (5 reviewers without anchor) | Tier 2 or Tier 3 variant | different from A/B/C/D | unchanged |
 
-When `openai` or `gpt-5.6-sol` is empty or the
+When `openai` or `gpt-6.1-sol` is empty or the
 route cannot be dispatched, all standard reviewer slots still use tier routing and
 the report records the Anchor Reviewer declared fallback. When
 `anthropic` is non-empty, Reviewer-B is routed to the alternate
