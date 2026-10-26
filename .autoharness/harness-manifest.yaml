@@ -133,7 +133,7 @@ artifacts:
   artifact_type: config
   primitive: 9
   template: backlog/registries/backlogit.registry.yaml
-  checksum: f1fe8ea86d5da6b09e20cdddbad79f53159dd518847a3ce7516b78da7b4b41d8
+  checksum: 02a49ed8c87da276ebb196b0da114b36a49cae5446dd5049685978b574e50530
 - path: .autoharness/config.yaml
   artifact_type: config
   primitive: 9
@@ -268,7 +268,7 @@ artifacts:
   artifact_type: instruction
   primitive: 1
   template: instructions/backlog-integration.instructions.md.tmpl
-  checksum: 5b24bc0e3f77017c60e33419bf82f02a64aed8ab7c29cad63d9d2a8ed269157a
+  checksum: 054eeef5725204b58e4a97dff8cfdc81a526e48c8a82a6648def753c617bcaa1
 - path: .github/instructions/backlogit-sql-schema.instructions.md
   artifact_type: instruction
   primitive: 10

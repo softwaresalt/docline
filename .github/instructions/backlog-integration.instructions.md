@@ -52,7 +52,7 @@ Use these operations for all backlog interactions. The operation names are abstr
 | `add_link` | `backlogit_add_link` | `backlogit link add {{source_id}} {{target_id}} {{link_type}}` | add link |
 | `add_to_shipment` | `backlogit_add_to_shipment` | `backlogit shipment add {{shipment_id}} {{item_id}}` | add to shipment |
 | `adopt_item` | `backlogit_adopt_item` | `backlogit adopt {{item_id}} --parent {{new_parent_id}}` | adopt item |
-| `append_comment` | `backlogit_append_comment` | `backlogit comment add {{id}} --actor {{actor}} --comment {{comment}}` | append comment |
+| `append_comment` | `backlogit_append_comment` | `backlogit comment add {{item_id}} --actor {{actor}} --comment {{comment}}` | append comment |
 | `archive_item` | `backlogit_archive_item` | `backlogit archive {{id}}` | archive item |
 | `claim_shipment` | `backlogit_claim_shipment` | `backlogit shipment claim {{id}}` | claim shipment |
 | `cleanup_checkpoints` | `backlogit_cleanup_checkpoints` | `backlogit checkpoint cleanup` | cleanup checkpoints |
