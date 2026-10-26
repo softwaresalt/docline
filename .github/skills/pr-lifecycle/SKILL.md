@@ -37,25 +37,19 @@ request execution. It centralizes the PR control loop so higher-level
 agents can treat review, CI follow-up, and merge approval as one bounded
 workflow.
 
-## Agent-Intercom Communication
+## Session-Output Reports
 
-When the `agent-intercom` capability pack is installed, call `ping` at
-session start. If reachable, broadcast at every step. If unreachable,
-warn the operator that visibility is degraded and continue locally.
+Report these operator-visible outcomes in the session output; routine progress
+narration is not required:
 
-| Event | Level | Message prefix |
-|---|---|---|
-| Session start | info | `[PR-LIFECYCLE] Starting: branch={input.branch}` |
-| Branch pushed | info | `[PR-LIFECYCLE] Branch pushed: {branch}` |
-| PR created | info | `[PR-LIFECYCLE] PR created: {pr_url}` |
-| PR updated | info | `[PR-LIFECYCLE] PR updated: {pr_url}` |
-| Feedback received | info | `[PR-LIFECYCLE] Review feedback: {comment_count} comments` |
-| Fix applied | info | `[PR-LIFECYCLE] Fix applied for: {comment_summary}` |
-| CI failure | warning | `[PR-LIFECYCLE] CI failed — delegating to fix-ci` |
-| CI green | info | `[PR-LIFECYCLE] CI passing` |
-| Ready for merge | success | `[PR-LIFECYCLE] PR ready — awaiting user approval` |
-| Merged | success | `[PR-LIFECYCLE] Merged: {pr_url}` |
-| Blocked | warning | `[PR-LIFECYCLE] Blocked: {reason}` |
+* the PR URL when the PR is created or updated;
+* the review-feedback and CI outcomes that change the next step, including the
+  hand-off to `fix-ci` on a CI failure;
+* when Step 5b requires fresh operator approval, report `PR ready — awaiting user approval`
+  and STOP until the operator replies; when a validated `DARK_MODE_ACTIVE` record satisfies
+  approval under Step 5b, report the ready state as a status line and continue to Step 5c;
+* the merge result with the PR URL;
+* any blocking condition with its reason.
 
 ## Inputs
 
@@ -103,7 +97,7 @@ advisory shadow mode immediately after PR creation or after pushing new commits:
 
 1. Request shadow review per `.github/instructions/github-pr-automation.instructions.md` §1.1 when the operator or workflow enables migration shadow mode.
 2. Poll for completion using the back-off cadence in §1.2.
-3. Do not treat shadow review as a required dependency for merge readiness unless the operator explicitly elevates it for the current PR.
+3. Do not treat shadow review as a required dependency for merge readiness while unengaged; once Copilot review is engaged (requested, reviewed, or `copilot_review.enforcement: required`), P-018 applies as a fail-closed gate per `.github/instructions/github-pr-automation.instructions.md` §1.1.
 4. When `DARK_MODE_ACTIVE` is present, keep shadow review advisory by default:
    local review readiness remains authoritative, and timeout/unavailability is
    recorded in the PR readiness summary instead of blocking merge readiness.
@@ -212,12 +206,13 @@ local review readiness verification defined in
 
 1. Execute the §1.9 readiness query with full pagination until `hasNextPage`
    is false. If pagination cannot complete, fail closed and halt.
-2. Evaluate all four gate checks in order:
+2. Evaluate all five gate checks in order:
    - **Check 1**: A local review readiness record exists for the current `headRefOid`.
    - **Check 2**: The local review outcome is `READY` or `READY_WITH_FOLLOWUPS`.
    - **Check 3**: Any residual P2/P3 findings are explicitly tracked as follow-up items or residual-risk notes.
    - **Check 4**: Code-changing PRs include successful full local build evidence, or
      documentation-only/backlog-only PRs explicitly mark full-build non-applicability.
+   - **Check 5**: Run `autoharness gate copilot-review <pr_number> --repo softwaresalt/docline --enforcement <mode>` (P-018); require `SATISFIED` or `NOT_APPLICABLE` (any BLOCK verdict halts and is never bypassable with `--admin`).
 3. If any check fails, **halt immediately**. Do not present the PR as
    merge-ready. Report the blocking condition to the operator.
 4. If advisory shadow-review feedback exists, surface it in the merge-readiness summary without treating it as merge-blocking by default.

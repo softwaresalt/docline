@@ -1,6 +1,6 @@
 # docline Development Guidelines
 
-Last updated: 2026-08-31
+Last updated: 2026-10-26
 
 docline is a docline workspace.
 
@@ -90,6 +90,7 @@ tokens proportional to file size.
 * For long sessions, save memory checkpoints after completing each phase or major task group.
 * Content to capture: task IDs completed, files modified, decisions and rationale, failed approaches, open questions, and next steps.
 * File convention: `docs/memory/{YYYY-MM-DD}/{descriptive-slug}-memory.md`
+* Memory date folders (`docs/memory/{YYYY-MM-DD}/`) use the UTC date, and all recorded dates and times are UTC (`Z`); see `.github/instructions/output-timestamps.instructions.md`.
 * After writing memory, invoke the **compact-context** skill to consolidate stale checkpoints and finalize decided-plans. This is a mandatory workflow step, not advisory.
 * If context has grown from loading multiple skill definitions mid-session, consider invoking **compact-context** proactively before hitting hard thresholds.
 
@@ -102,17 +103,6 @@ tokens proportional to file size.
 | **Skill Discovery** | `scripts/search.ps1` / `scripts/search.sh` | Finding capabilities by keyword (Primitive 6) |
 
 ## Optional Capability Packs
-
-### agent-intercom
-
-When the workspace enabled the `agent-intercom` capability pack:
-
-* verify the intercom server / tool surface is reachable before depending on remote approval or operator steering
-* call heartbeat / ping at session start and keep it alive during long-running work
-* broadcast major workflow transitions so the operator can observe planning, build, review, verification, and closure progress
-* route destructive terminal commands and destructive file operations through the intercom approval workflow
-* use transmit / standby flows when blocked on operator clarification or when intentionally pausing for instructions
-* if the intercom service is unreachable, warn that remote visibility is degraded and avoid pretending approval or operator awareness exists
 
 ### agent-engram
 
@@ -128,6 +118,8 @@ When the workspace enabled the `agent-engram` capability pack:
 ### backlogit
 
 When the workspace enabled the `backlogit` capability pack:
+
+* follow `.github/instructions/backlogit.instructions.md`
 
 * verify the backlogit MCP / CLI surface is reachable before depending on queue, dependency, memory, or traceability operations
 * prefer backlogit query operations for targeted state lookup instead of reading many backlog markdown files into context
@@ -149,6 +141,8 @@ When the workspace enabled the `browser-verification` capability pack:
 ### continuous-learning
 
 When the workspace enabled the `continuous-learning` capability pack:
+
+* follow `.github/instructions/continuous-learning.instructions.md`
 
 * store observation state under `.autoharness/continuous-learning/`
 * keep hook capture optional and environment-specific; manual capture is still valid
@@ -200,15 +194,7 @@ When the workspace enabled the `graphtor-docs` capability pack:
 
 ## Remote Operator Integration
 
-### agent-intercom
-
-When `agent-intercom` is available:
-
-* Call `ping` at the start of any multi-step session to confirm liveness.
-* Broadcast progress at meaningful phase transitions — do not broadcast every trivial step.
-* Route approval for destructive actions through the intercom approval workflow before executing.
-* If intercom becomes unreachable mid-task, warn that operator visibility is degraded and continue only with safe, non-destructive work.
-
+<!-- pack-scope:agent-engram:begin -->
 ### agent-engram
 
 When `agent-engram` is available:
@@ -216,6 +202,7 @@ When `agent-engram` is available:
 * Verify workspace binding before relying on indexed results.
 * If the workspace is not bound or indexed, run `sync_workspace` or the workspace's equivalent freshness operation before searching.
 * Fall back to grep, glob, or direct file reads only when indexed results are unavailable or insufficient.
+<!-- pack-scope:agent-engram:end -->
 
 ## Backlog Workflow Expectations
 

@@ -4,9 +4,10 @@ description: "Reviews code changes for compliance with the workspace constitutio
 maturity: stable
 tools: read, search
 max_subagent_tier: 1
-reasoning_effort: ""
+reasoning_effort: "xhigh"
 model_provider: "anthropic"
-model_family: "claude-haiku-4.5"
+model_family: "claude-haiku-5.5"
+context_tier: "long_context"
 subagent_depth: 0
 ---
 
@@ -27,6 +28,8 @@ Map each change against these constitutional principles:
 * **Principle VII**: Destructive command approval
 * **Principle VIII**: Explicit safety modes for elevated risk
 * **Principle IX**: Git-friendly persistence
+* **Principle X**: Agent context efficiency
+* **Principle XI (NON-NEGOTIABLE)**: Merge commit history preservation
 
 ## Output Format
 

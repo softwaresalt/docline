@@ -37,7 +37,7 @@ This is a leaf executor. No subagent spawning. Maximum depth: 0.
 | Variable | Purpose |
 |---|---|
 | `.autoharness/harness-manifest.yaml` | Path to the installed harness manifest (default: `.autoharness/harness-manifest.yaml`) |
-| `1.5.0` | Install-time autoharness version baked at install; recorded for reference. Current-version drift is resolved live via the `autoharness version` CLI, not from this value |
+| `1.6.0` | Install-time autoharness version baked at install; recorded for reference. Current-version drift is resolved live via the `autoharness version` CLI, not from this value |
 
 ## Workflow
 
@@ -70,7 +70,7 @@ Compare the version that performed the install against the current autoharness v
 
 1. Read `autoharness_version` from the manifest (the version that performed the install).
 2. Resolve the **current** autoharness version live by running the `autoharness version` CLI at diagnostic time (this is the version that would perform upgrades).
-   * If the CLI is unavailable, current-version resolution has **failed** — do NOT substitute the install-time `1.5.0` value as the current version (comparing install-time against install-time would report a false match). Record **WARN — current autoharness version could not be resolved; drift undetectable** and skip the drift classification below.
+   * If the CLI is unavailable, current-version resolution has **failed** — do NOT substitute the install-time `1.6.0` value as the current version (comparing install-time against install-time would report a false match). Record **WARN — current autoharness version could not be resolved; drift undetectable** and skip the drift classification below.
 3. When the current version is resolved, compare it against the manifest version and classify the drift:
 
 | Condition | Signal |
