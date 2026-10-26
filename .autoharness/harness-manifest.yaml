@@ -313,7 +313,7 @@ artifacts:
   artifact_type: instruction
   primitive: 7
   template: instructions/concurrency.instructions.md.tmpl
-  checksum: 18cb563d566e651f032f3a96e4df9d08f03d17939b253a78721aa3db73b49be7
+  checksum: b894e82e9633059328aa5a56585c842a682090687d39204695a13f8dc75bda0c
 - path: .github/instructions/constitution.instructions.md
   artifact_type: foundation
   primitive: 1
@@ -478,7 +478,7 @@ artifacts:
   artifact_type: skill
   primitive: 6
   template: skills/file-lock/SKILL.md.tmpl
-  checksum: 2d8a3a664254863a26ccfce9c4207ceb18c3257a41b0a90d864f8adb99fc79df
+  checksum: f1a02d40a03d817a11840641befa44d17dc199e9632d368e3cf881e62b13db44
 - path: .github/skills/fix-ci/SKILL.md
   artifact_type: skill
   primitive: 6
@@ -638,12 +638,12 @@ artifacts:
   artifact_type: script
   primitive: 7
   template: skills/file-lock/scripts/release_lock.ps1
-  checksum: a23fe044ce880bf30fa4a2570c39137e836917c45dc896adf63288a7ac5dd450
+  checksum: e128e8249c53a23b8dd87efd8e4e4341587d7d81be6f536f75796d6f4f1c3257
 - path: scripts/release_lock.sh
   artifact_type: script
   primitive: 7
   template: skills/file-lock/scripts/release_lock.sh
-  checksum: 7194ed051960a36b949d5d6f58f6054bc586c00ef93f6624fb335e7492a537c7
+  checksum: 95a90bc4c0f57c072f40a087774dacc048865d8235f16b9efcaee22edab16da9
 - path: scripts/search.ps1
   artifact_type: script
   primitive: 7

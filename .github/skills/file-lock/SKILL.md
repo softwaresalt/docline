@@ -30,13 +30,14 @@ Agents MUST follow the concurrency protocol defined in
     root's `scripts/` child (guards against a nested checkout without its
     own `.git` silently widening to an ancestor repository's root);
     otherwise acquire fails closed and requires this flag explicitly.
-  * On `release`, this anchors a *relative* `filepath` to the given root
-    instead of the process's current working directory, so a caller
-    invoking acquire and release from two different working directories
-    with the same workspace-relative path computes the same lock path in
-    both cases. Purely additive: omitting it preserves today's
-    CWD-relative resolution exactly, and an already-absolute `filepath` is
-    never affected.
+  * On `release`, relative `filepath` arguments default to the same
+    git-derived workspace root as `acquire` when the script is installed in
+    `<root>/scripts/` (falling back to the process's current working
+    directory when no matching git root exists), or anchor to the explicit
+    `--workspace-root <path>` when supplied, so a caller invoking acquire
+    and release from any subdirectory with a workspace-relative path
+    computes the same lock path in both cases. An already-absolute
+    `filepath` is never affected.
 * `--token <token>` (release only, optional): the capability token printed
   by `acquire_lock` at acquire time (`LOCK_TOKEN=<token>`). Falls back to
   the `LOCK_TOKEN` environment variable when not supplied. Required to

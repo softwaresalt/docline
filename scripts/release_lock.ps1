@@ -114,6 +114,12 @@ public static class AutoharnessFileLockPathResolver
 # variable means "Windows PowerShell 5.1", which is unconditionally Windows.
 $autoharnessIsWindowsPlatform = if (Test-Path variable:IsWindows) { $IsWindows } else { $true }
 
+$autoharnessPathComparisonMode = if ($autoharnessIsWindowsPlatform) {
+    [System.StringComparison]::OrdinalIgnoreCase
+} else {
+    [System.StringComparison]::Ordinal
+}
+
 if ($autoharnessIsWindowsPlatform) {
     if (-not ('AutoharnessFileLockPathResolver' -as [type])) {
         Add-Type -TypeDefinition $autoharnessResolverSource -ErrorAction Stop
@@ -198,13 +204,12 @@ function Get-AutoharnessSingleQuoted {
     return "'" + ($Value -replace "'", "''") + "'"
 }
 
-# -WorkspaceRoot (optional, round-6 review, finding-6 parity): when supplied
-# and $FilePath is relative, anchor it to the given root instead of the
-# process CWD, so a caller invoking acquire and release from two DIFFERENT
-# working directories with the same documented workspace-relative path
-# computes the SAME lock path in both cases. An absolute $FilePath is left
-# untouched, and omitting -WorkspaceRoot preserves today's CWD-relative
-# behaviour exactly (no default root is derived or required).
+# -WorkspaceRoot: when supplied and $FilePath is relative, anchor it to the
+# given root; when omitted and $FilePath is relative, derive the same
+# default git top-level root as acquire_lock.ps1 (trusted when this script's
+# directory is the direct `scripts` child of that top-level) so acquire and
+# release invoked from any subdirectory with a workspace-relative path
+# always resolve the same lock file.
 if ($WorkspaceRoot) {
     if (-not (Test-Path -LiteralPath $WorkspaceRoot)) {
         Write-Error "--workspace-root does not exist: $WorkspaceRoot"
@@ -213,6 +218,25 @@ if ($WorkspaceRoot) {
     $realWorkspaceRootForAnchoring = Get-AutoharnessRealPath (Resolve-Path -LiteralPath $WorkspaceRoot).Path
     if (-not [System.IO.Path]::IsPathRooted($FilePath)) {
         $FilePath = Join-Path $realWorkspaceRootForAnchoring $FilePath
+    }
+} elseif (-not [System.IO.Path]::IsPathRooted($FilePath) -and $PSScriptRoot) {
+    try {
+        $realScriptDir = Get-AutoharnessRealPath $PSScriptRoot
+        $gitOutput = & git -C $PSScriptRoot rev-parse --show-toplevel 2>$null
+        if ($LASTEXITCODE -eq 0 -and $gitOutput) {
+            $realGitTopLevel = Get-AutoharnessRealPath $gitOutput.Trim()
+            $expectedScriptsDir = Join-Path $realGitTopLevel 'scripts'
+            $realExpectedScriptsDir = if (Test-Path -LiteralPath $expectedScriptsDir) {
+                Get-AutoharnessRealPath $expectedScriptsDir
+            } else {
+                $expectedScriptsDir
+            }
+            if ($realExpectedScriptsDir.Equals($realScriptDir, $autoharnessPathComparisonMode)) {
+                $FilePath = Join-Path $realGitTopLevel $FilePath
+            }
+        }
+    } catch {
+        # Fall back to $PWD-relative resolution below when git root is unavailable.
     }
 }
 

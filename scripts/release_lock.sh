@@ -71,11 +71,11 @@ if [ -z "$FILEPATH" ]; then
 fi
 
 # When --workspace-root is supplied and FILEPATH is relative (does not
-# start with "/"), anchor it to the given root instead of the process CWD.
-# An absolute FILEPATH is left untouched -- there is no CWD ambiguity to
-# resolve for it, matching acquire_lock.sh's own treatment of --workspace-root
-# (which affects containment decisions, never path resolution, for an
-# already-absolute target).
+# start with "/"), anchor it to the given root; when omitted and FILEPATH
+# is relative, derive the same default git top-level root as acquire_lock.sh
+# (trusted when this script's directory is the direct `scripts` child of
+# that top-level) so acquire and release invoked from any subdirectory with
+# a workspace-relative path always resolve the same lock file.
 if [ -n "$WORKSPACE_ROOT" ]; then
     if [ ! -e "$WORKSPACE_ROOT" ]; then
         echo "Error: --workspace-root does not exist: $WORKSPACE_ROOT" >&2
@@ -85,6 +85,25 @@ if [ -n "$WORKSPACE_ROOT" ]; then
     case "$FILEPATH" in
         /*) ;;
         *) FILEPATH="${REAL_WORKSPACE_ROOT}/${FILEPATH}" ;;
+    esac
+else
+    case "$FILEPATH" in
+        /*) ;;
+        *)
+            SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
+            GIT_TOPLEVEL="$(git -C "$SCRIPT_DIR" rev-parse --show-toplevel 2>/dev/null || true)"
+            if [ -n "$GIT_TOPLEVEL" ] && [ -e "$GIT_TOPLEVEL" ]; then
+                REAL_GIT_TOPLEVEL="$(realpath "$GIT_TOPLEVEL")"
+                if [ -d "${REAL_GIT_TOPLEVEL}/scripts" ]; then
+                    EXPECTED_SCRIPTS_DIR="$(realpath "${REAL_GIT_TOPLEVEL}/scripts")"
+                else
+                    EXPECTED_SCRIPTS_DIR="${REAL_GIT_TOPLEVEL}/scripts"
+                fi
+                if [ "$EXPECTED_SCRIPTS_DIR" = "$SCRIPT_DIR" ]; then
+                    FILEPATH="${REAL_GIT_TOPLEVEL}/${FILEPATH}"
+                fi
+            fi
+            ;;
     esac
 fi
 

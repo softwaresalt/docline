@@ -63,10 +63,11 @@ When locking is required, the agent MUST acquire a lock before modification:
 After modifying the file and verifying the result (compilation, tests, etc.),
 release the lock, supplying the token captured at acquire time:
 
-1. PowerShell: `scripts/release_lock.ps1 <filepath> -Token <token>`
-   Bash: `scripts/release_lock.sh <filepath> --token <token>`
+1. PowerShell: `scripts/release_lock.ps1 <filepath> -Token <token> [-WorkspaceRoot <path>]`
+   Bash: `scripts/release_lock.sh <filepath> --token <token> [--workspace-root <path>]`
    (the token may also be supplied via the `LOCK_TOKEN` environment variable
-   instead of the flag.)
+   instead of the flag; pass the same `-WorkspaceRoot`/`--workspace-root`
+   used at acquire time when overriding the default git repository root.)
 2. If the release succeeds (exit code 0), you are done.
 3. If the release exits with a **non-zero** code, this is a **refusal**, not
    a routine warning: the script could not verify that this caller owns the
@@ -81,10 +82,13 @@ release the lock, supplying the token captured at acquire time:
 
 `acquire_lock` rejects any target path that resolves outside the workspace
 root (H2/H4), including absolute paths, `../` traversal, and directory
-symlink/junction escapes. The root defaults to the git repository root
-derived from the script's own installed location; pass `-WorkspaceRoot`/
-`--workspace-root` explicitly when that default cannot be trusted (for
-example, a nested checkout without its own `.git`).
+symlink/junction escapes. Both `acquire_lock` and `release_lock` derive the
+same default workspace root from the git repository root covering the
+script's own installed `scripts/` directory to anchor workspace-relative
+`<filepath>` arguments consistently across subdirectories; pass the same
+explicit `-WorkspaceRoot`/`--workspace-root` to both commands when that
+default cannot be trusted (for example, a nested checkout without its own
+`.git`).
 
 ### Lock Scope
 
