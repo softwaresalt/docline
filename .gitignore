@@ -217,9 +217,9 @@ __marimo__/
 # Streamlit
 .streamlit/secrets.toml
 
-# autoharness
-.autoharness/backups/
-.autoharness/staging/
+# gsd
+.gsd/backups/
+.gsd/staging/
 
 # local extract-land-transform staging
 .elt/
@@ -241,6 +241,7 @@ __marimo__/
 .vscode/
 .worktrees/
 *.code-workspace
+.github/copilot/
 
 .*.lock
 **/.*.lock
@@ -281,4 +282,17 @@ isolate-*.log
 !.engram/registry.yaml
 
 # graphtor-docs — managed by graphtor-docs install
-.graphtor/
+.kbdb/
+
+# gsd-runtime-ignore
+.gsd/gsd
+.gsd/gsd.exe
+.gsd/*.exe
+.gsd/*.old
+.gsd/*.bak
+.gsd/*.zip
+.gsd/SHA256SUMS
+.gsd/runtime-manifest.json
+.gsd/activation-intent.json
+.gsd/runtime/
+.gsd/worktree-baseline.json

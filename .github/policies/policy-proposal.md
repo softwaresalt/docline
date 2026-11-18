@@ -1,9 +1,9 @@
 ---
 title: "Workspace-Specific Policy Proposal Template Reference"
-description: "Reference copy of the dynamic policy proposal template instantiated into .autoharness/policy-proposals/ by tune-harness Step 2.4"
+description: "Reference copy of the dynamic policy proposal template instantiated into .gsd/policy-proposals/ by tune-harness Step 2.4"
 ---
 
-When `tune-harness` Step 1.8.5 detects policy-gap candidates in `docs/compound/`, Step 2.4 instantiates `.autoharness/policy-proposals/{suggested_policy_id}.md` using `{autoharness_home}/templates/policies/policy-proposal.md.tmpl`:
+When `tune-harness` Step 1.8.5 detects policy-gap candidates in `docs/compound/`, Step 2.4 instantiates `.gsd/policy-proposals/{suggested_policy_id}.md` using `{GSD_HOME}/templates/policies/policy-proposal.md.tmpl`:
 
 ```markdown
 ---
