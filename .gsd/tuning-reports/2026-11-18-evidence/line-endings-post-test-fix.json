@@ -1,0 +1,15 @@
+{
+  "checked_at": "2026-11-18T07:29:34Z",
+  "exit_code": 0,
+  "result": {
+    "crlf_count": 0,
+    "lone_cr_count": 0,
+    "mixed_newline_count": 0,
+    "bom_count": 0,
+    "missing_eof_newline_count": 0,
+    "elapsed_ms": 4779,
+    "scanned_count": 1400,
+    "files": null
+  },
+  "stderr": ""
+}

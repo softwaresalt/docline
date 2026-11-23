@@ -2,7 +2,7 @@ schema_version: 1.1.0
 installed_at: '2026-11-18T00:02:00Z'
 gsd_version: 1.6.0
 gsd_home: .gsd/gsd-assets-v1.6.0.zip
-profile_hash: a04d9e554938082f3a4b7cf624b70182cddc1db3e4376981c08ea5539d57ccc3
+profile_hash: 1a110d0330c111cb447012c3a76e15f1505207ef13887cfc8be21223bc9967da
 config_hash: df491fa642699ebef5827129737da5e510cd887c84d19c44922140d111a11a87
 install_preset: full
 primary_stack_pack: mcp-server
@@ -60,7 +60,7 @@ capability_pack_overlays:
   verification_checks:
   - kbdb.instructions.md installed at .github/instructions/
   - capability-pack-enforcement.instructions.md lists kbdb as retrieval-enforced
-  - config.yaml graphtor_docs block resolves sources_path and binary_path
+  - config.yaml kbdb block resolves sources_path and binary_path
   - start.ps1 and start.sh include the kbdb sidecar sync
 primitives_installed:
 - 1
@@ -93,17 +93,17 @@ artifacts:
   artifact_type: config
   primitive: 9
   template: generated
-  checksum: a04d9e554938082f3a4b7cf624b70182cddc1db3e4376981c08ea5539d57ccc3
+  checksum: 1a110d0330c111cb447012c3a76e15f1505207ef13887cfc8be21223bc9967da
 - path: .github/agents/_orchestrator.agent.md
   artifact_type: agent
   primitive: 5
   template: agents/_orchestrator.agent.md.tmpl
-  checksum: bbb2899c33d0f497097efd308b39ba449f760bab1522ed394fa5399e36e2e201
+  checksum: c1c50856cb7d6f1e3d039c1bf7700b767f2526c1963a7043149bb24f08a5f0f0
 - path: .github/agents/_ship.agent.md
   artifact_type: agent
   primitive: 5
   template: agents/_ship.agent.md.tmpl
-  checksum: 5ba15c26db369d6eee827c1672770e06513a4d4486b4f4a3a95bd2314b3f722b
+  checksum: cdd339319a34b7c26c11dbf265d9d605285eff6e61db742061c80f4fa6f1a5ad
 - path: .github/agents/_stage.agent.md
   artifact_type: agent
   primitive: 5
@@ -198,7 +198,7 @@ artifacts:
   artifact_type: foundation
   primitive: 1
   template: foundation/copilot-instructions.md.tmpl
-  checksum: d5f72e143e824bcc5bcabdffb2c73d2b5e12e340ab260006d81a24e59571b65b
+  checksum: d16c96cb6bf200ac62f2cd996759cb1b023e81a7f53a5fbef92027d623b5af58
 - path: .github/instructions/adversarial-review.instructions.md
   artifact_type: instruction
   primitive: 10
@@ -233,7 +233,7 @@ artifacts:
   artifact_type: instruction
   primitive: 10
   template: instructions/backlogit.instructions.md.tmpl
-  checksum: 643ebfd3a85e8722a4caddd841619694f05197a34f2b28762941e8925ed75ddf
+  checksum: f04852a540d58ab1214564c14c69d5962b9927c206ff198e358b312c69fd413d
 - path: .github/instructions/capability-pack-enforcement.instructions.md
   artifact_type: instruction
   primitive: 10
@@ -268,7 +268,7 @@ artifacts:
   artifact_type: foundation
   primitive: 1
   template: foundation/constitution.instructions.md.tmpl
-  checksum: 127f71405193ae5b454c1d9e4052996867a2db05d0de47bf6175cdd9713ce561
+  checksum: 2e0f28b7eae158c13ae51f280ec2d176e9bcd2515981b3cf31557cdaa11fa57b
 - path: .github/instructions/context-efficiency.instructions.md
   artifact_type: instruction
   primitive: 9
@@ -283,7 +283,7 @@ artifacts:
   artifact_type: instruction
   primitive: 1
   template: instructions/copilot-code-review.instructions.md.tmpl
-  checksum: c3cb0ef82563d1dfa2619241fed9d209d69d6c825ba4c2b94167fd72ac980dfd
+  checksum: 481b87f0121e42cd25f932f1e44588a163b0b8ead8895d3bdd11ec8f9f1061e7
 - path: .github/instructions/escalation-protocol.instructions.md
   artifact_type: instruction
   primitive: 5
@@ -298,7 +298,7 @@ artifacts:
   artifact_type: instruction
   primitive: 1
   template: instructions/github-pr-automation.instructions.md.tmpl
-  checksum: 8555492bd610dd5c1f5732b17dd08983f63e3e7fcaa5d1d9f815b012c659e02b
+  checksum: e36ae2acd816fdd0aaf258a219fc13f189cb3f493203b95b00dd774f7cf8d183
 - path: .github/instructions/kbdb.instructions.md
   artifact_type: instruction
   primitive: 10
@@ -313,7 +313,7 @@ artifacts:
   artifact_type: instruction
   primitive: 1
   template: instructions/mcp-server.instructions.md.tmpl
-  checksum: edf9beb4cef8365f1d5a7f5a4de6b53136bd61ef8fc83f6f12e3fb7cd2afdc3e
+  checksum: 20a18d9a9d6a76c870aa11ad596e2850a02abab906aa6a77632985735e633d49
 - path: .github/instructions/output-timestamps.instructions.md
   artifact_type: instruction
   primitive: 1
@@ -348,7 +348,7 @@ artifacts:
   artifact_type: instruction
   primitive: 1
   template: instructions/technology-python.instructions.md.tmpl
-  checksum: bcbbc5d0b33a098eb98416430ac5fa0a6080da984af1ee256780f21ce78402dc
+  checksum: 734324d6c2af91cd65fee68da7e67d149af95620aa8ab7d78cbd3807800cad48
 - path: .github/instructions/workflows.instructions.md
   artifact_type: instruction
   primitive: 1
@@ -488,12 +488,12 @@ artifacts:
   artifact_type: skill
   primitive: 6
   template: skills/pr-lifecycle/SKILL.md.tmpl
-  checksum: f009c9eacc1ae8602d78fd10d695a68fe3d3b261701f8fd8f4597072653d1089
+  checksum: 03de22c013803fe409d052bdf84d33bfa67cb0b342eccd91797a120345ce895c
 - path: .github/skills/review/SKILL.md
   artifact_type: skill
   primitive: 6
   template: skills/review/SKILL.md.tmpl
-  checksum: acb818672c4d1ac8739018ae83d1407be3ad12e38bc003722d681c25525048ca
+  checksum: cfce98f0cd3be779f5d40f31b11fe7418066d0aca978a1508c4bb6e328372ff5
 - path: .github/skills/runtime-verification/SKILL.md
   artifact_type: skill
   primitive: 6
@@ -513,7 +513,7 @@ artifacts:
   artifact_type: skill
   primitive: 6
   template: skills/shipment-reconcile/SKILL.md.tmpl
-  checksum: 3aa55b77d3553a84427c388c7a00193a905144baef8ad232c77d44f0387165c4
+  checksum: 06f4817469ce1a354632b67ed42ca2123e559ca75922ae30ca5b4ef802c8f63a
 - path: .github/skills/skill-search/SKILL.md
   artifact_type: skill
   primitive: 6
@@ -528,7 +528,7 @@ artifacts:
   artifact_type: config
   primitive: 7
   template: ci/ci.yml.tmpl
-  checksum: 3f6d11dfaba9d3c705663722864f24a527ab49ea6d35fb5fa9c3170c20a3f4f7
+  checksum: 1b4d7953f78f9f822037e4659228d6ed26979319a95d25ed5106369daf84ae87
 - path: .markdownlint.json
   artifact_type: config
   primitive: 7
@@ -538,7 +538,7 @@ artifacts:
   artifact_type: foundation
   primitive: 1
   template: foundation/AGENTS.md.tmpl
-  checksum: 95925382fc0cd3b9bc4b86c3a805a565a71534306a8a65d12c9b2c56fe51233a
+  checksum: 377713e1b9785beffc2bfe0fd50be2b171c68b23dafa56a2eef88ce9bba42f79
 - path: scripts/acquire_lock.ps1
   artifact_type: script
   primitive: 7
@@ -553,7 +553,7 @@ artifacts:
   artifact_type: script
   primitive: 7
   template: ci/ci-topology-check.sh.tmpl
-  checksum: bcc4ed1ea565b445279e0569a7a26cb649f5a98c69698afecafe08f85ac55be2
+  checksum: ac908a0d742387046cb45d69e6efa60c996218319c0ac9a7ea02d872cca76e12
 - path: scripts/pre-commit-markdownlint.ps1
   artifact_type: script
   primitive: 7
@@ -578,12 +578,12 @@ artifacts:
   artifact_type: script
   primitive: 7
   template: scripts/pre-push-quality-gates.ps1.tmpl
-  checksum: a88e5f37ef26603801aec74b2753ec742ec2e31231d90147f163172e1f0c6f6d
+  checksum: bfe3211faf1e5519b0111a50f7573a52346a75fe10f88156fb6333f8e5e977da
 - path: scripts/pre-push-quality-gates.sh
   artifact_type: script
   primitive: 7
   template: scripts/pre-push-quality-gates.sh.tmpl
-  checksum: 0827e050591eb731dcb8d969e447622dee32bbb079e7bdbb8c698cbeb499dfb3
+  checksum: ab6f19609e903a85716d241c06c5f17e683f95d487c07934642f9432e5ca97d1
 - path: scripts/release_lock.ps1
   artifact_type: script
   primitive: 7
@@ -608,7 +608,7 @@ artifacts:
   artifact_type: script
   primitive: 7
   template: scripts/start.ps1.tmpl
-  checksum: ef68b2bdde8e596962e823e63aa3711254283e87ef73708a69013075d7e7f4ea
+  checksum: f3d2fe3904804e166c59f94eec4d773ff5938517b7960dee7055fecb78e0e382
 - path: start.sh
   artifact_type: script
   primitive: 7
@@ -628,7 +628,7 @@ artifacts:
   artifact_type: agent
   primitive: 7
   template: agents/review/evidence-consistency-reviewer.agent.md.tmpl
-  checksum: 07d18f2112ac79a55a8d675f395118ee464a0e1fb7941f18f68c3071d8d70844
+  checksum: 31dff8075dd2fe21c0e46db9e10484fb906191783066258a14d7a6fb60938e1f
 - path: .github/skills/grill-me/SKILL.md
   artifact_type: skill
   primitive: 4
@@ -673,7 +673,7 @@ artifacts:
   artifact_type: skill
   primitive: 4
   template: global skill definition
-  checksum: 86a8e528182f05f21797e04f6d05a9e285d5d4823e7745393843ec98c372202d
+  checksum: 0e7e78e0f36c77e23cbf608469a4071c70ba7aab5b9569f30ff9f3e8c18c3e82
 - path: .github/skills/tune-harness/SKILL.md
   artifact_type: skill
   primitive: 4
@@ -700,7 +700,7 @@ artifacts:
   template: global prompt definition
   checksum: ba06895964194b6b78d42f0e63cb2686b8430c002a5192870a38ef2a2ce87bfb
 variables_used:
-  ADDITIONAL_COMMANDS: 'pyright src/                   # Type check
+  ADDITIONAL_COMMANDS: 'uv run pyright src/                   # Type check
 
     docline fetch                  # Run the I/O-bound document fetch phase
 
@@ -726,17 +726,48 @@ variables_used:
   gsd_version: 1.6.0
   BACKLOG_DIRECTORY: .backlogit
   BACKLOG_TOOL_NAME: backlogit
-  BUILD_CHECK_COMMAND: python -m py_compile src/docline/__init__.py
-  BUILD_COMMAND: python -m build
-  BUILD_TOOL: pip
-  CI_GSD_INSTALL_COMMAND: gsd update --version 1.6.0
+  BUILD_CHECK_COMMAND: uv run python -m py_compile src/docline/__init__.py
+  BUILD_COMMAND: uv run python -m build
+  BUILD_TOOL: uv
+  CI_GSD_INSTALL_COMMAND: "|\n          $ErrorActionPreference = 'Stop'\n          $version = '1.6.0'\n          $release\
+    \ = \"https://github.com/softwaresalt/GSD/releases/download/v$version\"\n          $toolDir = Join-Path $PWD '.gsd'\n\
+    \          New-Item -ItemType Directory -Path $toolDir -Force | Out-Null\n          $exeHash = 'df8a29d5a9f7f1306a9abe2ca1ae5e314e638ebfa0d9ac8a1ec4524cea27470e'\n\
+    \          $bundleHash = 'b170652c9d83786cde8e988ef8d4c9cf47fb7039373383645b2a7ad7d053ebc1'\n          $assets = @(\n\
+    \            @{ Name = 'gsd.exe'; Asset = 'gsd-windows-amd64.exe'; Hash = $exeHash },\n            @{ Name = \"gsd-assets-v$version.zip\"\
+    ; Asset = 'gsd-assets.zip'; Hash = $bundleHash }\n          )\n          foreach ($asset in $assets) {\n            $path\
+    \ = Join-Path $toolDir $asset.Name\n            if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {\n          \
+    \    Invoke-WebRequest -Uri \"$release/$($asset.Asset)\" -OutFile $path\n            }\n            if ((Get-FileHash\
+    \ -LiteralPath $path -Algorithm SHA256).Hash -ne $asset.Hash) {\n              throw \"SHA-256 mismatch: $($asset.Name)\"\
+    \n            }\n          }\n          $bundleName = \"gsd-assets-v$version.zip\"\n          $compatBundle = Join-Path\
+    \ $toolDir 'gsd-assets.zip'\n          if (-not (Test-Path -LiteralPath $compatBundle -PathType Leaf)) {\n           \
+    \ Copy-Item -LiteralPath (Join-Path $toolDir $bundleName) -Destination $compatBundle\n          }\n          if ((Get-FileHash\
+    \ -LiteralPath $compatBundle -Algorithm SHA256).Hash -ne $bundleHash) {\n            throw 'SHA-256 mismatch: gsd-assets.zip'\n\
+    \          }\n          $manifestPath = Join-Path $toolDir 'runtime-manifest.json'\n          if (-not (Test-Path -LiteralPath\
+    \ $manifestPath -PathType Leaf)) {\n            $now = [DateTime]::UtcNow.ToString(\"yyyy-MM-ddTHH:mm:ss'Z'\")\n     \
+    \       $manifest = @{\n              schema_version = '1.0.0'\n              last_op_id = \"ci-bootstrap-$version\"\n\
+    \              active_version = $version\n              release_tag = \"v$version\"\n              executable_path = 'gsd.exe'\n\
+    \              executable_sha256 = $exeHash\n              bundle_path = $bundleName\n              bundle_sha256 = $bundleHash\n\
+    \              installed_bundles = @(@{\n                version = $version; path = $bundleName\n                sha256\
+    \ = $bundleHash; installed_at_utc = $now\n              })\n              updated_at_utc = $now\n            }\n     \
+    \       [IO.File]::WriteAllText(\n              $manifestPath,\n              ($manifest | ConvertTo-Json -Depth 5),\n\
+    \              [Text.UTF8Encoding]::new($false)\n            )\n          } else {\n            $manifest = Get-Content\
+    \ -LiteralPath $manifestPath -Raw | ConvertFrom-Json\n            if ($manifest.active_version -ne $version -or\n    \
+    \            $manifest.executable_path -ne 'gsd.exe' -or\n                $manifest.executable_sha256 -ne $exeHash -or\n\
+    \                $manifest.bundle_path -ne $bundleName -or\n                $manifest.bundle_sha256 -ne $bundleHash) {\n\
+    \              throw 'Existing runtime-manifest.json does not match the pinned Windows runtime'\n            }\n     \
+    \     }\n          $toolDir | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append\n          & \"$toolDir\\gsd.exe\"\
+    \ version --no-update-check\n          if ($LASTEXITCODE -ne 0) { throw 'GSD version check failed' }"
   CI_DEFAULT_BRANCH: main
   CI_DOCS_ONLY_PATHS: "              - '!docs/**'\n              - '!.backlogit/**'\n              - '!.gsd/**'"
   CI_EXPENSIVE_JOB_NAME: quality gates
   CI_PLATFORM: GitHub Actions
   CI_REQUIRED_CHECK_NAME: ci gate
   CI_RUNNER_OS: ubuntu-latest
-  CI_SETUP_STEPS: "      - name: Checkout\n        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10  # v6.0.3\n        with:\n          persist-credentials: false\n      - name: Install uv\n        uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39  # v8.2.0\n        with:\n          enable-cache: true\n          cache-dependency-glob: \"uv.lock\"\n      - name: Set up Python 3.12\n        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405  # v6.2.0\n        with:\n          python-version: \"3.12\"\n      - name: Sync dependencies\n        run: uv sync --locked --all-extras --dev"
+  CI_SETUP_STEPS: "      - name: Checkout\n        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10  # v6.0.3\n\
+    \        with:\n          persist-credentials: false\n      - name: Install uv\n        uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39\
+    \  # v8.2.0\n        with:\n          enable-cache: true\n          cache-dependency-glob: \"uv.lock\"\n      - name:\
+    \ Set up Python 3.12\n        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405  # v6.2.0\n        with:\n\
+    \          python-version: \"3.12\"\n      - name: Sync dependencies\n        run: uv sync --locked --all-extras --dev"
   COMMIT_SCOPES: core, cli, mcp, fetch, process, schema, docs
   COPILOT_EXE_PATH: copilot
   DOCS_CLOSURE: docs/closure
@@ -755,19 +786,19 @@ variables_used:
   ERROR_PATTERN: raise/except with typed exceptions
   EXAMPLE_SCOPE: core
   FILE_EXT: py
-  FORMAT_CHECK_COMMAND: ruff format --check .
-  FORMAT_COMMAND: ruff format --check .
-  FORMAT_FIX_COMMAND: ruff format .
-  FORMAT_TOOL: ruff
+  FORMAT_CHECK_COMMAND: uv run ruff format --check .
+  FORMAT_COMMAND: uv run ruff format --check .
+  FORMAT_FIX_COMMAND: uv run ruff format .
+  FORMAT_TOOL: uv
   HARNESS_ENFORCED_SUMMARY: '* Markdown formatting and markdownlint heading hierarchy (MD001/MD025/MD041, P-008)
 
     * Workflow policies P-001 through P-021 and constitutional principle sequencing
 
-    * Test-first red-green gate mechanics (P-002, P-004) and the `pytest` suite run
+    * Test-first red-green gate mechanics (P-002, P-004) and the `uv run pytest` suite run
 
-    * Lint and format gates already enforced by `ruff check .` and `ruff format --check .`
+    * Lint and format gates already enforced by `uv run ruff check .` and `uv run ruff format --check .`
 
-    * Static typing already enforced by `pyright src/`
+    * Static typing already enforced by `uv run pyright src/`
 
     * Merge-commit-only discipline (P-009, Principle XI) — squash and rebase are forbidden
 
@@ -780,9 +811,9 @@ variables_used:
   INSTALL_PRESET: full
   LANGUAGE_FILE_GLOB: '**/*.py'
   LANGUAGE_VERSION: '3.12'
-  LINT_COMMAND: ruff check .
+  LINT_COMMAND: uv run ruff check .
   LINT_POLICY: ruff check fails on any warning; zero-tolerance for lint errors
-  LINT_TOOL: ruff
+  LINT_TOOL: uv
   MAX_WAIT: '600'
   MCP_PROJECT_STRUCTURE: 'src/docline/mcp/       # MCP server entry point, tool registration, stdio transport
 
@@ -793,7 +824,7 @@ variables_used:
     src/docline/process/   # Compute-bound normalization phase invoked by both interfaces
 
     tests/                 # pytest suite mirroring src/ structure'
-  MCP_SDK: mcp
+  MCP_SDK: Pydantic schemas and custom stdio JSON-RPC transport
   MCP_TRANSPORT: stdio
   NAMING_CONVENTIONS: snake_case for functions/variables, PascalCase for classes, UPPER_CASE for constants
   POLL_INTERVAL: '30'
@@ -808,29 +839,34 @@ variables_used:
     docs/design-docs/ — architecture and design documents
 
     docs/product-specs/ — product requirements'
-  QUALITY_GATE_1: ruff check .
+  QUALITY_GATE_1: uv run ruff check .
   QUALITY_GATE_1_NAME: lint
-  QUALITY_GATE_2: pyright src/
+  QUALITY_GATE_2: uv run pyright src/
   QUALITY_GATE_2_NAME: typecheck
-  QUALITY_GATE_3: pytest
+  QUALITY_GATE_3: uv run pytest
   QUALITY_GATE_3_NAME: test
-  QUALITY_GATE_4: ruff format --check .
+  QUALITY_GATE_4: uv run ruff format --check .
   QUALITY_GATE_4_NAME: format
   REPOSITORY_OPERATING_MODEL: Single-repo Python CLI + MCP server with dual-interface parity requirement
   REPO_NAME: docline
   REPO_OWNER: softwaresalt
-  SECURITY_CONFIG_RULES: Credential regexes, unsafe tool allow-lists, missing validation guardrails, exposed env defaults, and missing CI security gate references.
-  SECURITY_OWASP_PATTERNS: Python OWASP heuristics for subprocess injection, path traversal, unsafe parsing, weak crypto, secret logging, SSRF, and untrusted deserialization.
-  SECURITY_REVIEW_PATTERNS: src/docline/fetch/**, src/docline/mcp/**, src/docline/readers/**, src/docline/schema/**, src/docline/runtime/**, src/docline/_tools/**
-  SECURITY_SCAN_PATTERNS: Python patterns for subprocess and shell interpolation, unsafe archive extraction and path traversal, SSRF-prone URL handling, unsafe YAML/XML/HTML parsing, secret logging, and auth gaps between the CLI and MCP stdio entry points
+  SECURITY_CONFIG_RULES: Credential regexes, unsafe tool allow-lists, missing validation guardrails, exposed env defaults,
+    and missing CI security gate references.
+  SECURITY_OWASP_PATTERNS: Python OWASP heuristics for subprocess injection, path traversal, unsafe parsing, weak crypto,
+    secret logging, SSRF, and untrusted deserialization.
+  SECURITY_REVIEW_PATTERNS: src/docline/fetch/**, src/docline/mcp/**, src/docline/readers/**, src/docline/schema/**, src/docline/runtime/**,
+    src/docline/_tools/**
+  SECURITY_SCAN_PATTERNS: Python patterns for subprocess and shell interpolation, unsafe archive extraction and path traversal,
+    SSRF-prone URL handling, unsafe YAML/XML/HTML parsing, secret logging, and auth gaps between the CLI and MCP stdio entry
+    points
   SOURCE_DIR: src/
   SOURCE_GLOB: src/**/*.py
-  TEST_COMMAND: pytest
+  TEST_COMMAND: uv run pytest
   TEST_DIR: tests/
   TEST_STRUCTURE: Tests in tests/ directory mirroring src/ structure
-  TEST_TOOL: pytest
-  TYPECHECK_COMMAND: pyright src/
-  TYPECHECK_TOOL: pyright
+  TEST_TOOL: uv
+  TYPECHECK_COMMAND: uv run pyright src/
+  TYPECHECK_TOOL: uv
   UNIMPLEMENTED_MARKER: raise NotImplementedError("...")
   UNSAFE_POLICY: type hints required on all public interfaces
   MODEL_ROUTING_TIER1: claude-haiku-5.5
@@ -891,4 +927,4 @@ variables_used:
   BROWSER_CLI: agent-browser
   BROWSER_HEADLESS_FLAG: --headless
   VARIABLE: <VARIABLE>
-tuned_at: '2026-11-18T04:13:49Z'
+tuned_at: '2026-11-18T07:50:22Z'

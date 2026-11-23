@@ -17,11 +17,10 @@
 # PR's own proposed head, so a PR that violates topology invariants can also
 # edit this script or the workflow to trivially report success. It IS an
 # effective backstop against accidental/careless local bypasses that were
-# never intended to touch the enforcement surface itself. See "Threat Model &
-# CODEOWNERS Hardening" in docs/pipeline-topology-gate-ci-rollout.md for the
-# recommended mitigation (protect this file and the CI workflow with a
-# CODEOWNERS-required review) and for a stronger, out-of-scope alternative
-# (`pull_request_target`-based re-architecture).
+# never intended to touch the enforcement surface itself. Upstream "Threat Model &
+# CODEOWNERS Hardening" is historical upstream guidance. The local mitigation
+# is to protect this file and the CI workflow with a
+# CODEOWNERS-required review. A pull_request_target redesign is out of scope.
 #
 # NON-SHIPMENT-SCOPED INVOCATION: no human-supplied --shipment is passed, and
 # no --shipment is resolved from CI job inputs. The gate deterministically
@@ -29,9 +28,9 @@
 # currently-claimed active shipment recorded in the SYNCED resolved backlog
 # root (`.backlog/` for new installs, `.backlogit/` for legacy workspaces, or
 # `BACKLOGIT_WORKSPACE_DIR` when explicitly overridden), or (2) failing that,
-# the branch under validation. The phase is always `ambient`. Per the phase
-# semantics matrix
-# (docs/pipeline-topology-gate.md): zero active shipments / no resolvable
+# the branch under validation. The phase is always `ambient`. The native gate
+# is authoritative; this entrypoint's ambient contract is self-contained here:
+# zero active shipments / no resolvable
 # target PASSES (ordinary CI stays non-blocking for commits with no claimed
 # shipment); a single active shipment matching the resolved target PASSES; a
 # mismatched single active shipment, or two-or-more active shipments, BLOCKS
@@ -63,8 +62,8 @@
 # up, in the CI WORKFLOW job that invokes this script (job-level
 # `continue-on-error`, gated on the `PIPELINE_TOPOLOGY_GATE_REQUIRED`
 # repository variable) -- see the `topology-check` job added to
-# `templates/ci/ci.yml.tmpl` (109.014-T / C2) and
-# `docs/pipeline-topology-gate.md`.
+# `.github/workflows/ci.yml` (109.014-T / C2) and
+# `.github/policies/workflow-policies.md` (P-001/P-016/P-019).
 #
 # Exit codes (propagated unmodified from `gsd gate pipeline-topology`):
 #   0  PASS  -- no active shipment (ordinary CI run, non-blocking) or the
@@ -129,7 +128,7 @@ exit_code=$?
 if [ "$exit_code" -eq 0 ]; then
   echo "[CI Topology Check] PASS"
 elif [ "$exit_code" -eq 1 ]; then
-  echo "::error::[CI Topology Check] BLOCK -- pipeline-topology invariant violated (P-001/P-016 server-side backstop). See docs/pipeline-topology-gate.md." >&2
+  echo "::error::[CI Topology Check] BLOCK -- pipeline-topology invariant violated (P-001/P-016 server-side backstop). See scripts/ci-topology-check.sh for the ambient invocation contract and inspect the native gate JSON above." >&2
 else
   echo "::error::[CI Topology Check] INVALID (exit ${exit_code}) -- gate invocation/configuration error." >&2
 fi

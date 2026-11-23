@@ -1,0 +1,535 @@
+{
+  "schema_version": "tune-validation-2",
+  "status": "TUNING_APPLIED_AND_VERIFIED",
+  "validated_at": "2026-11-18T08:02:47Z",
+  "observed_baseline_head": "b6794d9fbe397bc5833f20466464bce518572cba",
+  "branch": "chore/migrate-to-gsd",
+  "remote_default": "origin/main",
+  "all_changes_uncommitted": true,
+  "index_diff_empty": true,
+  "commit_push_pr_performed": false,
+  "proposal_priority_counts": {
+    "P0": 1,
+    "P1": 6,
+    "P2": 5,
+    "P3": 1
+  },
+  "proposal_disposition_counts": {
+    "applied": 9,
+    "deferred": 3,
+    "declined": 1
+  },
+  "current_statuses": {
+    ".gsd/tuning-reports/2026-11-18-tuning-report.md": "TUNING_APPLIED_AND_VERIFIED",
+    "docs/memory/2026-11-18/tune-harness-proposal-report-memory.md": "TUNING_APPLIED_AND_VERIFIED"
+  },
+  "deterministic": {
+    "source": "final-verifier.json",
+    "execution": "final-verifier-execution.json",
+    "exit_code": 0,
+    "stdout_sha256": "de5e9725df9a369f3cd38282a5b8be3fa5d11a864e9bc4ca4c76aef29f060e2b",
+    "blockers": 0,
+    "strict_schema_blockers": 0,
+    "unresolved": 0,
+    "warnings": 0,
+    "migration_proposals": 0,
+    "new_artifacts": [],
+    "targeted_checks_count": 12,
+    "targeted_checks": {
+      "agent_skill_references": true,
+      "backlog_registry_cli_surface": true,
+      "backlogit_engine_compatibility": true,
+      "capability_pack_enforcement": true,
+      "carry_forward_config": true,
+      "copilot_code_review_frontmatter": true,
+      "escalation_chain_directive_parity": true,
+      "frontmatter_conformity": true,
+      "model_routing_escalation": true,
+      "orchestrator_workspace_identity": true,
+      "ship_workspace_identity": true,
+      "stage_workspace_identity": true
+    },
+    "checksum_counts": {
+      "unchanged": 124,
+      "missing": 0,
+      "user-modified": 0,
+      "ignored": 0
+    }
+  },
+  "manifest": {
+    "path": ".gsd/harness-manifest.yaml",
+    "sha256": "8b9c45166634b2753198c19dab461e4fc0266c2213b8e1288228ef62f7898d13",
+    "profile_hash": "1a110d0330c111cb447012c3a76e15f1505207ef13887cfc8be21223bc9967da",
+    "config_hash": "df491fa642699ebef5827129737da5e510cd887c84d19c44922140d111a11a87",
+    "tuned_at": "2026-11-18T07:50:22Z",
+    "raw_hashes_match": true,
+    "modified_manifest_artifacts_use_LF": true
+  },
+  "line_endings": {
+    "checked_at": "2026-11-18T08:01:21Z",
+    "command": [
+      "C:\\Source\\GitHub\\docline\\.gsd\\gsd.exe",
+      "gate",
+      "line-endings",
+      "--json"
+    ],
+    "exit_code": 0,
+    "result": {
+      "crlf_count": 0,
+      "lone_cr_count": 0,
+      "mixed_newline_count": 0,
+      "bom_count": 0,
+      "missing_eof_newline_count": 0,
+      "elapsed_ms": 7529,
+      "scanned_count": 1410,
+      "files": null
+    },
+    "stderr": ""
+  },
+  "markdownlint": {
+    "files": [
+      "AGENTS.md",
+      ".github/copilot-instructions.md",
+      ".github/instructions/constitution.instructions.md",
+      ".github/instructions/github-pr-automation.instructions.md",
+      ".github/instructions/technology-python.instructions.md",
+      ".github/instructions/copilot-code-review.instructions.md",
+      ".github/agents/subagents/evidence-consistency-reviewer.agent.md",
+      ".github/agents/_orchestrator.agent.md",
+      ".github/agents/_ship.agent.md",
+      ".github/instructions/backlogit.instructions.md",
+      ".github/skills/review/SKILL.md",
+      ".github/skills/pr-lifecycle/SKILL.md",
+      ".github/skills/shipment-reconcile/SKILL.md",
+      ".github/skills/install-harness/SKILL.md",
+      ".github/instructions/mcp-server.instructions.md",
+      "docs/compound/2026-07-17-backlogit-ship-gate-needs-active-to-done.md",
+      "docs/compound/2026-08-30-ship-shipment-deadlocks-in-worktree.md",
+      ".gsd/continuous-learning/instincts/2026-09-09-060-s-instincts.md",
+      ".gsd\\tuning-reports\\2026-11-18-tuning-report.md",
+      "docs\\memory\\2026-11-18\\tune-harness-proposal-report-memory.md"
+    ],
+    "command": "markdownlint --config .markdownlint.json -- <listed files>",
+    "exit_code": 0,
+    "checked_at": "2026-11-18T08:01:20Z",
+    "file_count": 20
+  },
+  "git_diff_check": {
+    "exit_code": 0,
+    "source": "direct tool invocation shellId 139",
+    "warning": "Git warns the untracked-by-manifest instinct file may be converted on a future checkout; current working bytes are LF and the native gate passes"
+  },
+  "focused_checks": {
+    "offline_bootstrap_cases_passed": 5,
+    "network_calls": 0,
+    "result": "windows-bootstrap-test-results.json",
+    "PowerShell_AST": {
+      "exit_code": 0,
+      "source": "direct tool invocation shellId 131",
+      "files": [
+        "scripts/pre-push-quality-gates.ps1",
+        ".gsd/tuning-reports/2026-11-18-evidence/windows-bootstrap-under-test.ps1",
+        ".gsd/tuning-reports/2026-11-18-evidence/test-windows-bootstrap.ps1"
+      ]
+    },
+    "Bash_syntax_and_actual_topology": "shell-topology-checks.json",
+    "profile_and_ci_contract": "ci-profile-checks.json",
+    "hosted_ci_run": false,
+    "application_suite_run": false,
+    "application_suite_non_applicability": "No application source/dependency manifest changed; approved scope was harness verification"
+  },
+  "adversarial_review": {
+    "evidence": "adversarial-review.json",
+    "result": "PASS",
+    "reviewer_count": 4,
+    "anchor_route": "TOOL_OK: anchor-review-model",
+    "post_remediation_cycles": 2,
+    "reported_items_including_delta": 17,
+    "initial_findings": 13,
+    "delta_findings": 4,
+    "corrected_items": 9,
+    "corrected_major": 4,
+    "corrected_minor": 5,
+    "open_minor_advisories": 4,
+    "unconfirmed_outside_scope": 1,
+    "intentional_hardened_override": 1,
+    "dismissed": 2,
+    "remaining_high_critical_major": 0,
+    "final_delta_findings": 0,
+    "backlog_writes": 0
+  },
+  "runtime_assets": [
+    {
+      "path": ".gsd/gsd.exe",
+      "st_nlink": 1,
+      "sha256": "df8a29d5a9f7f1306a9abe2ca1ae5e314e638ebfa0d9ac8a1ec4524cea27470e"
+    },
+    {
+      "path": ".gsd/gsd-assets-v1.6.0.zip",
+      "st_nlink": 1,
+      "sha256": "b170652c9d83786cde8e988ef8d4c9cf47fb7039373383645b2a7ad7d053ebc1"
+    },
+    {
+      "path": ".gsd/gsd-assets.zip",
+      "st_nlink": 1,
+      "sha256": "b170652c9d83786cde8e988ef8d4c9cf47fb7039373383645b2a7ad7d053ebc1"
+    }
+  ],
+  "preserved_controls": [
+    ".gsd/config.yaml",
+    "start.ps1",
+    "start.sh",
+    ".markdownlint.json",
+    ".github/prompts/feature-flow-dark.prompt.md",
+    "scripts/pre-commit-pipeline-topology.ps1",
+    "scripts/pre-commit-pipeline-topology.sh",
+    ".gsd/runtime-manifest.json",
+    ".github/agents/_stage.agent.md"
+  ],
+  "explicit_model_variables_unchanged": true,
+  "legacy_backlog_root_retained": true,
+  "backlog_migration_or_writes": false,
+  "carry_forward_action": "absent; untouched",
+  "compact_context": "compact-context-final-assessment.json; assessment-only; no archival",
+  "modified_live_files": [
+    ".github/agents/_orchestrator.agent.md",
+    ".github/agents/_ship.agent.md",
+    ".github/agents/subagents/evidence-consistency-reviewer.agent.md",
+    ".github/copilot-instructions.md",
+    ".github/instructions/backlogit.instructions.md",
+    ".github/instructions/constitution.instructions.md",
+    ".github/instructions/copilot-code-review.instructions.md",
+    ".github/instructions/github-pr-automation.instructions.md",
+    ".github/instructions/mcp-server.instructions.md",
+    ".github/instructions/technology-python.instructions.md",
+    ".github/skills/install-harness/SKILL.md",
+    ".github/skills/pr-lifecycle/SKILL.md",
+    ".github/skills/review/SKILL.md",
+    ".github/skills/shipment-reconcile/SKILL.md",
+    ".github/workflows/ci.yml",
+    ".gsd/continuous-learning/instincts/2026-09-09-060-s-instincts.md",
+    ".gsd/harness-manifest.yaml",
+    ".gsd/workspace-profile.yaml",
+    "AGENTS.md",
+    "docs/compound/2026-07-17-backlogit-ship-gate-needs-active-to-done.md",
+    "docs/compound/2026-08-30-ship-shipment-deadlocks-in-worktree.md",
+    "scripts/ci-topology-check.sh",
+    "scripts/pre-push-quality-gates.ps1",
+    "scripts/pre-push-quality-gates.sh"
+  ],
+  "new_untracked_outputs": [
+    ".gsd/tuning-reports/2026-11-18-evidence/adversarial-review.json",
+    ".gsd/tuning-reports/2026-11-18-evidence/apply-authorization-backups.json",
+    ".gsd/tuning-reports/2026-11-18-evidence/apply-state.json",
+    ".gsd/tuning-reports/2026-11-18-evidence/audit-correction-checks.json",
+    ".gsd/tuning-reports/2026-11-18-evidence/baseline-execution.json",
+    ".gsd/tuning-reports/2026-11-18-evidence/baseline-preview-differences.json",
+    ".gsd/tuning-reports/2026-11-18-evidence/baseline-verifier.json",
+    ".gsd/tuning-reports/2026-11-18-evidence/ci-profile-checks.json",
+    ".gsd/tuning-reports/2026-11-18-evidence/closure-content-review.json",
+    ".gsd/tuning-reports/2026-11-18-evidence/community-registry.json",
+    ".gsd/tuning-reports/2026-11-18-evidence/compact-context-assessment.json",
+    ".gsd/tuning-reports/2026-11-18-evidence/compact-context-final-assessment.json",
+    ".gsd/tuning-reports/2026-11-18-evidence/config-validation.json",
+    ".gsd/tuning-reports/2026-11-18-evidence/evidence-line-ending-remediation.json",
+    ".gsd/tuning-reports/2026-11-18-evidence/final-line-endings.json",
+    ".gsd/tuning-reports/2026-11-18-evidence/final-markdownlint.json",
+    ".gsd/tuning-reports/2026-11-18-evidence/final-verifier-execution.json",
+    ".gsd/tuning-reports/2026-11-18-evidence/final-verifier.json",
+    ".gsd/tuning-reports/2026-11-18-evidence/health-report.json",
+    ".gsd/tuning-reports/2026-11-18-evidence/learning-review.json",
+    ".gsd/tuning-reports/2026-11-18-evidence/line-endings-initial.json",
+    ".gsd/tuning-reports/2026-11-18-evidence/line-endings-post-test-fix.json",
+    ".gsd/tuning-reports/2026-11-18-evidence/line-endings-recovered.json",
+    ".gsd/tuning-reports/2026-11-18-evidence/link-recovery.json",
+    ".gsd/tuning-reports/2026-11-18-evidence/literal-reference-check.json",
+    ".gsd/tuning-reports/2026-11-18-evidence/native-check-count-proof.json",
+    ".gsd/tuning-reports/2026-11-18-evidence/post-apply-verifier-execution.json",
+    ".gsd/tuning-reports/2026-11-18-evidence/post-apply-verifier.json",
+    ".gsd/tuning-reports/2026-11-18-evidence/post-audit-verifier-execution.json",
+    ".gsd/tuning-reports/2026-11-18-evidence/post-audit-verifier.json",
+    ".gsd/tuning-reports/2026-11-18-evidence/post-recovery-verifier-execution.json",
+    ".gsd/tuning-reports/2026-11-18-evidence/post-recovery-verifier.json",
+    ".gsd/tuning-reports/2026-11-18-evidence/proposals.json",
+    ".gsd/tuning-reports/2026-11-18-evidence/run-validation.json",
+    ".gsd/tuning-reports/2026-11-18-evidence/shell-topology-checks.json",
+    ".gsd/tuning-reports/2026-11-18-evidence/test-windows-bootstrap.ps1",
+    ".gsd/tuning-reports/2026-11-18-evidence/tune-evidence.json",
+    ".gsd/tuning-reports/2026-11-18-evidence/verification-blocker.json",
+    ".gsd/tuning-reports/2026-11-18-evidence/verify-harness-payload.json",
+    ".gsd/tuning-reports/2026-11-18-evidence/windows-bootstrap-test-results.json",
+    ".gsd/tuning-reports/2026-11-18-evidence/windows-bootstrap-under-test.ps1",
+    ".gsd/tuning-reports/2026-11-18-tuning-report.md",
+    "docs/memory/2026-11-18/tune-harness-proposal-report-memory.md"
+  ],
+  "evidence_hashes_excluding_this_self_record": [
+    {
+      "path": ".gsd/tuning-reports/2026-11-18-evidence/adversarial-review.json",
+      "sha256": "9342e7c32ed6061f2d8dfc392a56f5c54b1225907932a23cae5acd039a75b5a2",
+      "bytes": 16635
+    },
+    {
+      "path": ".gsd/tuning-reports/2026-11-18-evidence/apply-authorization-backups.json",
+      "sha256": "61f761c4a890481c2e996a57ace461c2906251682752f7c0213fc664037bd4bd",
+      "bytes": 58459
+    },
+    {
+      "path": ".gsd/tuning-reports/2026-11-18-evidence/apply-state.json",
+      "sha256": "39d6f22e1f5c6d886874222ce0a1ad6f086ec6d7b0c3d5a8c2c8f555dafa1f29",
+      "bytes": 2299
+    },
+    {
+      "path": ".gsd/tuning-reports/2026-11-18-evidence/audit-correction-checks.json",
+      "sha256": "43a67beda02660ebdf2ef799c0b39ebd64211ae7c7f549447b232d95fd4f6a9a",
+      "bytes": 770
+    },
+    {
+      "path": ".gsd/tuning-reports/2026-11-18-evidence/baseline-execution.json",
+      "sha256": "3520a9583777a8c4581c748ee20ee3da7e2cef12070d2dfb727f44195f81d28d",
+      "bytes": 818
+    },
+    {
+      "path": ".gsd/tuning-reports/2026-11-18-evidence/baseline-preview-differences.json",
+      "sha256": "845faefe4952e0a982b2d12a04d036ac24adddded3ddc393b5e9db25594846aa",
+      "bytes": 50767
+    },
+    {
+      "path": ".gsd/tuning-reports/2026-11-18-evidence/baseline-verifier.json",
+      "sha256": "1781820d13c894100ef6f03cd61a4eb6ca7aa42dc26301957697f9e328b3a03d",
+      "bytes": 72867
+    },
+    {
+      "path": ".gsd/tuning-reports/2026-11-18-evidence/ci-profile-checks.json",
+      "sha256": "6ea0d588ee1a5cc6ed28e25da2e97880e42eaa7a22b9cb48389166c4644035c6",
+      "bytes": 467
+    },
+    {
+      "path": ".gsd/tuning-reports/2026-11-18-evidence/closure-content-review.json",
+      "sha256": "95dbe3a295f85b46e61985e5ba4c8a2d6d607b5f674fa0a89e317268c22591c5",
+      "bytes": 66883
+    },
+    {
+      "path": ".gsd/tuning-reports/2026-11-18-evidence/community-registry.json",
+      "sha256": "2981facde46c7a70c2dd1e307fcbf61a90dd8dc88a346e696aac3da5c25fe0d5",
+      "bytes": 17052
+    },
+    {
+      "path": ".gsd/tuning-reports/2026-11-18-evidence/compact-context-assessment.json",
+      "sha256": "08bd798e9ed9d04ac541cd6ebb7d781c8f0a340b7a26065721af0c4c99692729",
+      "bytes": 1243
+    },
+    {
+      "path": ".gsd/tuning-reports/2026-11-18-evidence/compact-context-final-assessment.json",
+      "sha256": "5500972825fbbb8aa4d931afa82285440be545fc2e40b437705066a788894098",
+      "bytes": 483
+    },
+    {
+      "path": ".gsd/tuning-reports/2026-11-18-evidence/config-validation.json",
+      "sha256": "9097cb384430e70bbe175899924ad948545d60d3e7463bdfc58890f204b02d62",
+      "bytes": 261
+    },
+    {
+      "path": ".gsd/tuning-reports/2026-11-18-evidence/evidence-line-ending-remediation.json",
+      "sha256": "b77a5861dd0ea404013946854ee058d080cddc59d47075f46671d0ffbbd26292",
+      "bytes": 5063
+    },
+    {
+      "path": ".gsd/tuning-reports/2026-11-18-evidence/final-line-endings.json",
+      "sha256": "f4b1c533d43f27b9c2995ca5826cc2ea89955519c3fe5db8badf68ccf0ebddc9",
+      "bytes": 411
+    },
+    {
+      "path": ".gsd/tuning-reports/2026-11-18-evidence/final-markdownlint.json",
+      "sha256": "237a57cb8f3eb35a30d2517f7b0382b7b7f805eadfbdc2b632ff2a88c25cbb42",
+      "bytes": 1266
+    },
+    {
+      "path": ".gsd/tuning-reports/2026-11-18-evidence/final-verifier-execution.json",
+      "sha256": "230472534547e259fe1036cd232ef0ba7eec63182e6d6408c54577bffb964d77",
+      "bytes": 408
+    },
+    {
+      "path": ".gsd/tuning-reports/2026-11-18-evidence/final-verifier.json",
+      "sha256": "de5e9725df9a369f3cd38282a5b8be3fa5d11a864e9bc4ca4c76aef29f060e2b",
+      "bytes": 72867
+    },
+    {
+      "path": ".gsd/tuning-reports/2026-11-18-evidence/health-report.json",
+      "sha256": "e232d159b1f493056548c93590b8c6372ffd9ffefa3c159a1cba5165d61c85e1",
+      "bytes": 224333
+    },
+    {
+      "path": ".gsd/tuning-reports/2026-11-18-evidence/learning-review.json",
+      "sha256": "3c849f43822a707e9bb41fe2c89464515ed466e14fe967e53a06eecfcbb40646",
+      "bytes": 41636
+    },
+    {
+      "path": ".gsd/tuning-reports/2026-11-18-evidence/line-endings-initial.json",
+      "sha256": "aa1cd8f4e67cb66c6e46f36415f61e9b9910bdfcdce81ee17df652af7393cacd",
+      "bytes": 3845
+    },
+    {
+      "path": ".gsd/tuning-reports/2026-11-18-evidence/line-endings-post-test-fix.json",
+      "sha256": "b2a5b6498e014581f3965b9a54cacb3a2c21edca5fb04c2a1295cc6ce8594260",
+      "bytes": 296
+    },
+    {
+      "path": ".gsd/tuning-reports/2026-11-18-evidence/line-endings-recovered.json",
+      "sha256": "47937e366a2ff2afea2c20e618e5ee1bc816ce896f4066c2c4447934d7f43cbe",
+      "bytes": 562
+    },
+    {
+      "path": ".gsd/tuning-reports/2026-11-18-evidence/link-recovery.json",
+      "sha256": "10b13bf86a7fafe3b56cabe6d78c38b4954cea0844a3738a7006fae516822029",
+      "bytes": 1092
+    },
+    {
+      "path": ".gsd/tuning-reports/2026-11-18-evidence/literal-reference-check.json",
+      "sha256": "4f6144f31f7b79742772a5f5ca6cece608a8ca9ecefbd33b89c44f85da60cbca",
+      "bytes": 23178
+    },
+    {
+      "path": ".gsd/tuning-reports/2026-11-18-evidence/native-check-count-proof.json",
+      "sha256": "45a12682b05df5ae302679fb84d315332c53310395f11077926fbcdf01c8bd18",
+      "bytes": 1399
+    },
+    {
+      "path": ".gsd/tuning-reports/2026-11-18-evidence/post-apply-verifier-execution.json",
+      "sha256": "2bfc2ddcecbcbf8753d1e442b891b2ec81ccd9430790e8c5a6b7742bd01c24bf",
+      "bytes": 408
+    },
+    {
+      "path": ".gsd/tuning-reports/2026-11-18-evidence/post-apply-verifier.json",
+      "sha256": "7a9b34a33215872ddcd15b5c2077648455c0a609520b3a1bd5993d9892927d9f",
+      "bytes": 89464
+    },
+    {
+      "path": ".gsd/tuning-reports/2026-11-18-evidence/post-audit-verifier-execution.json",
+      "sha256": "d198f460dfe6aa18a998230c0e91954866a4fa81f509ea50e30de392d543e010",
+      "bytes": 408
+    },
+    {
+      "path": ".gsd/tuning-reports/2026-11-18-evidence/post-audit-verifier.json",
+      "sha256": "14b97b90f30addf3528a38d7fbd3905a2a23ceeab72fc02924982f2b057e0ce5",
+      "bytes": 72867
+    },
+    {
+      "path": ".gsd/tuning-reports/2026-11-18-evidence/post-recovery-verifier-execution.json",
+      "sha256": "69b43c0335c30d16fe69e8c69285e5dd33be4c73a8a2300ddb223443020e3e59",
+      "bytes": 408
+    },
+    {
+      "path": ".gsd/tuning-reports/2026-11-18-evidence/post-recovery-verifier.json",
+      "sha256": "a3b892f3f0f1f5c3b93c0815090c6e5d82c59de391cc13f0a2d7d426bc2c78bf",
+      "bytes": 72867
+    },
+    {
+      "path": ".gsd/tuning-reports/2026-11-18-evidence/proposals.json",
+      "sha256": "74a79244ceb7a8628614f546ed0cf97ecf57d3210580d3526b714de5fcb194bb",
+      "bytes": 33127
+    },
+    {
+      "path": ".gsd/tuning-reports/2026-11-18-evidence/shell-topology-checks.json",
+      "sha256": "b0c5846239085d3a2a63e979d1a375dd8e89f5d9bfb6e17714fdc1d7e61f0fde",
+      "bytes": 2533
+    },
+    {
+      "path": ".gsd/tuning-reports/2026-11-18-evidence/test-windows-bootstrap.ps1",
+      "sha256": "5971fc11287b6b4d6419735de82da9655ee08e44d74f831cc350a9abfa883f4c",
+      "bytes": 4858
+    },
+    {
+      "path": ".gsd/tuning-reports/2026-11-18-evidence/tune-evidence.json",
+      "sha256": "8851a2858eee446d96f563c175ad8a28286278f12133756ca117ddccec15c9ab",
+      "bytes": 338558
+    },
+    {
+      "path": ".gsd/tuning-reports/2026-11-18-evidence/verification-blocker.json",
+      "sha256": "1a5c4406ebf85050df2fd0a4eac179c463dced5e577531c8c39749bbea138739",
+      "bytes": 1794
+    },
+    {
+      "path": ".gsd/tuning-reports/2026-11-18-evidence/verify-harness-payload.json",
+      "sha256": "f497e67796f5ad107f1316fb6fd3eb3a09877e369752615b12073b30085004bb",
+      "bytes": 44430
+    },
+    {
+      "path": ".gsd/tuning-reports/2026-11-18-evidence/windows-bootstrap-test-results.json",
+      "sha256": "21a6edf9ae7dee152d2dd55d68be1fbc7ca87bda664fb411bb92134c60235161",
+      "bytes": 1231
+    },
+    {
+      "path": ".gsd/tuning-reports/2026-11-18-evidence/windows-bootstrap-under-test.ps1",
+      "sha256": "a4f2772a14a2189652e4ae9b8d687aefdd251b4cb92b2768e2ee41fe101eb7c3",
+      "bytes": 2632
+    }
+  ],
+  "markdown_bytes": [
+    {
+      "path": ".gsd/tuning-reports/2026-11-18-tuning-report.md",
+      "sha256": "784b2a218ce8568ab9c7b685bf520d9240c45bd0700c15ffd958c9842a3b5a6d",
+      "encoding": "UTF-8 without BOM",
+      "line_endings": "LF"
+    },
+    {
+      "path": "docs/memory/2026-11-18/tune-harness-proposal-report-memory.md",
+      "sha256": "a9233902a2088c2032cc2bd0223fee8938b21ed4547c34a20be720ed77f8db02",
+      "encoding": "UTF-8 without BOM",
+      "line_endings": "LF"
+    }
+  ],
+  "backup_root": ".gsd/backups/2026-11-18",
+  "backup_inventory": "apply-authorization-backups.json",
+  "backup_snapshots": [
+    "verification-resume-072509",
+    "evidence-line-endings",
+    "test-results-newline-fix",
+    "revision-proposal-20261118T060145Z",
+    "review-remediation-0730",
+    "review-delta-0744",
+    "final-evidence-075427"
+  ],
+  "historical_path_relocations": [
+    {
+      "from": ".gsd/tuning-reports/2026-11-18-evidence/revision-backups/20261118T060145Z",
+      "to": ".gsd/backups/2026-11-18/revision-proposal-20261118T060145Z",
+      "bytes_preserved": true
+    }
+  ],
+  "historical_attempts": [
+    {
+      "report": "baseline-verifier.json",
+      "phase": "proposal-only baseline",
+      "exit_code": 0
+    },
+    {
+      "report": "post-apply-verifier.json",
+      "phase": "first post-apply check",
+      "exit_code": 1,
+      "resolved_by": "link-recovery.json"
+    },
+    {
+      "report": "post-recovery-verifier.json",
+      "phase": "post-recovery",
+      "exit_code": 0
+    },
+    {
+      "report": "post-audit-verifier.json",
+      "phase": "first audit corrections",
+      "exit_code": 0
+    },
+    {
+      "report": "final-verifier.json",
+      "phase": "final audit delta corrections",
+      "exit_code": 0
+    }
+  ],
+  "historical_evidence_notes": [
+    "Raw baseline, failed and successful verifier stdout remain separate and unmodified",
+    "Initial verifier wrote staged previews outside proposal-only boundary; later Phase5 writes authorized and backed up",
+    "Initial hardlink fixture failure resolved by operator-approved copy-and-rename swap with zero swap deletions/overwrites",
+    "Initial CRLF/mixed evidence normalized only after backup; exact original backups relocated, not rewritten",
+    "Open MINOR observations remain open; no forbidden backlog capture or false all-findings-closed claim"
+  ],
+  "self_hash_omitted": true
+}

@@ -19,7 +19,7 @@ silent failures, and state loss during unattended agent operation.
 
 Every feature or chore MUST have tests written before implementation code. The test
 directory structure (Tests in tests/ directory mirroring src/ structure) MUST be maintained. All tests MUST
-pass via `pytest` before any code is merged. Steps: write test,
+pass via `uv run pytest` before any code is merged. Steps: write test,
 confirm it fails (red), implement, confirm it passes (green). Never write
 production code before the corresponding test exists and has been observed
 to fail.
@@ -186,10 +186,10 @@ commit-traceability links and backlog commit associations.
 | Concern         | Constraint                                                       |
 |-----------------|------------------------------------------------------------------|
 | Language        | Python 3.12                        |
-| Build           | `python -m build`                                              |
-| Test            | `pytest`                                               |
-| Lint            | `ruff check .`                                               |
-| Format          | `ruff format --check .`                                             |
+| Build           | `uv run python -m build`                                              |
+| Test            | `uv run pytest`                                               |
+| Lint            | `uv run ruff check .`                                               |
+| Format          | `uv run ruff format --check .`                                             |
 | CI              | GitHub Actions                                                  |
 | Error Handling  | raise/except with typed exceptions                                                |
 | Documentation   | """Google-style docstrings"""                                            |
@@ -199,10 +199,10 @@ commit-traceability links and backlog commit associations.
 Run in order. Do not skip any gate.
 
 ```text
-ruff check .
-pyright src/
-pytest
-ruff format --check .
+uv run ruff check .
+uv run pyright src/
+uv run pytest
+uv run ruff format --check .
 ```
 
 ## Development Workflow
@@ -286,7 +286,7 @@ with these principles.
 
 | Principle | Level | Enforcement Mechanism |
 |---|---|---|
-| I. Safety-First Language | MUST | CI quality gates (`ruff check .`, `python -m build`) |
+| I. Safety-First Language | MUST | CI quality gates (`uv run ruff check .`, `uv run python -m build`) |
 | II. Test-First Development | NON-NEGOTIABLE | P-002/P-004 policies; harness-architect red phase; build-feature green phase |
 | III. Workspace Isolation | MUST | Agent runtime path resolution within workspace root |
 | IV. CLI Containment | NON-NEGOTIABLE | Agent runtime cwd boundary enforcement |

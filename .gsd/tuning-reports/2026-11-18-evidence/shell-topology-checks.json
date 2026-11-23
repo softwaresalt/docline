@@ -1,0 +1,35 @@
+{
+  "checked_at": "2026-11-18T07:42:42Z",
+  "checks": [
+    {
+      "command": [
+        "C:\\Program Files\\Git\\bin\\bash.exe",
+        "-n",
+        "scripts/pre-push-quality-gates.sh"
+      ],
+      "exit_code": 0,
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "command": [
+        "C:\\Program Files\\Git\\bin\\bash.exe",
+        "-n",
+        "scripts/ci-topology-check.sh"
+      ],
+      "exit_code": 0,
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "command": [
+        "C:\\Program Files\\Git\\bin\\bash.exe",
+        "scripts/ci-topology-check.sh"
+      ],
+      "exit_code": 0,
+      "stdout": "[CI Topology Check] resolved backlog root: .backlogit\n[CI Topology Check] gsd gate pipeline-topology --mode ci --phase ambient --json\n{\n  \"checks\": [\n    {\n      \"message\": \"\",\n      \"name\": \"branch_ownership\",\n      \"status\": \"pass\",\n      \"token\": \"\"\n    },\n    {\n      \"details\": {\n        \"active_shipments\": null,\n        \"target_status\": \"\"\n      },\n      \"message\": \"active shipment invariant verified\",\n      \"name\": \"active_shipment_invariant\",\n      \"status\": \"pass\"\n    },\n    {\n      \"details\": null,\n      \"message\": \"shipment manifest task states consistent with shipment status\",\n      \"name\": \"detect_before_consistency\",\n      \"status\": \"pass\"\n    },\n    {\n      \"details\": null,\n      \"message\": \"no target shipment in ambient mode\",\n      \"name\": \"shipment_readiness\",\n      \"status\": \"pass\"\n    },\n    {\n      \"details\": null,\n      \"message\": \"no claim or lifecycle hold scan in ambient mode\",\n      \"name\": \"hold_eligibility\",\n      \"status\": \"pass\"\n    },\n    {\n      \"details\": null,\n      \"message\": \"predecessor closure completeness applies before claim\",\n      \"name\": \"backlog_state\",\n      \"status\": \"pass\"\n    },\n    {\n      \"details\": null,\n      \"message\": \"worktree topology verified\",\n      \"name\": \"worktree_topology\",\n      \"status\": \"pass\"\n    }\n  ],\n  \"exit_code\": 0,\n  \"expected_branches\": [],\n  \"forced\": false,\n  \"message\": \"pipeline topology check passed\",\n  \"mode\": \"ci\",\n  \"phase\": \"ambient\",\n  \"predecessor_provenance\": null,\n  \"resolution_source\": \"title_alias\",\n  \"selected_branch\": \"\",\n  \"status\": \"pass\",\n  \"target_shipment_id\": null,\n  \"telemetry_log\": null\n}\n[CI Topology Check] PASS\n",
+      "stderr": ""
+    }
+  ],
+  "hosted_ci_run": false
+}

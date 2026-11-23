@@ -7,56 +7,118 @@ languages:
   secondary: []
 frameworks:
   list:
-  - fastapi
   - pydantic
-  mcp_sdk: mcp-python
+  mcp_sdk: null
   mcp_transport: stdio
 primary_stack_pack: mcp-server
 stack_packs:
 - cli-tool
 - mcp-server
 build:
-  tool: pip
-  command: python -m build
-  check_command: python -m py_compile src/docline/__init__.py
+  tool: uv
+  command: uv run python -m build
+  check_command: uv run python -m py_compile src/docline/__init__.py
 test:
   runner: pytest
-  command: pytest
+  command: uv run pytest
   directory: tests
 lint:
   tool: ruff
-  command: ruff check .
+  command: uv run ruff check .
 typecheck:
   tool: pyright
-  command: pyright src/
+  command: uv run pyright src/
 format:
   tool: ruff
-  command: ruff format .
-  check_command: ruff format --check .
+  command: uv run ruff format .
+  check_command: uv run ruff format --check .
 ci:
   platform: GitHub Actions
   pipeline_steps:
   - changes
-  - lint
-  - format
-  - typecheck
-  - test
-  - build
+  - expensive
   - topology-check
   - ci-gate
   quality_gates:
-  - ruff check .
-  - ruff format --check .
-  - pyright src/
-  - pytest
+  - uv run ruff check .
+  - uv run ruff format --check .
+  - uv run pyright src/
+  - uv run pytest
+  - uv run python -m build
   required_check_name: ci gate
+  # Required by profile 1.1.0, not the installed runner policy. Preserve the
+  # operator override: Windows expensive/topology; Ubuntu metadata-only jobs.
   linux_only: true
   path_filter_mode: fail_closed_changes_job
   docs_only_paths:
   - docs/**
   - .backlogit/**
   - .gsd/**
-  gsd_install_command: gsd update --version 1.6.0
+  gsd_install_command: |
+    $ErrorActionPreference = 'Stop'
+    $version = '1.6.0'
+    $release = "https://github.com/softwaresalt/GSD/releases/download/v$version"
+    $toolDir = Join-Path $PWD '.gsd'
+    New-Item -ItemType Directory -Path $toolDir -Force | Out-Null
+    $exeHash = 'df8a29d5a9f7f1306a9abe2ca1ae5e314e638ebfa0d9ac8a1ec4524cea27470e'
+    $bundleHash = 'b170652c9d83786cde8e988ef8d4c9cf47fb7039373383645b2a7ad7d053ebc1'
+    $assets = @(
+      @{ Name = 'gsd.exe'; Asset = 'gsd-windows-amd64.exe'; Hash = $exeHash },
+      @{ Name = "gsd-assets-v$version.zip"; Asset = 'gsd-assets.zip'; Hash = $bundleHash }
+    )
+    foreach ($asset in $assets) {
+      $path = Join-Path $toolDir $asset.Name
+      if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {
+        Invoke-WebRequest -Uri "$release/$($asset.Asset)" -OutFile $path
+      }
+      if ((Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash -ne $asset.Hash) {
+        throw "SHA-256 mismatch: $($asset.Name)"
+      }
+    }
+    $bundleName = "gsd-assets-v$version.zip"
+    $compatBundle = Join-Path $toolDir 'gsd-assets.zip'
+    if (-not (Test-Path -LiteralPath $compatBundle -PathType Leaf)) {
+      Copy-Item -LiteralPath (Join-Path $toolDir $bundleName) -Destination $compatBundle
+    }
+    if ((Get-FileHash -LiteralPath $compatBundle -Algorithm SHA256).Hash -ne $bundleHash) {
+      throw 'SHA-256 mismatch: gsd-assets.zip'
+    }
+    $manifestPath = Join-Path $toolDir 'runtime-manifest.json'
+    if (-not (Test-Path -LiteralPath $manifestPath -PathType Leaf)) {
+      $now = [DateTime]::UtcNow.ToString("yyyy-MM-ddTHH:mm:ss'Z'")
+      $manifest = @{
+        schema_version = '1.0.0'
+        last_op_id = "ci-bootstrap-$version"
+        active_version = $version
+        release_tag = "v$version"
+        executable_path = 'gsd.exe'
+        executable_sha256 = $exeHash
+        bundle_path = $bundleName
+        bundle_sha256 = $bundleHash
+        installed_bundles = @(@{
+          version = $version; path = $bundleName
+          sha256 = $bundleHash; installed_at_utc = $now
+        })
+        updated_at_utc = $now
+      }
+      [IO.File]::WriteAllText(
+        $manifestPath,
+        ($manifest | ConvertTo-Json -Depth 5),
+        [Text.UTF8Encoding]::new($false)
+      )
+    } else {
+      $manifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
+      if ($manifest.active_version -ne $version -or
+          $manifest.executable_path -ne 'gsd.exe' -or
+          $manifest.executable_sha256 -ne $exeHash -or
+          $manifest.bundle_path -ne $bundleName -or
+          $manifest.bundle_sha256 -ne $bundleHash) {
+        throw 'Existing runtime-manifest.json does not match the pinned Windows runtime'
+      }
+    }
+    $toolDir | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+    & "$toolDir\gsd.exe" version --no-update-check
+    if ($LASTEXITCODE -ne 0) { throw 'GSD version check failed' }
 local_gating:
   pre_push_enabled: true
   pre_push_gates:
@@ -212,11 +274,12 @@ harness_recommendations:
       - .backlogit/ directory with config.yaml present
       - backlogit CLI available on PATH
     - item: kbdb
-      because: kbdb is installed in the workspace with an indexed source configuration, so documentation retrieval should route through the index.
+      because: kbdb binary and source configuration are provisioned, with degraded local fallback until documentation sources and its MCP server are configured; no active indexed corpus is claimed.
       signals:
       - .kbdb/ directory present at workspace root
-      - .kbdb/config/sources.yaml declares indexed sources
+      - .kbdb/config/sources.yaml exists but currently declares no sources
       - .kbdb/bin/kbdb.exe binary present
+      - .mcp.json does not currently register a kbdb server
     install_layers:
     - item: foundation
       because: Constitution, AGENTS.md, and shared instructions anchor every other artifact.
@@ -254,7 +317,7 @@ kbdb:
   recommended: true
 agent_native:
   detected: true
-  mcp_sdk_present: true
+  mcp_sdk_present: false
   mcp_transport: stdio
   agent_tooling_markers:
   - MCP server dual interface (design doc)

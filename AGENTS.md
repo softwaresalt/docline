@@ -26,7 +26,7 @@ All exceptions must be typed; use custom exception hierarchy.
 
 Every feature or chore MUST have tests written before implementation code. The test
 directory structure (Tests in tests/ directory mirroring src/ structure) MUST be maintained. All tests MUST
-pass via `pytest` before any code is merged.
+pass via `uv run pytest` before any code is merged.
 
 ### III. Workspace Isolation and Security Boundaries
 
@@ -204,10 +204,10 @@ General rules:
 | Concern         | Constraint                                 |
 |-----------------|--------------------------------------------|
 | Language        | Python 3.12  |
-| Build           | `python -m build`                        |
-| Test            | `pytest`                         |
-| Lint            | `ruff check .`                         |
-| Format          | `ruff format --check .`                       |
+| Build           | `uv run python -m build`                        |
+| Test            | `uv run pytest`                         |
+| Lint            | `uv run ruff check .`                         |
+| Format          | `uv run ruff format --check .`                       |
 | CI              | GitHub Actions                            |
 
 ---
@@ -218,16 +218,16 @@ Run in order. Do not skip any gate.
 
 ```text
 # Gate 1 — lint
-ruff check .
+uv run ruff check .
 
 # Gate 2 — typecheck
-pyright src/
+uv run pyright src/
 
 # Gate 3 — test
-pytest
+uv run pytest
 
 # Gate 4 — format
-ruff format --check .
+uv run ruff format --check .
 ```
 
 ---

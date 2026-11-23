@@ -189,11 +189,11 @@ function Invoke-RequiredGate {
 
 Write-Host "Running local pre-push quality gates..."
 
-Invoke-Gate "Lint" "ruff" "ruff check ."
-Invoke-Gate "Format" "ruff" "ruff format --check ."
-Invoke-Gate "Typecheck" "pyright" "pyright src/"
-Invoke-Gate "Test" "pytest" "pytest"
-Invoke-Gate "Build" "pip" "python -m py_compile src/docline/__init__.py"
+Invoke-Gate "Lint" "uv" "uv run ruff check ."
+Invoke-Gate "Format" "uv" "uv run ruff format --check ."
+Invoke-Gate "Typecheck" "uv" "uv run pyright src/"
+Invoke-Gate "Test" "uv" "uv run pytest"
+Invoke-Gate "Build" "uv" "uv run python -m build"
 
 # Markdown lint (P-019 REQUIRED gate, P-008). Scope S1 -- identical to CI so the
 # local hook and CI cannot disagree: Markdown files changed vs the merge-base

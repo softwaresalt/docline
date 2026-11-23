@@ -104,9 +104,10 @@ Protocol above.
   eligibility check. The closing owner — Ship's post-merge closure, or the
   Orchestrator immediately before its next queue selection — MUST simply
   re-evaluate queued successors against their `blocks` edges; no shipment-status
-  mutation is performed or required. This is the supported backlogit 1.8.0 model
-  documented in `docs/compound/2026-05-07-backlogit-shipment-status-constraints.md`
-  and ratified by 109.019-T.
+  mutation is performed or required. The installed sequencing rule is
+  self-contained here: successors remain queued until their predecessor ships;
+  shipment `blocked` is not a valid lifecycle state. Historical upstream
+  attribution: backlogit 1.8.0, ratified by 109.019-T.
 * **Honor `custom_fields.queue_position`** for explicit manual ordering among
   eligible shipments; set it when you need a deterministic order that priority
   alone does not express.

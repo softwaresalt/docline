@@ -9,10 +9,10 @@ docline is a docline workspace.
 | Layer           | Technology                | Notes                                 |
 |-----------------|---------------------------|---------------------------------------|
 | Language        | Python 3.12 | (3.12)          |
-| Build           | pip            | `python -m build`                   |
-| Test            | pytest           | `pytest`                    |
-| Lint            | ruff                | `ruff check .`                    |
-| Format          | ruff             | `ruff format --check .`                  |
+| Build           | uv / build            | `uv run python -m build`                   |
+| Test            | pytest           | `uv run pytest`                    |
+| Lint            | ruff                | `uv run ruff check .`                    |
+| Format          | ruff             | `uv run ruff format --check .`                  |
 | CI              | GitHub Actions           | Uses GitHub Actions for CI validation.                          |
 
 
@@ -28,11 +28,11 @@ docs/product-specs/ — product requirements
 ## Commands
 
 ```bash
-python -m build              # Build
-pytest               # Run all tests
-ruff check .               # Lint
-ruff format --check .             # Format check
-pyright src/                   # Type check
+uv run python -m build              # Build
+uv run pytest               # Run all tests
+uv run ruff check .               # Lint
+uv run ruff format --check .             # Format check
+uv run pyright src/                   # Type check
 docline fetch                  # Run the I/O-bound document fetch phase
 docline process                # Run the compute-bound processing phase
 docline --manifest             # Output the JSON Schema tool definition
@@ -56,7 +56,7 @@ Google-style docstrings on all public functions and classes
 
 * TDD required: write tests first, verify they fail, then implement
 * Test tiers in `tests/` directory:
-Primary test command: pytest
+Primary test command: uv run pytest
 
 ## Search Strategy
 

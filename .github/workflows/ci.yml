@@ -13,10 +13,11 @@
 #                          a skipped expensive job as OK and fails only when a
 #                          needed job actually failed or was cancelled.
 #
-# Regular PR/push CI is Linux-only (ubuntu-latest); cross-OS verification is
-# deferred to release-tag workflows. To run every PR across macOS/Windows,
-# replace `runs-on: ubuntu-latest` with a matrix strategy (see the OS-matrix
-# escape hatch documented in templates/ci/README.md).
+# Product validation and GSD topology checks run on Windows, the product's
+# target platform. Metadata-only change detection and aggregation stay on Ubuntu.
+# This is an operator-owned runner/bootstrap override: preserve it on refresh.
+# The profile's ci.linux_only: true is a schema-compatibility sentinel, not the
+# runner policy for this installed workflow.
 #
 # Actions are SHA-pinned. Refreshing pins is a periodic maintenance chore, not a
 # per-change concern.
@@ -88,7 +89,10 @@ jobs:
     name: quality gates
     needs: changes
     if: needs.changes.outputs.code == 'true'
-    runs-on: ubuntu-latest
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: pwsh
     steps:
       - name: Checkout
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10  # v6.0.3
@@ -106,15 +110,15 @@ jobs:
       - name: Sync dependencies
         run: uv sync --locked --all-extras --dev
       - name: Lint
-        run: ruff check .
+        run: uv run ruff check .
       - name: Format check
-        run: ruff format --check .
+        run: uv run ruff format --check .
       - name: Typecheck
-        run: pyright src/
+        run: uv run pyright src/
       - name: Test
-        run: pytest
+        run: uv run pytest
       - name: Build check
-        run: python -m py_compile src/docline/__init__.py
+        run: uv run python -m build
 
   # Pipeline-topology CI backstop (Gate C, 109.014-T): the server-side
   # re-validation of the P-001 (at-most-one-active-shipment) / P-016 (single
@@ -133,9 +137,8 @@ jobs:
   # enforcement workflow, and an ambient, non-shipment-scoped signal on every
   # push/PR from contributors who don't touch `.github/workflows/` or
   # `scripts/ci-topology-check.sh`. See "Threat Model & CODEOWNERS Hardening"
-  # in docs/pipeline-topology-gate-ci-rollout.md for the recommended
-  # mitigation (CODEOWNERS-required review on the enforcement surface) and a
-  # stronger, out-of-scope alternative (`pull_request_target`).
+  # Protect this workflow and its entrypoint with CODEOWNERS-required review
+  # for stronger enforcement. A pull_request_target redesign is out of scope.
   #
   # Always runs -- unlike `expensive`, this job is NOT gated on the `changes`
   # path-filter output: the ambient invocation is inexpensive and
@@ -150,12 +153,12 @@ jobs:
   # result `success` for dependents (including `ci-gate` below) even when the
   # gate itself reports BLOCK. Setting the variable to `'true'` flips
   # `continue-on-error` to `false`, making a BLOCK verdict fail this job (and
-  # therefore `ci-gate`) for real -- with NO WORKFLOW RE-RENDER NEEDED. See
-  # docs/pipeline-topology-gate.md and docs/pipeline-topology-gate-ci-rollout.md
-  # for the staged advisory->required rollout.
+  # therefore `ci-gate`) for real -- with NO WORKFLOW RE-RENDER NEEDED.
+  # Local authorities: .github/policies/workflow-policies.md (P-001/P-016/P-019)
+  # and .github/instructions/backlogit.instructions.md.
   topology-check:
     name: pipeline-topology (ambient)
-    runs-on: ubuntu-latest
+    runs-on: windows-latest
     continue-on-error: ${{ vars.PIPELINE_TOPOLOGY_GATE_REQUIRED != 'true' }}
     steps:
       - name: Checkout
@@ -166,9 +169,75 @@ jobs:
         uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
         with:
           python-version: '3.12'
-      - name: Install gsd
-        run: gsd update --version 1.6.0
+      - name: Install verified Windows GSD 1.6.0
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $version = '1.6.0'
+          $release = "https://github.com/softwaresalt/GSD/releases/download/v$version"
+          $toolDir = Join-Path $PWD '.gsd'
+          New-Item -ItemType Directory -Path $toolDir -Force | Out-Null
+          $exeHash = 'df8a29d5a9f7f1306a9abe2ca1ae5e314e638ebfa0d9ac8a1ec4524cea27470e'
+          $bundleHash = 'b170652c9d83786cde8e988ef8d4c9cf47fb7039373383645b2a7ad7d053ebc1'
+          $assets = @(
+            @{ Name = 'gsd.exe'; Asset = 'gsd-windows-amd64.exe'; Hash = $exeHash },
+            @{ Name = "gsd-assets-v$version.zip"; Asset = 'gsd-assets.zip'; Hash = $bundleHash }
+          )
+          foreach ($asset in $assets) {
+            $path = Join-Path $toolDir $asset.Name
+            if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {
+              Invoke-WebRequest -Uri "$release/$($asset.Asset)" -OutFile $path
+            }
+            if ((Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash -ne $asset.Hash) {
+              throw "SHA-256 mismatch: $($asset.Name)"
+            }
+          }
+          $bundleName = "gsd-assets-v$version.zip"
+          $compatBundle = Join-Path $toolDir 'gsd-assets.zip'
+          if (-not (Test-Path -LiteralPath $compatBundle -PathType Leaf)) {
+            Copy-Item -LiteralPath (Join-Path $toolDir $bundleName) -Destination $compatBundle
+          }
+          if ((Get-FileHash -LiteralPath $compatBundle -Algorithm SHA256).Hash -ne $bundleHash) {
+            throw 'SHA-256 mismatch: gsd-assets.zip'
+          }
+          $manifestPath = Join-Path $toolDir 'runtime-manifest.json'
+          if (-not (Test-Path -LiteralPath $manifestPath -PathType Leaf)) {
+            $now = [DateTime]::UtcNow.ToString("yyyy-MM-ddTHH:mm:ss'Z'")
+            $manifest = @{
+              schema_version = '1.0.0'
+              last_op_id = "ci-bootstrap-$version"
+              active_version = $version
+              release_tag = "v$version"
+              executable_path = 'gsd.exe'
+              executable_sha256 = $exeHash
+              bundle_path = $bundleName
+              bundle_sha256 = $bundleHash
+              installed_bundles = @(@{
+                version = $version; path = $bundleName
+                sha256 = $bundleHash; installed_at_utc = $now
+              })
+              updated_at_utc = $now
+            }
+            [IO.File]::WriteAllText(
+              $manifestPath,
+              ($manifest | ConvertTo-Json -Depth 5),
+              [Text.UTF8Encoding]::new($false)
+            )
+          } else {
+            $manifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
+            if ($manifest.active_version -ne $version -or
+                $manifest.executable_path -ne 'gsd.exe' -or
+                $manifest.executable_sha256 -ne $exeHash -or
+                $manifest.bundle_path -ne $bundleName -or
+                $manifest.bundle_sha256 -ne $bundleHash) {
+              throw 'Existing runtime-manifest.json does not match the pinned Windows runtime'
+            }
+          }
+          $toolDir | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+          & "$toolDir\gsd.exe" version --no-update-check
+          if ($LASTEXITCODE -ne 0) { throw 'GSD version check failed' }
       - name: Run CI topology-check entrypoint
+        shell: bash
         run: bash scripts/ci-topology-check.sh
 
   # Always-reporting aggregation gate. REQUIRE THIS job in branch protection

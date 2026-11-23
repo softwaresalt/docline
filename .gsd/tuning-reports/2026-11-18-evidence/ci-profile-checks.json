@@ -1,0 +1,15 @@
+{
+  "profile_schema_valid": true,
+  "ci_runner_mapping": {
+    "changes": "ubuntu-latest",
+    "expensive": "windows-latest",
+    "topology-check": "windows-latest",
+    "ci-gate": "ubuntu-latest"
+  },
+  "explicit_shells": true,
+  "toggle_and_aggregation_preserved": true,
+  "profile_linux_only_sentinel": true,
+  "config_unchanged": true,
+  "source_approved_release_base": "https://github.com/softwaresalt/GSD/releases/download/v1.6.0",
+  "no_network_calls": true
+}

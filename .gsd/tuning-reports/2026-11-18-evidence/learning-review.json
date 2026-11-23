@@ -1,0 +1,1404 @@
+{
+  "authoritative_learning_signals_source": "baseline-verifier.json#/learning_signals",
+  "authoritative_learning_signals_preserved": {
+    "closure_patterns": [],
+    "compound_patterns": [],
+    "observation_patterns": [],
+    "promotion_candidates": []
+  },
+  "supplemental_content_review": {
+    "compound_documents": 31,
+    "pattern_field_presence_counts": {
+      "category": 16
+    },
+    "category_counts": {
+      "post-merge-branch-staleness": 1,
+      "pydantic-namespace-handling": 1,
+      "ship-shipment-commit-traceability": 1,
+      "pipeline-architecture": 1,
+      "extraction-quality-metrics": 1,
+      "backlogit-dependency-persistence": 1,
+      "engram-cli-grounding": 1,
+      "workflow-single-open-pr": 1,
+      "backlog-ship-cascade-archives-parent-feature": 1,
+      "pyright-pypdf-duck-typing": 1,
+      "importlib-dataclass-sys-modules": 1,
+      "windows-venv-redirector-tree-rss": 1,
+      "append-datetime-stamp-to-shell-messages": 1,
+      "backlogit-mcp-down-fall-back-to-cli": 1,
+      "ms-learn-canonical-url-from-breadcrumb": 1,
+      "cgnat-explicit-membership-check-and-ipv4-mapped-normalization": 1
+    },
+    "tag_counts": {
+      "stage": 1,
+      "harvest": 2,
+      "stash": 1,
+      "triage": 1,
+      "duplicate-detection": 1,
+      "crawl": 1,
+      "resource-bounds": 1,
+      "dos-hardening": 1,
+      "discovery-loop": 1,
+      "dedup-set": 1,
+      "ruff": 1,
+      "format-gate": 1,
+      "ci-parity": 1,
+      "version-drift": 1,
+      "markdown": 1,
+      "tdd": 1,
+      "mcp": 1,
+      "dual-era": 1,
+      "session-state": 1,
+      "test-drivers": 1,
+      "git-worktree": 1,
+      "pyright": 1,
+      "pytest": 1,
+      "venv": 1,
+      "false-positives": 1,
+      "backlogit": 3,
+      "ship_shipment": 2,
+      "worktree": 2,
+      "deadlock": 1,
+      "commit-traceability": 2,
+      "lock-files": 1,
+      "autoharness": 2,
+      "capability-packs": 1,
+      "overlays": 1,
+      "merge-install": 1,
+      "cross-references": 1,
+      "harness-manifest": 1,
+      "checksums": 1,
+      "line-endings": 1,
+      "windows": 1,
+      "markdownlint": 1,
+      "MD025": 1,
+      "skills": 1,
+      "false-positive": 1,
+      "json-schema": 1,
+      "powershell": 1,
+      "bash": 1,
+      "git-hooks": 1,
+      "fail-closed": 1,
+      "shell-parity": 1,
+      "sizing": 1,
+      "degraded-mode": 1,
+      "p-012": 1,
+      "pipeline-topology": 1,
+      "archived_status": 1,
+      "external-api": 1,
+      "json-api": 1,
+      "live-verification": 1,
+      "fixture-testing": 1,
+      "runtime-verification": 1,
+      "cli-safety": 1,
+      "mutual-exclusion": 1,
+      "filesystem-claims": 1,
+      "destructive-operation-guards": 1,
+      "review-fix-cycle": 1
+    },
+    "compound_entries": [
+      {
+        "path": "docs/compound/2026-06-03-check-shipped-before-staging-stash.md",
+        "sha256": "95c2118ac85a228472d60bef41d875bf40053d3a61cfff064b468a6e6cde9dad",
+        "frontmatter_present": true,
+        "pattern_fields": {},
+        "tags": [
+          "stage",
+          "harvest",
+          "stash",
+          "triage",
+          "duplicate-detection"
+        ],
+        "headings": [
+          {
+            "line": 17,
+            "text": "# Check shipped artifacts before staging new work from stash"
+          },
+          {
+            "line": 19,
+            "text": "## Problem"
+          },
+          {
+            "line": 30,
+            "text": "## Detection signal during Stage triage"
+          },
+          {
+            "line": 57,
+            "text": "## Corrective action"
+          },
+          {
+            "line": 66,
+            "text": "## Prevention guidance for harvest skill"
+          },
+          {
+            "line": 77,
+            "text": "## Evidence base"
+          },
+          {
+            "line": 85,
+            "text": "## Confidence"
+          }
+        ],
+        "issue_evidence": []
+      },
+      {
+        "path": "docs/compound/2026-06-04-post-merge-branch-ff-only-staleness.md",
+        "sha256": "8da6aa2de4a2d0656cf7517246fa632ff65b90e5da805f5f8148471dd6b4c428",
+        "frontmatter_present": true,
+        "pattern_fields": {
+          "category": "post-merge-branch-staleness"
+        },
+        "tags": [],
+        "headings": [
+          {
+            "line": 10,
+            "text": "# Post-merge closure branch must explicitly fast-forward to the new origin/main HEAD"
+          },
+          {
+            "line": 12,
+            "text": "## Problem"
+          },
+          {
+            "line": 32,
+            "text": "## Symptom"
+          },
+          {
+            "line": 52,
+            "text": "## Root cause"
+          },
+          {
+            "line": 68,
+            "text": "## Fix"
+          },
+          {
+            "line": 74,
+            "text": "# After 'gh pr merge --admin' confirms MERGED at $mergeSha"
+          },
+          {
+            "line": 79,
+            "text": "# Now branch"
+          },
+          {
+            "line": 94,
+            "text": "# These two should match \u2014 the closure branch should be one commit beyond"
+          },
+          {
+            "line": 95,
+            "text": "# the remote main HEAD."
+          },
+          {
+            "line": 98,
+            "text": "## Reusable rule"
+          },
+          {
+            "line": 104,
+            "text": "## Detection in code review / Ship workflow"
+          },
+          {
+            "line": 120,
+            "text": "## Related"
+          }
+        ],
+        "issue_evidence": []
+      },
+      {
+        "path": "docs/compound/2026-06-04-pydantic-namespace-merge-vs-overwrite.md",
+        "sha256": "8151e38f11ff59a45e2aca481d2d85a70c58c26d06d3efc6ffed638089165ba2",
+        "frontmatter_present": true,
+        "pattern_fields": {
+          "category": "pydantic-namespace-handling"
+        },
+        "tags": [],
+        "headings": [
+          {
+            "line": 10,
+            "text": "# Pydantic namespace dicts: always merge, never overwrite"
+          },
+          {
+            "line": 12,
+            "text": "## Problem"
+          },
+          {
+            "line": 29,
+            "text": "## Symptom"
+          },
+          {
+            "line": 38,
+            "text": "## Fix"
+          },
+          {
+            "line": 54,
+            "text": "## Reusable rule"
+          },
+          {
+            "line": 62,
+            "text": "## Detection in code review"
+          },
+          {
+            "line": 69,
+            "text": "## Related"
+          }
+        ],
+        "issue_evidence": []
+      },
+      {
+        "path": "docs/compound/2026-06-04-ship-shipment-commit-traceability-gap.md",
+        "sha256": "9c735a00ec8a465fbc9d04e6482b7573f6578262af15e3ed3448df7a489c2e60",
+        "frontmatter_present": true,
+        "pattern_fields": {
+          "category": "ship-shipment-commit-traceability"
+        },
+        "tags": [],
+        "headings": [
+          {
+            "line": 10,
+            "text": "# backlogit_ship_shipment skips items already in archive \u2014 manually backfill commit field"
+          },
+          {
+            "line": 12,
+            "text": "## Problem"
+          },
+          {
+            "line": 33,
+            "text": "## Symptom"
+          },
+          {
+            "line": 44,
+            "text": "## Detection"
+          },
+          {
+            "line": 58,
+            "text": "## Fix"
+          },
+          {
+            "line": 77,
+            "text": "## Reusable rule"
+          },
+          {
+            "line": 84,
+            "text": "## Detection in code review"
+          },
+          {
+            "line": 89,
+            "text": "## Workaround until backlogit is fixed"
+          },
+          {
+            "line": 100,
+            "text": "## Related"
+          }
+        ],
+        "issue_evidence": []
+      },
+      {
+        "path": "docs/compound/2026-06-06-triage-then-repair-pattern.md",
+        "sha256": "c89ca9a276a604c748f832efff02affad8b3e3bca44c152fb0f106238661a81c",
+        "frontmatter_present": true,
+        "pattern_fields": {
+          "category": "pipeline-architecture"
+        },
+        "tags": [],
+        "headings": [
+          {
+            "line": 10,
+            "text": "# Triage-then-repair pattern for selective ML invocation in document pipelines"
+          },
+          {
+            "line": 12,
+            "text": "## Problem"
+          },
+          {
+            "line": 37,
+            "text": "## Pattern: triage-then-repair"
+          },
+          {
+            "line": 69,
+            "text": "## Required safety nets"
+          },
+          {
+            "line": 74,
+            "text": "### 1. Calibration mode (`--report-only`)"
+          },
+          {
+            "line": 82,
+            "text": "### 2. QA tripwire (`--sample-rate FLOAT`)"
+          },
+          {
+            "line": 91,
+            "text": "### 3. Per-unit fallback on ML failure"
+          },
+          {
+            "line": 100,
+            "text": "## Where the implementation lives in docline"
+          },
+          {
+            "line": 109,
+            "text": "## Likely future applications in docline"
+          },
+          {
+            "line": 125,
+            "text": "## Pattern non-goals"
+          },
+          {
+            "line": 137,
+            "text": "## Risks that recur with this pattern"
+          }
+        ],
+        "issue_evidence": []
+      },
+      {
+        "path": "docs/compound/2026-06-08-ast-fidelity-metrics.md",
+        "sha256": "0a956c8306a1dceee37ce099b4e8da541646b5a8e70fa1f88310e0a73488aae7",
+        "frontmatter_present": true,
+        "pattern_fields": {
+          "category": "extraction-quality-metrics"
+        },
+        "tags": [],
+        "headings": [
+          {
+            "line": 11,
+            "text": "# Char count is not a fidelity metric for AST-aware consumers"
+          },
+          {
+            "line": 13,
+            "text": "## Problem"
+          },
+          {
+            "line": 32,
+            "text": "## Symptom"
+          },
+          {
+            "line": 51,
+            "text": "## Root cause"
+          },
+          {
+            "line": 66,
+            "text": "## Decision rule"
+          },
+          {
+            "line": 91,
+            "text": "## Application in docline"
+          },
+          {
+            "line": 103,
+            "text": "## Counterexamples"
+          },
+          {
+            "line": 112,
+            "text": "## Generalization"
+          },
+          {
+            "line": 121,
+            "text": "## References"
+          }
+        ],
+        "issue_evidence": [
+          {
+            "line": 8,
+            "text": "supersedes: (none \u2014 extends 022-S compound learning around char-equality QA metrics)"
+          }
+        ]
+      },
+      {
+        "path": "docs/compound/2026-06-19-backlogit-add-dependency-persistence.md",
+        "sha256": "8cc0e946c0c9a0ada4d91d84b58eb150426f5827307fdcb11b718c7b0b954ccf",
+        "frontmatter_present": true,
+        "pattern_fields": {
+          "category": "backlogit-dependency-persistence"
+        },
+        "tags": [],
+        "headings": [
+          {
+            "line": 10,
+            "text": "# backlogit_add_dependency does not persist to markdown \u2014 encode dependencies in frontmatter"
+          },
+          {
+            "line": 12,
+            "text": "## Problem"
+          },
+          {
+            "line": 25,
+            "text": "## Symptom"
+          },
+          {
+            "line": 34,
+            "text": "## Fix"
+          },
+          {
+            "line": 50,
+            "text": "## Rule"
+          }
+        ],
+        "issue_evidence": []
+      },
+      {
+        "path": "docs/compound/2026-06-19-engram-cli-grounding.md",
+        "sha256": "f92b6dab3100a0adc51dfb3d3acc2ca3976f763621c317f88bc9a29c9b13a7bd",
+        "frontmatter_present": true,
+        "pattern_fields": {
+          "category": "engram-cli-grounding"
+        },
+        "tags": [],
+        "headings": [
+          {
+            "line": 10,
+            "text": "# Engram is reachable via its CLI even when MCP engram tools are absent \u2014 probe it at session start"
+          },
+          {
+            "line": 12,
+            "text": "## Problem"
+          },
+          {
+            "line": 20,
+            "text": "## The CLI is always available"
+          },
+          {
+            "line": 39,
+            "text": "## Session-start protocol"
+          },
+          {
+            "line": 47,
+            "text": "## Diagnostics & gotchas"
+          },
+          {
+            "line": 60,
+            "text": "## Rule"
+          }
+        ],
+        "issue_evidence": []
+      },
+      {
+        "path": "docs/compound/2026-06-25-single-open-pr-discipline.md",
+        "sha256": "eb89f549ece7a1d1216fff3d4dec67d2646ec1cdecbec30adcd093a86d7636d7",
+        "frontmatter_present": true,
+        "pattern_fields": {
+          "category": "workflow-single-open-pr"
+        },
+        "tags": [],
+        "headings": [
+          {
+            "line": 9,
+            "text": "# Keep at most one open PR at a time \u2014 open the next only after the current merges"
+          },
+          {
+            "line": 11,
+            "text": "## Problem"
+          },
+          {
+            "line": 26,
+            "text": "## Root Cause"
+          },
+          {
+            "line": 32,
+            "text": "## Resolution"
+          },
+          {
+            "line": 50,
+            "text": "## Prevention"
+          }
+        ],
+        "issue_evidence": []
+      },
+      {
+        "path": "docs/compound/2026-06-27-ship-cascade-archives-parent-feature.md",
+        "sha256": "88e01d1f8944dae53d2cb8139b80b6db99d9de6d501c0951d510ba590ef676cf",
+        "frontmatter_present": true,
+        "pattern_fields": {
+          "category": "backlog-ship-cascade-archives-parent-feature"
+        },
+        "tags": [],
+        "headings": [
+          {
+            "line": 9,
+            "text": "# `backlogit shipment ship` archives the parent feature of shipped tasks \u2014 guard partial-feature shipments"
+          },
+          {
+            "line": 11,
+            "text": "## Problem"
+          },
+          {
+            "line": 25,
+            "text": "### Second symptom: sibling `parent_id` stripped"
+          },
+          {
+            "line": 38,
+            "text": "## Root Cause"
+          },
+          {
+            "line": 44,
+            "text": "## Resolution"
+          },
+          {
+            "line": 61,
+            "text": "## Prevention"
+          }
+        ],
+        "issue_evidence": []
+      },
+      {
+        "path": "docs/compound/2026-06-29-pyright-pypdf-duck-typing.md",
+        "sha256": "775af98f487af47005e5b491417be6bdd58fb1b2ed5b8dd57684a57442d86224",
+        "frontmatter_present": true,
+        "pattern_fields": {
+          "category": "pyright-pypdf-duck-typing"
+        },
+        "tags": [],
+        "headings": [
+          {
+            "line": 10,
+            "text": "# Narrow pypdf page-metadata to `Any` for duck-typed probes \u2014 `hasattr`/`getattr` do not satisfy pyright"
+          },
+          {
+            "line": 12,
+            "text": "## Problem"
+          },
+          {
+            "line": 23,
+            "text": "## Approaches that did NOT work"
+          },
+          {
+            "line": 33,
+            "text": "## Fix"
+          },
+          {
+            "line": 41,
+            "text": "# pypdf's PageObject API surface varies; alias to Any so the duck-typed"
+          },
+          {
+            "line": 42,
+            "text": "# .get/.get_object/.keys probes below type-check."
+          },
+          {
+            "line": 51,
+            "text": "## Rule"
+          }
+        ],
+        "issue_evidence": [
+          {
+            "line": 58,
+            "text": "  `uv run pyright src/` (uses the locked pyright, matching CI) before pushing."
+          }
+        ]
+      },
+      {
+        "path": "docs/compound/2026-06-30-importlib-dataclass-sys-modules.md",
+        "sha256": "8e73b4bffa8d03314316fc10a4a2bb0e5068797b373d221f582bcd59f750a3fc",
+        "frontmatter_present": true,
+        "pattern_fields": {
+          "category": "importlib-dataclass-sys-modules"
+        },
+        "tags": [],
+        "headings": [
+          {
+            "line": 10,
+            "text": "# A `@dataclass` in an importlib-loaded script needs the module in `sys.modules` before `exec_module`"
+          },
+          {
+            "line": 12,
+            "text": "## Problem"
+          },
+          {
+            "line": 33,
+            "text": "## Fix"
+          },
+          {
+            "line": 48,
+            "text": "## Rule"
+          }
+        ],
+        "issue_evidence": []
+      },
+      {
+        "path": "docs/compound/2026-07-01-windows-venv-redirector-tree-rss.md",
+        "sha256": "9cf50a8046b8d81d7958f70726a5cf4294803f0daa385d320db65d3989e395a4",
+        "frontmatter_present": true,
+        "pattern_fields": {
+          "category": "windows-venv-redirector-tree-rss"
+        },
+        "tags": [],
+        "headings": [
+          {
+            "line": 11,
+            "text": "# Sum the process tree, not the direct child, when sampling subprocess peak RSS on Windows venvs"
+          },
+          {
+            "line": 13,
+            "text": "## Problem"
+          },
+          {
+            "line": 29,
+            "text": "## Root Cause"
+          },
+          {
+            "line": 40,
+            "text": "## Fix"
+          },
+          {
+            "line": 65,
+            "text": "## Approaches that did NOT work"
+          },
+          {
+            "line": 75,
+            "text": "## Rule"
+          }
+        ],
+        "issue_evidence": []
+      },
+      {
+        "path": "docs/compound/2026-07-02-append-datetime-stamp-to-shell-messages.md",
+        "sha256": "170ccc51e2ac95c798261f75870b6111f5e0e1fe3304a6e6cd0d5435785a007f",
+        "frontmatter_present": true,
+        "pattern_fields": {
+          "category": "append-datetime-stamp-to-shell-messages"
+        },
+        "tags": [],
+        "headings": [
+          {
+            "line": 9,
+            "text": "# Append a datetime stamp to the end of every message written to the Copilot shell"
+          },
+          {
+            "line": 11,
+            "text": "## Convention"
+          },
+          {
+            "line": 17,
+            "text": "## How"
+          },
+          {
+            "line": 29,
+            "text": "## Rule"
+          }
+        ],
+        "issue_evidence": []
+      },
+      {
+        "path": "docs/compound/2026-07-03-backlogit-mcp-down-fall-back-to-cli.md",
+        "sha256": "db8876c496b81744da20d5e6bbe96d9ea4a47a5958968f9ba85bc328dd8de06e",
+        "frontmatter_present": true,
+        "pattern_fields": {
+          "category": "backlogit-mcp-down-fall-back-to-cli"
+        },
+        "tags": [],
+        "headings": [
+          {
+            "line": 9,
+            "text": "# When the backlogit MCP surface is down, fall back to the backlogit CLI \u2014 do not defer"
+          },
+          {
+            "line": 11,
+            "text": "## Problem"
+          },
+          {
+            "line": 18,
+            "text": "## Root Cause"
+          },
+          {
+            "line": 25,
+            "text": "## Fix"
+          },
+          {
+            "line": 46,
+            "text": "## Rule"
+          }
+        ],
+        "issue_evidence": []
+      },
+      {
+        "path": "docs/compound/2026-07-04-ms-learn-canonical-url-from-breadcrumb.md",
+        "sha256": "10f7a772c1cf0b744b0bed25c7652a77bf75e9aa0b01e60cd74ea86371e68ac9",
+        "frontmatter_present": true,
+        "pattern_fields": {
+          "category": "ms-learn-canonical-url-from-breadcrumb"
+        },
+        "tags": [],
+        "headings": [
+          {
+            "line": 9,
+            "text": "# MS Learn canonical URL prefix comes from docfx `breadcrumb_path`, not openpublishing `url_path_prefix`"
+          },
+          {
+            "line": 11,
+            "text": "## Problem"
+          },
+          {
+            "line": 19,
+            "text": "## Root Cause"
+          },
+          {
+            "line": 25,
+            "text": "## Resolution / Facts"
+          },
+          {
+            "line": 48,
+            "text": "## Prevention / Guidance"
+          },
+          {
+            "line": 57,
+            "text": "## Citations"
+          }
+        ],
+        "issue_evidence": []
+      },
+      {
+        "path": "docs/compound/2026-07-17-backlogit-ship-gate-needs-active-to-done.md",
+        "sha256": "b2dacc2522d8dd42cecffc0d668eb6055fbb5dfbb985006a3285940c55782530",
+        "frontmatter_present": false,
+        "pattern_fields": {},
+        "tags": [],
+        "headings": [
+          {
+            "line": 1,
+            "text": "# backlogit ship gate needs a genuine active\u2192done transition"
+          },
+          {
+            "line": 8,
+            "text": "## Symptom"
+          },
+          {
+            "line": 22,
+            "text": "## Root cause"
+          },
+          {
+            "line": 32,
+            "text": "## Resolution"
+          },
+          {
+            "line": 48,
+            "text": "## Prevention"
+          }
+        ],
+        "issue_evidence": []
+      },
+      {
+        "path": "docs/compound/2026-08-29-admission-cap-must-short-circuit-discovery.md",
+        "sha256": "606147d52bf82d039c530606f449c233c6e3e73a5ab0a6a5f8f21d43bd9a3f03",
+        "frontmatter_present": true,
+        "pattern_fields": {},
+        "tags": [
+          "crawl",
+          "resource-bounds",
+          "dos-hardening",
+          "discovery-loop",
+          "dedup-set"
+        ],
+        "headings": [
+          {
+            "line": 18,
+            "text": "## Problem"
+          },
+          {
+            "line": 27,
+            "text": "## Root cause"
+          },
+          {
+            "line": 41,
+            "text": "## Resolution"
+          },
+          {
+            "line": 53,
+            "text": "## Lesson"
+          },
+          {
+            "line": 61,
+            "text": "## Refinement (059-S, 2026-08-30)"
+          },
+          {
+            "line": 74,
+            "text": "## Refinement (061-S, 2026-09-09)"
+          }
+        ],
+        "issue_evidence": []
+      },
+      {
+        "path": "docs/compound/2026-08-29-cgnat-100-64-needs-explicit-membership-check.md",
+        "sha256": "61a4e6fc0dcbdae464c1f9fffd9d0e19f8f3363fd92d1dc5d3c169ee5a9e5cd5",
+        "frontmatter_present": true,
+        "pattern_fields": {
+          "category": "cgnat-explicit-membership-check-and-ipv4-mapped-normalization"
+        },
+        "tags": [],
+        "headings": [
+          {
+            "line": 9,
+            "text": "# CGNAT 100.64.0.0/10 needs an explicit membership check \u2014 no ipaddress flag catches it"
+          },
+          {
+            "line": 16,
+            "text": "## Symptom"
+          },
+          {
+            "line": 25,
+            "text": "## Fix"
+          },
+          {
+            "line": 35,
+            "text": "## Two non-obvious gotchas"
+          },
+          {
+            "line": 59,
+            "text": "## Test discipline"
+          },
+          {
+            "line": 67,
+            "text": "## Related"
+          }
+        ],
+        "issue_evidence": []
+      },
+      {
+        "path": "docs/compound/2026-08-29-ci-ruff-pin-vs-local-format-drift.md",
+        "sha256": "0d1a69ab7d476dd43412d4624f2f0f84844e231e483d28de57fe80b3f81bed50",
+        "frontmatter_present": true,
+        "pattern_fields": {},
+        "tags": [
+          "ruff",
+          "format-gate",
+          "ci-parity",
+          "version-drift",
+          "markdown"
+        ],
+        "headings": [
+          {
+            "line": 18,
+            "text": "# CI ruff pin vs local ruff: whole-repo format-check drift on markdown code fences"
+          },
+          {
+            "line": 20,
+            "text": "## Problem"
+          },
+          {
+            "line": 28,
+            "text": "## Root cause"
+          },
+          {
+            "line": 34,
+            "text": "## Resolution"
+          },
+          {
+            "line": 44,
+            "text": "## Lesson"
+          }
+        ],
+        "issue_evidence": [
+          {
+            "line": 31,
+            "text": "embedded in markdown; CI runs **`uv run ruff`** pinned in `uv.lock` to **0.15.15**, which does"
+          }
+        ]
+      },
+      {
+        "path": "docs/compound/2026-08-29-stateful-preinit-reject-without-breaking-stateless-tests.md",
+        "sha256": "079ae990531bbc2c9d4f95c29aed3b41863a16ee67251ba309e0ecfc766819fe",
+        "frontmatter_present": true,
+        "pattern_fields": {},
+        "tags": [
+          "tdd",
+          "mcp",
+          "dual-era",
+          "session-state",
+          "test-drivers"
+        ],
+        "headings": [
+          {
+            "line": 18,
+            "text": "# Introducing a stateful pre-init reject without breaking existing stateless tests"
+          },
+          {
+            "line": 20,
+            "text": "## Problem"
+          },
+          {
+            "line": 27,
+            "text": "## Resolution \u2014 three moves"
+          },
+          {
+            "line": 41,
+            "text": "## Lesson"
+          }
+        ],
+        "issue_evidence": []
+      },
+      {
+        "path": "docs/compound/2026-08-29-worktree-gates-need-primary-venv.md",
+        "sha256": "8530b5ca2aa7e132074b512e8c1d259e833ac9a3b9d6ebbbdcee60544523c3b0",
+        "frontmatter_present": true,
+        "pattern_fields": {},
+        "tags": [
+          "git-worktree",
+          "pyright",
+          "pytest",
+          "venv",
+          "false-positives"
+        ],
+        "headings": [
+          {
+            "line": 18,
+            "text": "## Problem"
+          },
+          {
+            "line": 30,
+            "text": "## Root cause"
+          },
+          {
+            "line": 38,
+            "text": "## Resolution"
+          },
+          {
+            "line": 66,
+            "text": "## Lesson"
+          }
+        ],
+        "issue_evidence": []
+      },
+      {
+        "path": "docs/compound/2026-08-30-ship-shipment-deadlocks-in-worktree.md",
+        "sha256": "6b8e462b2b57824a020f272dfbd4065a8f79bf7c8e07ca6b337697c15e8ff9d6",
+        "frontmatter_present": true,
+        "pattern_fields": {},
+        "tags": [
+          "backlogit",
+          "ship_shipment",
+          "worktree",
+          "deadlock",
+          "commit-traceability",
+          "lock-files"
+        ],
+        "headings": [
+          {
+            "line": 22,
+            "text": "## Problem"
+          },
+          {
+            "line": 32,
+            "text": "## Suspected cause"
+          },
+          {
+            "line": 48,
+            "text": "## Circuit breaker"
+          },
+          {
+            "line": 56,
+            "text": "## Resolution"
+          },
+          {
+            "line": 78,
+            "text": "## Caveat"
+          },
+          {
+            "line": 85,
+            "text": "## Reusable rule"
+          },
+          {
+            "line": 92,
+            "text": "## Related"
+          }
+        ],
+        "issue_evidence": [
+          {
+            "line": 61,
+            "text": "`archived_status` below. The steps:"
+          },
+          {
+            "line": 80,
+            "text": "Archiving a shipment directly with `archive` records `archived_status: active` rather than a"
+          },
+          {
+            "line": 83,
+            "text": "note the cosmetic `archived_status` in the closure record."
+          }
+        ]
+      },
+      {
+        "path": "docs/compound/2026-08-31-capability-pack-overlay-prose-is-guarded-not-gated.md",
+        "sha256": "4ee6e0edace1591ee3e2307e3d553eef081985f25c8eb8323f1277a641e18308",
+        "frontmatter_present": true,
+        "pattern_fields": {},
+        "tags": [
+          "autoharness",
+          "capability-packs",
+          "overlays",
+          "merge-install",
+          "cross-references"
+        ],
+        "headings": [
+          {
+            "line": 19,
+            "text": "## Problem"
+          },
+          {
+            "line": 30,
+            "text": "## Root cause"
+          },
+          {
+            "line": 43,
+            "text": "## Resolution"
+          },
+          {
+            "line": 56,
+            "text": "## Lesson"
+          }
+        ],
+        "issue_evidence": []
+      },
+      {
+        "path": "docs/compound/2026-08-31-harness-artifacts-lf-and-raw-byte-checksums.md",
+        "sha256": "c4fc8560e53b60dd87166d8fb67e734922ef8c8a82f438fd4e2618cade0e1d4f",
+        "frontmatter_present": true,
+        "pattern_fields": {},
+        "tags": [
+          "autoharness",
+          "harness-manifest",
+          "checksums",
+          "line-endings",
+          "windows"
+        ],
+        "headings": [
+          {
+            "line": 18,
+            "text": "## Problem"
+          },
+          {
+            "line": 26,
+            "text": "## Root cause"
+          },
+          {
+            "line": 38,
+            "text": "## Resolution"
+          },
+          {
+            "line": 43,
+            "text": "# 1. Confirm existing installed artifacts are LF"
+          },
+          {
+            "line": 48,
+            "text": "# 2. Confirm the manifest checksum is a raw-byte hash of that same file"
+          },
+          {
+            "line": 50,
+            "text": "# compare against the artifacts[] entry"
+          },
+          {
+            "line": 59,
+            "text": "## Lesson"
+          }
+        ],
+        "issue_evidence": [
+          {
+            "line": 2,
+            "text": "title: \"Harness artifacts are LF and manifest checksums are raw-byte hashes \u2014 probe before writing\""
+          },
+          {
+            "line": 32,
+            "text": "2. **`harness-manifest.yaml` checksums are raw-byte SHA-256 of the file content** \u2014 they are"
+          },
+          {
+            "line": 48,
+            "text": "# 2. Confirm the manifest checksum is a raw-byte hash of that same file"
+          }
+        ]
+      },
+      {
+        "path": "docs/compound/2026-08-31-md025-matches-indented-json-title-keys.md",
+        "sha256": "81e017bbe9033aabe662231c131881f3c7866e0891539881cb593421730af416",
+        "frontmatter_present": true,
+        "pattern_fields": {},
+        "tags": [
+          "markdownlint",
+          "MD025",
+          "skills",
+          "false-positive",
+          "json-schema"
+        ],
+        "headings": [
+          {
+            "line": 18,
+            "text": "## Problem"
+          },
+          {
+            "line": 24,
+            "text": "## Root cause"
+          },
+          {
+            "line": 37,
+            "text": "## Resolution"
+          },
+          {
+            "line": 54,
+            "text": "## Lesson"
+          }
+        ],
+        "issue_evidence": []
+      },
+      {
+        "path": "docs/compound/2026-08-31-sh-ps1-hook-parity-fail-open.md",
+        "sha256": "ad8be507e157736114b12cb68f446c69248ab682559484d3e6afd35f734a4ebe",
+        "frontmatter_present": true,
+        "pattern_fields": {},
+        "tags": [
+          "powershell",
+          "bash",
+          "git-hooks",
+          "fail-closed",
+          "shell-parity"
+        ],
+        "headings": [
+          {
+            "line": 18,
+            "text": "## Problem"
+          },
+          {
+            "line": 27,
+            "text": "## Root cause"
+          },
+          {
+            "line": 44,
+            "text": "## Resolution"
+          },
+          {
+            "line": 61,
+            "text": "## Lesson"
+          }
+        ],
+        "issue_evidence": []
+      },
+      {
+        "path": "docs/compound/2026-09-08-backlogit-task-wit-may-not-define-size-complexity.md",
+        "sha256": "5256e34394b84712b2407dbf977e58e8b517bde05df62462428a27b99accad40",
+        "frontmatter_present": true,
+        "pattern_fields": {},
+        "tags": [
+          "backlogit",
+          "harvest",
+          "sizing",
+          "degraded-mode",
+          "p-012"
+        ],
+        "headings": [
+          {
+            "line": 17,
+            "text": "## Problem"
+          },
+          {
+            "line": 33,
+            "text": "## Root cause"
+          },
+          {
+            "line": 39,
+            "text": "## Resolution"
+          },
+          {
+            "line": 52,
+            "text": "## Lesson"
+          }
+        ],
+        "issue_evidence": []
+      },
+      {
+        "path": "docs/compound/2026-09-09-shipment-ship-primary-workspace-vs-safe-close-fallback.md",
+        "sha256": "dcb106e36e3a98c202b9f1112b357211950f0c59dae8198549beddbcc479e9de",
+        "frontmatter_present": true,
+        "pattern_fields": {},
+        "tags": [
+          "backlogit",
+          "ship_shipment",
+          "worktree",
+          "pipeline-topology",
+          "archived_status",
+          "commit-traceability"
+        ],
+        "headings": [
+          {
+            "line": 25,
+            "text": "## Problem"
+          },
+          {
+            "line": 42,
+            "text": "## Root cause"
+          },
+          {
+            "line": 64,
+            "text": "## Resolution"
+          },
+          {
+            "line": 76,
+            "text": "## Prevention"
+          }
+        ],
+        "issue_evidence": [
+          {
+            "line": 2,
+            "text": "title: \"shipment ship succeeds from the primary workspace; prefer cascade close to avoid a new archived_status: active predecessor block\""
+          },
+          {
+            "line": 8,
+            "text": "evidence: \"060-S post-merge closure \u2014 backlogit shipment ship 060-S --sha f278cff... completed successfully from the PRIMARY workspace (not an isolated worktree) in ~90s, with 3 resident backlogit daemon processes present. archived_ids covered all 9 manifest artifacts, returned_ids: [] (no unintende"
+          },
+          {
+            "line": 14,
+            "text": "  - archived_status"
+          },
+          {
+            "line": 22,
+            "text": "  - \"A downstream shipment is blocked by `pipeline-topology`'s PREDECESSOR_NOT_SHIPPED check on a predecessor with `archived_status: active`\""
+          },
+          {
+            "line": 29,
+            "text": "`archive`). That fallback's own documented caveat is that it leaves `archived_status: active`"
+          },
+          {
+            "line": 34,
+            "text": "`PREDECESSOR_NOT_SHIPPED` check has **zero tolerance** for the `archived_status: active`"
+          },
+          {
+            "line": 39,
+            "text": "never be honestly corrected after the fact (directly editing `archived_status` was correctly"
+          },
+          {
+            "line": 46,
+            "text": "1. The single-artifact safe-close fallback is **cosmetically degraded**: it archives correctly"
+          },
+          {
+            "line": 49,
+            "text": "2. `pipeline-topology`'s predecessor-readiness check treats `archived_status: active` as an"
+          },
+          {
+            "line": 74,
+            "text": "`returned_ids: []`, and the shipment now carries genuine `archived_status: shipped`."
+          },
+          {
+            "line": 81,
+            "text": "  fallback's `archived_status: active` result is a **permanent**, not transient, cost: it blocks"
+          },
+          {
+            "line": 95,
+            "text": "* **Do not attempt to retroactively correct a prior fallback-closed shipment's `archived_status`**"
+          }
+        ]
+      },
+      {
+        "path": "docs/compound/2026-09-09-third-party-api-shape-requires-live-verification.md",
+        "sha256": "8d5cb6644e61aca92afe8b02044dafb950279e6fda474276b99d0eb0fb6db167",
+        "frontmatter_present": true,
+        "pattern_fields": {},
+        "tags": [
+          "external-api",
+          "json-api",
+          "live-verification",
+          "fixture-testing",
+          "runtime-verification"
+        ],
+        "headings": [
+          {
+            "line": 18,
+            "text": "## Problem"
+          },
+          {
+            "line": 28,
+            "text": "## Root cause"
+          },
+          {
+            "line": 45,
+            "text": "## Resolution"
+          },
+          {
+            "line": 61,
+            "text": "## Lesson"
+          }
+        ],
+        "issue_evidence": []
+      },
+      {
+        "path": "docs/compound/2026-09-12-exclusive-destination-claim-needs-sentinel-not-mkdir.md",
+        "sha256": "f359cf7a96e6f6e0bd534c507cb193ad5053da7feffa8863da2c74515e3d0c59",
+        "frontmatter_present": true,
+        "pattern_fields": {},
+        "tags": [
+          "cli-safety",
+          "mutual-exclusion",
+          "filesystem-claims",
+          "destructive-operation-guards",
+          "review-fix-cycle"
+        ],
+        "headings": [
+          {
+            "line": 18,
+            "text": "## Problem"
+          },
+          {
+            "line": 35,
+            "text": "## Root cause"
+          },
+          {
+            "line": 43,
+            "text": "## Resolution"
+          },
+          {
+            "line": 77,
+            "text": "## Lesson"
+          }
+        ],
+        "issue_evidence": []
+      }
+    ],
+    "observation_count": 3,
+    "observation_phases": {
+      "build": 2,
+      "pr-lifecycle": 1
+    },
+    "observations": [
+      {
+        "timestamp": "2026-09-09T07:50:44.551851+00:00",
+        "source": "manual",
+        "pattern": "When this workspace's Python environment has a non-canonical, non-editable ('wheel-installed') docline install rather than the documented uv sync/uv run workflow, local src/ changes are invisible to pytest/tooling until 'pip install -e . --no-deps' is run once to repair it. The canonical clone/CI workflow (README.md, .github/workflows/ci.yml) already uses 'uv sync' + 'uv run', which does not exhibit this failure mode -- this is a repair step for a stale/non-canonical environment, not a universal setup requirement.",
+        "evidence": [
+          "docs/memory/compacted/2026-09-09-060-s-compacted.md (Environment note): 'the docline package was installed non-editable in this session's Python environment; pip install -e . --no-deps was required before local source edits were visible to pytest/tooling'"
+        ],
+        "phase": "build"
+      },
+      {
+        "timestamp": "2026-09-09T07:50:44.551851+00:00",
+        "source": "manual",
+        "pattern": "'uv run {ruff,pyright,pytest,python -m build}' is the repository's documented, CI-matching environment (README.md; .github/workflows/ci.yml 'uv sync' + 'uv run' steps); a bare 'python -m {ruff,pyright,pytest,build}' invocation may resolve to a different, non-project Python/toolchain in a session whose environment was not set up via the documented uv workflow.",
+        "evidence": [
+          "docs/memory/compacted/2026-09-09-060-s-compacted.md (Environment note): 'uv run (not bare python -m pytest) is the canonical, CI-matching environment (Python 3.12.10 vs. the system's 3.14.3) -- used for all gate commands after discovering this'"
+        ],
+        "phase": "build"
+      },
+      {
+        "timestamp": "2026-09-09T07:50:44.551851+00:00",
+        "source": "review",
+        "pattern": "POSSIBLE, single-PR evidence only (do not treat as an established rule yet): Copilot review may re-engage on every subsequent push once requested and can surface new documentation-accuracy findings on files not touched by the latest commit, at least on shipments with substantial docstring/architecture-doc content. Needs corroboration from another shipment before promotion beyond 'possibility'.",
+        "evidence": [
+          "docs/closure/2026-09-09-060-s-sitemap-preflight-dedup-closure.md ('Review record'): 'Copilot review ran 5 cycles against successive HEADs on PR #186, ending with an \"Approval recommended\" verdict... zero unresolved threads', with 4 fix commits across those cycles, all docstring/documentation-accuracy corrections, not functional defects"
+        ],
+        "phase": "pr-lifecycle"
+      }
+    ],
+    "instinct_documents": 1,
+    "instinct_candidates": 3,
+    "each_instinct_evidence_count": 1,
+    "promotion_threshold": 3,
+    "promote": false,
+    "days_since_latest_observation": 70,
+    "stale_over_90_days": false,
+    "learned_artifacts": 0,
+    "instinct_observation_source_legacy_path": ".autoharness/continuous-learning/observations/2026-09-09.jsonl",
+    "actual_observation_path": ".gsd/continuous-learning/observations/2026-09-09.jsonl",
+    "closure_documents_read": 87,
+    "closure_interpretation": "Do not count historical resolved issues or boilerplate rollback headings as recurring current failures. 059-S fallback debt reappears in 060-S narrative and duplicate closure summaries, not independent new failure instances.",
+    "prior_reports": [
+      ".gsd/tuning-reports/2026-10-26-tuning-report.md",
+      ".gsd/tuning-reports/2026-11-18-latest-source-refresh.md"
+    ],
+    "recurring_deferred_hygiene": {
+      "prior_ref": "2026-10-26 TUNE-011 advisory",
+      "current_refs": [
+        "docs/compound/2026-07-17-backlogit-ship-gate-needs-active-to-done.md",
+        "docs/compound/2026-08-30-ship-shipment-deadlocks-in-worktree.md"
+      ],
+      "ineffective_applied_fix": false
+    },
+    "policy_gap_candidates": [],
+    "policy_gap_reason": "No verifier compound patterns. Root-cause/component/severity fields absent and categories are unique. Repeated backlogit tag is already covered by P-001/P-011/P-015/P-016 and shipment-reconcile; no evidence-backed new policy justified."
+  }
+}

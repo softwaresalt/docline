@@ -6,7 +6,7 @@ applyTo: '**/*.py'
 # MCP Server Development Instructions
 
 These instructions define conventions for building Model Context Protocol
-servers in Python using mcp.
+servers in Python using Pydantic schemas and custom stdio JSON-RPC transport.
 
 ## Project Structure
 
@@ -59,7 +59,8 @@ Validate tool parameters at the boundary using typed schemas:
   constraints
 * Reject invalid input with descriptive error messages before executing
   logic
-* Use the SDK's built-in schema validation when available
+* Validate boundary payloads with the shared Pydantic models before dispatch
+* Keep custom stdio JSON-RPC errors and CLI validation semantics in parity
 
 ### Error Responses
 

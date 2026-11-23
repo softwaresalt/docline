@@ -90,7 +90,7 @@ not status mutations, suppress them until their predecessor ships. Backlogit 1.8
 supports only `queued -> active`,
 `active -> shipped`, and `active -> abandoned` for shipments —
 there is no shipment `blocked` lifecycle. See
-`docs/compound/2026-05-07-backlogit-shipment-status-constraints.md`.
+`.github/instructions/backlogit.instructions.md` for the installed sequencing rules.
 This cursor is what the Step 2 "Route to Ship" rule consumes; without it there is
 no next shipment ID for the first handoff.
 
@@ -114,7 +114,7 @@ Per-closure destructive approval for the mutating `gsd shipment cascade-close` i
 
 When multiple stash entries exist, evaluate grouping before passing to Stage:
 
-1. **Thematic overlap**: Entries that modify the same template family (e.g., all touch `_orchestrator.agent.md.tmpl`) belong together.
+1. **Thematic overlap**: Entries that modify the same harness artifact family (e.g., all touch `.github/agents/_orchestrator.agent.md`) belong together.
 2. **Dependency chains**: An entry that depends on another entry's output (e.g., a PR gate depends on a staging workflow change) should ship together.
 3. **Artifact-class isolation**: Group entries by concern (templates vs schemas vs CLI vs docs). Do not mix schema evolution with template authoring in the same shipment.
 4. **Bug + feature proximity**: A bug fix in the same file as a feature change can ride along if scope is small.
@@ -163,7 +163,7 @@ Stage and Ship must not operate on parallel implementation branches or worktrees
 
 Elective agents (Auto-MergeInstall, Auto-Tune) must NOT run concurrently with active Ship work. Both elective agents modify harness artifacts — templates, instructions, skills, agent definitions — that Ship may be actively building against. Running them in parallel risks:
 
-* **Artifact conflict**: Ship reads and validates templates/instructions during build; an elective agent modifying those files mid-build creates inconsistent state.
+* **Artifact conflict**: Ship reads and validates installed agent/instruction artifacts during build; an elective agent modifying those files mid-build creates inconsistent state.
 * **Review invalidation**: Ship's review gate evaluates artifacts that may change underneath it if an elective agent is running concurrently.
 * **Merge conflicts**: Both Ship and elective agents may produce commits touching overlapping file paths.
 
@@ -380,7 +380,7 @@ After each Stage or Ship cycle, re-assess state (return to Step 0):
 * **Continue**: stash still has entries or queued shipments remain
 * **Pause**: operator review needed before next cycle (e.g., high-blast-radius plan, large scope change)
 * **Halt**: circuit breaker triggered (see stop conditions below)
-* **Advance the multi-shipment cursor (dark run)**: after a Ship handoff completes and its shipment is merged and closed, and after that shipment's P-020 post-merge closure completes, **reload current `main` agent instructions** — re-read the freshly merged Orchestrator and Ship templates/instructions — before advancing the cursor or selecting the next successor shipment. Then update the `DARK_MODE_SCOPE` cursor: set the last completed shipment to the just-shipped ID, set the next shipment to the following entry in the recorded order, and **re-emit `DARK_MODE_SCOPE`** before returning to Step 2. Successors stay `queued` from the start and become eligible automatically when their predecessor ships and closure gates clear; no shipment-status un-gating transition is performed or required. A never-advanced cursor would re-select the completed shipment or strand the sequence.
+* **Advance the multi-shipment cursor (dark run)**: after a Ship handoff completes and its shipment is merged and closed, and after that shipment's P-020 post-merge closure completes, **reload current `main` agent instructions** — re-read the freshly merged `.github/agents/_orchestrator.agent.md` and `.github/agents/_ship.agent.md` from `main` without switching the implementation branch — before advancing the cursor or selecting the next successor shipment. Then update the `DARK_MODE_SCOPE` cursor: set the last completed shipment to the just-shipped ID, set the next shipment to the following entry in the recorded order, and **re-emit `DARK_MODE_SCOPE`** before returning to Step 2. Successors stay `queued` from the start and become eligible automatically when their predecessor ships and closure gates clear; no shipment-status un-gating transition is performed or required. A never-advanced cursor would re-select the completed shipment or strand the sequence.
 * **TOPOLOGY_GATE: pre_claim (cursor-advance eligibility check)**: If the `pipeline-topology` gate is installed for
   this workspace, immediately after advancing the `DARK_MODE_SCOPE` cursor above and before returning to Step 2, run
   `gsd gate pipeline-topology --mode agent --shipment {next_shipment_id} --phase pre_claim --json` against

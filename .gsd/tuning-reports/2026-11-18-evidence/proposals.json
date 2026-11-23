@@ -1,0 +1,610 @@
+{
+  "run_id": "2026-11-18-docline",
+  "status": "TUNING_APPLIED_AND_VERIFIED",
+  "updated_at": "2026-11-18T08:00:26Z",
+  "auto_apply": false,
+  "accepted": [
+    "TUNE-001",
+    "TUNE-002",
+    "TUNE-003",
+    "TUNE-004",
+    "TUNE-005",
+    "TUNE-007",
+    "TUNE-008",
+    "TUNE-009",
+    "TUNE-012"
+  ],
+  "acceptance_semantics": "Explicit operator Approved authorizes the enumerated Phase 4/5 scope; no commit/push; verification has not passed",
+  "direction_acceptances": [
+    {
+      "id": "TUNE-001",
+      "recorded_at": "2026-11-18T06:01:45Z",
+      "operator_response": "Yes, I agree with that revision.",
+      "direction": "Windows product validation and Windows GSD topology runner/bootstrap; retain platform-neutral metadata jobs unless a dependency requires a change",
+      "implementation_authorized": false,
+      "artifact_origin": null,
+      "artifact_sha256": null,
+      "other_proposals_approved": false
+    }
+  ],
+  "applied": [
+    "TUNE-001",
+    "TUNE-002",
+    "TUNE-003",
+    "TUNE-004",
+    "TUNE-005",
+    "TUNE-007",
+    "TUNE-008",
+    "TUNE-009",
+    "TUNE-012"
+  ],
+  "priority_counts": {
+    "P0": 1,
+    "P1": 6,
+    "P2": 5,
+    "P3": 1
+  },
+  "common_approval_requirements": [
+    "Explicit Phase 4/5 approval supersedes prior direction-only acceptance; all writes remain uncommitted",
+    "Operator selects individual IDs, including the action and affected paths",
+    "Back up every existing artifact before an approved edit",
+    "Preserve operator-authored content, all model routes/bindings, startup customizations and required markdownlint fail-on-missing",
+    "Refresh manifest checksums from raw bytes only after accepted live writes",
+    "Do not replace, merge or refresh an existing .gsd/carry-forward.yaml",
+    "Apply only on the existing feature branch or another explicitly authorized feature branch; review diff and use a pull request to main",
+    "No default-branch commit/push; no commit/push/PR in this run"
+  ],
+  "proposals": [
+    {
+      "id": "TUNE-001",
+      "priority": "P0",
+      "category": "breaking",
+      "source": "structural-drift",
+      "status": "applied",
+      "affected_paths": [
+        ".github/workflows/ci.yml",
+        ".gsd/workspace-profile.yaml",
+        ".gsd/harness-manifest.yaml"
+      ],
+      "issue": "The fresh ubuntu-latest topology job runs gsd update before provisioning gsd. The checked-in executable is Windows-only and is not placed on the runner PATH.",
+      "action": "Move the expensive/product-validation job and GSD-dependent topology job to Windows runners, with explicit Windows-compatible shells. Retain the platform-neutral changes and ci-gate metadata jobs on their existing runners unless an actual dependency requires otherwise. Choose a trusted version-pinned Windows GSD 1.6.0 distribution and expected SHA-256 values for the executable and required bundle; provision them in a workspace-local tool directory and verify integrity before executing GSD. Review a PowerShell topology entrypoint to be implemented or explicitly provision and validate a Windows Bash path for the existing .sh entrypoint. Record the approved runner/bootstrap contract in future profile/manifest provenance without allowing regeneration to restore a Linux-only product-validation default. Do not execute downloads or implement CI in Tune.",
+      "current_excerpt": "All four jobs use ubuntu-latest. topology-check: Set up Python -> gsd update --version 1.6.0 (not yet provisioned) -> bash scripts/ci-topology-check.sh. This remains static evidence, not a hosted-run observation.",
+      "proposed_excerpt": "expensive/product gates -> Windows runner and explicit compatible shell, retain every gate; topology-check -> Windows runner -> approved Windows GSD 1.6.0 distribution and required bundle -> verify pinned SHA-256 before execution -> workspace-local tool PATH -> gsd version --no-update-check -> reviewed Windows-compatible topology invocation. changes/ci-gate -> retain existing metadata-only runners. No Linux provisioning requirement; no existing .ps1 topology script is asserted.",
+      "evidence": [
+        ".github/workflows/ci.yml:145-172",
+        "tune-evidence.json#/health_report/checks (toolchain)",
+        ".gsd/runtime-manifest.json: executable_path is gsd.exe"
+      ],
+      "review_requirements": [
+        "Direction-only acceptance is recorded; obtain separate implementation approval for the concrete CI/profile/manifest and any entrypoint diff",
+        "Operator supplies or approves the trusted version-pinned Windows distribution origin and executable/required-bundle SHA-256 values; none has been supplied and no URL/hash may be invented",
+        "Run product validation and GSD topology on Windows; do not gratuitously move platform-neutral change detection or aggregation",
+        "Select explicit Windows-compatible shells and a reviewed topology entrypoint: implement/review PowerShell handling or explicitly provision/validate Bash for the existing scripts/ci-topology-check.sh; do not claim a Windows .ps1 entrypoint already exists",
+        "Preserve all existing product gates, required-check aggregation, permissions, immutable action pins, credential handling and advisory/required topology toggle",
+        "Reconcile the current Linux-only profile/template composition constraint through separately approved support or a deliberate maintained override; this report-only candidate is not an install input",
+        "After approved implementation validate on a clean Windows runner; Linux provisioning/testing is not an acceptance requirement",
+        "All other proposal IDs remain unapproved; do not implement TUNE-002 or any other finding under this direction-only acceptance"
+      ],
+      "confidence": "high static confidence; fresh hosted-runner execution not performed",
+      "application": {
+        "recorded_at": "2026-11-18T07:21:41Z",
+        "approval": "Operator Approved with explicit Phase 4/5 scope",
+        "verified": true,
+        "verification_status": "VERIFIED",
+        "verified_at": "2026-11-18T08:00:26Z",
+        "disposition_verified": true,
+        "evidence": [
+          "final-verifier.json",
+          "final-verifier-execution.json",
+          "adversarial-review.json",
+          "run-validation.json"
+        ],
+        "approved_release_provenance": {
+          "version": "1.6.0",
+          "base": "https://github.com/softwaresalt/GSD/releases/download/v1.6.0",
+          "executable_asset": "gsd-windows-amd64.exe",
+          "bundle_asset": "gsd-assets.zip",
+          "executable_sha256": "df8a29d5a9f7f1306a9abe2ca1ae5e314e638ebfa0d9ac8a1ec4524cea27470e",
+          "bundle_sha256": "b170652c9d83786cde8e988ef8d4c9cf47fb7039373383645b2a7ad7d053ebc1",
+          "local_downloads": 0
+        }
+      }
+    },
+    {
+      "id": "TUNE-002",
+      "priority": "P1",
+      "category": "degrading",
+      "source": "structural-drift",
+      "status": "applied",
+      "affected_paths": [
+        "AGENTS.md",
+        ".github/copilot-instructions.md",
+        ".github/workflows/ci.yml",
+        "scripts/pre-push-quality-gates.ps1",
+        "scripts/pre-push-quality-gates.sh",
+        ".gsd/workspace-profile.yaml",
+        ".gsd/harness-manifest.yaml"
+      ],
+      "issue": "Generated gates use bare tools while CONTRIBUTING requires uv run. CI runs uv sync without activating the project environment before bare ruff/pyright/pytest. Local PATH resolves Python 3.14 tooling and Python 3.15, not the declared Python 3.12 project environment.",
+      "action": "Render Python gate commands through uv run using existing locked dependencies; retain gate order and semantics, and use uv as wrapper probe metadata. Distinguish the inexpensive py_compile check from the full python -m build requirement. Do not install dependencies during proposal review.",
+      "current_excerpt": "uv sync --locked --all-extras --dev; later steps: ruff check . / pyright src/ / pytest",
+      "proposed_excerpt": "Separate steps: uv sync --locked --all-extras --dev; uv run ruff check .; uv run ruff format --check .; uv run pyright src/; uv run pytest. Full build evidence: uv run python -m build.",
+      "evidence": [
+        "CONTRIBUTING.md:16-33",
+        "README.md:52-53",
+        ".github/workflows/ci.yml:107-117",
+        "tune-evidence.json#/health_report/checks (toolchain)",
+        "learning-review.json#/supplemental_content_review/observations"
+      ],
+      "review_requirements": [
+        "Approve all coupled command/probe changes together",
+        "Preserve required markdownlint fail-on-missing in both shells and advisory topology toggle",
+        "No replacement of a full build with py_compile",
+        "After acceptance validate command resolution with the project environment"
+      ],
+      "confidence": "high",
+      "application": {
+        "recorded_at": "2026-11-18T07:21:41Z",
+        "approval": "Operator Approved with explicit Phase 4/5 scope",
+        "verified": true,
+        "verification_status": "VERIFIED",
+        "verified_at": "2026-11-18T08:00:26Z",
+        "disposition_verified": true,
+        "evidence": [
+          "final-verifier.json",
+          "final-verifier-execution.json",
+          "adversarial-review.json",
+          "run-validation.json"
+        ]
+      }
+    },
+    {
+      "id": "TUNE-003",
+      "priority": "P1",
+      "category": "degrading",
+      "source": "structural-drift",
+      "status": "applied",
+      "affected_paths": [
+        ".github/instructions/technology-python.instructions.md",
+        ".gsd/harness-manifest.yaml"
+      ],
+      "issue": "Generic Python guidance requires strict mypy and standalone isort, but the project declares pyright and Ruff with the I rule, and targets Python >=3.12.4.",
+      "action": "Make the installed instruction use Python 3.12 project conventions, uv run pyright src/, and Ruff-integrated import ordering. Keep all safety, exception and typing rules; do not add mypy or isort dependencies.",
+      "current_excerpt": "Target Python 3.11 or later; Run mypy in strict mode; Use isort for enforcement; mypy src/",
+      "proposed_excerpt": "Target the Python 3.12 project environment (requires-python >=3.12.4); run uv run pyright src/; enforce import ordering with Ruff's enabled I rules",
+      "evidence": [
+        ".github/instructions/technology-python.instructions.md:14-32",
+        "pyproject.toml: requires-python, dependency-groups.dev, tool.ruff.lint.select",
+        "tune-evidence.json#/discovery/project_dependencies"
+      ],
+      "review_requirements": [
+        "Review as a narrow instruction-only customization",
+        "Back up the installed file and update its manifest hash only after approval",
+        "Coordinate command wording with TUNE-002"
+      ],
+      "confidence": "high",
+      "application": {
+        "recorded_at": "2026-11-18T07:21:41Z",
+        "approval": "Operator Approved with explicit Phase 4/5 scope",
+        "verified": true,
+        "verification_status": "VERIFIED",
+        "verified_at": "2026-11-18T08:00:26Z",
+        "disposition_verified": true,
+        "evidence": [
+          "final-verifier.json",
+          "final-verifier-execution.json",
+          "adversarial-review.json",
+          "run-validation.json"
+        ]
+      }
+    },
+    {
+      "id": "TUNE-004",
+      "priority": "P1",
+      "category": "degrading",
+      "source": "structural-drift",
+      "status": "applied",
+      "affected_paths": [
+        "AGENTS.md",
+        ".github/agents/_stage.agent.md",
+        ".github/skills/pr-lifecycle/SKILL.md",
+        ".github/skills/review/SKILL.md",
+        ".github/prompts/feature-flow-dark.prompt.md",
+        ".markdownlint.json",
+        "scripts/pre-commit-pipeline-topology.ps1",
+        "scripts/pre-commit-pipeline-topology.sh",
+        "templates/agents/_stage.agent.md.tmpl",
+        "templates/skills/pr-lifecycle/SKILL.md.tmpl",
+        "templates/foundation/AGENTS.md.tmpl"
+      ],
+      "issue": "Checksum-clean installed artifacts contain hardenings absent from the active bundle's rendered previews. Blind refresh would remove P-018's fifth merge gate and weaken Stage's exclusive structured-checkpoint resumption authority.",
+      "action": "Keep installed files unchanged by default. Before any accepted re-render, review and carry forward every semantic local delta, especially P-018, owner-selected checkpoint recovery and fail-closed root discovery. Offer the template defect upstream as a separately authorized GSD source repair, not a local replacement. Do not edit carry-forward.yaml.",
+      "current_excerpt": "pr-lifecycle: Evaluate all five gate checks; Check 5 runs gsd gate copilot-review and halts on BLOCK. Stage memory is supporting context only; only owner-matched operator-selected structured checkpoints authorize resume.",
+      "proposed_excerpt": "Any future generated output must retain those exact authorities and required-gate behavior. Reject the current preview's four-check merge gate and memory-file resume shortcut.",
+      "evidence": [
+        "baseline-preview-differences.json#/differences (complete per-file unified diffs)",
+        "baseline-verifier.json#/checksum_scan (all installed bytes match manifest)",
+        ".gsd/tuning-reports/2026-11-18-latest-source-refresh.md: retained docline-specific hardenings"
+      ],
+      "review_requirements": [
+        "Per-file approval before a refresh, not blanket install approval",
+        "Review all 32 byte-divergent previews; seven are text-identical after line splitting",
+        "Do not weaken markdownlint or remove scoped MD025 handling",
+        "No package update or source-template modification in this run"
+      ],
+      "confidence": "high; degradation is latent on re-render, not a claim that the installed gates are currently missing",
+      "application": {
+        "recorded_at": "2026-11-18T07:21:41Z",
+        "approval": "Operator Approved with explicit Phase 4/5 scope",
+        "verified": true,
+        "verification_status": "VERIFIED",
+        "method": "Kept all installed hardened gate/recovery sections and preserved controls; only approved local-reference corrections in review/PR skills",
+        "verified_at": "2026-11-18T08:00:26Z",
+        "disposition_verified": true,
+        "evidence": [
+          "final-verifier.json",
+          "final-verifier-execution.json",
+          "adversarial-review.json",
+          "run-validation.json"
+        ]
+      }
+    },
+    {
+      "id": "TUNE-005",
+      "priority": "P1",
+      "category": "degrading",
+      "source": "structural-drift",
+      "status": "applied",
+      "affected_paths": [
+        ".github/agents/_orchestrator.agent.md",
+        ".github/agents/_stage.agent.md",
+        ".github/agents/_ship.agent.md",
+        ".github/instructions/backlogit.instructions.md",
+        ".github/instructions/circuit-breaker.instructions.md",
+        ".github/instructions/copilot-code-review.instructions.md",
+        ".github/agents/subagents/evidence-consistency-reviewer.agent.md",
+        ".github/skills/harvest/SKILL.md",
+        ".github/skills/review/SKILL.md",
+        ".github/skills/pr-lifecycle/SKILL.md",
+        ".github/skills/shipment-reconcile/SKILL.md",
+        ".github/policies/workflow-policies.md",
+        ".gsd/harness-manifest.yaml"
+      ],
+      "issue": "Imported harness prose asks agents to consult concrete GSD-internal documents absent from docline, including shipment-status constraints, sizing reference, review-loop guidance and the Copilot evidence taxonomy.",
+      "action": "Review each active missing reference in literal-reference-check.json. Replace it with a verified local source of truth or a concise self-contained invariant. For the evidence taxonomy use the installed Evidence Consistency Reviewer as the local checklist anchor. Do not fabricate historical reports or create empty placeholder documents. Historical changelog links and output-path examples do not require new files.",
+      "current_excerpt": "See docs/compound/2026-09-07-copilot-review-finding-pattern-taxonomy.md and its 10-point evidence-consistency checklist",
+      "proposed_excerpt": "Use the locally installed .github/agents/subagents/evidence-consistency-reviewer.agent.md checklist; keep normative evidence requirements self-contained and remove its circular missing-taxonomy prerequisite",
+      "evidence": [
+        "literal-reference-check.json#/missing_candidates (all occurrence paths, lines and excerpts)",
+        ".github/instructions/copilot-code-review.instructions.md:77",
+        ".github/agents/subagents/evidence-consistency-reviewer.agent.md:19"
+      ],
+      "review_requirements": [
+        "Approve active-reference rewrites individually; preserve normative policy content",
+        "Leave historical provenance as history rather than inventing local evidence",
+        "Retain applyTo '**', excludeAgent 'cloud-agent', FOCUS framing and weakened-enforcement review",
+        "Copilot review activation occurs only after the tuning PR merges to its base branch; Settings custom-instructions toggle is advisory, not a hard gate"
+      ],
+      "confidence": "high for absence; operator review required to choose substitute authority",
+      "application": {
+        "recorded_at": "2026-11-18T07:21:41Z",
+        "approval": "Operator Approved with explicit Phase 4/5 scope",
+        "verified": true,
+        "verification_status": "VERIFIED",
+        "verified_at": "2026-11-18T08:00:26Z",
+        "disposition_verified": true,
+        "evidence": [
+          "final-verifier.json",
+          "final-verifier-execution.json",
+          "adversarial-review.json",
+          "run-validation.json"
+        ]
+      }
+    },
+    {
+      "id": "TUNE-006",
+      "priority": "P1",
+      "category": "degrading",
+      "source": "structural-drift",
+      "status": "deferred-by-policy",
+      "affected_paths": [
+        ".backlogit",
+        ".gsd/config.yaml",
+        ".gsd/backlog-registry.yaml"
+      ],
+      "issue": "The workspace has legacy-only .backlogit storage: .backlog is absent and BACKLOGIT_WORKSPACE_DIR is unset. This is not root ambiguity and not a backlog tool switch.",
+      "action": "Operator may authorize a separate backlog-owned assessment of backlogit migrate --workspace-dir --dry-run. Inspect its plan before separately authorizing migration. Tune must not invoke migration, rename storage, edit data, or update routing to a root that does not exist.",
+      "current_excerpt": "backlog.directory: .backlogit; .backlogit exists; .backlog absent",
+      "proposed_excerpt": "No file change proposed in this Tune run. Separate operator decision: inspect backlogit migrate --workspace-dir --dry-run, then choose whether to migrate.",
+      "evidence": [
+        "tune-evidence.json#/health_report/backlog_root",
+        "baseline-verifier.json#/targeted_checks/backlogit_engine_compatibility (1.12.0 VERIFIED)",
+        ".github/skills/tune-harness/SKILL.md: storage-root detect-and-report rule"
+      ],
+      "review_requirements": [
+        "Explicit separate approval even for the migration assessment command",
+        "Backlog tool owns any future data migration",
+        "No write to .backlogit or generated index in Tune"
+      ],
+      "confidence": "high",
+      "application": {
+        "recorded_at": "2026-11-18T07:21:41Z",
+        "approval": "Operator Approved with explicit Phase 4/5 scope",
+        "verified": false,
+        "verification_status": "DISPOSITION_CONFIRMED",
+        "verified_at": "2026-11-18T08:00:26Z",
+        "disposition_verified": true
+      }
+    },
+    {
+      "id": "TUNE-007",
+      "priority": "P1",
+      "category": "degrading",
+      "source": "structural-drift",
+      "status": "applied",
+      "affected_paths": [
+        ".gsd/workspace-profile.yaml",
+        ".github/instructions/mcp-server.instructions.md",
+        ".gsd/harness-manifest.yaml"
+      ],
+      "issue": "The profile claims FastAPI and mcp-python SDK use. pyproject declares neither, and the MCP entrypoint imports the project's custom stdio/server implementation. This can drive inappropriate framework-specific composition.",
+      "action": "After approval update the installed profile to record Pydantic and custom stdio MCP accurately, set mcp_sdk_present false, and adjust the MCP instruction's SDK assumption. Keep agent_native.detected, CLI/MCP parity, mcp-server primary stack, and runtime validation/releasability requirements. Do not add application dependencies.",
+      "current_excerpt": "frameworks.list: [fastapi, pydantic]; frameworks.mcp_sdk: mcp-python; agent_native.mcp_sdk_present: true",
+      "proposed_excerpt": "frameworks.list: [pydantic]; frameworks.mcp_sdk: null; agent_native.mcp_sdk_present: false; mcp_transport: stdio; agent_native.detected: true",
+      "evidence": [
+        "tune-evidence.json#/discovery/candidate_profile",
+        "pyproject.toml: project.dependencies and project.scripts",
+        "src/docline/mcp/__main__.py:18-22,58-71",
+        "docs/ARCHITECTURE.md: Interfaces and domains",
+        "engram CLI indexed search and symbols confirmation"
+      ],
+      "review_requirements": [
+        "Review profile delta against existing profile, not full replacement",
+        "Validate candidate field choices against the profile contract before accepted installation",
+        "Retain runtime validators, manual handshake checkpoint and parity invariants unless separately approved"
+      ],
+      "confidence": "high",
+      "application": {
+        "recorded_at": "2026-11-18T07:21:41Z",
+        "approval": "Operator Approved with explicit Phase 4/5 scope",
+        "verified": true,
+        "verification_status": "VERIFIED",
+        "verified_at": "2026-11-18T08:00:26Z",
+        "disposition_verified": true,
+        "evidence": [
+          "final-verifier.json",
+          "final-verifier-execution.json",
+          "adversarial-review.json",
+          "run-validation.json"
+        ]
+      }
+    },
+    {
+      "id": "TUNE-008",
+      "priority": "P2",
+      "category": "growth",
+      "source": "structural-drift",
+      "status": "applied",
+      "affected_paths": [
+        ".mcp.json",
+        ".kbdb/config/sources.yaml",
+        ".gsd/workspace-profile.yaml"
+      ],
+      "issue": "KBDB is intentionally enabled and its binary exists, but no KBDB MCP server is registered and sources.yaml has sources: []. Indexed documentation retrieval is not active.",
+      "action": "Choose whether to retain documented degraded fallback or separately provision a local-only KBDB server and approved local corpus. Correct recommendation prose that currently implies an indexed corpus. Do not remove the pinned capability pack or modify tool-managed state in this run.",
+      "evidence": [
+        ".mcp.json",
+        ".kbdb/config/sources.yaml",
+        ".gsd/tuning-reports/2026-11-18-latest-source-refresh.md: External Integration Warning",
+        "tune-evidence.json#/retrieval"
+      ],
+      "review_requirements": [
+        "Explicit choice of server registration and local corpus scope",
+        "No external indexing or data sharing",
+        "Health/source checks and any indexing only after separate approval"
+      ],
+      "confidence": "high; known intentional degradation, not a baseline blocker",
+      "application": {
+        "recorded_at": "2026-11-18T07:21:41Z",
+        "approval": "Operator Approved with explicit Phase 4/5 scope",
+        "verified": true,
+        "verification_status": "VERIFIED",
+        "verified_at": "2026-11-18T08:00:26Z",
+        "disposition_verified": true,
+        "evidence": [
+          "final-verifier.json",
+          "final-verifier-execution.json",
+          "adversarial-review.json",
+          "run-validation.json"
+        ]
+      }
+    },
+    {
+      "id": "TUNE-009",
+      "priority": "P2",
+      "category": "growth",
+      "source": "learning-driven",
+      "status": "applied",
+      "affected_paths": [
+        "docs/compound/2026-07-17-backlogit-ship-gate-needs-active-to-done.md",
+        "docs/compound/2026-08-30-ship-shipment-deadlocks-in-worktree.md",
+        ".gsd/continuous-learning/instincts/2026-09-09-060-s-instincts.md"
+      ],
+      "issue": "Prior TUNE-011 hygiene remains advisory/unresolved: one compound note lacks metadata and the older safe-close advice still calls archived_status debt cosmetic. An instinct's observation_source still points at .autoharness rather than the migrated .gsd path.",
+      "action": "Invoke a separately approved bounded compound-refresh for the two named notes: add evidence-grounded metadata, link the September 9 superseding caveat and retain historical outcomes. Correct only the instinct source pointer. Do not promote any instinct or fabricate root-cause/severity labels.",
+      "evidence": [
+        "learning-review.json#/supplemental_content_review/recurring_deferred_hygiene",
+        ".gsd/tuning-reports/2026-10-26-tuning-report.md: TUNE-011",
+        "docs/compound/2026-09-09-shipment-ship-primary-workspace-vs-safe-close-fallback.md",
+        "closure-content-review.json: 060-S narrative",
+        ".gsd/continuous-learning/instincts/2026-09-09-060-s-instincts.md: observation_source"
+      ],
+      "review_requirements": [
+        "Review the actual content and linked closures before editing",
+        "Keep all three instincts at evidence_count 1, below threshold 3",
+        "Do not reclassify the verifier's empty learning_signals as mined positive findings",
+        "Not an ineffective applied fix: prior proposal was advisory"
+      ],
+      "confidence": "high for hygiene gaps; no automatic policy promotion justified",
+      "application": {
+        "recorded_at": "2026-11-18T07:21:41Z",
+        "approval": "Operator Approved with explicit Phase 4/5 scope",
+        "verified": true,
+        "verification_status": "VERIFIED",
+        "verified_at": "2026-11-18T08:00:26Z",
+        "disposition_verified": true,
+        "evidence": [
+          "final-verifier.json",
+          "final-verifier-execution.json",
+          "adversarial-review.json",
+          "run-validation.json"
+        ]
+      }
+    },
+    {
+      "id": "TUNE-010",
+      "priority": "P2",
+      "category": "growth",
+      "source": "community-registry",
+      "status": "declined-duplicate",
+      "affected_paths": [
+        ".github/skills/mcp-builder/SKILL.md",
+        ".gsd/harness-manifest.yaml"
+      ],
+      "issue": "The bundled community registry offers mcp-builder for mcp-server profiles; no community templates are recorded as installed. It may add MCP evaluation guidance but could duplicate the existing parity/review surface.",
+      "action": "Operator may review the bundled candidate for incremental value and licensing before opting in. Prefer no install if it duplicates existing skills. This is not a verifier new_artifacts finding.",
+      "evidence": [
+        "community-registry.json: template_id mcp-builder, applicable_profiles [mcp-server], prerequisite_packs [], license 'see LICENSE.txt in source repo'",
+        "baseline-verifier.json#/new_artifacts (empty)"
+      ],
+      "review_requirements": [
+        "Resolve license/attribution from an approved local source before any installation",
+        "No network retrieval or package update during this run",
+        "Review prerequisite and duplication fit; no automatic installation"
+      ],
+      "confidence": "advisory; benefit and license acceptance undecided",
+      "application": {
+        "recorded_at": "2026-11-18T07:21:41Z",
+        "approval": "Operator Approved with explicit Phase 4/5 scope",
+        "verified": false,
+        "verification_status": "DISPOSITION_CONFIRMED",
+        "verified_at": "2026-11-18T08:00:26Z",
+        "disposition_verified": true
+      }
+    },
+    {
+      "id": "TUNE-011",
+      "priority": "P2",
+      "category": "growth",
+      "source": "learning-driven",
+      "status": "deferred-separate-session",
+      "affected_paths": [
+        "docs/memory",
+        "docs/plans",
+        "docs/closure"
+      ],
+      "issue": "Compact-context assessment exceeds memory file-count and plan/closure size thresholds. Counts alone do not prove that any particular checkpoint is safe to archive.",
+      "action": "Authorize a separate compact-context session with registry-backed active-checkpoint and completed-work checks, then compact one eligible bounded group at a time. Preserve active checkpoints and latest completed-work memory. No archival in this proposal-only run.",
+      "evidence": [
+        "compact-context-assessment.json: memory 63 files/405909 bytes; plans 40 files/717943 bytes; closure 88 files/617534 bytes (pre-memory-write snapshot)"
+      ],
+      "review_requirements": [
+        "Explicit archival authorization",
+        "Confirm checkpoint/item eligibility via backlog registry first",
+        "Maintain original-to-summary traceability and never delete originals"
+      ],
+      "confidence": "high for thresholds; eligibility unresolved",
+      "application": {
+        "recorded_at": "2026-11-18T07:21:41Z",
+        "approval": "Operator Approved with explicit Phase 4/5 scope",
+        "verified": false,
+        "verification_status": "DISPOSITION_CONFIRMED",
+        "verified_at": "2026-11-18T08:00:26Z",
+        "disposition_verified": true
+      }
+    },
+    {
+      "id": "TUNE-012",
+      "priority": "P3",
+      "category": "cosmetic",
+      "source": "structural-drift",
+      "status": "applied",
+      "affected_paths": [
+        ".gsd/harness-manifest.yaml"
+      ],
+      "issue": "The KBDB overlay verification_checks prose still says config.yaml graphtor_docs block, although the live config uses kbdb and the pack/contract are already current.",
+      "action": "After approval update only that descriptive verification-check string to kbdb. Preserve all overlay targets, actual config, routing, hashes and source history.",
+      "evidence": [
+        ".gsd/harness-manifest.yaml: capability_pack_overlays[pack=kbdb].verification_checks",
+        ".gsd/config.yaml: kbdb"
+      ],
+      "review_requirements": [
+        "Narrow prose-only diff",
+        "Do not treat this as a legacy alias contract migration; verifier emitted none"
+      ],
+      "confidence": "high; no behavioral impact",
+      "application": {
+        "recorded_at": "2026-11-18T07:21:41Z",
+        "approval": "Operator Approved with explicit Phase 4/5 scope",
+        "verified": true,
+        "verification_status": "VERIFIED",
+        "verified_at": "2026-11-18T08:00:26Z",
+        "disposition_verified": true,
+        "evidence": [
+          "final-verifier.json",
+          "final-verifier-execution.json",
+          "adversarial-review.json",
+          "run-validation.json"
+        ]
+      }
+    },
+    {
+      "id": "TUNE-013",
+      "priority": "P2",
+      "category": "growth",
+      "source": "structural-drift",
+      "status": "deferred-optional",
+      "affected_paths": [
+        ".github/workflows/ci.yml",
+        ".gsd/workspace-profile.yaml",
+        ".gsd/harness-manifest.yaml"
+      ],
+      "issue": "Pre-push comments describe Markdown scope identical to CI, but the current CI workflow has no markdownlint step/job. The required local markdownlint gate is present and must not be weakened.",
+      "action": "Consider an always-reporting CI Markdown gate over the same changed-file scope and .markdownlint.json, using the existing markdownlint-cli 0.49.1 contract. Review whether it joins ci-gate needs. Keep local required fail-on-missing behavior regardless of this optional growth choice.",
+      "evidence": [
+        "scripts/pre-push-quality-gates.ps1:198-221",
+        "scripts/pre-push-quality-gates.sh:234-259",
+        ".github/workflows/ci.yml: jobs inventory",
+        "tune-evidence.json#/health_report/required_markdownlint_behavior"
+      ],
+      "review_requirements": [
+        "Operator chooses CI enforcement scope and required-check aggregation",
+        "Pin dependencies/actions and avoid trigger-level paths-ignore",
+        "No dependency installation or CI modification in this run"
+      ],
+      "confidence": "high for absence; proposed expansion remains opt-in",
+      "application": {
+        "recorded_at": "2026-11-18T07:21:41Z",
+        "approval": "Operator Approved with explicit Phase 4/5 scope",
+        "verified": false,
+        "verification_status": "DISPOSITION_CONFIRMED",
+        "reason": "Keep expensive job Python-only and deterministic; no additional npm/Node installation",
+        "verified_at": "2026-11-18T08:00:26Z",
+        "disposition_verified": true
+      }
+    }
+  ],
+  "application_summary": {
+    "applied": 9,
+    "deferred": 3,
+    "declined": 1,
+    "verification_status": "TUNING_APPLIED_AND_VERIFIED",
+    "phase5_audit": "PASS; clean final four-reviewer delta; open non-blocking observations disclosed"
+  },
+  "implementation_authorization": {
+    "recorded_at": "2026-11-18T07:12:57Z",
+    "approval": "Operator Approved with explicit Phase 4/5 scope and release provenance",
+    "commit_or_push_authorized": false,
+    "supersedes_direction_only_gate": true
+  }
+}

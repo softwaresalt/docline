@@ -1,0 +1,2070 @@
+{
+  "files_read": 87,
+  "method": "Read all closure bodies; literal issue/follow-up/rollback context inventory, not inferred recurrence counts.",
+  "artifacts": [
+    {
+      "path": "docs/closure/001-S-backlog-artifact-persistence-prerequisite.md",
+      "hits": [
+        {
+          "line": 46,
+          "text": "### Risky action record"
+        },
+        {
+          "line": 49,
+          "text": "* ActionRisk: high"
+        },
+        {
+          "line": 76,
+          "text": "## Follow-up"
+        }
+      ]
+    },
+    {
+      "path": "docs/closure/002-S-document-ingestion-foundations.md",
+      "hits": [
+        {
+          "line": 34,
+          "text": "### Risky action record"
+        },
+        {
+          "line": 37,
+          "text": "* ActionRisk: high"
+        },
+        {
+          "line": 71,
+          "text": "* Monitoring and rollback: rely on the documented quality gates and revert the"
+        },
+        {
+          "line": 83,
+          "text": "## Follow-up"
+        },
+        {
+          "line": 85,
+          "text": "* No shipment-local follow-up backlog items were created during closure"
+        }
+      ]
+    },
+    {
+      "path": "docs/closure/003-S-document-ingestion-acquisition-and-reader-adapters.md",
+      "hits": [
+        {
+          "line": 32,
+          "text": "* A normal merge-commit attempt was blocked by base-branch policy"
+        },
+        {
+          "line": 36,
+          "text": "### Risky action record"
+        },
+        {
+          "line": 40,
+          "text": "* ActionRisk: high"
+        },
+        {
+          "line": 42,
+          "text": "  threads, failed fresh-review request path, and a blocked normal merge"
+        },
+        {
+          "line": 72,
+          "text": "* Monitoring and rollback: rely on the documented quality gates and revert"
+        },
+        {
+          "line": 86,
+          "text": "* No shipment-local follow-up backlog items were identified during closure"
+        }
+      ]
+    },
+    {
+      "path": "docs/closure/004-S-document-ingestion-processing-validation-and-outputs.md",
+      "hits": [
+        {
+          "line": 31,
+          "text": "* A normal merge-commit attempt was blocked by base-branch policy"
+        },
+        {
+          "line": 34,
+          "text": "### Risky action record"
+        },
+        {
+          "line": 37,
+          "text": "* ActionRisk: high"
+        },
+        {
+          "line": 60,
+          "text": "* `backlogit sync` succeeded after archival and follow-up stash creation"
+        },
+        {
+          "line": 68,
+          "text": "* Monitoring and rollback: rely on the documented quality gates and revert"
+        },
+        {
+          "line": 74,
+          "text": "* Follow-up stash `F6CCF29C` tracks the post-merge `pyright` regressions"
+        },
+        {
+          "line": 81,
+          "text": "* No further shipment-local follow-up backlog items were identified beyond"
+        }
+      ]
+    },
+    {
+      "path": "docs/closure/005-S-cli-mcp-parity.md",
+      "hits": [
+        {
+          "line": 33,
+          "text": "### Risky action record"
+        },
+        {
+          "line": 36,
+          "text": "* ActionRisk: high"
+        },
+        {
+          "line": 66,
+          "text": "* Monitoring and rollback: rely on the documented quality gates and revert merge commit `160153ac56851b69dd97c2a07cf1129543ddbdea` if CLI/MCP parity regresses"
+        },
+        {
+          "line": 69,
+          "text": "* No shipment-local follow-up backlog items were identified during closure"
+        }
+      ]
+    },
+    {
+      "path": "docs/closure/006-S-document-ingestion-packaging-and-quarantine-tooling.md",
+      "hits": [
+        {
+          "line": 33,
+          "text": "### Risky action record"
+        },
+        {
+          "line": 36,
+          "text": "* ActionRisk: high"
+        },
+        {
+          "line": 38,
+          "text": "  reached zero and the normal merge path remained blocked"
+        },
+        {
+          "line": 67,
+          "text": "* Monitoring and rollback: rerun `python -m docline --manifest` and revert the"
+        },
+        {
+          "line": 75,
+          "text": "* No shipment-local follow-up backlog items were identified during closure"
+        }
+      ]
+    },
+    {
+      "path": "docs/closure/007-S-fix-pyright-type-regressions.md",
+      "hits": [
+        {
+          "line": 30,
+          "text": "### Risky action record"
+        },
+        {
+          "line": 33,
+          "text": "* ActionRisk: high"
+        },
+        {
+          "line": 62,
+          "text": "* Monitoring and rollback: rely on the documented quality gates and revert merge commit `5c93476b49ffb68e8339feff062f0831293e430c` if the process-module type-fix regresses"
+        },
+        {
+          "line": 70,
+          "text": "* No shipment-local follow-up backlog items were identified during closure"
+        }
+      ]
+    },
+    {
+      "path": "docs/closure/009-S-restore-copilot-review-requestability.md",
+      "hits": [
+        {
+          "line": 70,
+          "text": "## Monitoring & Rollback"
+        },
+        {
+          "line": 75,
+          "text": "| Rollback trigger | `422 not a collaborator` or `'copilot' not found` recurs on `gh pr edit --add-reviewer copilot` |"
+        },
+        {
+          "line": 76,
+          "text": "| Rollback procedure | Re-enable Copilot code review in GitHub Settings \u2192 Code security and analysis \u2192 Copilot |"
+        },
+        {
+          "line": 79,
+          "text": "## Follow-ups"
+        }
+      ]
+    },
+    {
+      "path": "docs/closure/010-S-docline-graphtor-ingestion-contract-alignment.md",
+      "hits": [
+        {
+          "line": 41,
+          "text": "| ActionRisk | high \u2014 public contract surface change, affects all downstream consumers reading docline output |"
+        },
+        {
+          "line": 42,
+          "text": "| Rollback | Revert `3f1226f`; consumers still on v0 frontmatter continue to work because the additions default to safe empty values |"
+        },
+        {
+          "line": 52,
+          "text": "| ActionRisk | high \u2014 touches every path-emitting surface, regression would break cross-platform consumers |"
+        },
+        {
+          "line": 53,
+          "text": "| Rollback | Revert `3f1226f`; consumers running on POSIX hosts were unaffected even pre-fix; Windows hosts revert to backslash form (the bug being fixed) |"
+        },
+        {
+          "line": 98,
+          "text": "## Rollback plan"
+        },
+        {
+          "line": 106,
+          "text": "Estimated rollback time: **5 minutes** (no migrations, no schema persistence,"
+        },
+        {
+          "line": 120,
+          "text": "production-relevant regression should land as a follow-up shipment that cites"
+        },
+        {
+          "line": 126,
+          "text": "## Outstanding follow-ups"
+        },
+        {
+          "line": 174,
+          "text": "`3f1226f`. The two follow-up conditions are non-blocking:"
+        },
+        {
+          "line": 179,
+          "text": "   regression risk."
+        }
+      ]
+    },
+    {
+      "path": "docs/closure/010-S-review.md",
+      "hits": [
+        {
+          "line": 45,
+          "text": "### P2 (Backlog follow-up \u2014 accepted, no action)"
+        },
+        {
+          "line": 110,
+          "text": "| `pyright src/` | \u2705 0 errors, 0 warnings, 0 informations |"
+        }
+      ]
+    },
+    {
+      "path": "docs/closure/010-S-runtime-verification.md",
+      "hits": [
+        {
+          "line": 115,
+          "text": "| Functional list / table / style emission | `tests/readers/test_docx_*` test files exist and import successfully; runtime execution blocked by Windows `tmp_path` PermissionError (stash CE758832, pre-existing) | BLOCKED-BY-ENV |"
+        },
+        {
+          "line": 122,
+          "text": "| Functional band detection + heading emission | `tests/readers/test_pdf_*` test files exist and import successfully; runtime execution blocked by Windows `tmp_path` PermissionError (stash CE758832, pre-existing) | BLOCKED-BY-ENV |"
+        },
+        {
+          "line": 149,
+          "text": "## Blocked / deferred probes"
+        },
+        {
+          "line": 162,
+          "text": "- Two adapter surfaces (DOCX, PDF) have functional behavior `BLOCKED-BY-ENV` rather than `BLOCKED-BY-CODE`; static + interface-level verification establishes correctness for this release."
+        },
+        {
+          "line": 164,
+          "text": "**Validation outcome: `READY_WITH_FOLLOWUPS`** \u2014 release-ready with two follow-up items"
+        }
+      ]
+    },
+    {
+      "path": "docs/closure/011-S-docline-ci-workflow.md",
+      "hits": [
+        {
+          "line": 83,
+          "text": "## Rollback"
+        },
+        {
+          "line": 89,
+          "text": "## Stash follow-ups (not in 011-S scope)"
+        }
+      ]
+    },
+    {
+      "path": "docs/closure/012-S-heading-aware-segmentation.md",
+      "hits": [
+        {
+          "line": 41,
+          "text": "| Typecheck | `pyright src/` | `0 errors, 0 warnings, 0 informations` |"
+        },
+        {
+          "line": 96,
+          "text": "| F2 | P3 | advisory | `_char_bin` splits on literal `\"\\n\\n\"` only. `read_pdf` and `read_docx_blocks` emit `\\n`, so risk is low \u2014 but explicit normalization would harden against future extractor changes. |"
+        },
+        {
+          "line": 119,
+          "text": "## Rollback"
+        }
+      ]
+    },
+    {
+      "path": "docs/closure/013-S-referentiality.md",
+      "hits": [
+        {
+          "line": 47,
+          "text": "| Typecheck | `pyright src/` | `0 errors, 0 warnings, 0 informations` |"
+        },
+        {
+          "line": 104,
+          "text": "## Cross-repo follow-up (operator action required)"
+        },
+        {
+          "line": 120,
+          "text": "A stash follow-up will be recorded by Ship Step 6.6 to track this."
+        },
+        {
+          "line": 142,
+          "text": "## Rollback"
+        }
+      ]
+    },
+    {
+      "path": "docs/closure/014-S-docling-sidecars.md",
+      "hits": [
+        {
+          "line": 56,
+          "text": "| Typecheck | `pyright src/` | `0 errors, 0 warnings, 0 informations` |"
+        },
+        {
+          "line": 161,
+          "text": "- Skips silently with `log.warning` when the target is missing from the archive"
+        },
+        {
+          "line": 198,
+          "text": "`BaseFrontmatter.docline`. No namespace overwrite risk."
+        },
+        {
+          "line": 200,
+          "text": "## Cross-repo follow-up (already stashed in 013-S closure)"
+        },
+        {
+          "line": 207,
+          "text": "## docling tuning follow-up (plan-review F3)"
+        },
+        {
+          "line": 209,
+          "text": "Stashed as a follow-up: enable `PdfPipelineOptions(do_table_structure=True)`"
+        },
+        {
+          "line": 223,
+          "text": "## Rollback"
+        }
+      ]
+    },
+    {
+      "path": "docs/closure/015-S-post-g3-hygiene.md",
+      "hits": [
+        {
+          "line": 10,
+          "text": "hygiene cycle. Addresses two low-priority follow-up advisories from the"
+        },
+        {
+          "line": 41,
+          "text": "| Typecheck | `pyright src/` | `0 errors, 0 warnings, 0 informations` |"
+        },
+        {
+          "line": 95,
+          "text": "            _log.warning(\"Failed to serialize docling picture to PNG: %s\", err)"
+        },
+        {
+          "line": 100,
+          "text": "            _log.warning(\"PictureSink failed to accept docling picture: %s\", err)"
+        },
+        {
+          "line": 167,
+          "text": "## Rollback"
+        },
+        {
+          "line": 175,
+          "text": "## Stash follow-up"
+        }
+      ]
+    },
+    {
+      "path": "docs/closure/016-S-cross-os-ci-matrix.md",
+      "hits": [
+        {
+          "line": 42,
+          "text": "| `pyright src/` | 0 errors, 0 warnings, 0 informations |"
+        },
+        {
+          "line": 85,
+          "text": "Both `0AA8B223` (resolved) and `ED74577A` (unblocked \u2192 harvested into"
+        },
+        {
+          "line": 88,
+          "text": "## Follow-ups"
+        },
+        {
+          "line": 90,
+          "text": "None gated by this shipment. Remaining stash:"
+        }
+      ]
+    },
+    {
+      "path": "docs/closure/017-S-h1-header-synthesis-spike.md",
+      "hits": []
+    },
+    {
+      "path": "docs/closure/018-S-runtime-safety-primitives.md",
+      "hits": [
+        {
+          "line": 52,
+          "text": "| `pyright src/` | 0 errors, 0 warnings |"
+        }
+      ]
+    },
+    {
+      "path": "docs/closure/019-S-pdf-splitter-batch.md",
+      "hits": [
+        {
+          "line": 41,
+          "text": "  * `A2A78AEE` \u2014 `scripts/load_test.py` (only remaining shipment in the RCA-driven plan)"
+        },
+        {
+          "line": 51,
+          "text": "| `pyright src/` | 0 errors, 0 warnings |"
+        }
+      ]
+    },
+    {
+      "path": "docs/closure/020-S-load-test-harness.md",
+      "hits": [
+        {
+          "line": 22,
+          "text": "test inside an agent session would risk repeating it."
+        },
+        {
+          "line": 111,
+          "text": "| `pyright src/` | 0 errors, 0 warnings |"
+        },
+        {
+          "line": 136,
+          "text": "The remaining open work (`4B913619` measurement run) is now a pure"
+        }
+      ]
+    },
+    {
+      "path": "docs/closure/021-S-review.md",
+      "hits": [
+        {
+          "line": 29,
+          "text": "limitations whose resolution depends on a future architectural decision"
+        },
+        {
+          "line": 40,
+          "text": "  `scripts/load_test.py` lint warnings left untouched per surgical-change discipline"
+        },
+        {
+          "line": 61,
+          "text": "### P2 \u2014 Per-page docling output limitation in splice-back (Correctness)"
+        },
+        {
+          "line": 74,
+          "text": "**Risk**: Moderate (impacts downstream RAG/graph consumers that use"
+        },
+        {
+          "line": 79,
+          "text": "re-split). Defer; document the known limitation in operational closure."
+        },
+        {
+          "line": 95,
+          "text": "**Risk**: Low today (CLI-only), would escalate to Medium when MCP"
+        },
+        {
+          "line": 202,
+          "text": "| Action | Risk | Status after build |"
+        },
+        {
+          "line": 244,
+          "text": "5. The three review-follow-up stashes (`5CFE4481`, `24920EFF`,"
+        },
+        {
+          "line": 267,
+          "text": "* P2 #1 (per-page output) is a known design limitation with three"
+        }
+      ]
+    },
+    {
+      "path": "docs/closure/021-S-triage-then-repair.md",
+      "hits": [
+        {
+          "line": 37,
+          "text": "existing flow at risk."
+        },
+        {
+          "line": 103,
+          "text": "   complete and the rollback triggers below are not firing, triage"
+        },
+        {
+          "line": 121,
+          "text": "## Risky-action ledger"
+        },
+        {
+          "line": 126,
+          "text": "| ID | ProposedAction | ActionRisk | ActionResult |"
+        },
+        {
+          "line": 131,
+          "text": "| **PA4** | Lock-in default `_SIGNAL_WEIGHTS` based on calibration | low | **blocked on tooling gaps** \u2014 PA4 QA tripwire run on 2026-06-07 produced `qa_disagreements: 32 / qa_sampled_count: 33` (97 %). Manual inspection of 5 sampled pages r"
+        },
+        {
+          "line": 196,
+          "text": "(prose, code samples, simple lists). The remaining ~1 % (page 470 and"
+        },
+        {
+          "line": 204,
+          "text": "PA4 was **blocked** until both stashes landed:"
+        },
+        {
+          "line": 294,
+          "text": "## Failure signals (what triggers rollback)"
+        },
+        {
+          "line": 296,
+          "text": "Any of the following on a production triage run is a rollback trigger:"
+        },
+        {
+          "line": 307,
+          "text": "## Rollback procedure"
+        },
+        {
+          "line": 309,
+          "text": "Triage mode is a CLI flag, not a code path that auto-activates. Rollback"
+        },
+        {
+          "line": 357,
+          "text": "## Follow-up work captured"
+        },
+        {
+          "line": 361,
+          "text": "| `5CFE4481` | medium | Per-page docling output limitation in splice-back: docling_worker returns single blob per range; consider per-page subprocess invocation or JSON envelope |"
+        },
+        {
+          "line": 365,
+          "text": "Plus implicit follow-ups not yet stashed (capture in next session if"
+        }
+      ]
+    },
+    {
+      "path": "docs/closure/022-S-pa4-closure.md",
+      "hits": [
+        {
+          "line": 146,
+          "text": "## Risky-action ledger"
+        },
+        {
+          "line": 148,
+          "text": "| ID | ProposedAction | ActionRisk | ActionResult |"
+        },
+        {
+          "line": 156,
+          "text": "## Failure signals (rollback triggers)"
+        },
+        {
+          "line": 167,
+          "text": "Rollback procedure for 022-S follows the 021-S procedure: triage is a"
+        },
+        {
+          "line": 190,
+          "text": "## Follow-up work captured"
+        }
+      ]
+    },
+    {
+      "path": "docs/closure/022-S-review.md",
+      "hits": [
+        {
+          "line": 65,
+          "text": "**Recommendation**: Acceptable for ship \u2014 failure mode is safe. For a stricter implementation, switch to a proper PDF content-stream tokenizer (e.g., `pypdf._cmap` or `pypdf.generic`). Tracked as advisory; no follow-up stash created since t"
+        },
+        {
+          "line": 135,
+          "text": "**Recommendation**: Confirm markitdown doesn't invoke magika on the hot PDF path (markitdown's documented PDF backend is pdfminer.six, not magika). If magika is only invoked for non-PDF content type detection, it's effectively dead code in "
+        }
+      ]
+    },
+    {
+      "path": "docs/closure/023-S-strategy-alignment.md",
+      "hits": [
+        {
+          "line": 79,
+          "text": "Copilot review AFTER PR identified 3 valid issues, all fixed via follow-up commit `7f47384`:"
+        },
+        {
+          "line": 108,
+          "text": "## Risky-action ledger"
+        },
+        {
+          "line": 110,
+          "text": "| ID | ProposedAction | ActionRisk | ActionResult |"
+        },
+        {
+          "line": 113,
+          "text": "| PA2 | Mutate existing `triage_report_only` output (TSV columns + metadata block) | moderate | applied (commit `9920428`); backward-compat preserved via append-only TSV column ordering; reviewed by Copilot (3 follow-ups in `7f47384`) |"
+        },
+        {
+          "line": 130,
+          "text": "## Rollback procedure"
+        },
+        {
+          "line": 141,
+          "text": "## Follow-up work captured"
+        },
+        {
+          "line": 150,
+          "text": "| `5CFE4481` | medium | Per-page docling output protocol (review follow-up from 019-F) |"
+        }
+      ]
+    },
+    {
+      "path": "docs/closure/024-S-pass12-helper.md",
+      "hits": [
+        {
+          "line": 27,
+          "text": "Stash `DE3E7346` (review follow-up from 019-F). Single-task shipment."
+        },
+        {
+          "line": 97,
+          "text": "## Risk"
+        },
+        {
+          "line": 107,
+          "text": "## Deployment / rollback"
+        },
+        {
+          "line": 111,
+          "text": "Rollback: `git revert -m 1 a7f1ed8` then push. Removes the helper and"
+        },
+        {
+          "line": 116,
+          "text": "## Follow-up"
+        }
+      ]
+    },
+    {
+      "path": "docs/closure/025-S-source-md-frontmatter.md",
+      "hits": [
+        {
+          "line": 47,
+          "text": "| pytest (full suite) | **1044 passed / 3 skipped / 0 failed** (was 1034 pre-shipment; +10 net new tests after Copilot follow-up) |"
+        },
+        {
+          "line": 50,
+          "text": "| Power BI 10-file smoke test | **ZERO `Failed to build frontmatter` warnings** (was 10/10 failing pre-shipment) |"
+        },
+        {
+          "line": 113,
+          "text": "## Risk"
+        },
+        {
+          "line": 122,
+          "text": "## Deployment / rollback"
+        },
+        {
+          "line": 126,
+          "text": "Rollback: `git revert -m 1 117fef0` then push. Removes the frontmatter"
+        },
+        {
+          "line": 130,
+          "text": "## Follow-up \u2014 remaining tasks in feature 023-F"
+        },
+        {
+          "line": 164,
+          "text": "are unblocked at the basic frontmatter level. Next slices in 023-F"
+        }
+      ]
+    },
+    {
+      "path": "docs/closure/026-S-source-md-second-slice.md",
+      "hits": [
+        {
+          "line": 58,
+          "text": "| pytest (full suite) | **1085 passed / 3 skipped / 0 failed** (was 1044; +41 net new tests after Copilot follow-up) |"
+        },
+        {
+          "line": 131,
+          "text": "## Risk"
+        },
+        {
+          "line": 139,
+          "text": "## Rollback procedure"
+        },
+        {
+          "line": 180,
+          "text": "The remaining 023-F work (source-MD fetch source type, layout"
+        },
+        {
+          "line": 183,
+          "text": "ingestion. Each remaining slice is appropriately scoped as its own"
+        }
+      ]
+    },
+    {
+      "path": "docs/closure/027-S-local-dir-ingest.md",
+      "hits": [
+        {
+          "line": 72,
+          "text": "  `merge_toc_files` output; remaining files appended alphabetically."
+        },
+        {
+          "line": 107,
+          "text": "A follow-up enhancement to auto-apply heading-disorder tolerance for"
+        },
+        {
+          "line": 109,
+          "text": "category) is captured as a follow-up stash."
+        },
+        {
+          "line": 162,
+          "text": "## Rollback"
+        },
+        {
+          "line": 164,
+          "text": "Single shipment, single merge commit. Rollback = revert the merge"
+        }
+      ]
+    },
+    {
+      "path": "docs/closure/028-S-source-md-polish.md",
+      "hits": [
+        {
+          "line": 153,
+          "text": "   no warning emitted (because the pattern is intentional Microsoft Learn"
+        },
+        {
+          "line": 164,
+          "text": "## Rollback"
+        },
+        {
+          "line": 166,
+          "text": "Single shipment, single PR. Rollback = revert the merge commit. The"
+        },
+        {
+          "line": 185,
+          "text": "- `13F608BA`, `A39C3704`, `4CB606D5`, `24920EFF`, `7AA9FAA0` \u2014 compound learnings, docs, ops follow-ups"
+        }
+      ]
+    },
+    {
+      "path": "docs/closure/029-S-adi-spike.md",
+      "hits": [
+        {
+          "line": 97,
+          "text": "### Follow-up stash candidates"
+        },
+        {
+          "line": 261,
+          "text": "## Rollback"
+        },
+        {
+          "line": 263,
+          "text": "Single shipment, single PR. Rollback = revert the merge commit. The"
+        },
+        {
+          "line": 268,
+          "text": "## Follow-up stashes captured (none yet)"
+        },
+        {
+          "line": 270,
+          "text": "Suggested follow-ups depending on empirical findings:"
+        },
+        {
+          "line": 279,
+          "text": "- **If ABANDON**: stash a follow-up to address the specific deficiencies"
+        }
+      ]
+    },
+    {
+      "path": "docs/closure/030-S-invert-triage-scoring.md",
+      "hits": [
+        {
+          "line": 144,
+          "text": "2. **Stash follow-up**: weight tuning for `font_diversity` and"
+        },
+        {
+          "line": 181,
+          "text": "## Follow-up stash candidates"
+        }
+      ]
+    },
+    {
+      "path": "docs/closure/031-S-mistral-ocr-spike.md",
+      "hits": [
+        {
+          "line": 58,
+          "text": "validates the architectural distinction noted in the 029-S follow-up:"
+        },
+        {
+          "line": 72,
+          "text": "   Not catastrophic, but enough to make auto-routing risky for the"
+        },
+        {
+          "line": 74,
+          "text": "3. **Docling has no cloud-dependency risk.** Auto stays local +"
+        },
+        {
+          "line": 198,
+          "text": "| AC10 | ADOPT \u2192 propose auto-policy revision as follow-up; ABANDON \u2192 file removal stash | n/a \u2014 verdict is PROMOTE-AS-PEER |"
+        },
+        {
+          "line": 200,
+          "text": "## Follow-up stash candidates"
+        }
+      ]
+    },
+    {
+      "path": "docs/closure/032-S-docling-worker-contract.md",
+      "hits": [
+        {
+          "line": 9,
+          "text": "  - 5CFE4481  # per-page docling output limitation (019-F review follow-up)"
+        },
+        {
+          "line": 10,
+          "text": "  - 51332802  # docling_worker subprocess perf tuning (022-S empirical follow-up)"
+        },
+        {
+          "line": 30,
+          "text": "skeleton; the empirical fill-in is a small operator follow-up. T5 ships"
+        },
+        {
+          "line": 72,
+          "text": "- when ``len(envelope[\"pages\"]) != range_length``: logs a warning, falls"
+        },
+        {
+          "line": 115,
+          "text": "fidelity restoration follow-up)."
+        },
+        {
+          "line": 145,
+          "text": "If the overhead is < 2\u00d7 a single multi-page call, a follow-up spike"
+        },
+        {
+          "line": 150,
+          "text": "**Filed as stash follow-up** (see \"Follow-up stash candidates\" below)."
+        },
+        {
+          "line": 163,
+          "text": "~7-14 min reduction on a 247-min total, or ~3-6%. The remaining"
+        },
+        {
+          "line": 229,
+          "text": "## Follow-up stash candidates"
+        },
+        {
+          "line": 238,
+          "text": "   low-risk; primarily a docs follow-up."
+        }
+      ]
+    },
+    {
+      "path": "docs/closure/033-S-worker-observability-and-batched-revert.md",
+      "hits": [
+        {
+          "line": 67,
+          "text": "as an explicit opt-in, with a docstring warning about the large-corpus"
+        },
+        {
+          "line": 68,
+          "text": "memory risk. This restores docling functionality on the cosmos corpus"
+        },
+        {
+          "line": 75,
+          "text": "detail at WARNING:"
+        },
+        {
+          "line": 105,
+          "text": "## Follow-ups filed"
+        },
+        {
+          "line": 121,
+          "text": "new WARNING logs will show the worker's exact stderr diagnostic."
+        }
+      ]
+    },
+    {
+      "path": "docs/closure/034-S-batched-crash-recovery.md",
+      "hits": [
+        {
+          "line": 54,
+          "text": "## What did NOT ship (returned blocked)"
+        },
+        {
+          "line": 58,
+          "text": "`blocked` tasks under the still-open feature **032-F**:"
+        },
+        {
+          "line": 68,
+          "text": "## Follow-ups"
+        }
+      ]
+    },
+    {
+      "path": "docs/closure/035-S-engine-selection-docs.md",
+      "hits": [
+        {
+          "line": 56,
+          "text": "## Follow-ups"
+        },
+        {
+          "line": 62,
+          "text": "  study `4CB606D5`, blocked `032.001-T`/`032.003-T`) awaits operator-run docling"
+        }
+      ]
+    },
+    {
+      "path": "docs/closure/036-S-conditional-docling-ocr.md",
+      "hits": [
+        {
+          "line": 72,
+          "text": "## Recommended follow-ups"
+        }
+      ]
+    },
+    {
+      "path": "docs/closure/037-S-bounded-sub-batching.md",
+      "hits": [
+        {
+          "line": 75,
+          "text": "## Follow-ups"
+        },
+        {
+          "line": 83,
+          "text": "  follow-up) if hosts vary widely."
+        }
+      ]
+    },
+    {
+      "path": "docs/closure/037-S-runtime-verification-cosmos.md",
+      "hits": [
+        {
+          "line": 77,
+          "text": "(which OOM'd). The remaining gate before flipping `use_batched_worker` to"
+        }
+      ]
+    },
+    {
+      "path": "docs/closure/038-S-range-level-docling-attribution.md",
+      "hits": [
+        {
+          "line": 56,
+          "text": "## Follow-ups"
+        }
+      ]
+    },
+    {
+      "path": "docs/closure/039-S-merge-gap-harness.md",
+      "hits": [
+        {
+          "line": 62,
+          "text": "  uv run python scripts/pa3_triage_cosmos.py `"
+        },
+        {
+          "line": 66,
+          "text": "uv run python scripts/study/compare_merge_gap.py `"
+        }
+      ]
+    },
+    {
+      "path": "docs/closure/040-S-seam-lint.md",
+      "hits": [
+        {
+          "line": 32,
+          "text": "## Open follow-up (operator-run)"
+        }
+      ]
+    },
+    {
+      "path": "docs/closure/041-S-ocr-oom-blast-radius.md",
+      "hits": [
+        {
+          "line": 54,
+          "text": "| Typecheck | `pyright src/` | `0 errors, 0 warnings, 0 informations` |"
+        },
+        {
+          "line": 77,
+          "text": "`c631b74` after three re-request methods (~15 min) \u2014 a tooling limitation, not a"
+        },
+        {
+          "line": 90,
+          "text": "## Rollback"
+        },
+        {
+          "line": 96,
+          "text": "## Stash follow-up"
+        }
+      ]
+    },
+    {
+      "path": "docs/closure/042-S-docling-triage-hygiene.md",
+      "hits": [
+        {
+          "line": 10,
+          "text": "two low-risk docling-triage hygiene fixes with **no change to assembled markdown,"
+        },
+        {
+          "line": 28,
+          "text": "  attributed `\"docling-range\"` with **no** warning. The \"envelope length"
+        },
+        {
+          "line": 29,
+          "text": "  mismatch\" WARNING and the `\"docling-collapsed\"` label are retained only for a"
+        },
+        {
+          "line": 53,
+          "text": "| `src/docline/process/pdf_triage.py` | `_range_needs_ocr` delegates; splice-back relabel + conditional warning; `Iterator` import; `any_page_needs_ocr` import |"
+        },
+        {
+          "line": 57,
+          "text": "| `tests/process/test_pdf_triage.py` | 2 splice-back tests updated to `docling-range`+no-warning; +1 unexpected-multientry regression |"
+        },
+        {
+          "line": 67,
+          "text": "| Typecheck | `pyright src/` | `0 errors, 0 warnings, 0 informations` |"
+        },
+        {
+          "line": 85,
+          "text": "(single-entry \u2192 `docling-range`+no-warning; legacy flat \u2192 `docling-range`;"
+        },
+        {
+          "line": 86,
+          "text": "unexpected multi-entry \u2192 warning + `docling-collapsed`)."
+        },
+        {
+          "line": 88,
+          "text": "## Rollback"
+        },
+        {
+          "line": 91,
+          "text": "loops; `docling-collapsed` label + \"length mismatch\" warning for whole-range"
+        }
+      ]
+    },
+    {
+      "path": "docs/closure/043-S-ocr-memory-calibration.md",
+      "hits": [
+        {
+          "line": 36,
+          "text": "The `8\u21924\u21922\u21921` / `0.5/0.25` numbers were illustrative, and **OOM risk is"
+        },
+        {
+          "line": 42,
+          "text": "tracked follow-up stash `699FB5DC`, after the operator runs this harness."
+        },
+        {
+          "line": 62,
+          "text": "| Typecheck | `pyright src/` | `0 errors, 0 warnings, 0 informations` |"
+        },
+        {
+          "line": 78,
+          "text": "  follow-up stash `A2177C87` (extract `page_megapixels` / outcome classification"
+        },
+        {
+          "line": 85,
+          "text": "retrigger on the hardening commit `7fcfd9b` (tooling limitation) \u2014 the delta was"
+        },
+        {
+          "line": 96,
+          "text": "## Rollback"
+        },
+        {
+          "line": 106,
+          "text": "2. Follow-up `699FB5DC`: the runtime host-relative cap/scale algorithm that"
+        }
+      ]
+    },
+    {
+      "path": "docs/closure/044-S-runtime-ocr-cap.md",
+      "hits": [
+        {
+          "line": 37,
+          "text": "## Follow-ups"
+        }
+      ]
+    },
+    {
+      "path": "docs/closure/045-S-pre-mistral-hardening.md",
+      "hits": [
+        {
+          "line": 11,
+          "text": "Feature `042-F` groups two independent, agent-buildable follow-ups selected to"
+        },
+        {
+          "line": 30,
+          "text": "under `uv run`."
+        }
+      ]
+    },
+    {
+      "path": "docs/closure/046-S-page-boundary-markers.md",
+      "hits": [
+        {
+          "line": 42,
+          "text": "dispatch only); gates were run locally under `uv run`."
+        },
+        {
+          "line": 48,
+          "text": "  separate follow-up if/when graphtor-docs ingestion needs it."
+        }
+      ]
+    },
+    {
+      "path": "docs/closure/047-S-canonical-url-emission.md",
+      "hits": [
+        {
+          "line": 43,
+          "text": "dispatch only); gates were run locally under `uv run`."
+        },
+        {
+          "line": 45,
+          "text": "## Follow-ups"
+        }
+      ]
+    },
+    {
+      "path": "docs/closure/048-S-canonical-url-v2.md",
+      "hits": [
+        {
+          "line": 38,
+          "text": "CI remains paused (tags/releases/manual only); gates run locally under `uv run`."
+        },
+        {
+          "line": 40,
+          "text": "## Deferred follow-ups (documented, out of this shipment)"
+        }
+      ]
+    },
+    {
+      "path": "docs/closure/049-S-ci-cost-reduction.md",
+      "hits": []
+    },
+    {
+      "path": "docs/closure/050-F-openapi-ingestion-review.md",
+      "hits": [
+        {
+          "line": 29,
+          "text": "| 2 | P3 | Correctness | Path-level `parameters` (shared across a path item's operations) are not merged into each operation; only operation-level parameters render. | **Accepted for v1** \u2014 documented limitation. Per-operation params are th"
+        }
+      ]
+    },
+    {
+      "path": "docs/closure/050-F-openapi-ingestion.md",
+      "hits": [
+        {
+          "line": 43,
+          "text": "## Scope boundary and follow-ups"
+        },
+        {
+          "line": 50,
+          "text": "`azure-rest-api-specs` sweep) plus a documented P3 limitation: path-level shared"
+        }
+      ]
+    },
+    {
+      "path": "docs/closure/050-S-accelerator-env-override.md",
+      "hits": []
+    },
+    {
+      "path": "docs/closure/051-F-swagger-to-openapi-review.md",
+      "hits": [
+        {
+          "line": 27,
+          "text": "| 2 | P3 | Architecture | External/split-file ref *fragments* (e.g. `./definitions.json#/definitions/X`) are left as `#/definitions/...`, not rewritten to `#/components/schemas/...`. | **Intentional** \u2014 external refs are not resolved in v1 "
+        },
+        {
+          "line": 60,
+          "text": "## Known limitation (carried forward, not a defect)"
+        },
+        {
+          "line": 64,
+          "text": "resolution is the deferred `D9AC2CD6` security-boundary follow-up. Both node sets"
+        }
+      ]
+    },
+    {
+      "path": "docs/closure/051-F-swagger-to-openapi.md",
+      "hits": [
+        {
+          "line": 33,
+          "text": "  earlier blocked deliverable."
+        },
+        {
+          "line": 41,
+          "text": "## Known limitation (carried forward)"
+        },
+        {
+          "line": 45,
+          "text": "split-file `$ref` resolution is the deferred, security-bounded follow-up"
+        }
+      ]
+    },
+    {
+      "path": "docs/closure/051-S-openapi-swagger-spike.md",
+      "hits": [
+        {
+          "line": 16,
+          "text": "| `049-F` | `docs/decisions/2026-07-04-openapi-swagger-source-type-spike.md` \u2014 problem frame grounded in the current reader architecture (`router.classify_source`, extension-driven dispatch, `BaseFrontmatter`/`BaseDocument` output contract,"
+        },
+        {
+          "line": 27,
+          "text": "  (Principle III containment) so the follow-up task cannot silently reintroduce"
+        },
+        {
+          "line": 28,
+          "text": "  the risk."
+        },
+        {
+          "line": 37,
+          "text": "## Follow-up (not this shipment)"
+        }
+      ]
+    },
+    {
+      "path": "docs/closure/052-F-bom-frontmatter-review.md",
+      "hits": [
+        {
+          "line": 44,
+          "text": "- Runtime: re-ingested the previously-warning corpus dir"
+        },
+        {
+          "line": 46,
+          "text": "  \"Failed to build frontmatter\" warnings; sampled output now carries assembled"
+        }
+      ]
+    },
+    {
+      "path": "docs/closure/052-F-bom-frontmatter.md",
+      "hits": [
+        {
+          "line": 26,
+          "text": "  (previously warning-heavy) \u2192 zero \"Failed to build frontmatter\" warnings;"
+        },
+        {
+          "line": 32,
+          "text": "## Follow-up"
+        }
+      ]
+    },
+    {
+      "path": "docs/closure/053-F-external-ref-resolution-review.md",
+      "hits": [
+        {
+          "line": 76,
+          "text": "  **ActionRisk**: high (filesystem read of config-derived relative paths)."
+        },
+        {
+          "line": 77,
+          "text": "  **Mitigation/rollback**: read-only, path-contained (`is_relative_to`),"
+        }
+      ]
+    },
+    {
+      "path": "docs/closure/053-F-external-ref-resolution.md",
+      "hits": [
+        {
+          "line": 46,
+          "text": "This was the elevated-risk boundary item. File refs resolve only within the"
+        },
+        {
+          "line": 54,
+          "text": "Residual OpenAPI follow-ups remain in stash `D9AC2CD6` (API versioning/monikers,"
+        }
+      ]
+    },
+    {
+      "path": "docs/closure/054-F-execute-fetch-web-crawl.md",
+      "hits": [
+        {
+          "line": 32,
+          "text": "  (`note`/`caution`/`warning`/`tip`/`important`) \u2192 labeled blockquotes,"
+        },
+        {
+          "line": 56,
+          "text": "## Deferred follow-ups"
+        }
+      ]
+    },
+    {
+      "path": "docs/closure/055-F-openapi-pagination.md",
+      "hits": [
+        {
+          "line": 14,
+          "text": "the extension); the remaining residuals were deferred with evidence in"
+        }
+      ]
+    },
+    {
+      "path": "docs/closure/056-F-console-verbosity-progress.md",
+      "hits": [
+        {
+          "line": 44,
+          "text": "## Follow-ups"
+        },
+        {
+          "line": 47,
+          "text": "  interleaved `log.warning` output (NORMAL/interactive-TTY only; piped output is"
+        }
+      ]
+    },
+    {
+      "path": "docs/closure/057-F-progress-logging-coordination.md",
+      "hits": [
+        {
+          "line": 12,
+          "text": "polish follow-up to `056-F` / PR #156. In NORMAL verbosity on a TTY, the"
+        },
+        {
+          "line": 14,
+          "text": "newline-terminated until `finish()`. A `log.warning` emitted mid-progress"
+        },
+        {
+          "line": 42,
+          "text": "  first release; the remaining stash entries are largely blocked on Mistral OCR"
+        },
+        {
+          "line": 46,
+          "text": "  ledger open (no `active\u2192done` transition). The shipment was unblocked by"
+        },
+        {
+          "line": 47,
+          "text": "  transitioning each task `blocked \u2192 active \u2192 done` with the merge SHA to record"
+        }
+      ]
+    },
+    {
+      "path": "docs/closure/058-F-ci-artifact-actions-node24.md",
+      "hits": [
+        {
+          "line": 12,
+          "text": "deprecation warnings observed on the `v0.1.0` Release run. GitHub was forcing the"
+        },
+        {
+          "line": 26,
+          "text": "`download-artifact@v8` changes digest mismatches from a warning to a **workflow"
+        }
+      ]
+    },
+    {
+      "path": "docs/closure/060-S-069-F-post-merge-closure.md",
+      "hits": [
+        {
+          "line": 51,
+          "text": "released scope, risky-action record, authorized topology-gate override, quality-gate evidence,"
+        },
+        {
+          "line": 54,
+          "text": "follow-up (`6BF410E2`). This file summarizes only what the `pipeline-topology` gate's"
+        },
+        {
+          "line": 64,
+          "text": "  origin/main` confirmed exit 0. Continuous-learning follow-up PR #188 merged at"
+        },
+        {
+          "line": 76,
+          "text": "| P-014 local review readiness | `## Local Review Readiness` block present at reviewed HEAD `72d5d1b`, outcome `READY_WITH_FOLLOWUPS`, 0 unresolved P0/P1, full local build evidence (`uv run python -m build` PASS; full `pytest` 2057 passed /"
+        },
+        {
+          "line": 78,
+          "text": "| `pipeline-topology --phase lifecycle` | Blocked on the historical `059-S` `archived_status: active` provenance gap (`PREDECESSOR_NOT_SHIPPED`); operator-authorized `--force` applied per the audited override recorded at `.autoharness/gates"
+        },
+        {
+          "line": 89,
+          "text": "isolated worktree) in ~90 seconds \u2014 the isolated-worktree deadlock documented in"
+        },
+        {
+          "line": 90,
+          "text": "`docs/compound/2026-08-30-ship-shipment-deadlocks-in-worktree.md` did not recur."
+        },
+        {
+          "line": 126,
+          "text": "gate requires. No residual risk or open follow-up beyond the already-recorded `6BF410E2` is"
+        }
+      ]
+    },
+    {
+      "path": "docs/closure/061-S-070-F-post-merge-closure.md",
+      "hits": [
+        {
+          "line": 61,
+          "text": "| P-014 local review readiness | `## Local Review Readiness` block present at reviewed HEAD `3397af4`, outcome `READY_WITH_FOLLOWUPS`, 0 unresolved P0/P1, full local build evidence (`uv run python -m build` PASS; full `pytest` 2112 passed /"
+        },
+        {
+          "line": 84,
+          "text": "4. Cyclic `links.next` pagination risk \u2014 fixed by tracking seen pagination URLs."
+        },
+        {
+          "line": 94,
+          "text": "10. Malformed-port crash risk plus a recognizer/pagination origin-check inconsistency \u2014 fixed by"
+        },
+        {
+          "line": 96,
+          "text": "11. Malformed-IPv6-authority crash risk in that same helper and the recognizer \u2014 fixed by"
+        },
+        {
+          "line": 121,
+          "text": "one-page defect** (1 result), confirming the disable switch is a genuine, verified rollback"
+        },
+        {
+          "line": 186,
+          "text": "low/medium priority, no PR-blocking risk:"
+        },
+        {
+          "line": 196,
+          "text": "No new post-merge-closure follow-ups were identified beyond these five; the live runtime"
+        },
+        {
+          "line": 197,
+          "text": "verification above surfaced no further residual risk requiring a stash entry. `061-S`'s own"
+        },
+        {
+          "line": 220,
+          "text": "disposition \u2014 is complete. No residual risk beyond the five recorded, non-blocking stash"
+        },
+        {
+          "line": 221,
+          "text": "follow-ups is outstanding for 061-S."
+        }
+      ]
+    },
+    {
+      "path": "docs/closure/062-S-071-F-post-merge-closure.md",
+      "hits": [
+        {
+          "line": 56,
+          "text": "matching artifact, not a failed or blocked closure. No substantive closure"
+        }
+      ]
+    },
+    {
+      "path": "docs/closure/063-S-072-F-post-merge-closure.md",
+      "hits": [
+        {
+          "line": 47,
+          "text": "no blocking (P0/P1) risk remains against the shipped code. This mirrors the convention"
+        },
+        {
+          "line": 54,
+          "text": "Informational, non-blocking residual risk (reconciled, corrected count \u2014 see"
+        },
+        {
+          "line": 58,
+          "text": "`c547f93` and no longer describe open risk; 16 remain open for Stage triage (none P0/P1),"
+        },
+        {
+          "line": 60,
+          "text": "closure session from PR #199's own documented follow-up findings (`9D44B6F3`, `1C433464`,"
+        }
+      ]
+    },
+    {
+      "path": "docs/closure/2026-08-29-055-s-mcp-stdio-closure.md",
+      "hits": [
+        {
+          "line": 53,
+          "text": "  with a single shared deadline; redirect `fp` close on all exception paths; `RemainingByteBudget`"
+        },
+        {
+          "line": 56,
+          "text": "## Monitoring & rollback"
+        },
+        {
+          "line": 60,
+          "text": "- **Rollback**: revert merge commit `29cf117`. Note this reverts the **entire two-slice shipment**,"
+        },
+        {
+          "line": 65,
+          "text": "  validation and DoS bounds**, so a rollback must be a deliberate whole-shipment decision, not a"
+        },
+        {
+          "line": 72,
+          "text": "## Follow-ups (stashed for Stage)"
+        }
+      ]
+    },
+    {
+      "path": "docs/closure/2026-08-29-056-s-cgnat-ssrf-closure.md",
+      "hits": [
+        {
+          "line": 49,
+          "text": "## Monitoring / rollback"
+        },
+        {
+          "line": 55,
+          "text": "- **Rollback:** revert merge commit `9560d48`; single-module change, no"
+        },
+        {
+          "line": 69,
+          "text": "## Follow-ups stashed for Stage (advisory, non-blocking)"
+        }
+      ]
+    },
+    {
+      "path": "docs/closure/2026-08-29-057-s-ssrf-classifier-pinning-closure.md",
+      "hits": [
+        {
+          "line": 25,
+          "text": "Review-driven follow-ups on the same branch:"
+        },
+        {
+          "line": 86,
+          "text": "## Risk record"
+        },
+        {
+          "line": 105,
+          "text": "* **rollback** \u2014 revert merge commit `b89c902`. Single-domain, no data or config migration, and"
+        },
+        {
+          "line": 106,
+          "text": "  the live crawl path is behavior-preserving, so revert risk is low."
+        },
+        {
+          "line": 114,
+          "text": "### ActionRisk"
+        },
+        {
+          "line": 137,
+          "text": "## Follow-up debt"
+        }
+      ]
+    },
+    {
+      "path": "docs/closure/2026-08-29-058-s-crawl-frontier-bound-closure.md",
+      "hits": [
+        {
+          "line": 35,
+          "text": "## Risky action record"
+        },
+        {
+          "line": 42,
+          "text": "| ActionRisk | moderate \u2014 core crawl loop on the live fetch path |"
+        },
+        {
+          "line": 43,
+          "text": "| Rollback | Revert merge commit `b1f4549`; single-module change, inert below the ceiling |"
+        },
+        {
+          "line": 54,
+          "text": "| `pyright src/` | 0 errors, 0 warnings |"
+        },
+        {
+          "line": 95,
+          "text": "  request-scoped `RemainingByteBudget`, so the `MAX_FETCH_ATTEMPTS` envelope is load-bearing."
+        },
+        {
+          "line": 106,
+          "text": "## Accepted risk carried forward"
+        },
+        {
+          "line": 110,
+          "text": "plan explicitly deferred any counter field or `CrawlResult` marker, so this is accepted risk, not a"
+        },
+        {
+          "line": 111,
+          "text": "defect. It is stashed as follow-up `7F34A0D5`."
+        },
+        {
+          "line": 121,
+          "text": "## Follow-ups stashed"
+        },
+        {
+          "line": 142,
+          "text": "## Monitoring and rollback"
+        },
+        {
+          "line": 145,
+          "text": "`docline.fetch.crawl` logger; follow-up `7F34A0D5` raises that visibility. Rollback is a revert of"
+        }
+      ]
+    },
+    {
+      "path": "docs/closure/2026-08-30-059-s-crawl-frontier-observability-closure.md",
+      "hits": [
+        {
+          "line": 22,
+          "text": "| `068.007-T` | task \u2014 A.T6 `CrawlOutcome` + WARNING | `9dc41bd` |"
+        },
+        {
+          "line": 39,
+          "text": "deadlocked from the worktree, so archival used the single-artifact fallback (`move` +"
+        },
+        {
+          "line": 43,
+          "text": "traceability fully intact (see `docs/compound/2026-08-30-ship-shipment-deadlocks-in-worktree.md`)."
+        },
+        {
+          "line": 57,
+          "text": "it may over-report but never under-reports. A single default-visible WARNING fires once per crawl"
+        },
+        {
+          "line": 68,
+          "text": "## Risky action record"
+        },
+        {
+          "line": 72,
+          "text": "| ProposedAction | Change `crawl()`'s return type and split the live crawl module while adding a default-visible truncation WARNING |"
+        },
+        {
+          "line": 75,
+          "text": "| ActionRisk | moderate \u2014 core crawl loop and a breaking return-type change, fully caller-updated in-shipment |"
+        },
+        {
+          "line": 76,
+          "text": "| Rollback | Revert merge commit `58ba5c5`; changes confined to `fetch/crawl*.py`, `fetch/models.py`, `elt/execute.py`, `app_models.py`, `app.py`. Persisted `crawl-manifest.json`/`metadata.json` gain a defaulted key tolerated on revert |"
+        },
+        {
+          "line": 87,
+          "text": "| `pyright src/` | 0 errors, 0 warnings |"
+        },
+        {
+          "line": 111,
+          "text": "| Direct-refusal truncation | `max_frontier=2` fan-out crawl | `frontier_truncated=True`, one WARNING |"
+        },
+        {
+          "line": 112,
+          "text": "| WARNING payload | sanitized origin only | contains `https://verify.example.com`, no path/query/`toc-1.js` |"
+        },
+        {
+          "line": 117,
+          "text": "| Conservative TOC-only | `max_frontier=0`, anchor-free root, eligible `toc-*.js` | `frontier_truncated=True`, TOC asset **not** fetched (pure parse), one WARNING |"
+        },
+        {
+          "line": 119,
+          "text": "| Uncapped no-op | default ceiling, two anchors | not truncated, both admitted, zero WARNING |"
+        },
+        {
+          "line": 141,
+          "text": "## Accepted risk carried forward"
+        },
+        {
+          "line": 154,
+          "text": "## Follow-ups stashed"
+        },
+        {
+          "line": 160,
+          "text": "## Monitoring and rollback"
+        },
+        {
+          "line": 162,
+          "text": "The truncation signal is itself the new monitoring surface: operators observe a WARNING on the"
+        },
+        {
+          "line": 165,
+          "text": "fetch paths, so the documented remedy is to narrow the crawl. Rollback is a single revert of merge"
+        },
+        {
+          "line": 177,
+          "text": "| Healthy signal | Crawls under the ceiling emit no WARNING and report `frontier_truncated=false`; normal uncapped crawls admit all eligible links |"
+        },
+        {
+          "line": 178,
+          "text": "| Failure signal | A `ValueError` or other untyped exception escaping `crawl()` on a valid URL; a `frontier_truncated` value diverging between the manifest, CLI, and MCP for the same request; a WARNING payload containing a URL path/query/us"
+        },
+        {
+          "line": 179,
+          "text": "| Rollback trigger | Any failure signal above that is traced to this change, or a regression in crawl completeness on the fetch path |"
+        },
+        {
+          "line": 180,
+          "text": "| Rollback command | `git revert -m 1 58ba5c5b67abf5c73457d11e5af76c60bdd483b1` \u2014 single-commit, additive on persisted artifacts |"
+        },
+        {
+          "line": 183,
+          "text": "| Owner | Ship agent (session 059-S); follow-up `D6E758F5` owned by the next Stage/Ship cycle |"
+        }
+      ]
+    },
+    {
+      "path": "docs/closure/2026-09-09-060-s-sitemap-preflight-dedup-closure.md",
+      "hits": [
+        {
+          "line": 31,
+          "text": "workspace (~90s; the isolated-worktree deadlock documented for 059-S in"
+        },
+        {
+          "line": 32,
+          "text": "`docs/compound/2026-08-30-ship-shipment-deadlocks-in-worktree.md` did not recur here). The"
+        },
+        {
+          "line": 52,
+          "text": "## Risky action record"
+        },
+        {
+          "line": 59,
+          "text": "| ActionRisk | moderate \u2014 touches an SSRF-relevant code path, but `http.py`/`url_policy.py` (the actual authoritative gate) are read-only for this shipment, and the change is a pure de-duplication with no address-class dropped |"
+        },
+        {
+          "line": 60,
+          "text": "| Rollback | `git revert -m 1 f278cffc9743d19cae410a9ea7623bfeec0c7649` \u2014 pure source + test change, no persisted artifact, no migration; a revert restores the double resolution (a performance regression, never a security regression, since "
+        },
+        {
+          "line": 68,
+          "text": "deadlock workaround), leaving `archived_status: active` rather than `shipped`. The operator"
+        },
+        {
+          "line": 86,
+          "text": "| `pyright src/` | 0 errors, 0 warnings |"
+        },
+        {
+          "line": 88,
+          "text": "| `uv run python -m build` | sdist + wheel built successfully (full local build for a code-changing PR) |"
+        },
+        {
+          "line": 132,
+          "text": "`READY_WITH_FOLLOWUPS` (P2/P3 test-hygiene items only, see \"Follow-ups stashed\" below)."
+        },
+        {
+          "line": 167,
+          "text": "## Follow-ups stashed"
+        },
+        {
+          "line": 171,
+          "text": "| `6BF410E2` | low | Consolidate the now-triplicated scripted-socket/HTTP-response test helpers (`_ScriptedSocket`, `_http_response`/`_response`, `_create_connection_stub`/`_scripted_transport`) across `test_sitemap.py` / `test_sitemap_pinn"
+        },
+        {
+          "line": 173,
+          "text": "Remaining P3 findings from local review (missing test-helper type annotations, mixed"
+        },
+        {
+          "line": 178,
+          "text": "## Accepted risk carried forward"
+        },
+        {
+          "line": 184,
+          "text": "## Monitoring and rollback"
+        },
+        {
+          "line": 200,
+          "text": "| Rollback trigger | Any failure signal above traced to this change |"
+        },
+        {
+          "line": 201,
+          "text": "| Rollback command | `git revert -m 1 f278cffc9743d19cae410a9ea7623bfeec0c7649` |"
+        }
+      ]
+    },
+    {
+      "path": "docs/closure/2026-09-12-hashicorp-mdx-normalization-preprocessor-closure.md",
+      "hits": [
+        {
+          "line": 88,
+          "text": "  \"VideoEmbed\": 8, \"Warning\": 2}` (stash `7F80C39E`) \u2014 so the operator's"
+        },
+        {
+          "line": 97,
+          "text": "## Risky Action Record"
+        },
+        {
+          "line": 99,
+          "text": "* No `ProposedAction`/`ActionRisk` entries were required \u2014 this session"
+        },
+        {
+          "line": 133,
+          "text": "## Rollback Trigger / Procedure"
+        },
+        {
+          "line": 178,
+          "text": "* **follow-up** (optional): residual P2/P3 review findings captured as"
+        },
+        {
+          "line": 190,
+          "text": "## Follow-ups"
+        }
+      ]
+    },
+    {
+      "path": "docs/closure/2026-09-12-hashicorp-mdx-normalization-preprocessor-runtime-verification.md",
+      "hits": [
+        {
+          "line": 63,
+          "text": "  (`mystery-product`) correctly excluded with a warning, `unresolved_constructs:"
+        },
+        {
+          "line": 86,
+          "text": "  \"Note\": 1, \"VideoEmbed\": 8, \"Warning\": 2}`** (4 distinct pipeline gaps,"
+        },
+        {
+          "line": 116,
+          "text": "\"Note\": 1, \"VideoEmbed\": 8, \"Warning\": 2}` (stash `7F80C39E`), requiring"
+        },
+        {
+          "line": 121,
+          "text": "## Follow-up Recommendations"
+        },
+        {
+          "line": 124,
+          "text": "  (requirements-evidence only); no ongoing monitoring or rollback path"
+        }
+      ]
+    },
+    {
+      "path": "docs/closure/2026-09-13-sanitize-source-key-elt-error-paths-adversarial-review.md",
+      "hits": [
+        {
+          "line": 117,
+          "text": "- **Blast radius (review focus #3):** All three reviewers were instructed to verify `src/docline/fetch/staging.py` shows no diff and to check for other missed call sites of the old `sanitize_source()` at metadata/log sinks; none reported a "
+        },
+        {
+          "line": 274,
+          "text": "- Determinism (`build_source_key`/`make_job_id` untouched) and blast-radius (`staging.py` zero-diff, no missed call sites) checks passed with no defects identified by any reviewer, though the `staging.py` diff was not independently confirme"
+        }
+      ]
+    },
+    {
+      "path": "docs/closure/2026-09-13-sanitize-source-key-elt-error-paths-closure.md",
+      "hits": [
+        {
+          "line": 74,
+          "text": "* No new findings; existing deferred residual risk stands (see Residual"
+        },
+        {
+          "line": 75,
+          "text": "  Follow-Ups below)."
+        },
+        {
+          "line": 114,
+          "text": "## Residual Follow-Ups (reconciled \u2014 includes 4 newly captured this closure session)"
+        },
+        {
+          "line": 121,
+          "text": "follow-up findings without formally stashing them, and this closure session performs that"
+        },
+        {
+          "line": 122,
+          "text": "threadless-path P-021 C2 capture (Ship Step 6 item 6 \u2014 follow-ups identified by the"
+        },
+        {
+          "line": 125,
+          "text": "longer describe open residual risk \u2014 they are retained below as a historical record only,"
+        },
+        {
+          "line": 143,
+          "text": "| `E462E1F0` | high | **fixed (`c547f93`)** | `_URL_SCHEME_RE` relaxation (`:/*`) widened matching \u2014 closed via known-scheme allowlist; no longer open residual risk |"
+        },
+        {
+          "line": 144,
+          "text": "| `E89DC095` | high | **fixed (`c547f93`)** | `_URL_SCHEME_RE` scheme-name character class excludes underscore \u2014 closed via known-scheme allowlist; no longer open residual risk |"
+        },
+        {
+          "line": 177,
+          "text": "archived, and no blocking (P0/P1) risk remains against the shipped code. The 16 open"
+        },
+        {
+          "line": 189,
+          "text": "## Monitoring / Rollback (release-observability)"
+        },
+        {
+          "line": 210,
+          "text": "  `3933dfc335e19bcd602bf104e82728268ae83156` on `main` be used as the rollback procedure;"
+        },
+        {
+          "line": 217,
+          "text": "## Follow-Up Tasks Stashed by This Closure"
+        },
+        {
+          "line": 220,
+          "text": "session (`9D44B6F3`, `1C433464`, `E7878B1B`, `E0B6EE0D`) \u2014 see Residual Follow-Ups above"
+        },
+        {
+          "line": 222,
+          "text": "them as follow-up findings without formally stashing them at the time); Ship Step 6 item 6"
+        },
+        {
+          "line": 223,
+          "text": "requires stashing follow-ups identified by the closure artifact, so this closure session"
+        }
+      ]
+    },
+    {
+      "path": "docs/closure/2026-09-13-sanitize-source-key-elt-error-paths-e462e1f0-e89dc095-adversarial-review.md",
+      "hits": [
+        {
+          "line": 28,
+          "text": "LOW reviewer-count confidence tag understates its real risk."
+        },
+        {
+          "line": 48,
+          "text": "\"agent nesting/depth\" error, consistent with the same limitation logged in the prior"
+        },
+        {
+          "line": 176,
+          "text": "risk, but the exact assertions require an explicit human decision on F1's disposition first)."
+        },
+        {
+          "line": 198,
+          "text": "understates its real risk. See rationale below."
+        },
+        {
+          "line": 251,
+          "text": "below F2/F3 in the table below; the orchestrator's risk-adjusted recommendation is to treat F1 as"
+        },
+        {
+          "line": 278,
+          "text": "| 3 | F1 \u2014 colon-less loose-authority userinfo no longer stripped | LOW (Unique, 1/3, orchestrator-verified) | MAJOR (risk-elevated) | 3 | `gated_auto` (elevated) |"
+        },
+        {
+          "line": 282,
+          "text": "substantive risk read is F1 > F2 \u2248 F3 > F4 \u2014 F1 is the only verified-live credential-exposure"
+        }
+      ]
+    },
+    {
+      "path": "docs/closure/2026-09-13-sanitize-source-key-elt-error-paths-final-confirmation-review.md",
+      "hits": [
+        {
+          "line": 13,
+          "text": "# \ud83d\udd34 BLOCKED"
+        },
+        {
+          "line": 39,
+          "text": "and unaffected by the R-1/R-2/R-3 changes (see \u00a75). This BLOCKED verdict rests"
+        },
+        {
+          "line": 45,
+          "text": "BLOCKED verdict should be escalated per the Ship pipeline's circuit-breaker"
+        },
+        {
+          "line": 46,
+          "text": "exception path (e.g., a follow-up remediation task/shipment scoped specifically to"
+        },
+        {
+          "line": 49,
+          "text": "documented as known residual risk) rather than being silently marked READY to avoid"
+        },
+        {
+          "line": 175,
+          "text": "re-verification with an explicit latent-risk caveat for third-party/callback code)."
+        },
+        {
+          "line": 318,
+          "text": "   remaining nearby to catch a reader's eye, and no further regex pass catches it"
+        }
+      ]
+    },
+    {
+      "path": "docs/closure/2026-09-13-sanitize-source-key-elt-error-paths-post-remediation-adversarial-review.md",
+      "hits": [
+        {
+          "line": 11,
+          "text": "## Verdict: **BLOCKED**"
+        },
+        {
+          "line": 371,
+          "text": "the same limitation for its `staging.py` check). Three delegation attempts were made:"
+        },
+        {
+          "line": 388,
+          "text": "   no-direct-CLI-tool limitation. This is consistent with attempt 1 and directly contradicts"
+        },
+        {
+          "line": 393,
+          "text": "a genuine tooling limitation of this environment at the current nesting depth, not a defect in"
+        },
+        {
+          "line": 432,
+          "text": "R-1/R-2/R-3 are fixed in a follow-up commit, a genuine cycle-2 Phase 7 re-review should be run"
+        }
+      ]
+    },
+    {
+      "path": "docs/closure/2026-09-13-sanitize-source-key-elt-error-paths-runtime-verification.md",
+      "hits": [
+        {
+          "line": 95,
+          "text": "## Verdict: PASS WITH FOLLOW-UP"
+        },
+        {
+          "line": 99,
+          "text": "full targeted unit suite (114/114). The single follow-up is **not** a defect"
+        },
+        {
+          "line": 102,
+          "text": "* **Follow-up (informational only, not blocking)**: the known,"
+        },
+        {
+          "line": 105,
+          "text": "  expansion, and the PR #199 body's follow-up list items 1\u20134: Unicode"
+        },
+        {
+          "line": 119,
+          "text": "* Blocked prerequisites: none"
+        },
+        {
+          "line": 120,
+          "text": "* Follow-up recommendations: none new; existing deferred stash entries stand"
+        }
+      ]
+    },
+    {
+      "path": "docs/closure/compacted/2026-05-to-07-runtime-verification-closure-summary.md",
+      "hits": [
+        {
+          "line": 11,
+          "text": "This compacted closure summary consolidates old runtime-verification and closure records for completed, merged shipments `001-S` through `007-S`, plus the 2026-07-06 stash follow-ups and release setup record. The source records covered back"
+        },
+        {
+          "line": 15,
+          "text": "* `001-S` backlog artifact persistence: PASS. Verified repository ignore behavior for durable and volatile backlogit artifacts, the missing-`git` regression path in `_git_ignores()`, and shipment archival. Healthy signals included successfu"
+        },
+        {
+          "line": 16,
+          "text": "* `002-S` document ingestion foundations: PASS. Verified shared router, schema, manifest, staging, workspace containment, and CLI/MCP manifest parity support. Healthy signals included successful compile, lint, typecheck, test, and format ga"
+        },
+        {
+          "line": 17,
+          "text": "* `003-S` document acquisition and reader adapters: PASS. Verified fetch URL policy, redirect validation, crawl controls, HTML extraction, reader limits, document adapters, and transcript preprocessing. Healthy signals included successful c"
+        },
+        {
+          "line": 18,
+          "text": "* `004-S` document ingestion processing validation and outputs: WARN, not a final verification PASS. Runtime-oriented tests passed and shipment archival completed, but `pyright src/` reported six errors in `src/docline/process/ast_lint.py` "
+        },
+        {
+          "line": 19,
+          "text": "* `005-S` CLI and MCP parity: PASS. Verified manifest, fetch, process, and stdio transport parity surfaces. Healthy signals included successful compile, lint, typecheck, test, and format gates, plus shipment archival of `005-F`, `005-S`, an"
+        },
+        {
+          "line": 20,
+          "text": "* `006-S` packaging and quarantine tooling: PASS. Verified richer package metadata, `python -m docline --manifest`, and the file-local quarantine viewer. Healthy signals included passing package entrypoint tests, quarantine viewer parity/se"
+        },
+        {
+          "line": 21,
+          "text": "* `007-S` pyright type regressions: PASS. Verified the process-module pyright regression fixes in `src/docline/process/metadata.py` and `src/docline/process/ast_lint.py`. Healthy signals included successful compile, lint, typecheck, test, a"
+        },
+        {
+          "line": 22,
+          "text": "* 2026-07-06 stash follow-ups and release setup: verified. Cleared stash items `5A27C137`, `B0A77532`, and `7AA9FAA0` through PRs `#151`, `#152`, and `#153`. Verification covered crawl section-scope containment, HTML extraction fidelity, an"
+        },
+        {
+          "line": 26,
+          "text": "* Crawl scope follow-up `5A27C137` fixed `_derive_section_scope` so crawls of sub-paths remain under the full start-path directory prefix. The PostgreSQL operational workaround was no longer needed after this change."
+        },
+        {
+          "line": 27,
+          "text": "* HTML fidelity follow-up `B0A77532` preserved definition lists, table spans, language-tagged code fences, canonical URLs for web sources, and single-shot crawl page budgets. Real PostgreSQL `sql-select.html` verification preserved six defi"
+        },
+        {
+          "line": 28,
+          "text": "* Release setup follow-up `7AA9FAA0` added a tag-driven `release.yml` workflow for `v*` tags, with quality gates, package build, version matching, PyPI Trusted Publishing, and GitHub Release artifact publication."
+        },
+        {
+          "line": 32,
+          "text": "## Follow-ups"
+        },
+        {
+          "line": 37,
+          "text": "* Remaining stash entries after 2026-07-06 required external resources such as Azure Foundry credentials, GPU hardware, or specific document corpora, or were speculative deferrals."
+        }
+      ]
+    }
+  ]
+}

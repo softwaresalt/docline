@@ -1,0 +1,1926 @@
+{
+  "blockers": [
+    {
+      "kind": "invalid-gsd-home-bundle",
+      "message": "Failed to open GSD home bundle \"C:\\\\Source\\\\GitHub\\\\docline\\\\.gsd\\\\gsd-assets-v1.6.0.zip\": failed to verify zip bundle C:\\Source\\GitHub\\docline\\.gsd\\gsd-assets-v1.6.0.zip: path escapes workspace root: lifecycle log is not single-linked (nlink=3)",
+      "path": "C:\\Source\\GitHub\\docline\\.gsd\\gsd-assets-v1.6.0.zip"
+    },
+    {
+      "kind": "escalation-chain-directive-parity",
+      "message": "templates/instructions/escalation-protocol.instructions.md.tmpl: unreadable: containment: root is not a directory"
+    },
+    {
+      "kind": "escalation-chain-directive-parity",
+      "message": "templates/agents/_stage.agent.md.tmpl: unreadable: containment: root is not a directory"
+    },
+    {
+      "kind": "escalation-chain-directive-parity",
+      "message": "templates/agents/_ship.agent.md.tmpl: unreadable: containment: root is not a directory"
+    },
+    {
+      "kind": "escalation-chain-directive-parity",
+      "message": "templates/policies/workflow-policies.md.tmpl: unreadable: containment: root is not a directory"
+    },
+    {
+      "artifact": ".gsd/backlog-registry.yaml",
+      "kind": "unsafe-template-path",
+      "message": "Manifest template path is unsafe or escapes gsd_home: containment: root is not a directory",
+      "path": "C:\\Source\\GitHub\\docline\\.gsd\\gsd-assets-v1.6.0.zip\\templates\\backlog\\registries\\backlogit.registry.yaml"
+    },
+    {
+      "artifact": ".gsd/config.yaml",
+      "kind": "unsafe-template-path",
+      "message": "Manifest template path is unsafe or escapes gsd_home: containment: root is not a directory",
+      "path": "C:\\Source\\GitHub\\docline\\.gsd\\gsd-assets-v1.6.0.zip\\templates\\harness-config.yaml.tmpl"
+    },
+    {
+      "artifact": ".github/agents/_orchestrator.agent.md",
+      "kind": "unsafe-template-path",
+      "message": "Manifest template path is unsafe or escapes gsd_home: containment: root is not a directory",
+      "path": "C:\\Source\\GitHub\\docline\\.gsd\\gsd-assets-v1.6.0.zip\\templates\\agents\\_orchestrator.agent.md.tmpl"
+    },
+    {
+      "artifact": ".github/agents/_ship.agent.md",
+      "kind": "unsafe-template-path",
+      "message": "Manifest template path is unsafe or escapes gsd_home: containment: root is not a directory",
+      "path": "C:\\Source\\GitHub\\docline\\.gsd\\gsd-assets-v1.6.0.zip\\templates\\agents\\_ship.agent.md.tmpl"
+    },
+    {
+      "artifact": ".github/agents/_stage.agent.md",
+      "kind": "unsafe-template-path",
+      "message": "Manifest template path is unsafe or escapes gsd_home: containment: root is not a directory",
+      "path": "C:\\Source\\GitHub\\docline\\.gsd\\gsd-assets-v1.6.0.zip\\templates\\agents\\_stage.agent.md.tmpl"
+    },
+    {
+      "artifact": ".github/agents/subagents/adversarial-review.agent.md",
+      "kind": "unsafe-template-path",
+      "message": "Manifest template path is unsafe or escapes gsd_home: containment: root is not a directory",
+      "path": "C:\\Source\\GitHub\\docline\\.gsd\\gsd-assets-v1.6.0.zip\\templates\\agents\\adversarial-review.agent.md.tmpl"
+    },
+    {
+      "artifact": ".github/agents/subagents/agent-native-parity-reviewer.agent.md",
+      "kind": "unsafe-template-path",
+      "message": "Manifest template path is unsafe or escapes gsd_home: containment: root is not a directory",
+      "path": "C:\\Source\\GitHub\\docline\\.gsd\\gsd-assets-v1.6.0.zip\\templates\\agents\\review\\agent-native-parity-reviewer.agent.md.tmpl"
+    },
+    {
+      "artifact": ".github/agents/subagents/architecture-strategist.agent.md",
+      "kind": "unsafe-template-path",
+      "message": "Manifest template path is unsafe or escapes gsd_home: containment: root is not a directory",
+      "path": "C:\\Source\\GitHub\\docline\\.gsd\\gsd-assets-v1.6.0.zip\\templates\\agents\\review\\architecture-strategist.agent.md.tmpl"
+    },
+    {
+      "artifact": ".github/agents/subagents/concurrency-reviewer.agent.md",
+      "kind": "unsafe-template-path",
+      "message": "Manifest template path is unsafe or escapes gsd_home: containment: root is not a directory",
+      "path": "C:\\Source\\GitHub\\docline\\.gsd\\gsd-assets-v1.6.0.zip\\templates\\agents\\review\\concurrency-reviewer.agent.md.tmpl"
+    },
+    {
+      "artifact": ".github/agents/subagents/constitution-reviewer.agent.md",
+      "kind": "unsafe-template-path",
+      "message": "Manifest template path is unsafe or escapes gsd_home: containment: root is not a directory",
+      "path": "C:\\Source\\GitHub\\docline\\.gsd\\gsd-assets-v1.6.0.zip\\templates\\agents\\review\\constitution-reviewer.agent.md.tmpl"
+    },
+    {
+      "artifact": ".github/agents/subagents/correctness-reviewer.agent.md",
+      "kind": "unsafe-template-path",
+      "message": "Manifest template path is unsafe or escapes gsd_home: containment: root is not a directory",
+      "path": "C:\\Source\\GitHub\\docline\\.gsd\\gsd-assets-v1.6.0.zip\\templates\\agents\\review\\correctness-reviewer.agent.md.tmpl"
+    },
+    {
+      "artifact": ".github/agents/subagents/learnings-researcher.agent.md",
+      "kind": "unsafe-template-path",
+      "message": "Manifest template path is unsafe or escapes gsd_home: containment: root is not a directory",
+      "path": "C:\\Source\\GitHub\\docline\\.gsd\\gsd-assets-v1.6.0.zip\\templates\\agents\\research\\learnings-researcher.agent.md.tmpl"
+    },
+    {
+      "artifact": ".github/agents/subagents/maintainability-reviewer.agent.md",
+      "kind": "unsafe-template-path",
+      "message": "Manifest template path is unsafe or escapes gsd_home: containment: root is not a directory",
+      "path": "C:\\Source\\GitHub\\docline\\.gsd\\gsd-assets-v1.6.0.zip\\templates\\agents\\review\\maintainability-reviewer.agent.md.tmpl"
+    },
+    {
+      "artifact": ".github/agents/subagents/prompt-builder.agent.md",
+      "kind": "unsafe-template-path",
+      "message": "Manifest template path is unsafe or escapes gsd_home: containment: root is not a directory",
+      "path": "C:\\Source\\GitHub\\docline\\.gsd\\gsd-assets-v1.6.0.zip\\templates\\agents\\prompt-builder.agent.md.tmpl"
+    },
+    {
+      "artifact": ".github/agents/subagents/python-engineer.agent.md",
+      "kind": "unsafe-template-path",
+      "message": "Manifest template path is unsafe or escapes gsd_home: containment: root is not a directory",
+      "path": "C:\\Source\\GitHub\\docline\\.gsd\\gsd-assets-v1.6.0.zip\\templates\\agents\\language-engineer.agent.md.tmpl"
+    },
+    {
+      "artifact": ".github/agents/subagents/python-reviewer.agent.md",
+      "kind": "unsafe-template-path",
+      "message": "Manifest template path is unsafe or escapes gsd_home: containment: root is not a directory",
+      "path": "C:\\Source\\GitHub\\docline\\.gsd\\gsd-assets-v1.6.0.zip\\templates\\agents\\review\\technology-reviewer.agent.md.tmpl"
+    },
+    {
+      "artifact": ".github/agents/subagents/schema-cli-docs-coupling-reviewer.agent.md",
+      "kind": "unsafe-template-path",
+      "message": "Manifest template path is unsafe or escapes gsd_home: containment: root is not a directory",
+      "path": "C:\\Source\\GitHub\\docline\\.gsd\\gsd-assets-v1.6.0.zip\\templates\\agents\\review\\schema-cli-docs-coupling-reviewer.agent.md.tmpl"
+    },
+    {
+      "artifact": ".github/agents/subagents/scope-boundary-auditor.agent.md",
+      "kind": "unsafe-template-path",
+      "message": "Manifest template path is unsafe or escapes gsd_home: containment: root is not a directory",
+      "path": "C:\\Source\\GitHub\\docline\\.gsd\\gsd-assets-v1.6.0.zip\\templates\\agents\\review\\scope-boundary-auditor.agent.md.tmpl"
+    },
+    {
+      "artifact": ".github/agents/subagents/security-lens-reviewer.agent.md",
+      "kind": "unsafe-template-path",
+      "message": "Manifest template path is unsafe or escapes gsd_home: containment: root is not a directory",
+      "path": "C:\\Source\\GitHub\\docline\\.gsd\\gsd-assets-v1.6.0.zip\\templates\\agents\\review\\security-lens-reviewer.agent.md.tmpl"
+    },
+    {
+      "artifact": ".github/agents/subagents/security-reviewer.agent.md",
+      "kind": "unsafe-template-path",
+      "message": "Manifest template path is unsafe or escapes gsd_home: containment: root is not a directory",
+      "path": "C:\\Source\\GitHub\\docline\\.gsd\\gsd-assets-v1.6.0.zip\\templates\\agents\\review\\security-reviewer.agent.md.tmpl"
+    },
+    {
+      "artifact": ".github/agents/subagents/security-sentinel.agent.md",
+      "kind": "unsafe-template-path",
+      "message": "Manifest template path is unsafe or escapes gsd_home: containment: root is not a directory",
+      "path": "C:\\Source\\GitHub\\docline\\.gsd\\gsd-assets-v1.6.0.zip\\templates\\agents\\security-sentinel.agent.md.tmpl"
+    },
+    {
+      "artifact": ".github/agents/subagents/template-integrity-reviewer.agent.md",
+      "kind": "unsafe-template-path",
+      "message": "Manifest template path is unsafe or escapes gsd_home: containment: root is not a directory",
+      "path": "C:\\Source\\GitHub\\docline\\.gsd\\gsd-assets-v1.6.0.zip\\templates\\agents\\review\\template-integrity-reviewer.agent.md.tmpl"
+    },
+    {
+      "artifact": ".github/copilot-instructions.md",
+      "kind": "unsafe-template-path",
+      "message": "Manifest template path is unsafe or escapes gsd_home: containment: root is not a directory",
+      "path": "C:\\Source\\GitHub\\docline\\.gsd\\gsd-assets-v1.6.0.zip\\templates\\foundation\\copilot-instructions.md.tmpl"
+    },
+    {
+      "artifact": ".github/instructions/adversarial-review.instructions.md",
+      "kind": "unsafe-template-path",
+      "message": "Manifest template path is unsafe or escapes gsd_home: containment: root is not a directory",
+      "path": "C:\\Source\\GitHub\\docline\\.gsd\\gsd-assets-v1.6.0.zip\\templates\\instructions\\adversarial-review.instructions.md.tmpl"
+    },
+    {
+      "artifact": ".github/instructions/agent-engram.instructions.md",
+      "kind": "unsafe-template-path",
+      "message": "Manifest template path is unsafe or escapes gsd_home: containment: root is not a directory",
+      "path": "C:\\Source\\GitHub\\docline\\.gsd\\gsd-assets-v1.6.0.zip\\templates\\instructions\\agent-engram.instructions.md.tmpl"
+    },
+    {
+      "artifact": ".github/instructions/architecture-doc.instructions.md",
+      "kind": "unsafe-template-path",
+      "message": "Manifest template path is unsafe or escapes gsd_home: containment: root is not a directory",
+      "path": "C:\\Source\\GitHub\\docline\\.gsd\\gsd-assets-v1.6.0.zip\\templates\\instructions\\architecture-doc.instructions.md.tmpl"
+    },
+    {
+      "artifact": ".github/instructions/backlog-integration.instructions.md",
+      "kind": "unsafe-template-path",
+      "message": "Manifest template path is unsafe or escapes gsd_home: containment: root is not a directory",
+      "path": "C:\\Source\\GitHub\\docline\\.gsd\\gsd-assets-v1.6.0.zip\\templates\\instructions\\backlog-integration.instructions.md.tmpl"
+    },
+    {
+      "artifact": ".github/instructions/backlogit-sql-schema.instructions.md",
+      "kind": "unsafe-template-path",
+      "message": "Manifest template path is unsafe or escapes gsd_home: containment: root is not a directory",
+      "path": "C:\\Source\\GitHub\\docline\\.gsd\\gsd-assets-v1.6.0.zip\\templates\\instructions\\backlogit-sql-schema.instructions.md.tmpl"
+    },
+    {
+      "artifact": ".github/instructions/backlogit-yaml-header-tooling.instructions.md",
+      "kind": "unsafe-template-path",
+      "message": "Manifest template path is unsafe or escapes gsd_home: containment: root is not a directory",
+      "path": "C:\\Source\\GitHub\\docline\\.gsd\\gsd-assets-v1.6.0.zip\\templates\\instructions\\backlogit-yaml-header-tooling.instructions.md.tmpl"
+    },
+    {
+      "artifact": ".github/instructions/backlogit.instructions.md",
+      "kind": "unsafe-template-path",
+      "message": "Manifest template path is unsafe or escapes gsd_home: containment: root is not a directory",
+      "path": "C:\\Source\\GitHub\\docline\\.gsd\\gsd-assets-v1.6.0.zip\\templates\\instructions\\backlogit.instructions.md.tmpl"
+    },
+    {
+      "artifact": ".github/instructions/capability-pack-enforcement.instructions.md",
+      "kind": "unsafe-template-path",
+      "message": "Manifest template path is unsafe or escapes gsd_home: containment: root is not a directory",
+      "path": "C:\\Source\\GitHub\\docline\\.gsd\\gsd-assets-v1.6.0.zip\\templates\\instructions\\capability-pack-enforcement.instructions.md.tmpl"
+    },
+    {
+      "artifact": ".github/instructions/ci-security.instructions.md",
+      "kind": "unsafe-template-path",
+      "message": "Manifest template path is unsafe or escapes gsd_home: containment: root is not a directory",
+      "path": "C:\\Source\\GitHub\\docline\\.gsd\\gsd-assets-v1.6.0.zip\\templates\\instructions\\ci-security.instructions.md.tmpl"
+    },
+    {
+      "artifact": ".github/instructions/circuit-breaker.instructions.md",
+      "kind": "unsafe-template-path",
+      "message": "Manifest template path is unsafe or escapes gsd_home: containment: root is not a directory",
+      "path": "C:\\Source\\GitHub\\docline\\.gsd\\gsd-assets-v1.6.0.zip\\templates\\instructions\\circuit-breaker.instructions.md.tmpl"
+    },
+    {
+      "artifact": ".github/instructions/coding-discipline.instructions.md",
+      "kind": "unsafe-template-path",
+      "message": "Manifest template path is unsafe or escapes gsd_home: containment: root is not a directory",
+      "path": "C:\\Source\\GitHub\\docline\\.gsd\\gsd-assets-v1.6.0.zip\\templates\\instructions\\coding-discipline.instructions.md.tmpl"
+    },
+    {
+      "artifact": ".github/instructions/commit-message.instructions.md",
+      "kind": "unsafe-template-path",
+      "message": "Manifest template path is unsafe or escapes gsd_home: containment: root is not a directory",
+      "path": "C:\\Source\\GitHub\\docline\\.gsd\\gsd-assets-v1.6.0.zip\\templates\\instructions\\commit-message.instructions.md.tmpl"
+    },
+    {
+      "artifact": ".github/instructions/concurrency.instructions.md",
+      "kind": "unsafe-template-path",
+      "message": "Manifest template path is unsafe or escapes gsd_home: containment: root is not a directory",
+      "path": "C:\\Source\\GitHub\\docline\\.gsd\\gsd-assets-v1.6.0.zip\\templates\\instructions\\concurrency.instructions.md.tmpl"
+    },
+    {
+      "artifact": ".github/instructions/constitution.instructions.md",
+      "kind": "unsafe-template-path",
+      "message": "Manifest template path is unsafe or escapes gsd_home: containment: root is not a directory",
+      "path": "C:\\Source\\GitHub\\docline\\.gsd\\gsd-assets-v1.6.0.zip\\templates\\foundation\\constitution.instructions.md.tmpl"
+    },
+    {
+      "artifact": ".github/instructions/context-efficiency.instructions.md",
+      "kind": "unsafe-template-path",
+      "message": "Manifest template path is unsafe or escapes gsd_home: containment: root is not a directory",
+      "path": "C:\\Source\\GitHub\\docline\\.gsd\\gsd-assets-v1.6.0.zip\\templates\\instructions\\context-efficiency.instructions.md.tmpl"
+    },
+    {
+      "artifact": ".github/instructions/continuous-learning.instructions.md",
+      "kind": "unsafe-template-path",
+      "message": "Manifest template path is unsafe or escapes gsd_home: containment: root is not a directory",
+      "path": "C:\\Source\\GitHub\\docline\\.gsd\\gsd-assets-v1.6.0.zip\\templates\\instructions\\continuous-learning.instructions.md.tmpl"
+    },
+    {
+      "artifact": ".github/instructions/copilot-code-review.instructions.md",
+      "kind": "unsafe-template-path",
+      "message": "Manifest template path is unsafe or escapes gsd_home: containment: root is not a directory",
+      "path": "C:\\Source\\GitHub\\docline\\.gsd\\gsd-assets-v1.6.0.zip\\templates\\instructions\\copilot-code-review.instructions.md.tmpl"
+    },
+    {
+      "artifact": ".github/instructions/escalation-protocol.instructions.md",
+      "kind": "unsafe-template-path",
+      "message": "Manifest template path is unsafe or escapes gsd_home: containment: root is not a directory",
+      "path": "C:\\Source\\GitHub\\docline\\.gsd\\gsd-assets-v1.6.0.zip\\templates\\instructions\\escalation-protocol.instructions.md.tmpl"
+    },
+    {
+      "artifact": ".github/instructions/git-merge.instructions.md",
+      "kind": "unsafe-template-path",
+      "message": "Manifest template path is unsafe or escapes gsd_home: containment: root is not a directory",
+      "path": "C:\\Source\\GitHub\\docline\\.gsd\\gsd-assets-v1.6.0.zip\\templates\\instructions\\git-merge.instructions.md.tmpl"
+    },
+    {
+      "artifact": ".github/instructions/github-pr-automation.instructions.md",
+      "kind": "unsafe-template-path",
+      "message": "Manifest template path is unsafe or escapes gsd_home: containment: root is not a directory",
+      "path": "C:\\Source\\GitHub\\docline\\.gsd\\gsd-assets-v1.6.0.zip\\templates\\instructions\\github-pr-automation.instructions.md.tmpl"
+    },
+    {
+      "artifact": ".github/instructions/kbdb.instructions.md",
+      "kind": "unsafe-template-path",
+      "message": "Manifest template path is unsafe or escapes gsd_home: containment: root is not a directory",
+      "path": "C:\\Source\\GitHub\\docline\\.gsd\\gsd-assets-v1.6.0.zip\\templates\\instructions\\kbdb.instructions.md.tmpl"
+    },
+    {
+      "artifact": ".github/instructions/markdown.instructions.md",
+      "kind": "unsafe-template-path",
+      "message": "Manifest template path is unsafe or escapes gsd_home: containment: root is not a directory",
+      "path": "C:\\Source\\GitHub\\docline\\.gsd\\gsd-assets-v1.6.0.zip\\templates\\instructions\\markdown.instructions.md.tmpl"
+    },
+    {
+      "artifact": ".github/instructions/mcp-server.instructions.md",
+      "kind": "unsafe-template-path",
+      "message": "Manifest template path is unsafe or escapes gsd_home: containment: root is not a directory",
+      "path": "C:\\Source\\GitHub\\docline\\.gsd\\gsd-assets-v1.6.0.zip\\templates\\instructions\\mcp-server.instructions.md.tmpl"
+    },
+    {
+      "artifact": ".github/instructions/output-timestamps.instructions.md",
+      "kind": "unsafe-template-path",
+      "message": "Manifest template path is unsafe or escapes gsd_home: containment: root is not a directory",
+      "path": "C:\\Source\\GitHub\\docline\\.gsd\\gsd-assets-v1.6.0.zip\\templates\\instructions\\output-timestamps.instructions.md.tmpl"
+    },
+    {
+      "artifact": ".github/instructions/prompt-builder.instructions.md",
+      "kind": "unsafe-template-path",
+      "message": "Manifest template path is unsafe or escapes gsd_home: containment: root is not a directory",
+      "path": "C:\\Source\\GitHub\\docline\\.gsd\\gsd-assets-v1.6.0.zip\\templates\\instructions\\prompt-builder.instructions.md.tmpl"
+    },
+    {
+      "artifact": ".github/instructions/pull-request.instructions.md",
+      "kind": "unsafe-template-path",
+      "message": "Manifest template path is unsafe or escapes gsd_home: containment: root is not a directory",
+      "path": "C:\\Source\\GitHub\\docline\\.gsd\\gsd-assets-v1.6.0.zip\\templates\\instructions\\pull-request.instructions.md.tmpl"
+    },
+    {
+      "artifact": ".github/instructions/release-observability.instructions.md",
+      "kind": "unsafe-template-path",
+      "message": "Manifest template path is unsafe or escapes gsd_home: containment: root is not a directory",
+      "path": "C:\\Source\\GitHub\\docline\\.gsd\\gsd-assets-v1.6.0.zip\\templates\\instructions\\release-observability.instructions.md.tmpl"
+    },
+    {
+      "artifact": ".github/instructions/role-enforcement.instructions.md",
+      "kind": "unsafe-template-path",
+      "message": "Manifest template path is unsafe or escapes gsd_home: containment: root is not a directory",
+      "path": "C:\\Source\\GitHub\\docline\\.gsd\\gsd-assets-v1.6.0.zip\\templates\\instructions\\role-enforcement.instructions.md.tmpl"
+    },
+    {
+      "artifact": ".github/instructions/strict-safety.instructions.md",
+      "kind": "unsafe-template-path",
+      "message": "Manifest template path is unsafe or escapes gsd_home: containment: root is not a directory",
+      "path": "C:\\Source\\GitHub\\docline\\.gsd\\gsd-assets-v1.6.0.zip\\templates\\instructions\\strict-safety.instructions.md.tmpl"
+    },
+    {
+      "artifact": ".github/instructions/technology-python.instructions.md",
+      "kind": "unsafe-template-path",
+      "message": "Manifest template path is unsafe or escapes gsd_home: containment: root is not a directory",
+      "path": "C:\\Source\\GitHub\\docline\\.gsd\\gsd-assets-v1.6.0.zip\\templates\\instructions\\technology-python.instructions.md.tmpl"
+    },
+    {
+      "artifact": ".github/instructions/workflows.instructions.md",
+      "kind": "unsafe-template-path",
+      "message": "Manifest template path is unsafe or escapes gsd_home: containment: root is not a directory",
+      "path": "C:\\Source\\GitHub\\docline\\.gsd\\gsd-assets-v1.6.0.zip\\templates\\instructions\\workflows.instructions.md.tmpl"
+    },
+    {
+      "artifact": ".github/instructions/writing-style.instructions.md",
+      "kind": "unsafe-template-path",
+      "message": "Manifest template path is unsafe or escapes gsd_home: containment: root is not a directory",
+      "path": "C:\\Source\\GitHub\\docline\\.gsd\\gsd-assets-v1.6.0.zip\\templates\\instructions\\writing-style.instructions.md.tmpl"
+    },
+    {
+      "artifact": ".github/policies/workflow-policies.md",
+      "kind": "unsafe-template-path",
+      "message": "Manifest template path is unsafe or escapes gsd_home: containment: root is not a directory",
+      "path": "C:\\Source\\GitHub\\docline\\.gsd\\gsd-assets-v1.6.0.zip\\templates\\policies\\workflow-policies.md.tmpl"
+    },
+    {
+      "artifact": ".github/prompts/feature-flow-dark.prompt.md",
+      "kind": "unsafe-template-path",
+      "message": "Manifest template path is unsafe or escapes gsd_home: containment: root is not a directory",
+      "path": "C:\\Source\\GitHub\\docline\\.gsd\\gsd-assets-v1.6.0.zip\\templates\\prompts\\feature-flow-dark.prompt.md.tmpl"
+    },
+    {
+      "artifact": ".github/prompts/feature-flow-parallel.prompt.md",
+      "kind": "unsafe-template-path",
+      "message": "Manifest template path is unsafe or escapes gsd_home: containment: root is not a directory",
+      "path": "C:\\Source\\GitHub\\docline\\.gsd\\gsd-assets-v1.6.0.zip\\templates\\prompts\\feature-flow-parallel.prompt.md.tmpl"
+    },
+    {
+      "artifact": ".github/prompts/feature-flow.prompt.md",
+      "kind": "unsafe-template-path",
+      "message": "Manifest template path is unsafe or escapes gsd_home: containment: root is not a directory",
+      "path": "C:\\Source\\GitHub\\docline\\.gsd\\gsd-assets-v1.6.0.zip\\templates\\prompts\\feature-flow.prompt.md.tmpl"
+    },
+    {
+      "artifact": ".github/prompts/stage-grouping-analysis.prompt.md",
+      "kind": "unsafe-template-path",
+      "message": "Manifest template path is unsafe or escapes gsd_home: containment: root is not a directory",
+      "path": "C:\\Source\\GitHub\\docline\\.gsd\\gsd-assets-v1.6.0.zip\\templates\\prompts\\stage-grouping-analysis.prompt.md.tmpl"
+    },
+    {
+      "artifact": ".github/skills/brainstorm/SKILL.md",
+      "kind": "unsafe-template-path",
+      "message": "Manifest template path is unsafe or escapes gsd_home: containment: root is not a directory",
+      "path": "C:\\Source\\GitHub\\docline\\.gsd\\gsd-assets-v1.6.0.zip\\templates\\skills\\brainstorm\\SKILL.md.tmpl"
+    },
+    {
+      "artifact": ".github/skills/build-feature/SKILL.md",
+      "kind": "unsafe-template-path",
+      "message": "Manifest template path is unsafe or escapes gsd_home: containment: root is not a directory",
+      "path": "C:\\Source\\GitHub\\docline\\.gsd\\gsd-assets-v1.6.0.zip\\templates\\skills\\build-feature\\SKILL.md.tmpl"
+    },
+    {
+      "artifact": ".github/skills/compact-context/SKILL.md",
+      "kind": "unsafe-template-path",
+      "message": "Manifest template path is unsafe or escapes gsd_home: containment: root is not a directory",
+      "path": "C:\\Source\\GitHub\\docline\\.gsd\\gsd-assets-v1.6.0.zip\\templates\\skills\\compact-context\\SKILL.md.tmpl"
+    },
+    {
+      "artifact": ".github/skills/compound-refresh/SKILL.md",
+      "kind": "unsafe-template-path",
+      "message": "Manifest template path is unsafe or escapes gsd_home: containment: root is not a directory",
+      "path": "C:\\Source\\GitHub\\docline\\.gsd\\gsd-assets-v1.6.0.zip\\templates\\skills\\compound-refresh\\SKILL.md.tmpl"
+    },
+    {
+      "artifact": ".github/skills/compound/SKILL.md",
+      "kind": "unsafe-template-path",
+      "message": "Manifest template path is unsafe or escapes gsd_home: containment: root is not a directory",
+      "path": "C:\\Source\\GitHub\\docline\\.gsd\\gsd-assets-v1.6.0.zip\\templates\\skills\\compound\\SKILL.md.tmpl"
+    },
+    {
+      "artifact": ".github/skills/deliberate/SKILL.md",
+      "kind": "unsafe-template-path",
+      "message": "Manifest template path is unsafe or escapes gsd_home: containment: root is not a directory",
+      "path": "C:\\Source\\GitHub\\docline\\.gsd\\gsd-assets-v1.6.0.zip\\templates\\skills\\deliberate\\SKILL.md.tmpl"
+    },
+    {
+      "artifact": ".github/skills/doc-review/SKILL.md",
+      "kind": "unsafe-template-path",
+      "message": "Manifest template path is unsafe or escapes gsd_home: containment: root is not a directory",
+      "path": "C:\\Source\\GitHub\\docline\\.gsd\\gsd-assets-v1.6.0.zip\\templates\\skills\\doc-review\\SKILL.md.tmpl"
+    },
+    {
+      "artifact": ".github/skills/evolve/SKILL.md",
+      "kind": "unsafe-template-path",
+      "message": "Manifest template path is unsafe or escapes gsd_home: containment: root is not a directory",
+      "path": "C:\\Source\\GitHub\\docline\\.gsd\\gsd-assets-v1.6.0.zip\\templates\\skills\\evolve\\SKILL.md.tmpl"
+    },
+    {
+      "artifact": ".github/skills/file-lock/SKILL.md",
+      "kind": "unsafe-template-path",
+      "message": "Manifest template path is unsafe or escapes gsd_home: containment: root is not a directory",
+      "path": "C:\\Source\\GitHub\\docline\\.gsd\\gsd-assets-v1.6.0.zip\\templates\\skills\\file-lock\\SKILL.md.tmpl"
+    },
+    {
+      "artifact": ".github/skills/fix-ci/SKILL.md",
+      "kind": "unsafe-template-path",
+      "message": "Manifest template path is unsafe or escapes gsd_home: containment: root is not a directory",
+      "path": "C:\\Source\\GitHub\\docline\\.gsd\\gsd-assets-v1.6.0.zip\\templates\\skills\\fix-ci\\SKILL.md.tmpl"
+    },
+    {
+      "artifact": ".github/skills/harness-architect/SKILL.md",
+      "kind": "unsafe-template-path",
+      "message": "Manifest template path is unsafe or escapes gsd_home: containment: root is not a directory",
+      "path": "C:\\Source\\GitHub\\docline\\.gsd\\gsd-assets-v1.6.0.zip\\templates\\skills\\harness-architect\\SKILL.md.tmpl"
+    },
+    {
+      "artifact": ".github/skills/harness-doctor/SKILL.md",
+      "kind": "unsafe-template-path",
+      "message": "Manifest template path is unsafe or escapes gsd_home: containment: root is not a directory",
+      "path": "C:\\Source\\GitHub\\docline\\.gsd\\gsd-assets-v1.6.0.zip\\templates\\skills\\harness-doctor\\SKILL.md.tmpl"
+    },
+    {
+      "artifact": ".github/skills/harvest/SKILL.md",
+      "kind": "unsafe-template-path",
+      "message": "Manifest template path is unsafe or escapes gsd_home: containment: root is not a directory",
+      "path": "C:\\Source\\GitHub\\docline\\.gsd\\gsd-assets-v1.6.0.zip\\templates\\skills\\harvest\\SKILL.md.tmpl"
+    },
+    {
+      "artifact": ".github/skills/impl-plan/SKILL.md",
+      "kind": "unsafe-template-path",
+      "message": "Manifest template path is unsafe or escapes gsd_home: containment: root is not a directory",
+      "path": "C:\\Source\\GitHub\\docline\\.gsd\\gsd-assets-v1.6.0.zip\\templates\\skills\\impl-plan\\SKILL.md.tmpl"
+    },
+    {
+      "artifact": ".github/skills/iterative-experiment/SKILL.md",
+      "kind": "unsafe-template-path",
+      "message": "Manifest template path is unsafe or escapes gsd_home: containment: root is not a directory",
+      "path": "C:\\Source\\GitHub\\docline\\.gsd\\gsd-assets-v1.6.0.zip\\templates\\skills\\iterative-experiment\\SKILL.md.tmpl"
+    },
+    {
+      "artifact": ".github/skills/learn/SKILL.md",
+      "kind": "unsafe-template-path",
+      "message": "Manifest template path is unsafe or escapes gsd_home: containment: root is not a directory",
+      "path": "C:\\Source\\GitHub\\docline\\.gsd\\gsd-assets-v1.6.0.zip\\templates\\skills\\learn\\SKILL.md.tmpl"
+    },
+    {
+      "artifact": ".github/skills/observe/SKILL.md",
+      "kind": "unsafe-template-path",
+      "message": "Manifest template path is unsafe or escapes gsd_home: containment: root is not a directory",
+      "path": "C:\\Source\\GitHub\\docline\\.gsd\\gsd-assets-v1.6.0.zip\\templates\\skills\\observe\\SKILL.md.tmpl"
+    },
+    {
+      "artifact": ".github/skills/operational-closure/SKILL.md",
+      "kind": "unsafe-template-path",
+      "message": "Manifest template path is unsafe or escapes gsd_home: containment: root is not a directory",
+      "path": "C:\\Source\\GitHub\\docline\\.gsd\\gsd-assets-v1.6.0.zip\\templates\\skills\\operational-closure\\SKILL.md.tmpl"
+    },
+    {
+      "artifact": ".github/skills/plan-harden/SKILL.md",
+      "kind": "unsafe-template-path",
+      "message": "Manifest template path is unsafe or escapes gsd_home: containment: root is not a directory",
+      "path": "C:\\Source\\GitHub\\docline\\.gsd\\gsd-assets-v1.6.0.zip\\templates\\skills\\plan-harden\\SKILL.md.tmpl"
+    },
+    {
+      "artifact": ".github/skills/plan-review/SKILL.md",
+      "kind": "unsafe-template-path",
+      "message": "Manifest template path is unsafe or escapes gsd_home: containment: root is not a directory",
+      "path": "C:\\Source\\GitHub\\docline\\.gsd\\gsd-assets-v1.6.0.zip\\templates\\skills\\plan-review\\SKILL.md.tmpl"
+    },
+    {
+      "artifact": ".github/skills/pr-lifecycle/SKILL.md",
+      "kind": "unsafe-template-path",
+      "message": "Manifest template path is unsafe or escapes gsd_home: containment: root is not a directory",
+      "path": "C:\\Source\\GitHub\\docline\\.gsd\\gsd-assets-v1.6.0.zip\\templates\\skills\\pr-lifecycle\\SKILL.md.tmpl"
+    },
+    {
+      "artifact": ".github/skills/review/SKILL.md",
+      "kind": "unsafe-template-path",
+      "message": "Manifest template path is unsafe or escapes gsd_home: containment: root is not a directory",
+      "path": "C:\\Source\\GitHub\\docline\\.gsd\\gsd-assets-v1.6.0.zip\\templates\\skills\\review\\SKILL.md.tmpl"
+    },
+    {
+      "artifact": ".github/skills/runtime-verification/SKILL.md",
+      "kind": "unsafe-template-path",
+      "message": "Manifest template path is unsafe or escapes gsd_home: containment: root is not a directory",
+      "path": "C:\\Source\\GitHub\\docline\\.gsd\\gsd-assets-v1.6.0.zip\\templates\\skills\\runtime-verification\\SKILL.md.tmpl"
+    },
+    {
+      "artifact": ".github/skills/safety-modes/SKILL.md",
+      "kind": "unsafe-template-path",
+      "message": "Manifest template path is unsafe or escapes gsd_home: containment: root is not a directory",
+      "path": "C:\\Source\\GitHub\\docline\\.gsd\\gsd-assets-v1.6.0.zip\\templates\\skills\\safety-modes\\SKILL.md.tmpl"
+    },
+    {
+      "artifact": ".github/skills/security-audit/SKILL.md",
+      "kind": "unsafe-template-path",
+      "message": "Manifest template path is unsafe or escapes gsd_home: containment: root is not a directory",
+      "path": "C:\\Source\\GitHub\\docline\\.gsd\\gsd-assets-v1.6.0.zip\\templates\\skills\\security-audit\\SKILL.md.tmpl"
+    },
+    {
+      "artifact": ".github/skills/shipment-reconcile/SKILL.md",
+      "kind": "unsafe-template-path",
+      "message": "Manifest template path is unsafe or escapes gsd_home: containment: root is not a directory",
+      "path": "C:\\Source\\GitHub\\docline\\.gsd\\gsd-assets-v1.6.0.zip\\templates\\skills\\shipment-reconcile\\SKILL.md.tmpl"
+    },
+    {
+      "artifact": ".github/skills/skill-search/SKILL.md",
+      "kind": "unsafe-template-path",
+      "message": "Manifest template path is unsafe or escapes gsd_home: containment: root is not a directory",
+      "path": "C:\\Source\\GitHub\\docline\\.gsd\\gsd-assets-v1.6.0.zip\\templates\\skills\\skill-search\\SKILL.md.tmpl"
+    },
+    {
+      "artifact": ".github/skills/spike/SKILL.md",
+      "kind": "unsafe-template-path",
+      "message": "Manifest template path is unsafe or escapes gsd_home: containment: root is not a directory",
+      "path": "C:\\Source\\GitHub\\docline\\.gsd\\gsd-assets-v1.6.0.zip\\templates\\skills\\spike\\SKILL.md.tmpl"
+    },
+    {
+      "artifact": ".github/workflows/ci.yml",
+      "kind": "unsafe-template-path",
+      "message": "Manifest template path is unsafe or escapes gsd_home: containment: root is not a directory",
+      "path": "C:\\Source\\GitHub\\docline\\.gsd\\gsd-assets-v1.6.0.zip\\templates\\ci\\ci.yml.tmpl"
+    },
+    {
+      "artifact": ".markdownlint.json",
+      "kind": "unsafe-template-path",
+      "message": "Manifest template path is unsafe or escapes gsd_home: containment: root is not a directory",
+      "path": "C:\\Source\\GitHub\\docline\\.gsd\\gsd-assets-v1.6.0.zip\\templates\\scripts\\.markdownlint.json.tmpl"
+    },
+    {
+      "artifact": "AGENTS.md",
+      "kind": "unsafe-template-path",
+      "message": "Manifest template path is unsafe or escapes gsd_home: containment: root is not a directory",
+      "path": "C:\\Source\\GitHub\\docline\\.gsd\\gsd-assets-v1.6.0.zip\\templates\\foundation\\AGENTS.md.tmpl"
+    },
+    {
+      "artifact": "scripts/acquire_lock.ps1",
+      "kind": "unsafe-template-path",
+      "message": "Manifest template path is unsafe or escapes gsd_home: containment: root is not a directory",
+      "path": "C:\\Source\\GitHub\\docline\\.gsd\\gsd-assets-v1.6.0.zip\\templates\\skills\\file-lock\\scripts\\acquire_lock.ps1"
+    },
+    {
+      "artifact": "scripts/acquire_lock.sh",
+      "kind": "unsafe-template-path",
+      "message": "Manifest template path is unsafe or escapes gsd_home: containment: root is not a directory",
+      "path": "C:\\Source\\GitHub\\docline\\.gsd\\gsd-assets-v1.6.0.zip\\templates\\skills\\file-lock\\scripts\\acquire_lock.sh"
+    },
+    {
+      "artifact": "scripts/ci-topology-check.sh",
+      "kind": "unsafe-template-path",
+      "message": "Manifest template path is unsafe or escapes gsd_home: containment: root is not a directory",
+      "path": "C:\\Source\\GitHub\\docline\\.gsd\\gsd-assets-v1.6.0.zip\\templates\\ci\\ci-topology-check.sh.tmpl"
+    },
+    {
+      "artifact": "scripts/pre-commit-markdownlint.ps1",
+      "kind": "unsafe-template-path",
+      "message": "Manifest template path is unsafe or escapes gsd_home: containment: root is not a directory",
+      "path": "C:\\Source\\GitHub\\docline\\.gsd\\gsd-assets-v1.6.0.zip\\templates\\scripts\\pre-commit-markdownlint.ps1.tmpl"
+    },
+    {
+      "artifact": "scripts/pre-commit-markdownlint.sh",
+      "kind": "unsafe-template-path",
+      "message": "Manifest template path is unsafe or escapes gsd_home: containment: root is not a directory",
+      "path": "C:\\Source\\GitHub\\docline\\.gsd\\gsd-assets-v1.6.0.zip\\templates\\scripts\\pre-commit-markdownlint.sh.tmpl"
+    },
+    {
+      "artifact": "scripts/pre-commit-pipeline-topology.ps1",
+      "kind": "unsafe-template-path",
+      "message": "Manifest template path is unsafe or escapes gsd_home: containment: root is not a directory",
+      "path": "C:\\Source\\GitHub\\docline\\.gsd\\gsd-assets-v1.6.0.zip\\templates\\scripts\\pre-commit-pipeline-topology.ps1.tmpl"
+    },
+    {
+      "artifact": "scripts/pre-commit-pipeline-topology.sh",
+      "kind": "unsafe-template-path",
+      "message": "Manifest template path is unsafe or escapes gsd_home: containment: root is not a directory",
+      "path": "C:\\Source\\GitHub\\docline\\.gsd\\gsd-assets-v1.6.0.zip\\templates\\scripts\\pre-commit-pipeline-topology.sh.tmpl"
+    },
+    {
+      "artifact": "scripts/pre-push-quality-gates.ps1",
+      "kind": "unsafe-template-path",
+      "message": "Manifest template path is unsafe or escapes gsd_home: containment: root is not a directory",
+      "path": "C:\\Source\\GitHub\\docline\\.gsd\\gsd-assets-v1.6.0.zip\\templates\\scripts\\pre-push-quality-gates.ps1.tmpl"
+    },
+    {
+      "artifact": "scripts/pre-push-quality-gates.sh",
+      "kind": "unsafe-template-path",
+      "message": "Manifest template path is unsafe or escapes gsd_home: containment: root is not a directory",
+      "path": "C:\\Source\\GitHub\\docline\\.gsd\\gsd-assets-v1.6.0.zip\\templates\\scripts\\pre-push-quality-gates.sh.tmpl"
+    },
+    {
+      "artifact": "scripts/release_lock.ps1",
+      "kind": "unsafe-template-path",
+      "message": "Manifest template path is unsafe or escapes gsd_home: containment: root is not a directory",
+      "path": "C:\\Source\\GitHub\\docline\\.gsd\\gsd-assets-v1.6.0.zip\\templates\\skills\\file-lock\\scripts\\release_lock.ps1"
+    },
+    {
+      "artifact": "scripts/release_lock.sh",
+      "kind": "unsafe-template-path",
+      "message": "Manifest template path is unsafe or escapes gsd_home: containment: root is not a directory",
+      "path": "C:\\Source\\GitHub\\docline\\.gsd\\gsd-assets-v1.6.0.zip\\templates\\skills\\file-lock\\scripts\\release_lock.sh"
+    },
+    {
+      "artifact": "scripts/search.ps1",
+      "kind": "unsafe-template-path",
+      "message": "Manifest template path is unsafe or escapes gsd_home: containment: root is not a directory",
+      "path": "C:\\Source\\GitHub\\docline\\.gsd\\gsd-assets-v1.6.0.zip\\templates\\skills\\skill-search\\scripts\\search.ps1"
+    },
+    {
+      "artifact": "scripts/search.sh",
+      "kind": "unsafe-template-path",
+      "message": "Manifest template path is unsafe or escapes gsd_home: containment: root is not a directory",
+      "path": "C:\\Source\\GitHub\\docline\\.gsd\\gsd-assets-v1.6.0.zip\\templates\\skills\\skill-search\\scripts\\search.sh"
+    },
+    {
+      "artifact": "start.ps1",
+      "kind": "unsafe-template-path",
+      "message": "Manifest template path is unsafe or escapes gsd_home: containment: root is not a directory",
+      "path": "C:\\Source\\GitHub\\docline\\.gsd\\gsd-assets-v1.6.0.zip\\templates\\scripts\\start.ps1.tmpl"
+    },
+    {
+      "artifact": "start.sh",
+      "kind": "unsafe-template-path",
+      "message": "Manifest template path is unsafe or escapes gsd_home: containment: root is not a directory",
+      "path": "C:\\Source\\GitHub\\docline\\.gsd\\gsd-assets-v1.6.0.zip\\templates\\scripts\\start.sh.tmpl"
+    },
+    {
+      "artifact": ".github/instructions/shipment-documentation-audit.instructions.md",
+      "kind": "unsafe-template-path",
+      "message": "Manifest template path is unsafe or escapes gsd_home: containment: root is not a directory",
+      "path": "C:\\Source\\GitHub\\docline\\.gsd\\gsd-assets-v1.6.0.zip\\templates\\instructions\\shipment-documentation-audit.instructions.md.tmpl"
+    },
+    {
+      "artifact": ".github/instructions/browser-verification.instructions.md",
+      "kind": "unsafe-template-path",
+      "message": "Manifest template path is unsafe or escapes gsd_home: containment: root is not a directory",
+      "path": "C:\\Source\\GitHub\\docline\\.gsd\\gsd-assets-v1.6.0.zip\\templates\\instructions\\browser-verification.instructions.md.tmpl"
+    },
+    {
+      "artifact": ".github/agents/subagents/evidence-consistency-reviewer.agent.md",
+      "kind": "unsafe-template-path",
+      "message": "Manifest template path is unsafe or escapes gsd_home: containment: root is not a directory",
+      "path": "C:\\Source\\GitHub\\docline\\.gsd\\gsd-assets-v1.6.0.zip\\templates\\agents\\review\\evidence-consistency-reviewer.agent.md.tmpl"
+    },
+    {
+      "artifact": ".github/skills/grill-me/SKILL.md",
+      "kind": "unsafe-template-path",
+      "message": "Manifest template path is unsafe or escapes gsd_home: containment: root is not a directory",
+      "path": "C:\\Source\\GitHub\\docline\\.gsd\\gsd-assets-v1.6.0.zip\\templates\\skills\\grill-me\\SKILL.md.tmpl"
+    },
+    {
+      "artifact": ".github/skills/gsd-dark-mode/SKILL.md",
+      "kind": "unsafe-template-path",
+      "message": "Manifest template path is unsafe or escapes gsd_home: containment: root is not a directory",
+      "path": "C:\\Source\\GitHub\\docline\\.gsd\\gsd-assets-v1.6.0.zip\\templates\\skills\\gsd-dark-mode\\SKILL.md.tmpl"
+    },
+    {
+      "artifact": ".github/skills/gsd-show-dag-queue/SKILL.md",
+      "kind": "unsafe-template-path",
+      "message": "Manifest template path is unsafe or escapes gsd_home: containment: root is not a directory",
+      "path": "C:\\Source\\GitHub\\docline\\.gsd\\gsd-assets-v1.6.0.zip\\templates\\skills\\gsd-show-dag-queue\\SKILL.md.tmpl"
+    },
+    {
+      "artifact": ".github/prompts/gsd-dark-mode.prompt.md",
+      "kind": "unsafe-template-path",
+      "message": "Manifest template path is unsafe or escapes gsd_home: containment: root is not a directory",
+      "path": "C:\\Source\\GitHub\\docline\\.gsd\\gsd-assets-v1.6.0.zip\\templates\\prompts\\gsd-dark-mode.prompt.md.tmpl"
+    },
+    {
+      "artifact": ".github/prompts/gsd-show-dag-queue.prompt.md",
+      "kind": "unsafe-template-path",
+      "message": "Manifest template path is unsafe or escapes gsd_home: containment: root is not a directory",
+      "path": "C:\\Source\\GitHub\\docline\\.gsd\\gsd-assets-v1.6.0.zip\\templates\\prompts\\gsd-show-dag-queue.prompt.md.tmpl"
+    },
+    {
+      "artifact": ".github/skills/browser-automation/SKILL.md",
+      "kind": "unsafe-template-path",
+      "message": "Manifest template path is unsafe or escapes gsd_home: containment: root is not a directory",
+      "path": "C:\\Source\\GitHub\\docline\\.gsd\\gsd-assets-v1.6.0.zip\\templates\\skills\\browser-automation\\SKILL.md.tmpl"
+    }
+  ],
+  "checksum_scan": [
+    {
+      "actual": "69e176b4e6a53943322014759a84c10db94d4dc1bee14cf83ac86ef9d9e0746b",
+      "expected": "69e176b4e6a53943322014759a84c10db94d4dc1bee14cf83ac86ef9d9e0746b",
+      "path": ".gsd/backlog-registry.yaml",
+      "status": "unchanged"
+    },
+    {
+      "actual": "df491fa642699ebef5827129737da5e510cd887c84d19c44922140d111a11a87",
+      "expected": "df491fa642699ebef5827129737da5e510cd887c84d19c44922140d111a11a87",
+      "path": ".gsd/config.yaml",
+      "status": "unchanged"
+    },
+    {
+      "actual": "1a110d0330c111cb447012c3a76e15f1505207ef13887cfc8be21223bc9967da",
+      "expected": "1a110d0330c111cb447012c3a76e15f1505207ef13887cfc8be21223bc9967da",
+      "path": ".gsd/workspace-profile.yaml",
+      "status": "unchanged"
+    },
+    {
+      "actual": "1c90bfdec7e5dc5a7e3a5cf9fe0ff6adbca00259d1647c484c7037f7b43fc675",
+      "expected": "1c90bfdec7e5dc5a7e3a5cf9fe0ff6adbca00259d1647c484c7037f7b43fc675",
+      "path": ".github/agents/_orchestrator.agent.md",
+      "status": "unchanged"
+    },
+    {
+      "actual": "92a84f94fabe1bfed89769c9300585a7d3ffb0970a3a8cce75a1d9a77c8cddf9",
+      "expected": "92a84f94fabe1bfed89769c9300585a7d3ffb0970a3a8cce75a1d9a77c8cddf9",
+      "path": ".github/agents/_ship.agent.md",
+      "status": "unchanged"
+    },
+    {
+      "actual": "e23ae55a37fd77321a79e2f3956a12fea2e3f67f381cebe3d29030d09250f64d",
+      "expected": "e23ae55a37fd77321a79e2f3956a12fea2e3f67f381cebe3d29030d09250f64d",
+      "path": ".github/agents/_stage.agent.md",
+      "status": "unchanged"
+    },
+    {
+      "actual": "5405e7a8a95d427f74e8a29833b0d7da2e85034895c08ba9958d3bd3276c5e5c",
+      "expected": "5405e7a8a95d427f74e8a29833b0d7da2e85034895c08ba9958d3bd3276c5e5c",
+      "path": ".github/agents/subagents/adversarial-review.agent.md",
+      "status": "unchanged"
+    },
+    {
+      "actual": "b8d7422e6f1af218358a0ddb95ff8e8d8ca828ad6648c7978ae9b89698202cec",
+      "expected": "b8d7422e6f1af218358a0ddb95ff8e8d8ca828ad6648c7978ae9b89698202cec",
+      "path": ".github/agents/subagents/agent-native-parity-reviewer.agent.md",
+      "status": "unchanged"
+    },
+    {
+      "actual": "ef0decd3b48444fcee6c8f9e208468faae4938e275cc964145a8214789c7adcf",
+      "expected": "ef0decd3b48444fcee6c8f9e208468faae4938e275cc964145a8214789c7adcf",
+      "path": ".github/agents/subagents/architecture-strategist.agent.md",
+      "status": "unchanged"
+    },
+    {
+      "actual": "91b1bd33c0299782297f14a64b46f85ac308573e6d431422b7b62707aba813ea",
+      "expected": "91b1bd33c0299782297f14a64b46f85ac308573e6d431422b7b62707aba813ea",
+      "path": ".github/agents/subagents/concurrency-reviewer.agent.md",
+      "status": "unchanged"
+    },
+    {
+      "actual": "83c53b72d8d14105647cfe39fadeb67cf7b17c85f0e3bee024a1259dd7ec8621",
+      "expected": "83c53b72d8d14105647cfe39fadeb67cf7b17c85f0e3bee024a1259dd7ec8621",
+      "path": ".github/agents/subagents/constitution-reviewer.agent.md",
+      "status": "unchanged"
+    },
+    {
+      "actual": "7877c3cad7a6e2536f21d9668f37d339aeacbee99fb0eb867f5ffcc34a8d85ea",
+      "expected": "7877c3cad7a6e2536f21d9668f37d339aeacbee99fb0eb867f5ffcc34a8d85ea",
+      "path": ".github/agents/subagents/correctness-reviewer.agent.md",
+      "status": "unchanged"
+    },
+    {
+      "actual": "807cc55275672a75a17108bc87fa2b5ecfe7a872a6929551231d799701e1ad5c",
+      "expected": "807cc55275672a75a17108bc87fa2b5ecfe7a872a6929551231d799701e1ad5c",
+      "path": ".github/agents/subagents/learnings-researcher.agent.md",
+      "status": "unchanged"
+    },
+    {
+      "actual": "5540a782c45bb1952d1455e37fcf1b4c06250604f99b09fbe2418ff068b10c80",
+      "expected": "5540a782c45bb1952d1455e37fcf1b4c06250604f99b09fbe2418ff068b10c80",
+      "path": ".github/agents/subagents/maintainability-reviewer.agent.md",
+      "status": "unchanged"
+    },
+    {
+      "actual": "a47a05d0b661ef28f393eff71f9a360aade39babb3dfaa668fb777bbeaf8c253",
+      "expected": "a47a05d0b661ef28f393eff71f9a360aade39babb3dfaa668fb777bbeaf8c253",
+      "path": ".github/agents/subagents/prompt-builder.agent.md",
+      "status": "unchanged"
+    },
+    {
+      "actual": "f9f5089d597ca1daf066d7b9a0a24275cd7a25672f2d6a0237fb78360ea8ca77",
+      "expected": "f9f5089d597ca1daf066d7b9a0a24275cd7a25672f2d6a0237fb78360ea8ca77",
+      "path": ".github/agents/subagents/python-engineer.agent.md",
+      "status": "unchanged"
+    },
+    {
+      "actual": "197766c8b9258287e8a03e3d4477bfaa5db33e45ddfb140762218f38510bcfca",
+      "expected": "197766c8b9258287e8a03e3d4477bfaa5db33e45ddfb140762218f38510bcfca",
+      "path": ".github/agents/subagents/python-reviewer.agent.md",
+      "status": "unchanged"
+    },
+    {
+      "actual": "6ec4d0117b2b61fbe19637b181f304036dca00a9a0f8b0cbbe51e3821fe2e783",
+      "expected": "6ec4d0117b2b61fbe19637b181f304036dca00a9a0f8b0cbbe51e3821fe2e783",
+      "path": ".github/agents/subagents/schema-cli-docs-coupling-reviewer.agent.md",
+      "status": "unchanged"
+    },
+    {
+      "actual": "b44afe66e5294d27f644c1602b7a65ae184ef75a98135036e398032a60d16525",
+      "expected": "b44afe66e5294d27f644c1602b7a65ae184ef75a98135036e398032a60d16525",
+      "path": ".github/agents/subagents/scope-boundary-auditor.agent.md",
+      "status": "unchanged"
+    },
+    {
+      "actual": "5f6301949d7c3eedf707622fb4a0f917a5c6a1516d18255796f992780290530a",
+      "expected": "5f6301949d7c3eedf707622fb4a0f917a5c6a1516d18255796f992780290530a",
+      "path": ".github/agents/subagents/security-lens-reviewer.agent.md",
+      "status": "unchanged"
+    },
+    {
+      "actual": "fd4e866c52b486282ed61ab38a242b5dc5ee4f357cf270d86444d23ace7f0bd2",
+      "expected": "fd4e866c52b486282ed61ab38a242b5dc5ee4f357cf270d86444d23ace7f0bd2",
+      "path": ".github/agents/subagents/security-reviewer.agent.md",
+      "status": "unchanged"
+    },
+    {
+      "actual": "83366a85c34cb9fb942f094df355235fad67633b0f8579662ca7be3ef878f1d5",
+      "expected": "83366a85c34cb9fb942f094df355235fad67633b0f8579662ca7be3ef878f1d5",
+      "path": ".github/agents/subagents/security-sentinel.agent.md",
+      "status": "unchanged"
+    },
+    {
+      "actual": "e2e9db936bcb1f8b5e757785d39cbbcd102f9b4f7960e0b4cab768cd7e0f01e9",
+      "expected": "e2e9db936bcb1f8b5e757785d39cbbcd102f9b4f7960e0b4cab768cd7e0f01e9",
+      "path": ".github/agents/subagents/template-integrity-reviewer.agent.md",
+      "status": "unchanged"
+    },
+    {
+      "actual": "d16c96cb6bf200ac62f2cd996759cb1b023e81a7f53a5fbef92027d623b5af58",
+      "expected": "d16c96cb6bf200ac62f2cd996759cb1b023e81a7f53a5fbef92027d623b5af58",
+      "path": ".github/copilot-instructions.md",
+      "status": "unchanged"
+    },
+    {
+      "actual": "1d24b773d40834623942f410fed1d4e0bb085d2a0a4d578d415d373f9629cb40",
+      "expected": "1d24b773d40834623942f410fed1d4e0bb085d2a0a4d578d415d373f9629cb40",
+      "path": ".github/instructions/adversarial-review.instructions.md",
+      "status": "unchanged"
+    },
+    {
+      "actual": "1799cfec5d532e8afc417f5968eceba2b774993227f97971acb8dc4217589456",
+      "expected": "1799cfec5d532e8afc417f5968eceba2b774993227f97971acb8dc4217589456",
+      "path": ".github/instructions/agent-engram.instructions.md",
+      "status": "unchanged"
+    },
+    {
+      "actual": "80fda6621cb12a4294cb38311f16b3b780f1815c089a90efdc47ca1b61a12073",
+      "expected": "80fda6621cb12a4294cb38311f16b3b780f1815c089a90efdc47ca1b61a12073",
+      "path": ".github/instructions/architecture-doc.instructions.md",
+      "status": "unchanged"
+    },
+    {
+      "actual": "dd54acc4fd43843a7fb098fb75869bdeaefca5df2c4092e0012a13a7946da10b",
+      "expected": "dd54acc4fd43843a7fb098fb75869bdeaefca5df2c4092e0012a13a7946da10b",
+      "path": ".github/instructions/backlog-integration.instructions.md",
+      "status": "unchanged"
+    },
+    {
+      "actual": "db16d879d905d50bbfb7b48f24dc6dde9dcee4abbb102aabebd6bc9e07c7def2",
+      "expected": "db16d879d905d50bbfb7b48f24dc6dde9dcee4abbb102aabebd6bc9e07c7def2",
+      "path": ".github/instructions/backlogit-sql-schema.instructions.md",
+      "status": "unchanged"
+    },
+    {
+      "actual": "18073da3d9a70aad9314ca5009e7bd06d455c9b6444c28de98a0987924827c6b",
+      "expected": "18073da3d9a70aad9314ca5009e7bd06d455c9b6444c28de98a0987924827c6b",
+      "path": ".github/instructions/backlogit-yaml-header-tooling.instructions.md",
+      "status": "unchanged"
+    },
+    {
+      "actual": "f04852a540d58ab1214564c14c69d5962b9927c206ff198e358b312c69fd413d",
+      "expected": "f04852a540d58ab1214564c14c69d5962b9927c206ff198e358b312c69fd413d",
+      "path": ".github/instructions/backlogit.instructions.md",
+      "status": "unchanged"
+    },
+    {
+      "actual": "c90601df4145ee144cd2a945ac159793a0cd13d7a66656f6b718f63d8f1abe27",
+      "expected": "c90601df4145ee144cd2a945ac159793a0cd13d7a66656f6b718f63d8f1abe27",
+      "path": ".github/instructions/capability-pack-enforcement.instructions.md",
+      "status": "unchanged"
+    },
+    {
+      "actual": "5a1342489bcb5663dfd2d5a8b2fb56a428be9b8eef2d73a378507313ce2eda06",
+      "expected": "5a1342489bcb5663dfd2d5a8b2fb56a428be9b8eef2d73a378507313ce2eda06",
+      "path": ".github/instructions/ci-security.instructions.md",
+      "status": "unchanged"
+    },
+    {
+      "actual": "a0abdd454f7067ef3bef8fd1780be82f4cdb9932f67ff7a1cf95c94e717bc02f",
+      "expected": "a0abdd454f7067ef3bef8fd1780be82f4cdb9932f67ff7a1cf95c94e717bc02f",
+      "path": ".github/instructions/circuit-breaker.instructions.md",
+      "status": "unchanged"
+    },
+    {
+      "actual": "e03c5f1790f2040f76ce037bdcede96dcdbee39ce5bf7de1caa3fb582d19e6c9",
+      "expected": "e03c5f1790f2040f76ce037bdcede96dcdbee39ce5bf7de1caa3fb582d19e6c9",
+      "path": ".github/instructions/coding-discipline.instructions.md",
+      "status": "unchanged"
+    },
+    {
+      "actual": "f4200a42186f39a95a7a18b894b311632dbc710356f5e8a49cdf9a607e5a8e2a",
+      "expected": "f4200a42186f39a95a7a18b894b311632dbc710356f5e8a49cdf9a607e5a8e2a",
+      "path": ".github/instructions/commit-message.instructions.md",
+      "status": "unchanged"
+    },
+    {
+      "actual": "18cb563d566e651f032f3a96e4df9d08f03d17939b253a78721aa3db73b49be7",
+      "expected": "18cb563d566e651f032f3a96e4df9d08f03d17939b253a78721aa3db73b49be7",
+      "path": ".github/instructions/concurrency.instructions.md",
+      "status": "unchanged"
+    },
+    {
+      "actual": "2e0f28b7eae158c13ae51f280ec2d176e9bcd2515981b3cf31557cdaa11fa57b",
+      "expected": "2e0f28b7eae158c13ae51f280ec2d176e9bcd2515981b3cf31557cdaa11fa57b",
+      "path": ".github/instructions/constitution.instructions.md",
+      "status": "unchanged"
+    },
+    {
+      "actual": "1d6e8ea8208bfd574ea5aee6fb30ccba2c8c1bbbe0eb02c02045ea4fef4ea9d8",
+      "expected": "1d6e8ea8208bfd574ea5aee6fb30ccba2c8c1bbbe0eb02c02045ea4fef4ea9d8",
+      "path": ".github/instructions/context-efficiency.instructions.md",
+      "status": "unchanged"
+    },
+    {
+      "actual": "2d43a8febccc288e549695020304966b11afd42ad62425ebff7b45390e558c6b",
+      "expected": "2d43a8febccc288e549695020304966b11afd42ad62425ebff7b45390e558c6b",
+      "path": ".github/instructions/continuous-learning.instructions.md",
+      "status": "unchanged"
+    },
+    {
+      "actual": "481b87f0121e42cd25f932f1e44588a163b0b8ead8895d3bdd11ec8f9f1061e7",
+      "expected": "481b87f0121e42cd25f932f1e44588a163b0b8ead8895d3bdd11ec8f9f1061e7",
+      "path": ".github/instructions/copilot-code-review.instructions.md",
+      "status": "unchanged"
+    },
+    {
+      "actual": "c5ade87b3c628b66e35d0e546b7c63a9b923f7307cbcf90e177e4caac3fee655",
+      "expected": "c5ade87b3c628b66e35d0e546b7c63a9b923f7307cbcf90e177e4caac3fee655",
+      "path": ".github/instructions/escalation-protocol.instructions.md",
+      "status": "unchanged"
+    },
+    {
+      "actual": "cf73f3786c0bbeb85f92b90d8099a55c5a67b9a3c7b181142079c2ec6c3f2fe8",
+      "expected": "cf73f3786c0bbeb85f92b90d8099a55c5a67b9a3c7b181142079c2ec6c3f2fe8",
+      "path": ".github/instructions/git-merge.instructions.md",
+      "status": "unchanged"
+    },
+    {
+      "actual": "e36ae2acd816fdd0aaf258a219fc13f189cb3f493203b95b00dd774f7cf8d183",
+      "expected": "e36ae2acd816fdd0aaf258a219fc13f189cb3f493203b95b00dd774f7cf8d183",
+      "path": ".github/instructions/github-pr-automation.instructions.md",
+      "status": "unchanged"
+    },
+    {
+      "actual": "1ae380a282ab7a20dbd71441848eb9401db8a08dcf339c1fb1fa0a1c15f05b1f",
+      "expected": "1ae380a282ab7a20dbd71441848eb9401db8a08dcf339c1fb1fa0a1c15f05b1f",
+      "path": ".github/instructions/kbdb.instructions.md",
+      "status": "unchanged"
+    },
+    {
+      "actual": "f6abca0e18c43d27ba0fc0b64f788cae8e9e59ab6c162f246990c847f42ee58c",
+      "expected": "f6abca0e18c43d27ba0fc0b64f788cae8e9e59ab6c162f246990c847f42ee58c",
+      "path": ".github/instructions/markdown.instructions.md",
+      "status": "unchanged"
+    },
+    {
+      "actual": "20a18d9a9d6a76c870aa11ad596e2850a02abab906aa6a77632985735e633d49",
+      "expected": "20a18d9a9d6a76c870aa11ad596e2850a02abab906aa6a77632985735e633d49",
+      "path": ".github/instructions/mcp-server.instructions.md",
+      "status": "unchanged"
+    },
+    {
+      "actual": "e3d13425eab8ca25505b0db9bf8fc8c935b743fe493b4362c3aafe12c076b536",
+      "expected": "e3d13425eab8ca25505b0db9bf8fc8c935b743fe493b4362c3aafe12c076b536",
+      "path": ".github/instructions/output-timestamps.instructions.md",
+      "status": "unchanged"
+    },
+    {
+      "actual": "f980d25e0e72a1c1fc4468f2686e5c75b749cd0096b1a57be6f28f0b2738abdf",
+      "expected": "f980d25e0e72a1c1fc4468f2686e5c75b749cd0096b1a57be6f28f0b2738abdf",
+      "path": ".github/instructions/prompt-builder.instructions.md",
+      "status": "unchanged"
+    },
+    {
+      "actual": "8148ecb72612443ebb8c482e0a1724fdc36d6063c8c75fe5743c9cd2c6b38e09",
+      "expected": "8148ecb72612443ebb8c482e0a1724fdc36d6063c8c75fe5743c9cd2c6b38e09",
+      "path": ".github/instructions/pull-request.instructions.md",
+      "status": "unchanged"
+    },
+    {
+      "actual": "153988f3f3174353e317247a1e0e081b44c710495398008701cb767fa237e6ed",
+      "expected": "153988f3f3174353e317247a1e0e081b44c710495398008701cb767fa237e6ed",
+      "path": ".github/instructions/release-observability.instructions.md",
+      "status": "unchanged"
+    },
+    {
+      "actual": "a0a68a99ba6434a52464dbc6e7a186aef7ba5b73eca75487348cd5c9ebc18587",
+      "expected": "a0a68a99ba6434a52464dbc6e7a186aef7ba5b73eca75487348cd5c9ebc18587",
+      "path": ".github/instructions/role-enforcement.instructions.md",
+      "status": "unchanged"
+    },
+    {
+      "actual": "15a314df0430c24038b3acb3881ff5c8675b74af3b937027d80c519c814a72eb",
+      "expected": "15a314df0430c24038b3acb3881ff5c8675b74af3b937027d80c519c814a72eb",
+      "path": ".github/instructions/strict-safety.instructions.md",
+      "status": "unchanged"
+    },
+    {
+      "actual": "734324d6c2af91cd65fee68da7e67d149af95620aa8ab7d78cbd3807800cad48",
+      "expected": "734324d6c2af91cd65fee68da7e67d149af95620aa8ab7d78cbd3807800cad48",
+      "path": ".github/instructions/technology-python.instructions.md",
+      "status": "unchanged"
+    },
+    {
+      "actual": "9b5162f2dd9489fa94f91b5545c8a6e1f21932e75ee68c5a5ca28113ba427573",
+      "expected": "9b5162f2dd9489fa94f91b5545c8a6e1f21932e75ee68c5a5ca28113ba427573",
+      "path": ".github/instructions/workflows.instructions.md",
+      "status": "unchanged"
+    },
+    {
+      "actual": "89144bc89a413d0853559f23587989d32416e738bbd44971fc719c587a30d509",
+      "expected": "89144bc89a413d0853559f23587989d32416e738bbd44971fc719c587a30d509",
+      "path": ".github/instructions/writing-style.instructions.md",
+      "status": "unchanged"
+    },
+    {
+      "actual": "0202256167a22b70e2d584d2fe2a1b2d522921ffdff0e3fef5ef76cc4dad0ff8",
+      "expected": "0202256167a22b70e2d584d2fe2a1b2d522921ffdff0e3fef5ef76cc4dad0ff8",
+      "path": ".github/policies/workflow-policies.md",
+      "status": "unchanged"
+    },
+    {
+      "actual": "74253c6f07d266c86cb4b580dc45d3c87759c14d829ca746cd181192e07983dd",
+      "expected": "74253c6f07d266c86cb4b580dc45d3c87759c14d829ca746cd181192e07983dd",
+      "path": ".github/prompts/feature-flow-dark.prompt.md",
+      "status": "unchanged"
+    },
+    {
+      "actual": "666f48562fe7999b3c6001abac3d53c02fe605c338b17e3453b6f80959f9fe10",
+      "expected": "666f48562fe7999b3c6001abac3d53c02fe605c338b17e3453b6f80959f9fe10",
+      "path": ".github/prompts/feature-flow-parallel.prompt.md",
+      "status": "unchanged"
+    },
+    {
+      "actual": "629c9e2533bc94c948a403c4a800c70452dc0f7cbee59884223eb2dac4649d9b",
+      "expected": "629c9e2533bc94c948a403c4a800c70452dc0f7cbee59884223eb2dac4649d9b",
+      "path": ".github/prompts/feature-flow.prompt.md",
+      "status": "unchanged"
+    },
+    {
+      "actual": "807517cb632d8eed66bfa03e50949118c67ae651de24e8a8f29e229e8f9ee731",
+      "expected": "807517cb632d8eed66bfa03e50949118c67ae651de24e8a8f29e229e8f9ee731",
+      "path": ".github/prompts/stage-grouping-analysis.prompt.md",
+      "status": "unchanged"
+    },
+    {
+      "actual": "a46df5635d368674d12117bc3217b84393657437d979ed0a7d5f46c4a9fea8ef",
+      "expected": "a46df5635d368674d12117bc3217b84393657437d979ed0a7d5f46c4a9fea8ef",
+      "path": ".github/skills/brainstorm/SKILL.md",
+      "status": "unchanged"
+    },
+    {
+      "actual": "73106da061c3276b9f4364768ccfe37ac9b6dfe259862055c9f9b3dc7eb543cb",
+      "expected": "73106da061c3276b9f4364768ccfe37ac9b6dfe259862055c9f9b3dc7eb543cb",
+      "path": ".github/skills/build-feature/SKILL.md",
+      "status": "unchanged"
+    },
+    {
+      "actual": "63374a688c941e1164aa941ee6f4d59f2c115daeaeb5a773d3269d9550ed1483",
+      "expected": "63374a688c941e1164aa941ee6f4d59f2c115daeaeb5a773d3269d9550ed1483",
+      "path": ".github/skills/compact-context/SKILL.md",
+      "status": "unchanged"
+    },
+    {
+      "actual": "9608920a14bd597a6bf541303b961ea9e648a5f6b7a587498288a107f6d2d1f4",
+      "expected": "9608920a14bd597a6bf541303b961ea9e648a5f6b7a587498288a107f6d2d1f4",
+      "path": ".github/skills/compound-refresh/SKILL.md",
+      "status": "unchanged"
+    },
+    {
+      "actual": "58b5784d78538cc6cca525ef50541c481e19409f4148878596af310d1eba9b9a",
+      "expected": "58b5784d78538cc6cca525ef50541c481e19409f4148878596af310d1eba9b9a",
+      "path": ".github/skills/compound/SKILL.md",
+      "status": "unchanged"
+    },
+    {
+      "actual": "935f8527e8fad890d195c9adc5172e126d82322c999322838940e19531a96668",
+      "expected": "935f8527e8fad890d195c9adc5172e126d82322c999322838940e19531a96668",
+      "path": ".github/skills/deliberate/SKILL.md",
+      "status": "unchanged"
+    },
+    {
+      "actual": "5df8846c81d9f6e89c3d01213fad38f99df209617601b64efd8d6d7fa3e8acd5",
+      "expected": "5df8846c81d9f6e89c3d01213fad38f99df209617601b64efd8d6d7fa3e8acd5",
+      "path": ".github/skills/doc-review/SKILL.md",
+      "status": "unchanged"
+    },
+    {
+      "actual": "9b22e35ee24574b01f9b7e14cac7143ff1a67679f526c576f34594a0ae861704",
+      "expected": "9b22e35ee24574b01f9b7e14cac7143ff1a67679f526c576f34594a0ae861704",
+      "path": ".github/skills/evolve/SKILL.md",
+      "status": "unchanged"
+    },
+    {
+      "actual": "2d8a3a664254863a26ccfce9c4207ceb18c3257a41b0a90d864f8adb99fc79df",
+      "expected": "2d8a3a664254863a26ccfce9c4207ceb18c3257a41b0a90d864f8adb99fc79df",
+      "path": ".github/skills/file-lock/SKILL.md",
+      "status": "unchanged"
+    },
+    {
+      "actual": "d3b280ee14f28015ba398a2a1b6c5a8d28fa5b40774a5e1b5b89c320fa1df162",
+      "expected": "d3b280ee14f28015ba398a2a1b6c5a8d28fa5b40774a5e1b5b89c320fa1df162",
+      "path": ".github/skills/fix-ci/SKILL.md",
+      "status": "unchanged"
+    },
+    {
+      "actual": "4bd46f4f556a81f2ce9a5ddb5187da077063a8dca8d36fec77e289bd2f638a33",
+      "expected": "4bd46f4f556a81f2ce9a5ddb5187da077063a8dca8d36fec77e289bd2f638a33",
+      "path": ".github/skills/harness-architect/SKILL.md",
+      "status": "unchanged"
+    },
+    {
+      "actual": "4c926b555f5236d0768b6707cfb06fef13ef925b0f42613bbefa764f32a79b8c",
+      "expected": "4c926b555f5236d0768b6707cfb06fef13ef925b0f42613bbefa764f32a79b8c",
+      "path": ".github/skills/harness-doctor/SKILL.md",
+      "status": "unchanged"
+    },
+    {
+      "actual": "926d8cca31a4ae4ed42d0e8ffd7f6218a2c2fb4005feb2d42dff2b64df922bea",
+      "expected": "926d8cca31a4ae4ed42d0e8ffd7f6218a2c2fb4005feb2d42dff2b64df922bea",
+      "path": ".github/skills/harvest/SKILL.md",
+      "status": "unchanged"
+    },
+    {
+      "actual": "d4e1e01273e22b5f9187fb35528dc984383a2ceab3aaa6003f5f36814047deca",
+      "expected": "d4e1e01273e22b5f9187fb35528dc984383a2ceab3aaa6003f5f36814047deca",
+      "path": ".github/skills/impl-plan/SKILL.md",
+      "status": "unchanged"
+    },
+    {
+      "actual": "51e977d6b5806ac098fa23ad261ab83b2ff4e098e3e782688d488845e73df18c",
+      "expected": "51e977d6b5806ac098fa23ad261ab83b2ff4e098e3e782688d488845e73df18c",
+      "path": ".github/skills/iterative-experiment/SKILL.md",
+      "status": "unchanged"
+    },
+    {
+      "actual": "7107d3e56cc8239f263cfc6fff77eb46e29d81c7753fa521ff8983936b23934e",
+      "expected": "7107d3e56cc8239f263cfc6fff77eb46e29d81c7753fa521ff8983936b23934e",
+      "path": ".github/skills/learn/SKILL.md",
+      "status": "unchanged"
+    },
+    {
+      "actual": "d8a8200612ebb37264d38737f2e239d77edda3139bac12ce66edf870b5c15cf4",
+      "expected": "d8a8200612ebb37264d38737f2e239d77edda3139bac12ce66edf870b5c15cf4",
+      "path": ".github/skills/observe/SKILL.md",
+      "status": "unchanged"
+    },
+    {
+      "actual": "f606b14b3c5297b906dfd53b656064f4d8c09904cfd274c5fef0de728777594c",
+      "expected": "f606b14b3c5297b906dfd53b656064f4d8c09904cfd274c5fef0de728777594c",
+      "path": ".github/skills/operational-closure/SKILL.md",
+      "status": "unchanged"
+    },
+    {
+      "actual": "989db970781c3b51dcc347f0e6f7f2cb570742e0c59f6d95a02ab166e32f8863",
+      "expected": "989db970781c3b51dcc347f0e6f7f2cb570742e0c59f6d95a02ab166e32f8863",
+      "path": ".github/skills/plan-harden/SKILL.md",
+      "status": "unchanged"
+    },
+    {
+      "actual": "4fc05726dd5f22c459232d1c7ffb1d2c658cdbf393f4ecf8ac59e7f8d7a9a457",
+      "expected": "4fc05726dd5f22c459232d1c7ffb1d2c658cdbf393f4ecf8ac59e7f8d7a9a457",
+      "path": ".github/skills/plan-review/SKILL.md",
+      "status": "unchanged"
+    },
+    {
+      "actual": "03de22c013803fe409d052bdf84d33bfa67cb0b342eccd91797a120345ce895c",
+      "expected": "03de22c013803fe409d052bdf84d33bfa67cb0b342eccd91797a120345ce895c",
+      "path": ".github/skills/pr-lifecycle/SKILL.md",
+      "status": "unchanged"
+    },
+    {
+      "actual": "cfce98f0cd3be779f5d40f31b11fe7418066d0aca978a1508c4bb6e328372ff5",
+      "expected": "cfce98f0cd3be779f5d40f31b11fe7418066d0aca978a1508c4bb6e328372ff5",
+      "path": ".github/skills/review/SKILL.md",
+      "status": "unchanged"
+    },
+    {
+      "actual": "af8a143a5c8b853fe7a20bdbf22c59cbb3a017f8b9c6eb4139d0a5409f1f2736",
+      "expected": "af8a143a5c8b853fe7a20bdbf22c59cbb3a017f8b9c6eb4139d0a5409f1f2736",
+      "path": ".github/skills/runtime-verification/SKILL.md",
+      "status": "unchanged"
+    },
+    {
+      "actual": "4da35367b1116a169545eec88c87a6576d3b66de941a22f6d2e71296e158fd94",
+      "expected": "4da35367b1116a169545eec88c87a6576d3b66de941a22f6d2e71296e158fd94",
+      "path": ".github/skills/safety-modes/SKILL.md",
+      "status": "unchanged"
+    },
+    {
+      "actual": "aad40010d3a134cb8a2cf7454223c2bbae56d701e99279e8a293c17880c02bda",
+      "expected": "aad40010d3a134cb8a2cf7454223c2bbae56d701e99279e8a293c17880c02bda",
+      "path": ".github/skills/security-audit/SKILL.md",
+      "status": "unchanged"
+    },
+    {
+      "actual": "acff6f54d1e652a058e39e19d60c13e69ef6148137ad0ccfb4c43990b766211d",
+      "expected": "acff6f54d1e652a058e39e19d60c13e69ef6148137ad0ccfb4c43990b766211d",
+      "path": ".github/skills/shipment-reconcile/SKILL.md",
+      "status": "unchanged"
+    },
+    {
+      "actual": "0f47c946f991f85f8ecf7d65b573e2420f28b40e8c8c837814abbc12d8d973fa",
+      "expected": "0f47c946f991f85f8ecf7d65b573e2420f28b40e8c8c837814abbc12d8d973fa",
+      "path": ".github/skills/skill-search/SKILL.md",
+      "status": "unchanged"
+    },
+    {
+      "actual": "207426692093947eb62a86e9dcac5170cb958ff6b8811974fe13227573927d04",
+      "expected": "207426692093947eb62a86e9dcac5170cb958ff6b8811974fe13227573927d04",
+      "path": ".github/skills/spike/SKILL.md",
+      "status": "unchanged"
+    },
+    {
+      "actual": "1b4d7953f78f9f822037e4659228d6ed26979319a95d25ed5106369daf84ae87",
+      "expected": "1b4d7953f78f9f822037e4659228d6ed26979319a95d25ed5106369daf84ae87",
+      "path": ".github/workflows/ci.yml",
+      "status": "unchanged"
+    },
+    {
+      "actual": "40392c674cd1bee95e319d44ad7389562f9722e49fc5fcfefb9a09b45d0e4d46",
+      "expected": "40392c674cd1bee95e319d44ad7389562f9722e49fc5fcfefb9a09b45d0e4d46",
+      "path": ".markdownlint.json",
+      "status": "unchanged"
+    },
+    {
+      "actual": "377713e1b9785beffc2bfe0fd50be2b171c68b23dafa56a2eef88ce9bba42f79",
+      "expected": "377713e1b9785beffc2bfe0fd50be2b171c68b23dafa56a2eef88ce9bba42f79",
+      "path": "AGENTS.md",
+      "status": "unchanged"
+    },
+    {
+      "actual": "91d6f8630ef18400f539b8191a663f12d9faf526bc68958ccb33b2fa2f907126",
+      "expected": "91d6f8630ef18400f539b8191a663f12d9faf526bc68958ccb33b2fa2f907126",
+      "path": "scripts/acquire_lock.ps1",
+      "status": "unchanged"
+    },
+    {
+      "actual": "d53ee9beefdbc1388d78438a58342c2fb4a514872a25c7f4a2caa270dede67e7",
+      "expected": "d53ee9beefdbc1388d78438a58342c2fb4a514872a25c7f4a2caa270dede67e7",
+      "path": "scripts/acquire_lock.sh",
+      "status": "unchanged"
+    },
+    {
+      "actual": "184ae5629fe3b10366b643d8a378a37a2464e1323ad6536ec6b062e6b273cc48",
+      "expected": "184ae5629fe3b10366b643d8a378a37a2464e1323ad6536ec6b062e6b273cc48",
+      "path": "scripts/ci-topology-check.sh",
+      "status": "unchanged"
+    },
+    {
+      "actual": "86aa5580f13404544396c5d19ec0f53986a9a7878de56fb6d6525e6a4615569c",
+      "expected": "86aa5580f13404544396c5d19ec0f53986a9a7878de56fb6d6525e6a4615569c",
+      "path": "scripts/pre-commit-markdownlint.ps1",
+      "status": "unchanged"
+    },
+    {
+      "actual": "431cc2415fc9045eb7df203184271213a6bda2192c9ce71d0061dc79c1899380",
+      "expected": "431cc2415fc9045eb7df203184271213a6bda2192c9ce71d0061dc79c1899380",
+      "path": "scripts/pre-commit-markdownlint.sh",
+      "status": "unchanged"
+    },
+    {
+      "actual": "f54df4e72a2ff5e5e09d5e08fd81d7514d543299ad0fbc6efc8da45a8ac84b1e",
+      "expected": "f54df4e72a2ff5e5e09d5e08fd81d7514d543299ad0fbc6efc8da45a8ac84b1e",
+      "path": "scripts/pre-commit-pipeline-topology.ps1",
+      "status": "unchanged"
+    },
+    {
+      "actual": "c49658fdf02d743cee4afa7237a58635669d6dd240f0c0a8e4427f297efbda5a",
+      "expected": "c49658fdf02d743cee4afa7237a58635669d6dd240f0c0a8e4427f297efbda5a",
+      "path": "scripts/pre-commit-pipeline-topology.sh",
+      "status": "unchanged"
+    },
+    {
+      "actual": "bfe3211faf1e5519b0111a50f7573a52346a75fe10f88156fb6333f8e5e977da",
+      "expected": "bfe3211faf1e5519b0111a50f7573a52346a75fe10f88156fb6333f8e5e977da",
+      "path": "scripts/pre-push-quality-gates.ps1",
+      "status": "unchanged"
+    },
+    {
+      "actual": "ab6f19609e903a85716d241c06c5f17e683f95d487c07934642f9432e5ca97d1",
+      "expected": "ab6f19609e903a85716d241c06c5f17e683f95d487c07934642f9432e5ca97d1",
+      "path": "scripts/pre-push-quality-gates.sh",
+      "status": "unchanged"
+    },
+    {
+      "actual": "7ba54ebfd04ecc9cd0ccea671e9b2b70581d699b5fa2d90ad4df4c9876931a42",
+      "expected": "7ba54ebfd04ecc9cd0ccea671e9b2b70581d699b5fa2d90ad4df4c9876931a42",
+      "path": "scripts/release_lock.ps1",
+      "status": "unchanged"
+    },
+    {
+      "actual": "35b817a08b440200a5d8dfa839463446782ddf3792a87eef1d7a6f32df22b040",
+      "expected": "35b817a08b440200a5d8dfa839463446782ddf3792a87eef1d7a6f32df22b040",
+      "path": "scripts/release_lock.sh",
+      "status": "unchanged"
+    },
+    {
+      "actual": "c5263eecfdd57e6f08b444d6c18ed163a0f262864a366a441fa29d105e015add",
+      "expected": "c5263eecfdd57e6f08b444d6c18ed163a0f262864a366a441fa29d105e015add",
+      "path": "scripts/search.ps1",
+      "status": "unchanged"
+    },
+    {
+      "actual": "3578e44becdc9042895f661ae31a698a94832c63e37a84c658fbc382c3c4f941",
+      "expected": "3578e44becdc9042895f661ae31a698a94832c63e37a84c658fbc382c3c4f941",
+      "path": "scripts/search.sh",
+      "status": "unchanged"
+    },
+    {
+      "actual": "ef68b2bdde8e596962e823e63aa3711254283e87ef73708a69013075d7e7f4ea",
+      "expected": "ef68b2bdde8e596962e823e63aa3711254283e87ef73708a69013075d7e7f4ea",
+      "path": "start.ps1",
+      "status": "unchanged"
+    },
+    {
+      "actual": "623d0e8046d17076a79175609a87b3d8ae32712b3d1dc98fde8eb597d76d95cd",
+      "expected": "623d0e8046d17076a79175609a87b3d8ae32712b3d1dc98fde8eb597d76d95cd",
+      "path": "start.sh",
+      "status": "unchanged"
+    },
+    {
+      "actual": "e9738658fc9cfe50c4c3c52e42af2f90d3c19238183128a783ced2999eefae44",
+      "expected": "e9738658fc9cfe50c4c3c52e42af2f90d3c19238183128a783ced2999eefae44",
+      "path": ".github/instructions/shipment-documentation-audit.instructions.md",
+      "status": "unchanged"
+    },
+    {
+      "actual": "b476a939387d9759ca1775cc1d3e2c7cdc37c3471c2b1954d91cc94c66d154c7",
+      "expected": "b476a939387d9759ca1775cc1d3e2c7cdc37c3471c2b1954d91cc94c66d154c7",
+      "path": ".github/instructions/browser-verification.instructions.md",
+      "status": "unchanged"
+    },
+    {
+      "actual": "31dff8075dd2fe21c0e46db9e10484fb906191783066258a14d7a6fb60938e1f",
+      "expected": "31dff8075dd2fe21c0e46db9e10484fb906191783066258a14d7a6fb60938e1f",
+      "path": ".github/agents/subagents/evidence-consistency-reviewer.agent.md",
+      "status": "unchanged"
+    },
+    {
+      "actual": "871cc9e169048b6228a2c518ec4520cb1ee7deb4737f5f5014602ddc0189fbf4",
+      "expected": "871cc9e169048b6228a2c518ec4520cb1ee7deb4737f5f5014602ddc0189fbf4",
+      "path": ".github/skills/grill-me/SKILL.md",
+      "status": "unchanged"
+    },
+    {
+      "actual": "92b741c7c18f286c2059c1fde94ae47cb865193ab475906aa6d96c2c6db0b328",
+      "expected": "92b741c7c18f286c2059c1fde94ae47cb865193ab475906aa6d96c2c6db0b328",
+      "path": ".github/skills/gsd-dark-mode/SKILL.md",
+      "status": "unchanged"
+    },
+    {
+      "actual": "a9daf630a7837ad8a594844c856b43c65c882e8a95a466bbaea831567f7883b9",
+      "expected": "a9daf630a7837ad8a594844c856b43c65c882e8a95a466bbaea831567f7883b9",
+      "path": ".github/skills/gsd-show-dag-queue/SKILL.md",
+      "status": "unchanged"
+    },
+    {
+      "actual": "c5fa996a06d607383a477ccf63067fa8714714db7b747027455e3fc980cdac8a",
+      "expected": "c5fa996a06d607383a477ccf63067fa8714714db7b747027455e3fc980cdac8a",
+      "path": ".github/prompts/gsd-dark-mode.prompt.md",
+      "status": "unchanged"
+    },
+    {
+      "actual": "3e4646de993fa092de79cf5fe4e857950fa5aa389ec87c987173e5dc61730e27",
+      "expected": "3e4646de993fa092de79cf5fe4e857950fa5aa389ec87c987173e5dc61730e27",
+      "path": ".github/prompts/gsd-show-dag-queue.prompt.md",
+      "status": "unchanged"
+    },
+    {
+      "actual": "c92c6a5ff151ef8df039ea65aa61c6443bf11789dfe62f14ae952f7cf6a555bc",
+      "expected": "c92c6a5ff151ef8df039ea65aa61c6443bf11789dfe62f14ae952f7cf6a555bc",
+      "path": ".github/skills/browser-automation/SKILL.md",
+      "status": "unchanged"
+    },
+    {
+      "actual": "788bd785c5820ee4dbc8e14ee4ce297189c5fa88d8dd06f10fadd212a51313ec",
+      "expected": "788bd785c5820ee4dbc8e14ee4ce297189c5fa88d8dd06f10fadd212a51313ec",
+      "path": ".github/agents/auto-mergeinstall.agent.md",
+      "status": "unchanged"
+    },
+    {
+      "actual": "178661f3708d785dd4bc56d4cdcf170b9f55319b519a6aec4fc9b9d923add673",
+      "expected": "178661f3708d785dd4bc56d4cdcf170b9f55319b519a6aec4fc9b9d923add673",
+      "path": ".github/agents/auto-tune.agent.md",
+      "status": "unchanged"
+    },
+    {
+      "actual": "0e7e78e0f36c77e23cbf608469a4071c70ba7aab5b9569f30ff9f3e8c18c3e82",
+      "expected": "0e7e78e0f36c77e23cbf608469a4071c70ba7aab5b9569f30ff9f3e8c18c3e82",
+      "path": ".github/skills/install-harness/SKILL.md",
+      "status": "unchanged"
+    },
+    {
+      "actual": "576ec8d506a825ccd568551b4ccb4d1fee7c156f7e03634f5c911a610321f9e9",
+      "expected": "576ec8d506a825ccd568551b4ccb4d1fee7c156f7e03634f5c911a610321f9e9",
+      "path": ".github/skills/tune-harness/SKILL.md",
+      "status": "unchanged"
+    },
+    {
+      "actual": "817b8db39f1a479b9baa2f77426ede61e7053672319b4267fe9b93f249d80b9d",
+      "expected": "817b8db39f1a479b9baa2f77426ede61e7053672319b4267fe9b93f249d80b9d",
+      "path": ".github/skills/verify-harness/SKILL.md",
+      "status": "unchanged"
+    },
+    {
+      "actual": "fdf5f299115842916d53cafa8cbd3243adde3e085e67d4a791738b15c770e452",
+      "expected": "fdf5f299115842916d53cafa8cbd3243adde3e085e67d4a791738b15c770e452",
+      "path": ".github/skills/workspace-discovery/SKILL.md",
+      "status": "unchanged"
+    },
+    {
+      "actual": "c7e47524a119bfa70fa87ab3732c1f7fc91b437bcf359490dcd4710d8d04c528",
+      "expected": "c7e47524a119bfa70fa87ab3732c1f7fc91b437bcf359490dcd4710d8d04c528",
+      "path": ".github/prompts/install-harness.prompt.md",
+      "status": "unchanged"
+    },
+    {
+      "actual": "ba06895964194b6b78d42f0e63cb2686b8430c002a5192870a38ef2a2ce87bfb",
+      "expected": "ba06895964194b6b78d42f0e63cb2686b8430c002a5192870a38ef2a2ce87bfb",
+      "path": ".github/prompts/tune-harness.prompt.md",
+      "status": "unchanged"
+    }
+  ],
+  "gsd_home": "C:\\Source\\GitHub\\docline\\.gsd\\gsd-assets-v1.6.0.zip",
+  "learning_signals": {
+    "closure_patterns": [],
+    "compound_patterns": [],
+    "observation_patterns": [],
+    "promotion_candidates": []
+  },
+  "migration_proposals": [],
+  "mode": "verify-workspace",
+  "new_artifacts": [],
+  "portability_findings": null,
+  "rendered": [],
+  "report_paths": {
+    "json": "C:\\Source\\GitHub\\docline\\.gsd\\staging\\verify-workspace-report.json",
+    "markdown": "C:\\Source\\GitHub\\docline\\.gsd\\staging\\verify-workspace-report.md"
+  },
+  "schema_contracts": {
+    "config": {
+      "compatibility_model": "versioned-contract",
+      "contract_name": "harness-config",
+      "current_version": "1.3.0",
+      "kind": "config",
+      "known_versions": [
+        "0.9.0",
+        "1.0.0",
+        "1.1.0",
+        "1.2.0",
+        "1.3.0",
+        "1.4.0"
+      ],
+      "observed_version": "1.3.0",
+      "path": "C:\\Source\\GitHub\\docline\\.gsd\\config.yaml",
+      "schema_file": "harness-config.schema.json",
+      "status": "current"
+    },
+    "manifest": {
+      "compatibility_model": "versioned-contract",
+      "contract_name": "harness-manifest",
+      "current_version": "1.1.0",
+      "kind": "manifest",
+      "known_versions": [
+        "0.9.0",
+        "1.0.0",
+        "1.1.0"
+      ],
+      "observed_version": "1.1.0",
+      "path": "C:\\Source\\GitHub\\docline\\.gsd\\harness-manifest.yaml",
+      "schema_file": "harness-manifest.schema.json",
+      "status": "current"
+    },
+    "profile": {
+      "compatibility_model": "versioned-contract",
+      "contract_name": "workspace-profile",
+      "current_version": "1.1.0",
+      "kind": "profile",
+      "known_versions": [
+        "0.9.0",
+        "1.0.0",
+        "1.1.0"
+      ],
+      "observed_version": "1.1.0",
+      "path": "C:\\Source\\GitHub\\docline\\.gsd\\workspace-profile.yaml",
+      "schema_file": "workspace-profile.schema.json",
+      "status": "current"
+    }
+  },
+  "skipped": [
+    {
+      "path": ".gsd/workspace-profile.yaml",
+      "reason": "template source could not be resolved deterministically",
+      "template": "generated"
+    },
+    {
+      "path": ".github/agents/auto-mergeinstall.agent.md",
+      "reason": "template source could not be resolved deterministically",
+      "template": "global agent definition"
+    },
+    {
+      "path": ".github/agents/auto-tune.agent.md",
+      "reason": "template source could not be resolved deterministically",
+      "template": "global agent definition"
+    },
+    {
+      "path": ".github/skills/install-harness/SKILL.md",
+      "reason": "template source could not be resolved deterministically",
+      "template": "global skill definition"
+    },
+    {
+      "path": ".github/skills/tune-harness/SKILL.md",
+      "reason": "template source could not be resolved deterministically",
+      "template": "global skill definition"
+    },
+    {
+      "path": ".github/skills/verify-harness/SKILL.md",
+      "reason": "template source could not be resolved deterministically",
+      "template": "global skill definition"
+    },
+    {
+      "path": ".github/skills/workspace-discovery/SKILL.md",
+      "reason": "template source could not be resolved deterministically",
+      "template": "global skill definition"
+    },
+    {
+      "path": ".github/prompts/install-harness.prompt.md",
+      "reason": "template source could not be resolved deterministically",
+      "template": "global prompt definition"
+    },
+    {
+      "path": ".github/prompts/tune-harness.prompt.md",
+      "reason": "template source could not be resolved deterministically",
+      "template": "global prompt definition"
+    }
+  ],
+  "staging_dir": "C:\\Source\\GitHub\\docline\\.gsd\\staging",
+  "startup_script_contracts": {
+    "start.ps1": {
+      "contract_name": "startup-script-ps1",
+      "current_version": "1.1.0",
+      "evidence": [
+        "Matched current delegation marker: $enabledSidecars = @(",
+        "Supported custom-section scaffold matches the current default tail."
+      ],
+      "known_versions": [
+        "0.9.0",
+        "1.0.0",
+        "1.1.0"
+      ],
+      "manifest_contract_version": null,
+      "shell": "ps1",
+      "status": "current"
+    },
+    "start.sh": {
+      "contract_name": "startup-script-sh",
+      "current_version": "1.1.0",
+      "evidence": [
+        "Matched current delegation marker: enabled_sidecars=(",
+        "Supported custom-section scaffold matches the current default tail."
+      ],
+      "known_versions": [
+        "0.9.0",
+        "1.0.0",
+        "1.1.0"
+      ],
+      "manifest_contract_version": null,
+      "shell": "sh",
+      "status": "current"
+    }
+  },
+  "strict_schema_blockers": [
+    {
+      "contract": "harness-config",
+      "current_version": "1.3.0",
+      "kind": "invalid-config-schema",
+      "message": "\u003croot\u003e: unable to read schema for config: open C:\\Source\\GitHub\\docline\\.gsd\\gsd-assets-v1.6.0.zip\\schemas\\harness-config.schema.json: The system cannot find the path specified.",
+      "observed_version": "1.3.0",
+      "path": "C:\\Source\\GitHub\\docline\\.gsd\\config.yaml"
+    },
+    {
+      "contract": "workspace-profile",
+      "current_version": "1.1.0",
+      "kind": "invalid-profile-schema",
+      "message": "\u003croot\u003e: unable to read schema for profile: open C:\\Source\\GitHub\\docline\\.gsd\\gsd-assets-v1.6.0.zip\\schemas\\workspace-profile.schema.json: The system cannot find the path specified.",
+      "observed_version": "1.1.0",
+      "path": "C:\\Source\\GitHub\\docline\\.gsd\\workspace-profile.yaml"
+    }
+  ],
+  "targeted_checks": {
+    "agent_skill_references": {
+      "details": [
+        {
+          "file": ".github/agents/_orchestrator.agent.md",
+          "line": 29,
+          "skill": "gsd-dark-mode",
+          "status": "INSTALLED"
+        },
+        {
+          "file": ".github/agents/_orchestrator.agent.md",
+          "line": 32,
+          "skill": "gsd-show-dag-queue",
+          "status": "INSTALLED"
+        },
+        {
+          "file": ".github/agents/_orchestrator.agent.md",
+          "line": 534,
+          "skill": "install-harness",
+          "status": "INSTALLED"
+        },
+        {
+          "file": ".github/agents/_ship.agent.md",
+          "line": 25,
+          "skill": "build-feature",
+          "status": "INSTALLED"
+        },
+        {
+          "file": ".github/agents/_ship.agent.md",
+          "line": 26,
+          "skill": "review",
+          "status": "INSTALLED"
+        },
+        {
+          "file": ".github/agents/_ship.agent.md",
+          "line": 27,
+          "skill": "fix-ci",
+          "status": "INSTALLED"
+        },
+        {
+          "file": ".github/agents/_ship.agent.md",
+          "line": 28,
+          "skill": "pr-lifecycle",
+          "status": "INSTALLED"
+        },
+        {
+          "file": ".github/agents/_ship.agent.md",
+          "line": 525,
+          "skill": "build-feature",
+          "status": "INSTALLED"
+        },
+        {
+          "file": ".github/agents/_ship.agent.md",
+          "line": 555,
+          "skill": "review",
+          "status": "INSTALLED"
+        },
+        {
+          "file": ".github/agents/_ship.agent.md",
+          "line": 693,
+          "skill": "compound",
+          "status": "INSTALLED"
+        },
+        {
+          "file": ".github/agents/_ship.agent.md",
+          "line": 694,
+          "skill": "observe",
+          "status": "INSTALLED"
+        },
+        {
+          "file": ".github/agents/_ship.agent.md",
+          "line": 730,
+          "skill": "pr-lifecycle",
+          "status": "INSTALLED"
+        },
+        {
+          "file": ".github/agents/_ship.agent.md",
+          "line": 732,
+          "skill": "fix-ci",
+          "status": "INSTALLED"
+        },
+        {
+          "file": ".github/agents/_ship.agent.md",
+          "line": 904,
+          "skill": "pr-lifecycle",
+          "status": "INSTALLED"
+        },
+        {
+          "file": ".github/agents/_ship.agent.md",
+          "line": 931,
+          "skill": "shipment-reconcile",
+          "status": "INSTALLED"
+        },
+        {
+          "file": ".github/agents/_ship.agent.md",
+          "line": 946,
+          "skill": "shipment-reconcile",
+          "status": "INSTALLED"
+        },
+        {
+          "file": ".github/agents/_ship.agent.md",
+          "line": 1114,
+          "skill": "evolve",
+          "status": "INSTALLED"
+        },
+        {
+          "file": ".github/agents/_ship.agent.md",
+          "line": 1114,
+          "skill": "learn",
+          "status": "INSTALLED"
+        },
+        {
+          "file": ".github/agents/_ship.agent.md",
+          "line": 1301,
+          "skill": "compound",
+          "status": "INSTALLED"
+        },
+        {
+          "file": ".github/agents/_ship.agent.md",
+          "line": 1303,
+          "skill": "observe",
+          "status": "INSTALLED"
+        },
+        {
+          "file": ".github/agents/_ship.agent.md",
+          "line": 1310,
+          "skill": "compact-context",
+          "status": "INSTALLED"
+        },
+        {
+          "file": ".github/agents/_ship.agent.md",
+          "line": 1321,
+          "skill": "compact-context",
+          "status": "INSTALLED"
+        },
+        {
+          "file": ".github/agents/_stage.agent.md",
+          "line": 24,
+          "skill": "grill-me",
+          "status": "INSTALLED"
+        },
+        {
+          "file": ".github/agents/_stage.agent.md",
+          "line": 442,
+          "skill": "grill-me",
+          "status": "INSTALLED"
+        },
+        {
+          "file": ".github/agents/_stage.agent.md",
+          "line": 452,
+          "skill": "deliberate",
+          "status": "INSTALLED"
+        },
+        {
+          "file": ".github/agents/_stage.agent.md",
+          "line": 501,
+          "skill": "impl-plan",
+          "status": "INSTALLED"
+        },
+        {
+          "file": ".github/agents/_stage.agent.md",
+          "line": 513,
+          "skill": "plan-harden",
+          "status": "INSTALLED"
+        },
+        {
+          "file": ".github/agents/_stage.agent.md",
+          "line": 528,
+          "skill": "plan-review",
+          "status": "INSTALLED"
+        },
+        {
+          "file": ".github/agents/_stage.agent.md",
+          "line": 786,
+          "skill": "observe",
+          "status": "INSTALLED"
+        },
+        {
+          "file": ".github/agents/_stage.agent.md",
+          "line": 927,
+          "skill": "compact-context",
+          "status": "INSTALLED"
+        },
+        {
+          "file": ".github/agents/_stage.agent.md",
+          "line": 929,
+          "skill": "evolve",
+          "status": "INSTALLED"
+        },
+        {
+          "file": ".github/agents/_stage.agent.md",
+          "line": 929,
+          "skill": "learn",
+          "status": "INSTALLED"
+        },
+        {
+          "file": ".github/agents/_stage.agent.md",
+          "line": 940,
+          "skill": "compact-context",
+          "status": "INSTALLED"
+        },
+        {
+          "file": ".github/agents/auto-mergeinstall.agent.md",
+          "line": 107,
+          "skill": "workspace-discovery",
+          "status": "INSTALLED"
+        },
+        {
+          "file": ".github/agents/auto-mergeinstall.agent.md",
+          "line": 181,
+          "skill": "install-harness",
+          "status": "INSTALLED"
+        },
+        {
+          "file": ".github/agents/auto-tune.agent.md",
+          "line": 101,
+          "skill": "workspace-discovery",
+          "status": "INSTALLED"
+        },
+        {
+          "file": ".github/agents/auto-tune.agent.md",
+          "line": 105,
+          "skill": "tune-harness",
+          "status": "INSTALLED"
+        }
+      ],
+      "failures": [],
+      "ok": true,
+      "refs": 37
+    },
+    "backlog_registry_cli_surface": {
+      "errors": null,
+      "ok": true
+    },
+    "backlogit_engine_compatibility": {
+      "commit": "2e0de25",
+      "engine_verdict": "VERIFIED",
+      "ok": true,
+      "probed": true,
+      "unverified_entries": [],
+      "version": "1.13.0"
+    },
+    "capability_pack_enforcement": {
+      "errors": null,
+      "ok": true,
+      "path": "C:\\Source\\GitHub\\docline\\.github\\instructions\\capability-pack-enforcement.instructions.md"
+    },
+    "carry_forward_config": {
+      "errors": [],
+      "ok": true,
+      "path": ".gsd/carry-forward.yaml",
+      "present": false,
+      "valid": true
+    },
+    "copilot_code_review_frontmatter": {
+      "errors": null,
+      "ok": true,
+      "path": "C:\\Source\\GitHub\\docline\\.github\\instructions\\copilot-code-review.instructions.md"
+    },
+    "escalation_chain_directive_parity": {
+      "errors": [
+        "templates/instructions/escalation-protocol.instructions.md.tmpl: unreadable: containment: root is not a directory",
+        "templates/agents/_stage.agent.md.tmpl: unreadable: containment: root is not a directory",
+        "templates/agents/_ship.agent.md.tmpl: unreadable: containment: root is not a directory",
+        "templates/policies/workflow-policies.md.tmpl: unreadable: containment: root is not a directory"
+      ],
+      "ok": false
+    },
+    "frontmatter_conformity": {
+      "errors": null,
+      "ok": true
+    },
+    "model_routing_escalation": {
+      "errors": [],
+      "ok": true
+    },
+    "orchestrator_workspace_identity": {
+      "has_project_name": true,
+      "has_unresolved_variable": false,
+      "ok": true,
+      "path": ".github/agents/_orchestrator.agent.md"
+    },
+    "ship_workspace_identity": {
+      "has_project_name": true,
+      "has_unresolved_variable": false,
+      "ok": true,
+      "path": ".github/agents/_ship.agent.md"
+    },
+    "stage_workspace_identity": {
+      "has_project_name": true,
+      "has_unresolved_variable": false,
+      "ok": true,
+      "path": ".github/agents/_stage.agent.md"
+    }
+  },
+  "unresolved": [],
+  "warning_instances": 0,
+  "warnings": [],
+  "workspace_path": "C:\\Source\\GitHub\\docline"
+}

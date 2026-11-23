@@ -1,3 +1,12 @@
+---
+category: backlogit-ship-gate-transitions
+tags:
+  - backlogit
+  - ship-gate
+  - lifecycle-transitions
+  - commit-traceability
+---
+
 # backlogit ship gate needs a genuine active→done transition
 
 **Date:** 2026-07-17

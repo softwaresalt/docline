@@ -1,0 +1,32 @@
+{
+  "recorded_at": "2026-11-18T07:42:12Z",
+  "corrected_finding_ids": [
+    "AUD-A1",
+    "AUD-A2",
+    "AUD-C1",
+    "AUD-C2",
+    "AUD-C3",
+    "AUD-C4"
+  ],
+  "changed_artifact_hashes_refreshed": [
+    ".github/agents/_orchestrator.agent.md",
+    ".github/agents/_ship.agent.md",
+    ".github/skills/shipment-reconcile/SKILL.md",
+    "scripts/ci-topology-check.sh"
+  ],
+  "manifest_summary_uv_corrected": true,
+  "pre_push_gate_schema_enums": [
+    {
+      "schema_path": "/properties/local_gating/properties/pre_push_gates/items",
+      "enum": [
+        "test",
+        "lint",
+        "format",
+        "typecheck",
+        "build"
+      ]
+    }
+  ],
+  "review_remediation_backup": ".gsd/backups/2026-11-18/review-remediation-0730",
+  "same_contract_only": true
+}

@@ -180,10 +180,13 @@ inventory so recurring classes are visible instead of rediscovered one round at 
    hosted review (the "Suppressed comments" lists inside a review body never open a thread; thread-only
    reads miss them). Use the §1.3 enumeration recipe in
    `.github/instructions/github-pr-automation.instructions.md`.
-2. Classify each finding into one of the 12 taxonomy root-cause classes (RC-1 through RC-12) defined in
-   `docs/compound/2026-09-07-copilot-review-finding-pattern-taxonomy.md`. A finding that fits no class is
-   recorded as `unclassified` and is a candidate for a genuinely new class at Step 6b. When the taxonomy file is
-   absent from this workspace's compound library, record every finding as `unclassified` instead of inventing classes.
+2. Classify each finding using an actually present local compound taxonomy when
+   available. Record a finding that fits no local class as `unclassified`, a
+   candidate for a genuinely new class at Step 6b. When no local taxonomy is
+   present, record every finding as `unclassified` instead of inventing classes.
+   Apply the installed Evidence Consistency Reviewer's self-contained checklist
+   and `.github/instructions/shipment-documentation-audit.instructions.md`
+   regardless of taxonomy availability.
 3. Record one inventory row per finding: round and reviewed HEAD, source (`thread` or `suppressed`),
    root-cause class, severity, and disposition (fixed with commit SHA, deferred with the P-021 stash ID, or
    declined with rationale).
@@ -362,9 +365,10 @@ that earn promotion and writes no new schema, CLI surface, or telemetry engine.
    least one signal holds: (a) recurrence of two or more findings in the class; (b) a
    cross-contract invariant was violated; (c) the finding escaped both local review and CI; (d) the finding was P0/P1
    or concerned a fail-closed gate; (e) the reviewer-declared recurrence.
-2. For each promotable class, APPEND to the existing `docs/compound/` entry whose `root_cause` matches
-   (start from `docs/compound/2026-09-07-copilot-review-finding-pattern-taxonomy.md`). Create a new
-   file ONLY for a genuinely new class that matches no existing entry.
+2. For each promotable class, APPEND to an actually present `docs/compound/`
+   entry whose `root_cause` matches. Search the local library; no upstream
+   taxonomy file is required. Create a new file ONLY for a genuinely new class
+   that matches no existing entry.
 3. Emit five workflow-evidence metrics into the review section of the closure record: recurrence
    rate, first-detected phase, escaped-to-hosted-review count, time-to-disposition (which MUST be
    >= 0; a negative value is a date-ordering defect to fix, not to record), and class coverage.

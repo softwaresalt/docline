@@ -154,16 +154,19 @@ hosted round at a time.
 
 1. Derive a class query from the changed-file categories identified in Step 1 (for example closure
    or memory evidence, backlog data, review histories, gate-read frontmatter, skill or instruction text).
-2. Search `docs/compound/` by `problem_type`, `category`, `root_cause`, and `tags`, prioritising
-   `docs/compound/2026-09-07-copilot-review-finding-pattern-taxonomy.md` (the 12 root-cause classes
-   RC-1 to RC-12 and the 10-point evidence-consistency checklist).
+2. Search existing `docs/compound/` entries by `problem_type`, `category`,
+   `root_cause`, and `tags`. Use a local taxonomy only when one actually exists;
+   never require a historical upstream compound document. The installed
+   `.github/agents/subagents/evidence-consistency-reviewer.agent.md` contains
+   the self-contained 10-point checklist, governed by
+   `.github/instructions/shipment-documentation-audit.instructions.md`.
 3. Emit `PATTERN_RETRIEVAL_OK {n} classes` when one or more classes match, or
    `PATTERN_RETRIEVAL_EMPTY` when none match. Empty is non-blocking.
 4. When a retrieved class trigger matches the diff, mark the **Evidence Consistency Reviewer** as
    required for Step 2.
 5. Degraded mode: when search tooling is unavailable, log
-   `TOOL_DEGRADED: pattern-retrieval — falling back to reading the taxonomy file directly` and read
-   the taxonomy file. Never silently skip this step.
+   `TOOL_DEGRADED: pattern-retrieval — using available local entries and the installed evidence checklist`.
+   Read the available local entries and checklist. Never silently skip this step.
 6. Taxonomy absent: when the taxonomy file is not present in this workspace's compound library, emit
    `PATTERN_RETRIEVAL_EMPTY` noting `taxonomy unavailable`, still route the Evidence Consistency Reviewer under the
    universal per-shipment audit obligation (file-path triggers select full invocation; a shipment that touches no
@@ -259,8 +262,9 @@ Emit a 4-line pass/fail block (one line per check) into the PR Review History.
 Binding scope rules:
 
 * The delta check is **NOT a review-fix cycle** and does **not** consume circuit-breaker budget; it only
-  verifies the fix just made. See `docs/compound/093-S-review-loop-convergence.md` and
-  `docs/compound/2026-08-16-bounded-review-fix-cycle-scope-and-mechanical-consequence-judgment.md`.
+  verifies the fix just made. The normative local scope/budget authority is
+  `.github/instructions/circuit-breaker.instructions.md`; upstream compound
+  examples are historical rationale, not required local inputs.
 * Timing: validate the local candidate SHA (`git rev-parse HEAD`) against the local readiness record before the
   push, and retain the 4-line result in the session output (this is the only check possible before a PR exists).
   After a successful push, verify that the PR body readiness value and the remote `headRefOid` equal that same

@@ -1,0 +1,22 @@
+{
+  "invoked_at": "2026-11-18T08:00:26Z",
+  "mode": "assessment-only",
+  "decision": "TUNE-011 deferred-separate-session; no archival or unrelated edits",
+  "directories": {
+    "docs/memory": {
+      "files": 64,
+      "bytes": 409561
+    },
+    "docs/plans": {
+      "files": 40,
+      "bytes": 717943
+    },
+    "docs/closure": {
+      "files": 88,
+      "bytes": 617534
+    }
+  },
+  "files_archived": 0,
+  "files_compacted": 0,
+  "active_checkpoint_eligibility_assumed": false
+}

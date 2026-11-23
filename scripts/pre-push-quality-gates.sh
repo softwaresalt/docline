@@ -225,11 +225,11 @@ run_required_gate() {
 
 echo "Running local pre-push quality gates..."
 
-run_gate "Lint" "ruff" "ruff check ."
-run_gate "Format" "ruff" "ruff format --check ."
-run_gate "Typecheck" "pyright" "pyright src/"
-run_gate "Test" "pytest" "pytest"
-run_gate "Build" "pip" "python -m py_compile src/docline/__init__.py"
+run_gate "Lint" "uv" "uv run ruff check ."
+run_gate "Format" "uv" "uv run ruff format --check ."
+run_gate "Typecheck" "uv" "uv run pyright src/"
+run_gate "Test" "uv" "uv run pytest"
+run_gate "Build" "uv" "uv run python -m build"
 
 # Markdown lint (P-019 REQUIRED gate, P-008). Scope S1 — identical to CI so the
 # local hook and CI cannot disagree: Markdown files changed vs the merge-base

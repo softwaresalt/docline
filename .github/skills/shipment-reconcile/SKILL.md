@@ -161,7 +161,7 @@ only by the Shipment-Record-Status Classification below, with its four labels
 parallel terms. Under backlogit, a persisted `blocked` shipment record is a
 reportable anomaly, never a waitable state: backlogit's `ShipmentStatus` has
 no `blocked` constant, so the record has no legal outbound transition
-(`docs/compound/2026-05-07-backlogit-shipment-status-constraints.md`). The
+(`.github/instructions/backlogit.instructions.md`). The
 report names it; Pre-Mode never waits on, retries, or transitions it.
 <!-- member-class-status-contract:END -->
 
@@ -177,14 +177,14 @@ above — no new read), excluding any non-task entry, so a covering feature that
 happens to be `active`/`done` outside the shipment's own
 scope can never be misread as a "conflicting task". This mirrors the task-artifact
 filter the Ship agent's intake early-warning already applies to
-`custom_fields.items` (`templates/agents/_ship.agent.md.tmpl`). **Scope**: the
+`custom_fields.items` (`.github/agents/_ship.agent.md`, Step 0.5 primary-path item 1a). **Scope**: the
 three named inconsistency cases below apply only when the
 record's own status is `queued` or `blocked` — the two
 statuses where a manifest task already being `active`/`done`
 is itself the drift signal (the queued/blocked record has not "caught up" to its
 tasks). **`blocked` itself is a non-standard/legacy value**: backlogit
 1.8.0's `ShipmentStatus` enum is only `queued|active|shipped|abandoned` (see
-`docs/compound/2026-05-07-backlogit-shipment-status-constraints.md`) — a
+`.github/instructions/backlogit.instructions.md`) — a
 persisted `blocked` record can still exist in real workspaces from a
 historical `backlogit move` CLI defect that silently accepted invalid status
 writes. Pre-mode's `record-blocked-with-active-work`/`record-blocked-with-done-work`
@@ -450,7 +450,7 @@ mutated or repaired by this mode.
    fallback-assembled manifest); reuse the `artifact_type` already read from each
    item's frontmatter in step 3 to exclude any non-task entry before aggregating
    task statuses below — the same task-artifact filter the Ship agent's intake
-   early-warning applies to `custom_fields.items` (`templates/agents/_ship.agent.md.tmpl`)
+   early-warning applies to `custom_fields.items` (`.github/agents/_ship.agent.md`, Step 0.5 primary-path item 1a)
    — so a covering feature that is `active`/`done` outside the
    shipment's own manifest scope can never be misread as a "conflicting task" and
    falsely halt an otherwise-consistent shipment.
@@ -1919,7 +1919,7 @@ template family: this SKILL's prose only).
    (`backlogit_get_item` per task id). Exclude any non-task entry (e.g. a covering
    feature id in a fallback-assembled manifest) before classifying — the same
    task-artifact filter the Ship agent's intake early-warning applies to
-   `custom_fields.items` (`templates/agents/_ship.agent.md.tmpl`).
+   `custom_fields.items` (`.github/agents/_ship.agent.md`, Step 0.5 primary-path item 1a).
 
 4. **Classify each task-artifact manifest item** against the per-task ALLOWED
    ROLE table and the per-item ANOMALY table in the "Mixed-Role Detection
