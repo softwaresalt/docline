@@ -1,0 +1,429 @@
+schema_version: 1.1.0
+generated_at: '2026-11-18T00:02:00Z'
+workspace_path: <local-workspace-path>
+languages:
+  primary: python
+  version: '3.12'
+  secondary: []
+frameworks:
+  list:
+  - pydantic
+  mcp_sdk: null
+  mcp_transport: stdio
+primary_stack_pack: mcp-server
+stack_packs:
+- cli-tool
+- mcp-server
+build:
+  tool: uv
+  command: uv run python -m build
+  check_command: uv run python -m py_compile src/docline/__init__.py
+test:
+  runner: pytest
+  command: uv run pytest
+  directory: tests
+lint:
+  tool: ruff
+  command: uv run ruff check .
+typecheck:
+  tool: pyright
+  command: uv run pyright src/
+format:
+  tool: ruff
+  command: uv run ruff format .
+  check_command: uv run ruff format --check .
+ci:
+  platform: GitHub Actions
+  pipeline_steps:
+  - changes
+  - expensive
+  - topology-check
+  - ci-gate
+  quality_gates:
+  - uv run ruff check .
+  - uv run ruff format --check .
+  - uv run pyright src/
+  - uv run pytest
+  - uv run python -m build
+  required_check_name: ci gate
+  # Required by profile 1.1.0, not the installed runner policy. Preserve the
+  # operator override: Windows expensive/topology; Ubuntu metadata-only jobs.
+  linux_only: true
+  path_filter_mode: fail_closed_changes_job
+  docs_only_paths:
+  - docs/**
+  - .backlogit/**
+  - .gsd/**
+  gsd_install_command: |
+    $ErrorActionPreference = 'Stop'
+    $version = '1.6.0'
+    $release = "https://github.com/softwaresalt/GSD/releases/download/v$version"
+    $toolDir = Join-Path $PWD '.gsd'
+    New-Item -ItemType Directory -Path $toolDir -Force | Out-Null
+    $exeHash = 'df8a29d5a9f7f1306a9abe2ca1ae5e314e638ebfa0d9ac8a1ec4524cea27470e'
+    $bundleHash = 'b170652c9d83786cde8e988ef8d4c9cf47fb7039373383645b2a7ad7d053ebc1'
+    $assets = @(
+      @{ Name = 'gsd.exe'; Asset = 'gsd-windows-amd64.exe'; Hash = $exeHash },
+      @{ Name = "gsd-assets-v$version.zip"; Asset = 'gsd-assets.zip'; Hash = $bundleHash }
+    )
+    foreach ($asset in $assets) {
+      $path = Join-Path $toolDir $asset.Name
+      if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {
+        Invoke-WebRequest -Uri "$release/$($asset.Asset)" -OutFile $path
+      }
+      if ((Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash -ne $asset.Hash) {
+        throw "SHA-256 mismatch: $($asset.Name)"
+      }
+    }
+    $bundleName = "gsd-assets-v$version.zip"
+    $compatBundle = Join-Path $toolDir 'gsd-assets.zip'
+    if (-not (Test-Path -LiteralPath $compatBundle -PathType Leaf)) {
+      Copy-Item -LiteralPath (Join-Path $toolDir $bundleName) -Destination $compatBundle
+    }
+    if ((Get-FileHash -LiteralPath $compatBundle -Algorithm SHA256).Hash -ne $bundleHash) {
+      throw 'SHA-256 mismatch: gsd-assets.zip'
+    }
+    $manifestPath = Join-Path $toolDir 'runtime-manifest.json'
+    if (-not (Test-Path -LiteralPath $manifestPath -PathType Leaf)) {
+      $now = [DateTime]::UtcNow.ToString("yyyy-MM-ddTHH:mm:ss'Z'")
+      $manifest = @{
+        schema_version = '1.0.0'
+        last_op_id = "ci-bootstrap-$version"
+        active_version = $version
+        release_tag = "v$version"
+        executable_path = 'gsd.exe'
+        executable_sha256 = $exeHash
+        bundle_path = $bundleName
+        bundle_sha256 = $bundleHash
+        installed_bundles = @(@{
+          version = $version; path = $bundleName
+          sha256 = $bundleHash; installed_at_utc = $now
+        })
+        updated_at_utc = $now
+      }
+      [IO.File]::WriteAllText(
+        $manifestPath,
+        ($manifest | ConvertTo-Json -Depth 5),
+        [Text.UTF8Encoding]::new($false)
+      )
+    } else {
+      $manifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
+      if ($manifest.active_version -ne $version -or
+          $manifest.executable_path -ne 'gsd.exe' -or
+          $manifest.executable_sha256 -ne $exeHash -or
+          $manifest.bundle_path -ne $bundleName -or
+          $manifest.bundle_sha256 -ne $bundleHash) {
+        throw 'Existing runtime-manifest.json does not match the pinned Windows runtime'
+      }
+    }
+    $toolDir | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+    & "$toolDir\gsd.exe" version --no-update-check
+    if ($LASTEXITCODE -ne 0) { throw 'GSD version check failed' }
+local_gating:
+  pre_push_enabled: true
+  pre_push_gates:
+  - lint
+  - format
+  - typecheck
+  - test
+  - build
+structure:
+  source_layout: src
+  test_layout: tests
+  doc_layout: docs
+runtime_surfaces:
+  cli: true
+  web_ui: false
+  public_api: true
+  background_jobs: false
+  browser_tooling: []
+  deployment_manifests: []
+runtime_validation:
+  validator_manifest:
+    surfaces:
+    - surface: cli
+      adapter_hint: command
+      probe_hints:
+      - id: cli-help
+        kind: command
+        target: docline
+        command: docline --help
+        url: null
+        route: null
+        expected_signal: usage banner and non-error exit
+        required: true
+        evidence_types:
+        - stdout
+        - exit-code
+        notes: Smoke check that the console script entry point resolves.
+      - id: cli-manifest
+        kind: command
+        target: docline
+        command: docline --manifest
+        url: null
+        route: null
+        expected_signal: JSON Schema tool definition on stdout
+        required: true
+        evidence_types:
+        - stdout
+        - exit-code
+        notes: Must stay schema-identical to the MCP tools/list surface (CLI/MCP parity).
+      manual_checkpoints: []
+    - surface: api
+      adapter_hint: auto
+      probe_hints:
+      - id: mcp-tools-list
+        kind: command
+        target: docline-mcp
+        command: docline-mcp
+        url: null
+        route: null
+        expected_signal: tools/list response enumerating registered tools
+        required: true
+        evidence_types:
+        - stdout
+        - response-body
+        notes: stdio transport; compare against CLI --manifest output.
+      manual_checkpoints:
+      - id: mcp-initialize-handshake
+        label: MCP initialize handshake
+        reason: stdio MCP handshake is not reliably automatable in this environment.
+        required_for_release: true
+        evidence_types:
+        - operator-note
+        notes: Confirm the server responds to initialize before declaring release readiness.
+        fallback: Capture the raw stdio transcript as an operator note.
+  validation_expectations:
+    required: true
+    surfaces_expected:
+    - cli
+    - api
+    minimum_verdict: PASS
+    preserve_invariants:
+    - CLI and MCP tool parity
+    - Schema validation produces identical results via both interfaces
+    release_blockers:
+    - CLI --manifest output must match MCP tools/list schema
+  releasability:
+    required: true
+    status_when_satisfied: READY
+    required_evidence:
+    - kind: healthy-signal
+      required: true
+      description: CLI smoke test passes (docline --help and docline --manifest).
+    - kind: healthy-signal
+      required: true
+      description: MCP initialize handshake succeeds.
+    - kind: owner
+      required: true
+      description: Named owner accountable for the released change.
+    - kind: follow-up
+      required: false
+      description: Residual P2/P3 review findings captured as backlog items.
+conventions:
+  code_style:
+    linter: ruff
+    formatter: ruff
+    type_checker: pyright
+    pre_commit: false
+  git:
+    branch_naming: conventional
+    commit_style: conventional-commits
+    default_branch: main
+    pr_template: false
+  documentation:
+    api_docs: null
+    adrs: false
+    changelog: false
+    design_docs: docs/design-docs
+    product_specs: docs/product-specs
+tools:
+  markdownlint: true
+  markdownlint_config: .markdownlint.json
+harness_recommendations:
+  preset: full
+  capability_packs:
+  - agent-engram
+  - backlogit
+  - kbdb
+  install_layers:
+  - foundation
+  - instructions
+  - workflow
+  - review
+  - runtime
+  - backlog
+  - knowledge
+  - overlays
+  recommendation_reasons:
+    preset:
+    - Dual-interface product (CLI + MCP server) requires the full agent, review, runtime, and closure surface.
+    - Document ingestion pipeline with multiple extraction engines benefits from deliberation and multi-persona review.
+    - Engram, backlogit, and kbdb are already provisioned in the workspace, so the full preset maximizes integration.
+    capability_packs:
+    - item: agent-engram
+      because: Engram MCP server is configured and .engram/ state is present, so indexed search should be the default retrieval path.
+      signals:
+      - .mcp.json declares the engram stdio server
+      - .engram/ state directory present at workspace root
+      - copilot-instructions.md contains engram:start / engram:end markers
+    - item: backlogit
+      because: backlogit is the workspace backlog tool with MCP and CLI both available, enabling queue, dependency, checkpoint, and traceability workflows.
+      signals:
+      - .mcp.json declares the backlogit stdio server
+      - .backlogit/ directory with config.yaml present
+      - backlogit CLI available on PATH
+    - item: kbdb
+      because: kbdb binary and source configuration are provisioned, with degraded local fallback until documentation sources and its MCP server are configured; no active indexed corpus is claimed.
+      signals:
+      - .kbdb/ directory present at workspace root
+      - .kbdb/config/sources.yaml exists but currently declares no sources
+      - .kbdb/bin/kbdb.exe binary present
+      - .mcp.json does not currently register a kbdb server
+    install_layers:
+    - item: foundation
+      because: Constitution, AGENTS.md, and shared instructions anchor every other artifact.
+    - item: instructions
+      because: Python, commit, markdown, CI, and MCP-server conventions all need scoped instruction files.
+    - item: workflow
+      because: Stage/Ship/Orchestrator pipeline plus core skills drive the release-unit lifecycle.
+    - item: review
+      because: Dual-interface parity and schema sensitivity require multi-persona code and plan review.
+    - item: runtime
+      because: CLI and MCP runtime surfaces need runtime verification and operational closure before release.
+    - item: backlog
+      because: backlogit is the authoritative work-item store and needs a registry plus integration guidance.
+    - item: knowledge
+      because: docs/ already hosts compound learnings, plans, decisions, memory, and closure records.
+    - item: overlays
+      because: Three external-tool capability packs are enabled and must be woven across foundation, agents, and skills.
+agent_engram:
+  detected: true
+  mcp_configured: true
+  config_paths:
+  - .mcp.json
+  instruction_markers:
+  - <!-- engram:start -->
+  - <!-- engram:end -->
+  recommended: true
+kbdb:
+  detected: true
+  mcp_configured: false
+  config_paths: []
+  sources_path: .kbdb/config/sources.yaml
+  binary_path: .kbdb/bin/kbdb.exe
+  embed_model_dir: null
+  instruction_markers: []
+  recommended: true
+agent_native:
+  detected: true
+  mcp_sdk_present: false
+  mcp_transport: stdio
+  agent_tooling_markers:
+  - MCP server dual interface (design doc)
+  - CLI/MCP parity requirement
+  - --manifest command for tool schema discovery
+  user_agent_parity_required: true
+  recommended_reviewer: true
+copilot_review:
+  enforcement: auto
+  max_wait_seconds: 0
+existing_harness:
+  has_harness: true
+  artifacts:
+  - path: .github/copilot-instructions.md
+    type: instruction
+    description: Shared development guidelines with engram overlay block
+  - path: .github/agents/
+    type: agent-directory
+    description: Pipeline, support, expert, and review-persona agents
+  - path: .github/skills/
+    type: skill-directory
+    description: Workflow skills installed by the previous harness version
+  - path: start.ps1
+    type: startup-script
+    description: GSD-generated agent CLI startup script
+  - path: .backlogit/
+    type: backlog-directory
+    description: Fully configured backlogit installation
+backlog_tool:
+  detected: true
+  tool_name: backlogit
+  directory: .backlogit
+  tool_type: both
+  mcp_registered: true
+  cli_available: true
+  config_path: .backlogit/config.yaml
+  registry_path: .gsd/backlog-registry.yaml
+  status_values:
+  - queued
+  - active
+  - blocked
+  - review
+  - done
+  - accepted
+  - rejected
+  - archived
+  features:
+    sql_query: true
+    milestones: false
+    documents: false
+    telemetry: true
+    memory: true
+    checkpoints: true
+    comments: true
+    dependencies: true
+    queue: true
+    commit_tracking: true
+    shipments: true
+    stash: true
+    semantic_links: true
+    deliberation: true
+    discovery: true
+    lifecycle_hygiene: true
+    sizing: true
+vscode:
+  detected: true
+  user_settings_path: <local-vscode-user-settings-path>
+  has_agent_settings: false
+ai_environments:
+  detected:
+  - vscode
+  - copilot-cli
+  register_default: copilot-cli
+strict_safety_signals:
+- MCP server exposes public API surface to external agent consumers
+- Schema validation pipeline is trust-sensitive — malformed output could poison downstream RAG/graph systems
+release_observability_signals: []
+drift_report:
+  changes:
+  - category: degrading
+    description: Upgraded schema contracts (harness-config 1.1.0->1.3.0, workspace-profile 1.0.0->1.1.0, harness-manifest 1.0.0->1.1.0) and removed retired agent_intercom profile block.
+    affected_artifacts:
+    - .gsd/config.yaml
+    - .gsd/workspace-profile.yaml
+    - .gsd/harness-manifest.yaml
+  - category: degrading
+    description: 'Propagated operator model_routing updates (claude-haiku-5.5, claude-sonnet-5.5, gemini-4-argon, gpt-6.1-sol, context_tier: long_context) and stage.escalation override across pipeline and subagent frontmatter.'
+    affected_artifacts:
+    - .github/agents/_orchestrator.agent.md
+    - .github/agents/_stage.agent.md
+    - .github/agents/_ship.agent.md
+    - .github/agents/subagents/
+  - category: degrading
+    description: 'Re-rendered 1.6.0 skills (adding required frontmatter name: keys and operational-closure source artifact cleanup), workflow-policies (adding Dark Factory Visibility Protocol), backlog-registry (adding hook CLI commands), and file-lock scripts.'
+    affected_artifacts:
+    - .gsd/backlog-registry.yaml
+    - .github/policies/workflow-policies.md
+    - .github/skills/
+    - scripts/acquire_lock.ps1
+    - scripts/acquire_lock.sh
+    - scripts/release_lock.ps1
+    - scripts/release_lock.sh
+  checksum_scan:
+    manifest_present: true
+    ignore_file: null
+    checked_artifacts: 116
+    missing_count: 0
+    user_modified_count: 0
+    ignored_count: 0

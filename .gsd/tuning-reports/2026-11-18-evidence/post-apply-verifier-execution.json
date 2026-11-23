@@ -1,0 +1,15 @@
+{
+  "verified_at": "2026-11-18T07:17:48Z",
+  "command": [
+    "C:\\Source\\GitHub\\docline\\.gsd\\gsd.exe",
+    "verify-workspace",
+    "--workspace",
+    "C:\\Source\\GitHub\\docline",
+    "--gsd-home",
+    "C:\\Source\\GitHub\\docline\\.gsd\\gsd-assets-v1.6.0.zip",
+    "--json"
+  ],
+  "exit_code": 1,
+  "stderr": "",
+  "stdout_sha256": "7a9b34a33215872ddcd15b5c2077648455c0a609520b3a1bd5993d9892927d9f"
+}

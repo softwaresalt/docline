@@ -1,24 +1,24 @@
 ---
-description: "Graphtor-docs workflow rules for indexed local documentation search, semantic retrieval, and doc-graph traversal"
+description: "KBDB workflow rules for indexed local documentation search, semantic retrieval, and doc-graph traversal"
 applyTo: '**'
 ---
 
-# Graphtor-Docs Instructions
+# KBDB Instructions
 
-Use these rules when the workspace has enabled the `graphtor-docs` capability pack. This pack is not
+Use these rules when the workspace has enabled the `kbdb` capability pack. This pack is not
 a generic documentation search hint. It weaves indexed local documentation retrieval through the
 harness workflow so agents resolve domain concepts and referenced APIs from indexed sources before
 resorting to broad web search or raw filesystem scan.
 
 When any retrieval-enforced pack is enabled, `capability-pack-enforcement.instructions.md` is the
 coordinator that routes retrieval across packs before any raw grep/glob or public web search. It
-defers pack-specific mechanics to this file: use graphtor-docs for documentation and API concepts.
+defers pack-specific mechanics to this file: use kbdb for documentation and API concepts.
 Honor that coordinator's safeguards (pack deferral, direct-search exemptions, per-phase health reuse,
 internal-first / no-public-web) in addition to the rules below.
 
 ## Required Tool Surface
 
-The workspace exposes an MCP tool surface from the graphtor-docs server. Tool names are registered
+The workspace exposes an MCP tool surface from the kbdb server. Tool names are registered
 through MCP configuration (`.mcp.json`, `.vscode/mcp.json`, or editor settings) — not through the
 source-index configuration. The canonical tool surface includes:
 
@@ -31,27 +31,27 @@ source-index configuration. The canonical tool surface includes:
 | `list_sources` | List all indexed documentation sources and their index status |
 | `get_chunk_by_id` | Retrieve a specific indexed chunk by its stable identifier |
 | `get_document` | Retrieve the full indexed content of a document by path or URL |
-| `get_status` | Check graphtor-docs server health and index freshness |
+| `get_status` | Check kbdb server health and index freshness |
 
 Do not bypass indexed search by defaulting immediately to browser search or raw `grep` over
-`docs/` when the graphtor-docs server is reachable and sources are indexed.
+`docs/` when the kbdb server is reachable and sources are indexed.
 
 ## Server Lifecycle Protocol
 
-Before relying on graphtor-docs results:
+Before relying on kbdb results:
 
 1. Call `get_status` to verify the server is reachable and the index is fresh.
 2. If the status reports index staleness, note it but do not halt — stale results are usable with
    reduced confidence.
 3. If the server is unreachable, fall back to the Fallback Protocol below and log
-   `GRAPHTOR_UNAVAILABLE`.
+   `KBDB_UNAVAILABLE`.
 
 Do not call `get_status` on every individual tool invocation. Check once per major workflow phase
 or when results appear incomplete.
 
 ## Search Protocol
 
-Use the most specific graphtor-docs tool first:
+Use the most specific kbdb tool first:
 
 | Need | Preferred Tool |
 |---|---|
@@ -70,7 +70,7 @@ relates to documentation content rather than code structure.
 
 Fall back to `grep`, glob, or direct file reading only when:
 
-* the graphtor-docs server is unavailable (`GRAPHTOR_UNAVAILABLE`)
+* the kbdb server is unavailable (`KBDB_UNAVAILABLE`)
 * no indexed sources cover the area being queried (confirm via `list_sources`)
 * the query is literal-text or regex-oriented rather than conceptual
 * you already know the exact file path and need line-level confirmation
@@ -80,19 +80,19 @@ scan. Do not retry the same broad semantic query more than twice.
 
 ## Source Configuration
 
-Documentation sources are configured at `.graphtor/config/sources.yaml`. This file declares which
-local paths, Git repositories, and URLs graphtor-docs indexes. Agents should not modify this file
+Documentation sources are configured at `.kbdb/config/sources.yaml`. This file declares which
+local paths, Git repositories, and URLs kbdb indexes. Agents should not modify this file
 unless the task is specifically to manage doc sources.
 
-When the binary is not on PATH, it may be found at `.graphtor/bin/graphtor-docs.exe`.
+When the binary is not on PATH, it may be found at `.kbdb/bin/kbdb.exe`.
 
 The local sentence-transformer embedding model used for offline vector search is
-configured via the `GRAPHTOR_EMBED_MODEL_DIR` environment variable, set in the
-workspace-root `.env.local` and defaulting to `.graphtor/models/all-MiniLM-L6-v2`.
+configured via the `KBDB_EMBED_MODEL_DIR` environment variable, set in the
+workspace-root `.env.local` and defaulting to `.kbdb/models/all-MiniLM-L6-v2`.
 
 ## Data Ownership Rule
 
-Treat `.graphtor/` artifacts as tool-managed state. Do not hand-edit index databases, cached
+Treat `.kbdb/` artifacts as tool-managed state. Do not hand-edit index databases, cached
 embeddings, or chunk registries as a substitute for re-indexing or configuration updates.
 
-Generated by autoharness | Template: graphtor-docs.instructions.md.tmpl
+Generated by gsd | Template: kbdb.instructions.md.tmpl

@@ -1,6 +1,6 @@
 # docline Development Guidelines
 
-Last updated: 2026-10-26
+Last updated: 2026-11-18
 
 docline is a docline workspace.
 
@@ -9,10 +9,10 @@ docline is a docline workspace.
 | Layer           | Technology                | Notes                                 |
 |-----------------|---------------------------|---------------------------------------|
 | Language        | Python 3.12 | (3.12)          |
-| Build           | pip            | `python -m build`                   |
-| Test            | pytest           | `pytest`                    |
-| Lint            | ruff                | `ruff check .`                    |
-| Format          | ruff             | `ruff format --check .`                  |
+| Build           | uv / build            | `uv run python -m build`                   |
+| Test            | pytest           | `uv run pytest`                    |
+| Lint            | ruff                | `uv run ruff check .`                    |
+| Format          | ruff             | `uv run ruff format --check .`                  |
 | CI              | GitHub Actions           | Uses GitHub Actions for CI validation.                          |
 
 
@@ -28,11 +28,11 @@ docs/product-specs/ — product requirements
 ## Commands
 
 ```bash
-python -m build              # Build
-pytest               # Run all tests
-ruff check .               # Lint
-ruff format --check .             # Format check
-pyright src/                   # Type check
+uv run python -m build              # Build
+uv run pytest               # Run all tests
+uv run ruff check .               # Lint
+uv run ruff format --check .             # Format check
+uv run pyright src/                   # Type check
 docline fetch                  # Run the I/O-bound document fetch phase
 docline process                # Run the compute-bound processing phase
 docline --manifest             # Output the JSON Schema tool definition
@@ -56,7 +56,7 @@ Google-style docstrings on all public functions and classes
 
 * TDD required: write tests first, verify they fail, then implement
 * Test tiers in `tests/` directory:
-Primary test command: pytest
+Primary test command: uv run pytest
 
 ## Search Strategy
 
@@ -120,7 +120,6 @@ When the workspace enabled the `agent-engram` capability pack:
 When the workspace enabled the `backlogit` capability pack:
 
 * follow `.github/instructions/backlogit.instructions.md`
-
 * verify the backlogit MCP / CLI surface is reachable before depending on queue, dependency, memory, or traceability operations
 * prefer backlogit query operations for targeted state lookup instead of reading many backlog markdown files into context
 * use backlogit queue and dependency operations when available rather than inferring execution order from prose alone
@@ -128,9 +127,24 @@ When the workspace enabled the `backlogit` capability pack:
 * append significant task comments and associate commits with task IDs for execution traceability when those operations are available
 * if backlog content was edited outside the normal mutation flow, refresh the backlogit index before relying on query results
 
+### kbdb
+
+When the workspace enabled the `kbdb` capability pack:
+
+* follow `.github/instructions/kbdb.instructions.md`
+* verify the kbdb server / MCP surface is reachable and sources are indexed before depending on indexed documentation retrieval
+* prefer `search_local_docs`, `search_semantic`, and `research_topic` for conceptual, API-oriented, or documentation questions before broad web search or raw file scans
+* use `traverse_doc_links` to follow related documentation and `list_sources` to confirm indexed coverage
+* if the server is unavailable or sources are not indexed, fall back to grep, glob, or direct file reading and note reduced confidence
+* treat `.kbdb/` generated artifacts as tool-managed state rather than files to hand-edit casually
+
+## Core Workflow Protocols
+
+These protocols are part of the core harness and are always active; they are not capability packs. Each applies when its surface condition is met.
+
 ### browser-verification
 
-When the workspace enabled the `browser-verification` capability pack:
+When verifying browser-visible UI flows (core protocol):
 
 * verify the target server or preview environment is reachable before launching browser work
 * choose headed vs headless mode intentionally and record the reason
@@ -140,11 +154,10 @@ When the workspace enabled the `browser-verification` capability pack:
 
 ### continuous-learning
 
-When the workspace enabled the `continuous-learning` capability pack:
+When recurring practice is observed across sessions (core protocol):
 
 * follow `.github/instructions/continuous-learning.instructions.md`
-
-* store observation state under `.autoharness/continuous-learning/`
+* store observation state under `.gsd/continuous-learning/`
 * keep hook capture optional and environment-specific; manual capture is still valid
 * use `observe` to capture recurring workflow signals, `learn` to infer instincts, and `evolve` to promote mature patterns into `learned-*` artifacts
 * do not harden a rule into a learned instruction or skill until it has enough corroborating observations to justify the promotion
@@ -152,7 +165,7 @@ When the workspace enabled the `continuous-learning` capability pack:
 
 ### strict-safety
 
-When the workspace enabled the `strict-safety` capability pack:
+For elevated-risk or destructive work (core protocol):
 
 * follow `.github/instructions/strict-safety.instructions.md`
 * express risky work as `ProposedAction` entries with `ActionRisk` and `ActionResult`
@@ -161,7 +174,7 @@ When the workspace enabled the `strict-safety` capability pack:
 
 ### release-observability
 
-When the workspace enabled the `release-observability` capability pack:
+For runtime-affecting or deployment-sensitive release units (core protocol):
 
 * follow `.github/instructions/release-observability.instructions.md`
 * produce monitoring plans with SLIs, dashboards, baselines, and alert thresholds before merge
@@ -172,7 +185,7 @@ When the workspace enabled the `release-observability` capability pack:
 
 ### adversarial-review
 
-When the workspace enabled the `adversarial-review` capability pack:
+When a review surfaces 3+ P0/P1 findings or touches security-sensitive work (core protocol):
 
 * follow `.github/instructions/adversarial-review.instructions.md`
 * escalate from standard review when 3+ P0/P1 findings appear or the work is security-sensitive
@@ -180,17 +193,6 @@ When the workspace enabled the `adversarial-review` capability pack:
 * assemble consensus-weighted findings (HIGH / MEDIUM / LOW confidence)
 * treat HIGH-confidence P0/P1 findings as gate-blocking
 * feed remediation queue entries into backlog
-
-### graphtor-docs
-
-When the workspace enabled the `graphtor-docs` capability pack:
-
-* follow `.github/instructions/graphtor-docs.instructions.md`
-* verify the graphtor-docs server / MCP surface is reachable and sources are indexed before depending on indexed documentation retrieval
-* prefer `search_local_docs`, `search_semantic`, and `research_topic` for conceptual, API-oriented, or documentation questions before broad web search or raw file scans
-* use `traverse_doc_links` to follow related documentation and `list_sources` to confirm indexed coverage
-* if the server is unavailable or sources are not indexed, fall back to grep, glob, or direct file reading and note reduced confidence
-* treat `.graphtor/` generated artifacts as tool-managed state rather than files to hand-edit casually
 
 ## Remote Operator Integration
 
@@ -213,4 +215,8 @@ When a backlog tool is active in the workspace:
 * refresh the backlog index or query cache after out-of-band edits before trusting query results
 * avoid inventing parallel markdown trackers outside the configured backlog tool surface
 
-Generated by autoharness | Template: copilot-instructions.md.tmpl
+## Workspace-Local `.gsd/` Runtime
+
+Target workspaces provision the `gsd` executable (`.gsd/gsd` or `.gsd/gsd.exe`), pre-built versioned release archives (`.gsd/gsd-assets-v<version>.zip` and `.gsd/gsd-assets.zip`), and `.gsd/runtime-manifest.json` inside `<workspace>/.gsd/` (ignored by Git via `# gsd-runtime-ignore`) so all CLI and install/tune operations stay inside the workspace sandbox without unpacking `templates/` or `schemas/` into the repository.
+
+Generated by gsd | Template: copilot-instructions.md.tmpl

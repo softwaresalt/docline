@@ -1,0 +1,21 @@
+{
+  "checked_at": "2026-11-18T08:01:21Z",
+  "command": [
+    "C:\\Source\\GitHub\\docline\\.gsd\\gsd.exe",
+    "gate",
+    "line-endings",
+    "--json"
+  ],
+  "exit_code": 0,
+  "result": {
+    "crlf_count": 0,
+    "lone_cr_count": 0,
+    "mixed_newline_count": 0,
+    "bom_count": 0,
+    "missing_eof_newline_count": 0,
+    "elapsed_ms": 7529,
+    "scanned_count": 1410,
+    "files": null
+  },
+  "stderr": ""
+}

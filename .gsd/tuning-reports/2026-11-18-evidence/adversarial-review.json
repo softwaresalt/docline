@@ -1,0 +1,343 @@
+{
+  "scope": "new-only",
+  "subject": "Uncommitted approved harness changes on chore/migrate-to-gsd",
+  "status": "COMPLETED",
+  "payload": "verify-harness-payload.json",
+  "normalization": "Returned reviewer findings are normalized below with their complete substantive issues and dispositions; this is not claimed to be verbatim process stdout",
+  "anchor_route_status": "TOOL_OK: anchor-review-model",
+  "reviewers": [
+    {
+      "slot": "Anchor",
+      "domain": "overlay-coherence",
+      "agent": "Correctness Reviewer",
+      "model": "gpt-6.1-sol",
+      "reasoning_effort": "high",
+      "finding_count": 0
+    },
+    {
+      "slot": "A",
+      "domain": "template-fidelity",
+      "agent": "Architecture Strategist",
+      "model": "gemini-4-argon",
+      "reasoning_effort": "high",
+      "finding_count": 2
+    },
+    {
+      "slot": "B",
+      "domain": "overlay-coherence",
+      "agent": "Constitution Reviewer",
+      "model": "claude-sonnet-5.5",
+      "reasoning_effort": "high",
+      "finding_count": 4,
+      "limitation": "Read/search-only reviewer could not execute bundle CLI; canonical template fidelity was separately covered by A"
+    },
+    {
+      "slot": "C",
+      "domain": "cross-reference",
+      "agent": "Template Integrity Reviewer",
+      "model": "claude-haiku-5.5",
+      "reasoning_effort": "xhigh",
+      "finding_count": 7
+    }
+  ],
+  "confidence_method": "verify-harness: independently file-confirmed mechanical defects may be HIGH even if raised by only one reviewer; cross-reviewer agreement counts remain explicit",
+  "findings": [
+    {
+      "id": "AUD-A1",
+      "reviewer": "A",
+      "severity": "MAJOR",
+      "domain": "template-fidelity",
+      "file": ".github/agents/_ship.agent.md",
+      "template": "agents/_ship.agent.md.tmpl",
+      "reported_issue": "Ship compilation smoke checks, harness example and Step 4.3 lint/format/test commands retained bare tools while updated manifest template variables rendered uv run commands",
+      "reported_fix": "Align Ship command occurrences to uv run and refresh its raw checksum",
+      "reviewer_auto_fixable": true,
+      "agreement_count": 1,
+      "confidence": "HIGH",
+      "scope_basis": "Completes the already approved TUNE-002 command-environment contract",
+      "disposition": "corrected",
+      "correction": "Prefixed smoke/lint/format/test commands with uv run; replaced invalid historical pytest --test example with uv run pytest tests/parity/ using actual prepared paths; no full-build weakening"
+    },
+    {
+      "id": "AUD-A2",
+      "reviewer": "A",
+      "severity": "MINOR",
+      "domain": "template-fidelity",
+      "file": ".gsd/harness-manifest.yaml",
+      "template": "instructions/copilot-code-review.instructions.md.tmpl",
+      "reported_issue": "HARNESS_ENFORCED_SUMMARY still recorded bare pytest, Ruff and pyright despite live focus instruction using uv run",
+      "reported_fix": "Refresh the rendered summary variable to the same uv run commands",
+      "reviewer_auto_fixable": true,
+      "agreement_count": 1,
+      "confidence": "HIGH",
+      "scope_basis": "Completes TUNE-002 manifest provenance for already accepted command changes",
+      "disposition": "corrected"
+    },
+    {
+      "id": "AUD-B1",
+      "reviewer": "B",
+      "severity": "MINOR",
+      "domain": "overlay-coherence",
+      "file": "AGENTS.md",
+      "related_files": [
+        ".github/copilot-instructions.md"
+      ],
+      "reported_issue": "Foundation retrieval summaries omit structural categories and direct-tool exemptions and use narrower fallback wording than authoritative pack/coordinator files",
+      "reported_fix": "Expand foundation summaries or fix upstream templates while preserving internal/no-public-web safeguards",
+      "reviewer_auto_fixable": false,
+      "agreement_count": 1,
+      "confidence": "MEDIUM",
+      "scope_basis": "Pre-existing summary wording; authoritative pack and coordinator retain full structural routes and exemptions; not introduced by the approved command edits",
+      "disposition": "open-advisory",
+      "operator_review": "Review a separately scoped foundation/template wording change; no automatic expansion"
+    },
+    {
+      "id": "AUD-B2",
+      "reviewer": "B",
+      "severity": "MINOR",
+      "domain": "overlay-coherence",
+      "file": ".github/instructions/constitution.instructions.md",
+      "related_files": [
+        "AGENTS.md"
+      ],
+      "reported_issue": "Pre-existing condensed AGENTS principle numbering/levels differ from full constitution, XI lacks an enforcement-model row, and four-command quality blocks do not enumerate the separately required full build",
+      "reported_fix": "Align constitution/AGENTS numbering and enforcement mapping and include the full build in quality-gate blocks, preferably upstream",
+      "reviewer_auto_fixable": false,
+      "agreement_count": 1,
+      "confidence": "MEDIUM",
+      "scope_basis": "Renumbering/redefining principles and gate-list composition is a distinct policy/template decision; current accepted full build remains present in profile, CI, hooks and PR evidence requirements",
+      "disposition": "open-advisory",
+      "operator_review": "Requires a separately approved policy/template consistency change; no principle changes made"
+    },
+    {
+      "id": "AUD-B3",
+      "reviewer": "B",
+      "severity": "MINOR",
+      "domain": "overlay-coherence",
+      "file": ".github/agents/_stage.agent.md",
+      "reported_issue": "Reviewer did not find a standalone Engram/KBDB session-start health check matching Ship; Stage contains recovery health labels and delegates to pack guidance, but reviewer could not compare canonical template",
+      "reported_fix": "Compare Stage with its template and consider symmetric health checks",
+      "reviewer_auto_fixable": false,
+      "agreement_count": 1,
+      "confidence": "LOW",
+      "scope_basis": "Stage is an explicitly preserved, byte-unchanged control outside the modified-live-file scope",
+      "disposition": "unconfirmed-outside-scope",
+      "operator_review": "No restoration or Stage rewrite without separate investigation/approval"
+    },
+    {
+      "id": "AUD-B4",
+      "reviewer": "B",
+      "severity": "MINOR",
+      "domain": "overlay-coherence",
+      "file": ".gsd/workspace-profile.yaml",
+      "reported_issue": "Existing profile records legacy engram:start/end detection markers while live foundation block uses pack-scope:agent-engram:begin/end",
+      "reported_fix": "Refresh marker evidence or label it historical on a later profile regeneration",
+      "reviewer_auto_fixable": false,
+      "agreement_count": 1,
+      "confidence": "HIGH",
+      "scope_basis": "Pre-existing optional detection-provenance hygiene, not a required behavior or approved framework/KBDB correction",
+      "disposition": "open-advisory",
+      "operator_review": "Retain as an open factual-gardening observation; do not alter the Linux-only schema sentinel"
+    },
+    {
+      "id": "AUD-C1",
+      "reviewer": "C",
+      "severity": "MAJOR",
+      "domain": "cross-reference",
+      "file": ".github/skills/shipment-reconcile/SKILL.md",
+      "template": "skills/shipment-reconcile/SKILL.md.tmpl",
+      "reported_issue": "Three task-artifact filter authorities point at unpacked templates/agents/_ship.agent.md.tmpl rather than installed Ship Step 1a",
+      "reported_fix": "Point the three operative references at .github/agents/_ship.agent.md Step 1a",
+      "reviewer_auto_fixable": true,
+      "agreement_count": 1,
+      "confidence": "HIGH",
+      "scope_basis": "Completes approved TUNE-005 installed local-authority rewrites",
+      "disposition": "corrected"
+    },
+    {
+      "id": "AUD-C2",
+      "reviewer": "C",
+      "severity": "MAJOR",
+      "domain": "cross-reference",
+      "file": "scripts/ci-topology-check.sh",
+      "template": "ci/ci-topology-check.sh.tmpl",
+      "reported_issue": "The new local backlogit instruction citation does not actually contain the phase-semantics matrix claimed by the script header/error guidance",
+      "reported_fix": "Make the ambient contract available from a real local authority instead of claiming a nonexistent matrix",
+      "reviewer_auto_fixable": false,
+      "assembler_auto_fixable": true,
+      "agreement_count": 1,
+      "confidence": "HIGH",
+      "scope_basis": "Corrects the misleading reference introduced by TUNE-005; no new gate matrix or policy is invented",
+      "disposition": "corrected",
+      "correction": "Removed nonexistent-matrix attribution, retained self-contained ambient behavior/header, identified native gate JSON as runtime authority, and pointed BLOCK guidance at this installed entrypoint"
+    },
+    {
+      "id": "AUD-C3",
+      "reviewer": "C",
+      "severity": "MAJOR",
+      "domain": "cross-reference",
+      "file": ".github/agents/_ship.agent.md",
+      "template": "agents/_ship.agent.md.tmpl",
+      "reported_issue": "Ship hosted-review inventory still mandates undefined RC-1 through RC-12 classes although pr-lifecycle now requires actual local taxonomy or unclassified",
+      "reported_fix": "Remove the mandatory undefined taxonomy prerequisite without fabricating classes",
+      "reviewer_auto_fixable": false,
+      "assembler_auto_fixable": true,
+      "agreement_count": 1,
+      "confidence": "HIGH",
+      "scope_basis": "Completes TUNE-005 consistency with the approved local-taxonomy fallback and installed evidence checklist",
+      "disposition": "corrected"
+    },
+    {
+      "id": "AUD-C4",
+      "reviewer": "C",
+      "severity": "MINOR",
+      "domain": "cross-reference",
+      "file": ".github/agents/_orchestrator.agent.md",
+      "template": "agents/_orchestrator.agent.md.tmpl",
+      "reported_issue": "Thematic grouping, build-conflict and actionable post-merge reload language still points at templates/instructions instead of installed agent authorities",
+      "reported_fix": "Use installed Orchestrator/Ship file paths for operative references",
+      "reviewer_auto_fixable": true,
+      "agreement_count": 1,
+      "confidence": "HIGH",
+      "scope_basis": "Completes TUNE-005 installed-authority wording; no orchestration behavior or route change",
+      "disposition": "corrected"
+    },
+    {
+      "id": "AUD-C5",
+      "reviewer": "C",
+      "severity": "MINOR",
+      "domain": "cross-reference",
+      "file": ".github/skills/pr-lifecycle/SKILL.md",
+      "reported_issue": "PR skill's preserved Check 5 explicitly lists SATISFIED/NOT_APPLICABLE while github-pr-automation also documents operator-authorized audited DISABLED",
+      "reported_fix": "Consider including audited DISABLED in the accepted-verdict list",
+      "reviewer_auto_fixable": false,
+      "agreement_count": 1,
+      "confidence": "HIGH",
+      "scope_basis": "Operator explicitly required preservation of the existing stricter P-018 gate; loosening accepted verdicts is not authorized by Tune",
+      "disposition": "intentional-hardened-override",
+      "operator_review": "Only a separately approved policy decision may relax this behavior"
+    },
+    {
+      "id": "AUD-C6",
+      "reviewer": "C",
+      "severity": "MINOR",
+      "domain": "cross-reference",
+      "file": ".gsd/workspace-profile.yaml",
+      "reported_issue": "pre_push_gates lists only discovered Python gates, not the separately composed required markdownlint gate",
+      "reported_fix": "Add required markdownlint to pre_push_gates and regenerate hashes",
+      "reviewer_auto_fixable": false,
+      "agreement_count": 1,
+      "confidence": "HIGH",
+      "disposition": "dismissed-schema-contract",
+      "reason": "The versioned profile enum is test/lint/format/typecheck/build, not markdownlint. tools.markdownlint:true and actual required hook branches record/enforce the universal Markdown gate separately. Proposed array entry would break schema validation."
+    },
+    {
+      "id": "AUD-C7",
+      "reviewer": "C",
+      "severity": "MINOR",
+      "domain": "cross-reference",
+      "file": ".github/workflows/ci.yml",
+      "reported_issue": "Docs-only negations cover configured legacy .backlogit, not a future absent .backlog directory; a hypothetical .backlog-only diff would run expensive gates",
+      "reported_fix": "Consider adding the future root to workflow and profile docs-only patterns after approval",
+      "reviewer_auto_fixable": false,
+      "agreement_count": 1,
+      "confidence": "HIGH",
+      "scope_basis": "Current root is intentionally retained legacy .backlogit; hypothetical new-root optimization is fail-closed and outside approved migration-free Tune",
+      "disposition": "open-advisory",
+      "operator_review": "Revisit with an approved backlog-root migration; no workflow gate weakened here"
+    }
+  ],
+  "scope_limitations": [
+    "No review finding is represented as a committed/pushed fix",
+    "Open advisories are not marked closed or captured into a forbidden backlog root",
+    "Only same-contract TUNE-002/TUNE-005 corrections were authorized for automatic remediation",
+    "No application code, upstream GSD templates, principle numbering, Stage recovery or accepted P-018 verdict policy changed"
+  ],
+  "post_remediation_review": {
+    "state": "completed",
+    "cycles_run": 2,
+    "max_cycles": 2,
+    "final_pool_findings": 0
+  },
+  "delta_reviews": [
+    {
+      "cycle": 1,
+      "anchor_findings": [],
+      "reviewer_a_findings": [],
+      "reviewer_b_findings": [],
+      "reviewer_c_findings": [
+        {
+          "id": "AUD-D1",
+          "severity": "MINOR",
+          "domain": "cross-reference",
+          "file": ".github/skills/shipment-reconcile/SKILL.md",
+          "reported_issue": "Installed Ship path corrected but item label Step 1a ambiguous; actual item is Step 0.5 primary-path item 1a",
+          "auto_fixable": true,
+          "confidence": "HIGH",
+          "disposition": "corrected",
+          "scope_basis": "Completes introduced TUNE-005 reference-label correction"
+        },
+        {
+          "id": "AUD-D2",
+          "severity": "MINOR",
+          "domain": "cross-reference",
+          "file": "scripts/ci-topology-check.sh",
+          "reported_issue": "Residual header still locates topology job in absent unpacked templates/ci/ci.yml.tmpl",
+          "auto_fixable": true,
+          "confidence": "HIGH",
+          "disposition": "corrected",
+          "scope_basis": "Completes same TUNE-005 installed-workflow locator change"
+        },
+        {
+          "id": "AUD-D3",
+          "severity": "MINOR",
+          "domain": "cross-reference",
+          "file": ".github/agents/_ship.agent.md",
+          "reported_issue": "Ship should explicitly name the documentation audit instruction already required by its PR-skill inventory authority",
+          "auto_fixable": true,
+          "confidence": "HIGH",
+          "disposition": "corrected",
+          "scope_basis": "Completes local authority parity; additive pointer, no new policy"
+        },
+        {
+          "id": "AUD-D4",
+          "severity": "MINOR",
+          "domain": "cross-reference",
+          "file": "post-audit-verifier.json",
+          "reported_issue": "Reviewer could not reproduce 12/12 targeted-check denominator and inferred 15 schema contracts",
+          "auto_fixable": false,
+          "confidence": "HIGH",
+          "disposition": "dismissed-count-reproduced",
+          "reason": "Native JSON has 12 named targeted_checks entries, each ok:true, and 3 schema_contracts entries. Reproduced by parsing actual file; see native-check-count-proof.json. No native report was rewritten."
+        }
+      ]
+    },
+    {
+      "cycle": 2,
+      "anchor_findings": [],
+      "reviewer_a_findings": [],
+      "reviewer_b_findings": [],
+      "reviewer_c_findings": [],
+      "scope": "Three final reference-label/input corrections plus refreshed manifest hashes",
+      "result": "PASS"
+    }
+  ],
+  "verified_at": "2026-11-18T07:54:27Z",
+  "verification_result": "PASS",
+  "summary": {
+    "reported_items_including_delta": 17,
+    "initial_findings": 13,
+    "delta_findings": 4,
+    "corrected_items": 9,
+    "corrected_major": 4,
+    "corrected_minor": 5,
+    "open_minor_advisories": 4,
+    "unconfirmed_outside_scope": 1,
+    "intentional_hardened_override": 1,
+    "dismissed": 2,
+    "remaining_high_critical_major": 0,
+    "final_delta_findings": 0,
+    "backlog_writes": 0
+  },
+  "result_qualification": "PASS means zero remaining HIGH CRITICAL/MAJOR defects in the accepted change and a clean final bounded re-review; pre-existing/open MINOR observations are neither applied nor silently closed. Not PR/merge readiness."
+}

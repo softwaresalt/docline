@@ -1,0 +1,83 @@
+{
+  "recorded_at": "2026-11-18T07:27:10Z",
+  "normalized": [
+    {
+      "path": ".gsd/tuning-reports/2026-11-18-evidence/baseline-execution.json",
+      "backup": ".gsd/backups/2026-11-18/evidence-line-endings/.gsd/tuning-reports/2026-11-18-evidence/baseline-execution.json",
+      "before_sha256": "a18ccb0b9e4f0e27a8f0ad8d2cf8529f914aa210a4c7183037a788ace2cc5753",
+      "after_sha256": "3520a9583777a8c4581c748ee20ee3da7e2cef12070d2dfb727f44195f81d28d",
+      "content_change": "newline normalization only"
+    },
+    {
+      "path": ".gsd/tuning-reports/2026-11-18-evidence/baseline-preview-differences.json",
+      "backup": ".gsd/backups/2026-11-18/evidence-line-endings/.gsd/tuning-reports/2026-11-18-evidence/baseline-preview-differences.json",
+      "before_sha256": "fbc40bbe0e1f3613d63e0cdcacedc37b21fd2f354b907900e45cbe9719f785a2",
+      "after_sha256": "845faefe4952e0a982b2d12a04d036ac24adddded3ddc393b5e9db25594846aa",
+      "content_change": "newline normalization only"
+    },
+    {
+      "path": ".gsd/tuning-reports/2026-11-18-evidence/closure-content-review.json",
+      "backup": ".gsd/backups/2026-11-18/evidence-line-endings/.gsd/tuning-reports/2026-11-18-evidence/closure-content-review.json",
+      "before_sha256": "3926b32afe741806c24d181468705db5c2ef60268791d15ebe6c967724348aa4",
+      "after_sha256": "95dbe3a295f85b46e61985e5ba4c8a2d6d607b5f674fa0a89e317268c22591c5",
+      "content_change": "newline normalization only"
+    },
+    {
+      "path": ".gsd/tuning-reports/2026-11-18-evidence/community-registry.json",
+      "backup": ".gsd/backups/2026-11-18/evidence-line-endings/.gsd/tuning-reports/2026-11-18-evidence/community-registry.json",
+      "before_sha256": "63e4053e85f995a81be4255226f9cff72426c4a9e89e27b05d6d7b53cb16d1cd",
+      "after_sha256": "2981facde46c7a70c2dd1e307fcbf61a90dd8dc88a346e696aac3da5c25fe0d5",
+      "content_change": "newline normalization only"
+    },
+    {
+      "path": ".gsd/tuning-reports/2026-11-18-evidence/compact-context-assessment.json",
+      "backup": ".gsd/backups/2026-11-18/evidence-line-endings/.gsd/tuning-reports/2026-11-18-evidence/compact-context-assessment.json",
+      "before_sha256": "397bcf9faf80b97cbe0daa76dca884f9ea2c54b0742c632cbfbaf0bd26b56c85",
+      "after_sha256": "08bd798e9ed9d04ac541cd6ebb7d781c8f0a340b7a26065721af0c4c99692729",
+      "content_change": "newline normalization only"
+    },
+    {
+      "path": ".gsd/tuning-reports/2026-11-18-evidence/config-validation.json",
+      "backup": ".gsd/backups/2026-11-18/evidence-line-endings/.gsd/tuning-reports/2026-11-18-evidence/config-validation.json",
+      "before_sha256": "688e4a626ec10d877e63929c9e0861613c3c40e146ead2aa11d0c86e1ef91310",
+      "after_sha256": "9097cb384430e70bbe175899924ad948545d60d3e7463bdfc58890f204b02d62",
+      "content_change": "newline normalization only"
+    },
+    {
+      "path": ".gsd/tuning-reports/2026-11-18-evidence/health-report.json",
+      "backup": ".gsd/backups/2026-11-18/evidence-line-endings/.gsd/tuning-reports/2026-11-18-evidence/health-report.json",
+      "before_sha256": "1fa25eac8be2cbb6c8393d3590ec678cb607fcc1c9202cddd8206d7fe041138e",
+      "after_sha256": "e232d159b1f493056548c93590b8c6372ffd9ffefa3c159a1cba5165d61c85e1",
+      "content_change": "newline normalization only"
+    },
+    {
+      "path": ".gsd/tuning-reports/2026-11-18-evidence/learning-review.json",
+      "backup": ".gsd/backups/2026-11-18/evidence-line-endings/.gsd/tuning-reports/2026-11-18-evidence/learning-review.json",
+      "before_sha256": "50fb0f056635e573b646992a74385627cc9753997604d666bcda0d24f596080a",
+      "after_sha256": "3c849f43822a707e9bb41fe2c89464515ed466e14fe967e53a06eecfcbb40646",
+      "content_change": "newline normalization only"
+    },
+    {
+      "path": ".gsd/tuning-reports/2026-11-18-evidence/literal-reference-check.json",
+      "backup": ".gsd/backups/2026-11-18/evidence-line-endings/.gsd/tuning-reports/2026-11-18-evidence/literal-reference-check.json",
+      "before_sha256": "f3abc329391b630bb1491ecb6aec30932f6e6c4c757ffd5dfa3d760552247a65",
+      "after_sha256": "4f6144f31f7b79742772a5f5ca6cece608a8ca9ecefbd33b89c44f85da60cbca",
+      "content_change": "newline normalization only"
+    },
+    {
+      "path": ".gsd/tuning-reports/2026-11-18-evidence/test-windows-bootstrap.ps1",
+      "backup": ".gsd/backups/2026-11-18/evidence-line-endings/.gsd/tuning-reports/2026-11-18-evidence/test-windows-bootstrap.ps1",
+      "before_sha256": "9a0db37c5ff049b72e67bf1480b6565fa1007591b2b29e621422816fb1627f30",
+      "after_sha256": "d2f763c617b85447c9d40c29d7dcfc50d479c076a3fd4aee8f2a92d43a0a6103",
+      "content_change": "newline normalization only"
+    }
+  ],
+  "exact_backup_directory_relocated": {
+    "from": ".gsd/tuning-reports/2026-11-18-evidence/revision-backups/20261118T060145Z",
+    "to": ".gsd/backups/2026-11-18/revision-proposal-20261118T060145Z",
+    "bytes_preserved": true,
+    "reason": "Keep exact CRLF historical backups outside the managed-LF report surface"
+  },
+  "raw_verifier_evidence_unchanged": true,
+  "deletions": 0
+}

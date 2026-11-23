@@ -1,0 +1,40 @@
+{
+  "native_report": "post-audit-verifier.json",
+  "native_report_sha256": "14b97b90f30addf3528a38d7fbd3905a2a23ceeab72fc02924982f2b057e0ce5",
+  "targeted_checks_count": 12,
+  "targeted_check_names": [
+    "agent_skill_references",
+    "backlog_registry_cli_surface",
+    "backlogit_engine_compatibility",
+    "capability_pack_enforcement",
+    "carry_forward_config",
+    "copilot_code_review_frontmatter",
+    "escalation_chain_directive_parity",
+    "frontmatter_conformity",
+    "model_routing_escalation",
+    "orchestrator_workspace_identity",
+    "ship_workspace_identity",
+    "stage_workspace_identity"
+  ],
+  "targeted_checks_ok": {
+    "agent_skill_references": true,
+    "backlog_registry_cli_surface": true,
+    "backlogit_engine_compatibility": true,
+    "capability_pack_enforcement": true,
+    "carry_forward_config": true,
+    "copilot_code_review_frontmatter": true,
+    "escalation_chain_directive_parity": true,
+    "frontmatter_conformity": true,
+    "model_routing_escalation": true,
+    "orchestrator_workspace_identity": true,
+    "ship_workspace_identity": true,
+    "stage_workspace_identity": true
+  },
+  "schema_contracts_count": 3,
+  "schema_contract_names": [
+    "config",
+    "manifest",
+    "profile"
+  ],
+  "clarification": "targeted_checks and schema_contracts are separate dictionaries; 12/12 is computed from all 12 targeted checks, not schema contract count"
+}

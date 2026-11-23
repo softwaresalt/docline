@@ -1,0 +1,42 @@
+{
+  "network_calls": 0,
+  "verified_at": "2026-11-18T07:27:42Z",
+  "test_root": "C:\\Source\\GitHub\\docline\\logs\\gsd-tune-20261118-bootstrap-copies",
+  "hosted_ci_executed": false,
+  "bootstrap_sha256": "a4f2772a14a2189652e4ae9b8d687aefdd251b4cb92b2768e2ee41fe101eb7c3",
+  "cases": [
+    {
+      "case": "cached",
+      "expected_error": null,
+      "offline_download_calls": [],
+      "passed": true
+    },
+    {
+      "case": "fresh",
+      "expected_error": null,
+      "offline_download_calls": [
+        "https://github.com/softwaresalt/GSD/releases/download/v1.6.0/gsd-windows-amd64.exe",
+        "https://github.com/softwaresalt/GSD/releases/download/v1.6.0/gsd-assets.zip"
+      ],
+      "passed": true
+    },
+    {
+      "case": "bad-exe",
+      "expected_error": "SHA-256 mismatch: gsd.exe",
+      "offline_download_calls": [],
+      "passed": true
+    },
+    {
+      "case": "bad-alias",
+      "expected_error": "SHA-256 mismatch: gsd-assets.zip",
+      "offline_download_calls": [],
+      "passed": true
+    },
+    {
+      "case": "bad-manifest",
+      "expected_error": "Existing runtime-manifest.json does not match the pinned Windows runtime",
+      "offline_download_calls": [],
+      "passed": true
+    }
+  ]
+}

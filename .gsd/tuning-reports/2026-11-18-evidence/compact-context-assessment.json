@@ -1,0 +1,37 @@
+{
+  "invoked": true,
+  "mode": "assessment-only, proposal scope",
+  "directories": {
+    "docs/memory": {
+      "file_count": 63,
+      "bytes": 405909,
+      "over_40_files": true,
+      "over_500_kib": false,
+      "mtime_older_than_14_days_count": 59,
+      "eligibility": "not assumed; no active-checkpoint registry in this leaf runtime"
+    },
+    "docs/plans": {
+      "file_count": 40,
+      "bytes": 717943,
+      "over_40_files": false,
+      "over_500_kib": true,
+      "mtime_older_than_14_days_count": 39,
+      "eligibility": "not assumed; no active-checkpoint registry in this leaf runtime"
+    },
+    "docs/closure": {
+      "file_count": 88,
+      "bytes": 617534,
+      "over_40_files": true,
+      "over_500_kib": true,
+      "mtime_older_than_14_days_count": 88,
+      "eligibility": "not assumed; no active-checkpoint registry in this leaf runtime"
+    }
+  },
+  "compacted": 0,
+  "archived": 0,
+  "plans_consolidated": 0,
+  "closure_records_compacted": 0,
+  "space_recovered_bytes": 0,
+  "preserved": "all existing tracking files; active-checkpoint status not queried in leaf runtime",
+  "reason": "Operator permits only requested reports/evidence and concise continuity memory; unrelated archival and edits prohibited."
+}

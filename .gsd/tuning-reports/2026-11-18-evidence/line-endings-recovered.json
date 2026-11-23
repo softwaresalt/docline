@@ -1,0 +1,23 @@
+{
+  "checked_at": "2026-11-18T07:29:02Z",
+  "exit_code": 1,
+  "result": {
+    "crlf_count": 1,
+    "lone_cr_count": 0,
+    "mixed_newline_count": 1,
+    "bom_count": 0,
+    "missing_eof_newline_count": 0,
+    "elapsed_ms": 7293,
+    "scanned_count": 1399,
+    "files": [
+      {
+        "path": ".gsd/tuning-reports/2026-11-18-evidence/windows-bootstrap-test-results.json",
+        "class": "managed-lf",
+        "expected": "LF, UTF-8 without BOM",
+        "actual": "mixed LF/CRLF",
+        "first_offending_byte_offset": 1
+      }
+    ]
+  },
+  "stderr": ""
+}

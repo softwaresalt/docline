@@ -1,0 +1,41 @@
+{
+  "recorded_at": "2026-11-18T07:21:41Z",
+  "status": "RESOLVED",
+  "cause": "Offline test created hardlinks to trusted release assets; GSD containment requires single-linked files",
+  "fixture_links_requiring_unlink_approval": [
+    "logs/gsd-tune-20261118-bootstrap/cached/.gsd/gsd.exe",
+    "logs/gsd-tune-20261118-bootstrap/cached/.gsd/gsd-assets-v1.6.0.zip",
+    "logs/gsd-tune-20261118-bootstrap/cached/.gsd/gsd-assets.zip"
+  ],
+  "originals_must_not_be_unlinked": [
+    ".gsd/gsd.exe",
+    ".gsd/gsd-assets-v1.6.0.zip"
+  ],
+  "original_sha256": {
+    ".gsd/gsd.exe": "df8a29d5a9f7f1306a9abe2ca1ae5e314e638ebfa0d9ac8a1ec4524cea27470e",
+    ".gsd/gsd-assets-v1.6.0.zip": "b170652c9d83786cde8e988ef8d4c9cf47fb7039373383645b2a7ad7d053ebc1"
+  },
+  "original_nlink": {
+    ".gsd/gsd.exe": 2,
+    ".gsd/gsd-assets-v1.6.0.zip": 3
+  },
+  "approval_requested": false,
+  "unlink_performed": false,
+  "test_failure": "Fresh-case mocked downloader raised null-valued expression; test harness needs ordinary copies and scope correction",
+  "next_action": "Approve unlink of only the three generated fixture links; replace hardlinks with ordinary copies and fix stub, then rerun Phase 5",
+  "reviewer_dispatch": "not attempted before deterministic checks pass",
+  "new_packages_installed": false,
+  "network_downloads_performed": false,
+  "commit_or_push": false,
+  "resolution": {
+    "resolved_at": "2026-11-18T07:25:09Z",
+    "method": "Operator-approved exclusive copy-and-rename swap",
+    "evidence": "link-recovery.json",
+    "deletions": 0,
+    "overwrites": 0,
+    "originals_nlink_after": 1,
+    "verifier_after": "final-verifier.json",
+    "verifier_exit_code": 0,
+    "note": "Earlier unlink request was superseded; no unlink performed; old linked entries preserved in ignored logs"
+  }
+}

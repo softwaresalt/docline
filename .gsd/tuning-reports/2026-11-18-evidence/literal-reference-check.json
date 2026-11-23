@@ -1,0 +1,415 @@
+{
+  "method": "Literal single-backtick concrete repo-root paths in manifest Markdown; excludes glob/dynamic/example path syntax. Missing candidates require context triage, not all are broken runtime dependencies.",
+  "checked_references": 284,
+  "missing_candidates": {
+    "docs/compound/2026-05-07-backlogit-shipment-status-constraints.md": [
+      {
+        "path": ".github/agents/_orchestrator.agent.md",
+        "line": 93,
+        "text": "`docs/compound/2026-05-07-backlogit-shipment-status-constraints.md`."
+      },
+      {
+        "path": ".github/agents/_ship.agent.md",
+        "line": 176,
+        "text": "1a. **Queued-with-active-work early-warning (Unit B \u2014 NON-NEGOTIABLE ordering: runs immediately after the shipment record is loaded, BEFORE the status validation in step 1b and BEFORE the Step 0.5.4 claim)**: Enumerate the manifest task IDs from the loaded record (`backlogit shipment get {shipment_i"
+      },
+      {
+        "path": ".github/agents/_ship.agent.md",
+        "line": 283,
+        "text": "    - If the re-read status is anything other than `active` or `queued`: halt **immediately** with `CLAIM_VERIFY_FAILED: shipment {shipment_id} returned unexpected status {status}` \u2014 **no retry, no claim**. Any value outside `{active, queued}` is a fail-closed anomaly and must record a P-005 event. "
+      },
+      {
+        "path": ".github/agents/_ship.agent.md",
+        "line": 922,
+        "text": "`docs/compound/2026-05-07-backlogit-shipment-status-constraints.md`."
+      },
+      {
+        "path": ".github/instructions/backlogit.instructions.md",
+        "line": 108,
+        "text": "  documented in `docs/compound/2026-05-07-backlogit-shipment-status-constraints.md`"
+      },
+      {
+        "path": ".github/skills/shipment-reconcile/SKILL.md",
+        "line": 164,
+        "text": "(`docs/compound/2026-05-07-backlogit-shipment-status-constraints.md`). The"
+      },
+      {
+        "path": ".github/skills/shipment-reconcile/SKILL.md",
+        "line": 187,
+        "text": "`docs/compound/2026-05-07-backlogit-shipment-status-constraints.md`) \u2014 a"
+      }
+    ],
+    "docs/size-complexity-reference.md": [
+      {
+        "path": ".github/agents/_stage.agent.md",
+        "line": 644,
+        "text": "`docs/size-complexity-reference.md` is present in the current workspace (as"
+      },
+      {
+        "path": ".github/skills/harvest/SKILL.md",
+        "line": 108,
+        "text": "`docs/size-complexity-reference.md` is present in the current workspace (as it"
+      }
+    ],
+    "docs/security/YYYY-MM-DD-HH-MM-security-sentinel.md": [
+      {
+        "path": ".github/agents/subagents/security-sentinel.agent.md",
+        "line": 137,
+        "text": "Save the audit report to `docs/security/YYYY-MM-DD-HH-MM-security-sentinel.md` where `YYYY-MM-DD` is today's date and `HH-MM` is the current time (24-hour). The time component prevents clobbering earlier runs on the same day."
+      }
+    ],
+    "docs/QUALITY_SCORE.md": [
+      {
+        "path": ".github/instructions/architecture-doc.instructions.md",
+        "line": 24,
+        "text": "   * `docs/QUALITY_SCORE.md` \u2014 Quality grades per domain"
+      },
+      {
+        "path": ".github/instructions/architecture-doc.instructions.md",
+        "line": 55,
+        "text": "* **Quality implications** \u2192 update `docs/QUALITY_SCORE.md`"
+      },
+      {
+        "path": "AGENTS.md",
+        "line": 312,
+        "text": "| Quality grades per domain | `docs/QUALITY_SCORE.md` |"
+      }
+    ],
+    "docs/compound/2026-08-16-bounded-review-fix-cycle-scope-and-mechanical-consequence-judgment.md": [
+      {
+        "path": ".github/instructions/circuit-breaker.instructions.md",
+        "line": 243,
+        "text": "`docs/compound/2026-08-16-bounded-review-fix-cycle-scope-and-mechanical-consequence-judgment.md`):"
+      },
+      {
+        "path": ".github/policies/workflow-policies.md",
+        "line": 935,
+        "text": "  * **C1 worked discrimination** (hardening H6; provenance: `docs/compound/2026-08-16-bounded-review-fix-cycle-scope-and-mechanical-consequence-judgment.md`):"
+      },
+      {
+        "path": ".github/skills/review/SKILL.md",
+        "line": 263,
+        "text": "  `docs/compound/2026-08-16-bounded-review-fix-cycle-scope-and-mechanical-consequence-judgment.md`."
+      }
+    ],
+    "docs/compound/2026-09-07-copilot-review-finding-pattern-taxonomy.md": [
+      {
+        "path": ".github/instructions/copilot-code-review.instructions.md",
+        "line": 77,
+        "text": "`docs/compound/2026-09-07-copilot-review-finding-pattern-taxonomy.md` and its 10-point"
+      },
+      {
+        "path": ".github/skills/pr-lifecycle/SKILL.md",
+        "line": 184,
+        "text": "   `docs/compound/2026-09-07-copilot-review-finding-pattern-taxonomy.md`. A finding that fits no class is"
+      },
+      {
+        "path": ".github/skills/pr-lifecycle/SKILL.md",
+        "line": 366,
+        "text": "   (start from `docs/compound/2026-09-07-copilot-review-finding-pattern-taxonomy.md`). Create a new"
+      },
+      {
+        "path": ".github/skills/review/SKILL.md",
+        "line": 158,
+        "text": "   `docs/compound/2026-09-07-copilot-review-finding-pattern-taxonomy.md` (the 12 root-cause classes"
+      },
+      {
+        "path": ".github/agents/subagents/evidence-consistency-reviewer.agent.md",
+        "line": 19,
+        "text": "`docs/compound/2026-09-07-copilot-review-finding-pattern-taxonomy.md` against the"
+      }
+    ],
+    "docs/compound/2026-08-21-backlogit-1-10-shipment-claim-cascades-to-children.md": [
+      {
+        "path": ".github/policies/workflow-policies.md",
+        "line": 81,
+        "text": "**Observed-version attribution**: backlogit `ClaimShipment` activates the shipment record and every included queued member in one all-or-nothing operation. That behaviour was observed against backlogit 1.10.0 (`docs/compound/2026-08-21-backlogit-1-10-shipment-claim-cascades-to-children.md`, pinned u"
+      }
+    ],
+    "docs/decisions/2026-09-15-173-s-terminal-shipment-closure-deliberation.md": [
+      {
+        "path": ".github/policies/workflow-policies.md",
+        "line": 604,
+        "text": "**SUPERSESSION NOTE (2026-09-15, amended 2026-09-16).** The withdrawn hierarchical-closure reading and the withdrawn `TERMINAL_CLOSE` design are retained as **SUPERSEDED PROVENANCE ONLY**. See `docs/decisions/2026-09-15-173-s-terminal-shipment-closure-deliberation.md` for that superseded provenance."
+      }
+    ],
+    "docs/spikes/2026-08-18-cascade-close-pre-archived-member-behavior.md": [
+      {
+        "path": ".github/policies/workflow-policies.md",
+        "line": 642,
+        "text": "   **SUPERSESSION NOTE (155-S, 2026-08-29).** This item previously asserted that the cascade operation \"returns \\[pre-archived members] in its `archived_ids` result exactly as it does newly-archived members\", and pinned an exact-match, full-set-equality post-condition against the full manifest as on"
+      },
+      {
+        "path": ".github/skills/shipment-reconcile/SKILL.md",
+        "line": 1277,
+        "text": "   `docs/spikes/2026-08-18-cascade-close-pre-archived-member-behavior.md`"
+      }
+    ],
+    "docs/decisions/2026-09-15-flat-manifest-shipment-closure-deliberation.md": [
+      {
+        "path": ".github/policies/workflow-policies.md",
+        "line": 997,
+        "text": "| 1.25.0  | 2026-11-18     | Rewrote P-015    | 174-S (166-F, operator architectural correction, `docs/decisions/2026-09-15-flat-manifest-shipment-closure-deliberation.md`): withdraws the hierarchical-descendant-coverage premise underlying the 1.19.0\u20131.24.0 corrections in favor of a flat-manifest, e"
+      }
+    ],
+    "docs/decisions/2026-09-29-backlogit-1-11-cascade-linked-deliberation-alignment-deliberation.md": [
+      {
+        "path": ".github/policies/workflow-policies.md",
+        "line": 1000,
+        "text": "| 1.28.0  | 2026-11-18     | Corrected P-015  | 203-S (197-F, 195-F slice 2; `docs/decisions/2026-09-29-backlogit-1-11-cascade-linked-deliberation-alignment-deliberation.md`): aligns P-015 with the backlogit 1.11.x cascade \u2014 flat `allowed_ids(S) = closure_scope(S)`, `required_ids(S)` over every mani"
+      },
+      {
+        "path": ".github/policies/workflow-policies.md",
+        "line": 1001,
+        "text": "| 1.29.0  | 2026-11-18     | Corrected P-015  | 204-S (198-F, 195-F slice 3; `docs/decisions/2026-09-29-backlogit-1-11-cascade-linked-deliberation-alignment-deliberation.md`): splits the closure postconditions into the close-path gate (INV-10, evaluated before INV-12 disposition) and the separately "
+      }
+    ],
+    "docs/plans/2026-09-27-context-tier-model-routing-plan.md": [
+      {
+        "path": ".github/policies/workflow-policies.md",
+        "line": 1002,
+        "text": "| 1.30.0  | 2026-11-18     | Amended P-013.5  | 200-S (194-F C6a, 194.010-T; `docs/plans/2026-09-27-context-tier-model-routing-plan.md`): the invocation-time directive now carries the resolved `context_tier` (provider- and environment-agnostic capacity classes `default` / `long_context`; no vendor, "
+      },
+      {
+        "path": ".github/policies/workflow-policies.md",
+        "line": 1003,
+        "text": "| 1.31.0  | 2026-11-18     | Amended P-013.6  | 200-S (194-F C6b, 194.011-T; `docs/plans/2026-09-27-context-tier-model-routing-plan.md`): the escalation payload records the resolved escalation `context_tier` in a separate `resolved_escalation_context_tier` field; the `resolved_escalation_route` `(mo"
+      }
+    ],
+    "docs/plans/2026-09-25-ship-lifecycle-release-units-plan.md": [
+      {
+        "path": ".github/policies/workflow-policies.md",
+        "line": 1004,
+        "text": "| 1.32.0  | 2026-11-18     | Corrected P-002/P-004 | 192-S (186-F A1, 186.001-T; `docs/plans/2026-09-25-ship-lifecycle-release-units-plan.md`, Unit A): P-002's Statement and harness-architect Postcondition scope \"all tests fail\" to the current task's expected-RED roster, matching P-004. P-004 define"
+      }
+    ],
+    "docs/plans/2026-10-08-backlogit-carryover-first-cut-plan.md": [
+      {
+        "path": ".github/policies/workflow-policies.md",
+        "line": 1006,
+        "text": "| 1.34.0  | 2026-11-18     | Amended P-011    | 210-S (203-F B5, 203.005-T, stash FB6F9FE0; `docs/plans/2026-10-08-backlogit-carryover-first-cut-plan.md`): the carry-forward set now also includes stash-referenced companion documents \u2014 a NEW file (untracked or staged as added) under `docs/` whose exa"
+      }
+    ],
+    "docs/plans/2026-10-08-r1-claim-marker-consumption-plan.md": [
+      {
+        "path": ".github/policies/workflow-policies.md",
+        "line": 1007,
+        "text": "| 1.35.0  | 2026-11-18     | Added P-002.8    | 212-S (205-F R1, stash 21F8C04A; `docs/plans/2026-10-08-r1-claim-marker-consumption-plan.md`): canonical claim-marker consumption contract (`marker_contract_version: 1`, producer `scheduler-baseline-marker/v1`) \u2014 rules M1\u2013M8 distinguish a claim-assigne"
+      }
+    ],
+    "docs/plans/2026-10-11-model-routing-catalog-bindings-plan.md": [
+      {
+        "path": ".github/policies/workflow-policies.md",
+        "line": 1008,
+        "text": "| 1.36.0  | 2026-11-18     | Amended P-013.5  | 215-S (208-F B10, 208.012-T, stash BF66F08B; `docs/plans/2026-10-11-model-routing-catalog-bindings-plan.md`; `docs/decisions/2026-10-11-model-routing-v2-deliberation.md` 040-DL D10, D12): adds the P-013.5 **Route catalog and site bindings** clause \u2014 ro"
+      }
+    ],
+    "docs/decisions/2026-10-11-model-routing-v2-deliberation.md": [
+      {
+        "path": ".github/policies/workflow-policies.md",
+        "line": 1008,
+        "text": "| 1.36.0  | 2026-11-18     | Amended P-013.5  | 215-S (208-F B10, 208.012-T, stash BF66F08B; `docs/plans/2026-10-11-model-routing-catalog-bindings-plan.md`; `docs/decisions/2026-10-11-model-routing-v2-deliberation.md` 040-DL D10, D12): adds the P-013.5 **Route catalog and site bindings** clause \u2014 ro"
+      }
+    ],
+    "docs/plans/2026-10-19-release-1-6-0-staged-chain-plan.md": [
+      {
+        "path": ".github/policies/workflow-policies.md",
+        "line": 1010,
+        "text": "| 1.38.0  | 2026-11-18     | Amended P-012    | 221-S (214-F S3-U2, 214.002-T; `docs/plans/2026-10-19-release-1-6-0-staged-chain-plan.md` D-S3-2, D-S3-3): declared backlog MCP and CLI surfaces are equal supported surfaces per operation \u2014 an agent may use either working declared surface without tryin"
+      },
+      {
+        "path": ".github/policies/workflow-policies.md",
+        "line": 1011,
+        "text": "| 1.39.0  | 2026-11-18     | Amended P-002/P-004 | 223-S (216-F S5, 216.003-T; `docs/plans/2026-10-19-release-1-6-0-staged-chain-plan.md` S5; `docs/decisions/2026-10-19-docs-only-verification-gated-disposition-deliberation.md` 042-DL D-1 to D-4): adds the verification-gated docs-only task route \u2014 qu"
+      }
+    ],
+    "docs/decisions/2026-10-19-docs-only-verification-gated-disposition-deliberation.md": [
+      {
+        "path": ".github/policies/workflow-policies.md",
+        "line": 1011,
+        "text": "| 1.39.0  | 2026-11-18     | Amended P-002/P-004 | 223-S (216-F S5, 216.003-T; `docs/plans/2026-10-19-release-1-6-0-staged-chain-plan.md` S5; `docs/decisions/2026-10-19-docs-only-verification-gated-disposition-deliberation.md` 042-DL D-1 to D-4): adds the verification-gated docs-only task route \u2014 qu"
+      }
+    ],
+    "docs/plans/2026-10-15-p011-carry-forward-config-plan.md": [
+      {
+        "path": ".github/policies/workflow-policies.md",
+        "line": 1012,
+        "text": "| 1.40.0  | 2026-11-18 | Amended P-011    | 217-S (210-F, 210.005-T; `docs/plans/2026-10-15-p011-carry-forward-config-plan.md`, `docs/decisions/2026-10-15-p011-carry-forward-config-deliberation.md`): the carry-forward set is now the configured set from the operator-owned `.gsd/carry-forward.yaml` (s"
+      }
+    ],
+    "docs/decisions/2026-10-15-p011-carry-forward-config-deliberation.md": [
+      {
+        "path": ".github/policies/workflow-policies.md",
+        "line": 1012,
+        "text": "| 1.40.0  | 2026-11-18 | Amended P-011    | 217-S (210-F, 210.005-T; `docs/plans/2026-10-15-p011-carry-forward-config-plan.md`, `docs/decisions/2026-10-15-p011-carry-forward-config-deliberation.md`): the carry-forward set is now the configured set from the operator-owned `.gsd/carry-forward.yaml` (s"
+      }
+    ],
+    "docs/plans/2026-10-30-track8-post224s-hardening-plan.md": [
+      {
+        "path": ".github/policies/workflow-policies.md",
+        "line": 1014,
+        "text": "| 1.42.0  | 2026-11-18 | Amended P-002/P-004 | 225-S (218-F, 218.006-T; stashes 543A568A, 4D600C75; `docs/plans/2026-10-30-track8-post224s-hardening-plan.md` Unit 6): P-002 states that a code-route task declaring `harness-surface:none` (non-docs harness artifacts, no production code module) stays on"
+      }
+    ],
+    "docs/plans/2026-10-30-cascade-close-engine-probe-and-registry-plan.md": [
+      {
+        "path": ".github/policies/workflow-policies.md",
+        "line": 1015,
+        "text": "| 1.43.0  | 2026-11-18 | Amended P-015    | 226-S (219-F, 219.005-T; stashes 8928EC67, 76120114, 808566C7, 33004C12; `docs/plans/2026-10-30-cascade-close-engine-probe-and-registry-plan.md` Unit 5): the CASCADE engine-semantics precondition now cites `BacklogitEngineCompatibilityRegistry` and `Verifi"
+      }
+    ],
+    "docs/plans/2026-10-30-dark-factory-autonomy-and-clean-tree-plan.md": [
+      {
+        "path": ".github/policies/workflow-policies.md",
+        "line": 1016,
+        "text": "| 1.44.0  | 2026-11-18 | Amended P-010/P-011/P-017/P-021 | 229-S (222-F, 222.004-T; `docs/plans/2026-10-30-dark-factory-autonomy-and-clean-tree-plan.md` Unit 4): P-011 documents the Two-Part Clean-Tree Contract (Part A always-allowed files, Part B `.gsd/worktree-baseline.json` with `FOREIGN_FILE_OVE"
+      }
+    ],
+    "docs/plans/2026-11-08-pragmatic-workflow-simplification-plan.md": [
+      {
+        "path": ".github/policies/workflow-policies.md",
+        "line": 1018,
+        "text": "| 1.46.0  | 2026-11-18 | Amended P-011    | 236-S (229-F, 229.008-T, stash DEF97955; `docs/plans/2026-11-08-pragmatic-workflow-simplification-plan.md` Unit 8): updates P-011 for path-intersection ownership (`FOREIGN_FILE_OVERLAP` only when `task_or_shipment_touched_paths \u2229 dirty_foreign_paths != \u2205`)"
+      }
+    ],
+    "docs/plans/2026-11-13-s2-soundness-linter-and-r2-escalation-chain-plan.md": [
+      {
+        "path": ".github/policies/workflow-policies.md",
+        "line": 1019,
+        "text": "| 1.47.0  | 2026-11-18 | Amended P-013.6 | 239-S (232-F, 232.009-T, stash C2EA31FA; `docs/plans/2026-11-13-s2-soundness-linter-and-r2-escalation-chain-plan.md` Unit 9): P-013.6 specifies `gsd routing resolve --workspace . --site <role> --kind escalation [--unavailable <failed_family>] --json` as the"
+      }
+    ],
+    "docs/compound/093-S-review-loop-convergence.md": [
+      {
+        "path": ".github/skills/review/SKILL.md",
+        "line": 262,
+        "text": "  verifies the fix just made. See `docs/compound/093-S-review-loop-convergence.md` and"
+      }
+    ],
+    "docs/security": [
+      {
+        "path": ".github/skills/security-audit/SKILL.md",
+        "line": 39,
+        "text": "| `docs/security` | Output directory for persisted reports (default: `docs/security`) |"
+      },
+      {
+        "path": ".github/skills/security-audit/SKILL.md",
+        "line": 39,
+        "text": "| `docs/security` | Output directory for persisted reports (default: `docs/security`) |"
+      },
+      {
+        "path": ".github/skills/install-harness/SKILL.md",
+        "line": 387,
+        "text": "| `{{DOCS_SECURITY}}` | `config.docs.root` + `security` subdirectory | `docs/security` | Output directory for persisted security audit reports |"
+      }
+    ],
+    "docs/security/YYYY-MM-DD-HH-MM-security-audit.md": [
+      {
+        "path": ".github/skills/security-audit/SKILL.md",
+        "line": 160,
+        "text": "Save the report to `docs/security/YYYY-MM-DD-HH-MM-security-audit.md` where `YYYY-MM-DD` is today's date and `HH-MM` is the current time (24-hour). The time component prevents clobbering earlier runs on the same day when the skill is invoked multiple times (different scopes or modes)."
+      }
+    ],
+    "docs/compound/2026-08-15-torn-archive-log-entry-without-file-mutation-must-not-be-committed.md": [
+      {
+        "path": ".github/skills/shipment-reconcile/SKILL.md",
+        "line": 1789,
+        "text": "   `docs/compound/2026-08-15-torn-archive-log-entry-without-file-mutation-must-not-be-committed.md`)."
+      }
+    ],
+    "docs/decisions/2026-08-16-example-topic-spike.md": [
+      {
+        "path": ".github/skills/spike/SKILL.md",
+        "line": 349,
+        "text": "(e.g. `docs/decisions/2026-08-16-example-topic-spike.md`), not a literal placeholder. An"
+      }
+    ],
+    ".github/local-agents": [
+      {
+        "path": ".github/skills/install-harness/SKILL.md",
+        "line": 100,
+        "text": "  1. **Agent routing**: Generate workflow agents (stage, ship) and write them to `distribution.local_agents_dir` (default `.github/local-agents`) instead of `.github/agents/`. Template agents, global skills, instructions, policies, and prompts continue to use their standard locations under `.github/"
+      },
+      {
+        "path": ".github/skills/workspace-discovery/SKILL.md",
+        "line": 472,
+        "text": "  `force-include` entries (treat `.github/local-agents` and `.github/local-agents/` as"
+      },
+      {
+        "path": ".github/skills/workspace-discovery/SKILL.md",
+        "line": 477,
+        "text": "  2. `.github/local-agents` directory exists"
+      },
+      {
+        "path": ".github/skills/workspace-discovery/SKILL.md",
+        "line": 478,
+        "text": "  3. The force-include section does NOT map `.github/local-agents` after normalization"
+      },
+      {
+        "path": ".github/skills/workspace-discovery/SKILL.md",
+        "line": 479,
+        "text": "     (does not contain either `.github/local-agents` or `.github/local-agents/`)"
+      }
+    ],
+    "docs/adrs": [
+      {
+        "path": ".github/skills/install-harness/SKILL.md",
+        "line": 586,
+        "text": "| `{{ADR_DIRECTORY}}` | operator `community.adr_directory` or default | `docs/adrs` | `docs/adrs` | `docs/adrs` |"
+      },
+      {
+        "path": ".github/skills/install-harness/SKILL.md",
+        "line": 586,
+        "text": "| `{{ADR_DIRECTORY}}` | operator `community.adr_directory` or default | `docs/adrs` | `docs/adrs` | `docs/adrs` |"
+      },
+      {
+        "path": ".github/skills/install-harness/SKILL.md",
+        "line": 586,
+        "text": "| `{{ADR_DIRECTORY}}` | operator `community.adr_directory` or default | `docs/adrs` | `docs/adrs` | `docs/adrs` |"
+      }
+    ],
+    "docs/codebase": [
+      {
+        "path": ".github/skills/install-harness/SKILL.md",
+        "line": 588,
+        "text": "| `{{CODEBASE_DOCS_DIRECTORY}}` | operator `community.codebase_docs_directory` or default `docs/codebase` | `docs/codebase` | `docs/codebase` | `docs/codebase` |"
+      },
+      {
+        "path": ".github/skills/install-harness/SKILL.md",
+        "line": 588,
+        "text": "| `{{CODEBASE_DOCS_DIRECTORY}}` | operator `community.codebase_docs_directory` or default `docs/codebase` | `docs/codebase` | `docs/codebase` | `docs/codebase` |"
+      },
+      {
+        "path": ".github/skills/install-harness/SKILL.md",
+        "line": 588,
+        "text": "| `{{CODEBASE_DOCS_DIRECTORY}}` | operator `community.codebase_docs_directory` or default `docs/codebase` | `docs/codebase` | `docs/codebase` | `docs/codebase` |"
+      },
+      {
+        "path": ".github/skills/install-harness/SKILL.md",
+        "line": 588,
+        "text": "| `{{CODEBASE_DOCS_DIRECTORY}}` | operator `community.codebase_docs_directory` or default `docs/codebase` | `docs/codebase` | `docs/codebase` | `docs/codebase` |"
+      }
+    ],
+    "docs/pipeline-topology-gate.md": [
+      {
+        "path": ".github/skills/install-harness/SKILL.md",
+        "line": 1459,
+        "text": "| CI topology-check entrypoint (109.011-T / C1, installed whenever the CI workflow row above applies **and `{{FEATURE_SHIPMENTS}}` is `true`**) | `{workspace}/scripts/ci-topology-check.sh` \u2014 copied from `{gsd_home}/templates/ci/ci-topology-check.sh.tmpl`; set execute permission after copy: `chmod +x"
+      }
+    ],
+    ".github/instructions/agent-intercom.instructions.md": [
+      {
+        "path": ".github/skills/tune-harness/SKILL.md",
+        "line": 588,
+        "text": "3. **Orphan instruction file**: propose deleting `.github/instructions/agent-intercom.instructions.md` together with its manifest `artifacts[]` entry ONLY when the file's checksum matches the checksum recorded for it in the manifest (compare the SHA-256 of the file content, accepting its LF-normaliz"
+      }
+    ],
+    ".github/PULL_REQUEST_TEMPLATE.md": [
+      {
+        "path": ".github/skills/workspace-discovery/SKILL.md",
+        "line": 494,
+        "text": "* PR templates (`.github/PULL_REQUEST_TEMPLATE.md`)"
+      }
+    ]
+  }
+}

@@ -23,7 +23,7 @@ You implement code changes for a single, well-scoped task. You do not orchestrat
 
 Before writing any code, re-read:
 1. `.github/instructions/constitution.instructions.md` — Constitutional principles
-2. `.github/instructions/python.instructions.md` — Language-specific conventions
+2. `.github/instructions/technology-python.instructions.md` — Language-specific conventions
 3. The task description and acceptance criteria
 
 ## Language Idioms

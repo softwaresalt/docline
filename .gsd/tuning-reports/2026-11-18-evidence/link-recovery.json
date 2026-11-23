@@ -1,0 +1,30 @@
+{
+  "recovered_at": "2026-11-18T07:25:09Z",
+  "method": "Operator-approved exclusive copy and rename swap",
+  "deletions": 0,
+  "overwrites": 0,
+  "checks": [
+    {
+      "path": ".gsd/gsd.exe",
+      "st_nlink": 1,
+      "sha256": "df8a29d5a9f7f1306a9abe2ca1ae5e314e638ebfa0d9ac8a1ec4524cea27470e",
+      "expected_sha256": "df8a29d5a9f7f1306a9abe2ca1ae5e314e638ebfa0d9ac8a1ec4524cea27470e"
+    },
+    {
+      "path": ".gsd/gsd-assets-v1.6.0.zip",
+      "st_nlink": 1,
+      "sha256": "b170652c9d83786cde8e988ef8d4c9cf47fb7039373383645b2a7ad7d053ebc1",
+      "expected_sha256": "b170652c9d83786cde8e988ef8d4c9cf47fb7039373383645b2a7ad7d053ebc1"
+    },
+    {
+      "path": ".gsd/gsd-assets.zip",
+      "st_nlink": 1,
+      "sha256": "b170652c9d83786cde8e988ef8d4c9cf47fb7039373383645b2a7ad7d053ebc1",
+      "expected_sha256": "b170652c9d83786cde8e988ef8d4c9cf47fb7039373383645b2a7ad7d053ebc1"
+    }
+  ],
+  "preserved_old_entries": [
+    "logs/gsd-tune-20261118-bootstrap/cached/.gsd/gsd.orig-link.exe",
+    "logs/gsd-tune-20261118-bootstrap/cached/.gsd/gsd-assets-v1.6.0.orig-link.zip"
+  ]
+}

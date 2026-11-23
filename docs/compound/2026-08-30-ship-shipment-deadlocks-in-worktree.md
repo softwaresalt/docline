@@ -77,6 +77,13 @@ blocking a piped `Select-Object` that only flushes on exit.
 
 ## Caveat
 
+The later observation in
+`docs/compound/2026-09-09-shipment-ship-primary-workspace-vs-safe-close-fallback.md`
+qualifies the historical "cosmetic" description below: `archived_status`
+provenance is enforced by P-015 and `.github/skills/shipment-reconcile/SKILL.md`.
+A fallback-closed predecessor can block later dependent work. Classify the
+close path first; do not fabricate provenance to repair historical records.
+
 Archiving a shipment directly with `archive` records `archived_status: active` rather than a
 `shipped` state, because `ship` is the only path that first transitions the shipment through
 `shipped`. The material outcomes — archived scope + merge SHA on every artifact — are satisfied;

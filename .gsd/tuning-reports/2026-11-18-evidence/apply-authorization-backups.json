@@ -1,0 +1,1270 @@
+{
+  "recorded_at": "2026-11-18T07:12:57Z",
+  "ProposedAction": "Apply approved Tune IDs and explicit dispositions; Windows CI/harness only, no application code or backlog migration",
+  "ActionRisk": "high: CI bootstrap and shared agent guidance",
+  "ActionResult": "approved",
+  "approval": "Operator Approved with explicit Phase 4/5 scope; no commit/push",
+  "rollback": "Restore exact affected-file bytes from recorded backups only with operator approval",
+  "branch": "chore/migrate-to-gsd",
+  "head": "b6794d9fbe397bc5833f20466464bce518572cba",
+  "targets": [
+    ".github/workflows/ci.yml",
+    "scripts/pre-push-quality-gates.ps1",
+    "scripts/pre-push-quality-gates.sh",
+    "AGENTS.md",
+    ".github/copilot-instructions.md",
+    ".github/instructions/constitution.instructions.md",
+    ".github/instructions/github-pr-automation.instructions.md",
+    ".gsd/workspace-profile.yaml",
+    ".gsd/harness-manifest.yaml",
+    ".github/instructions/technology-python.instructions.md",
+    ".github/instructions/copilot-code-review.instructions.md",
+    ".github/agents/subagents/evidence-consistency-reviewer.agent.md",
+    ".github/agents/_orchestrator.agent.md",
+    ".github/agents/_ship.agent.md",
+    ".github/agents/_stage.agent.md",
+    ".github/instructions/backlogit.instructions.md",
+    ".github/instructions/circuit-breaker.instructions.md",
+    ".github/skills/review/SKILL.md",
+    ".github/skills/pr-lifecycle/SKILL.md",
+    ".github/skills/shipment-reconcile/SKILL.md",
+    ".github/skills/install-harness/SKILL.md",
+    "scripts/ci-topology-check.sh",
+    ".github/instructions/mcp-server.instructions.md",
+    "docs/compound/2026-07-17-backlogit-ship-gate-needs-active-to-done.md",
+    "docs/compound/2026-08-30-ship-shipment-deadlocks-in-worktree.md",
+    ".gsd/continuous-learning/instincts/2026-09-09-060-s-instincts.md",
+    ".gsd/tuning-reports/2026-11-18-tuning-report.md",
+    ".gsd/tuning-reports/2026-11-18-evidence/proposals.json",
+    ".gsd/tuning-reports/2026-11-18-evidence/run-validation.json",
+    ".gsd/tuning-reports/2026-11-18-evidence/tune-evidence.json",
+    "docs/memory/2026-11-18/tune-harness-proposal-report-memory.md",
+    ".gsd/staging/.gsd/backlog-registry.yaml",
+    ".gsd/staging/.gsd/config.yaml",
+    ".gsd/staging/.github/agents/_orchestrator.agent.md",
+    ".gsd/staging/.github/agents/_ship.agent.md",
+    ".gsd/staging/.github/agents/_stage.agent.md",
+    ".gsd/staging/.github/agents/subagents/adversarial-review.agent.md",
+    ".gsd/staging/.github/agents/subagents/agent-native-parity-reviewer.agent.md",
+    ".gsd/staging/.github/agents/subagents/architecture-strategist.agent.md",
+    ".gsd/staging/.github/agents/subagents/concurrency-reviewer.agent.md",
+    ".gsd/staging/.github/agents/subagents/constitution-reviewer.agent.md",
+    ".gsd/staging/.github/agents/subagents/correctness-reviewer.agent.md",
+    ".gsd/staging/.github/agents/subagents/learnings-researcher.agent.md",
+    ".gsd/staging/.github/agents/subagents/maintainability-reviewer.agent.md",
+    ".gsd/staging/.github/agents/subagents/prompt-builder.agent.md",
+    ".gsd/staging/.github/agents/subagents/python-engineer.agent.md",
+    ".gsd/staging/.github/agents/subagents/python-reviewer.agent.md",
+    ".gsd/staging/.github/agents/subagents/schema-cli-docs-coupling-reviewer.agent.md",
+    ".gsd/staging/.github/agents/subagents/scope-boundary-auditor.agent.md",
+    ".gsd/staging/.github/agents/subagents/security-lens-reviewer.agent.md",
+    ".gsd/staging/.github/agents/subagents/security-reviewer.agent.md",
+    ".gsd/staging/.github/agents/subagents/security-sentinel.agent.md",
+    ".gsd/staging/.github/agents/subagents/template-integrity-reviewer.agent.md",
+    ".gsd/staging/.github/copilot-instructions.md",
+    ".gsd/staging/.github/instructions/adversarial-review.instructions.md",
+    ".gsd/staging/.github/instructions/agent-engram.instructions.md",
+    ".gsd/staging/.github/instructions/architecture-doc.instructions.md",
+    ".gsd/staging/.github/instructions/backlog-integration.instructions.md",
+    ".gsd/staging/.github/instructions/backlogit-sql-schema.instructions.md",
+    ".gsd/staging/.github/instructions/backlogit-yaml-header-tooling.instructions.md",
+    ".gsd/staging/.github/instructions/backlogit.instructions.md",
+    ".gsd/staging/.github/instructions/capability-pack-enforcement.instructions.md",
+    ".gsd/staging/.github/instructions/ci-security.instructions.md",
+    ".gsd/staging/.github/instructions/circuit-breaker.instructions.md",
+    ".gsd/staging/.github/instructions/coding-discipline.instructions.md",
+    ".gsd/staging/.github/instructions/commit-message.instructions.md",
+    ".gsd/staging/.github/instructions/concurrency.instructions.md",
+    ".gsd/staging/.github/instructions/constitution.instructions.md",
+    ".gsd/staging/.github/instructions/context-efficiency.instructions.md",
+    ".gsd/staging/.github/instructions/continuous-learning.instructions.md",
+    ".gsd/staging/.github/instructions/copilot-code-review.instructions.md",
+    ".gsd/staging/.github/instructions/escalation-protocol.instructions.md",
+    ".gsd/staging/.github/instructions/git-merge.instructions.md",
+    ".gsd/staging/.github/instructions/github-pr-automation.instructions.md",
+    ".gsd/staging/.github/instructions/kbdb.instructions.md",
+    ".gsd/staging/.github/instructions/markdown.instructions.md",
+    ".gsd/staging/.github/instructions/mcp-server.instructions.md",
+    ".gsd/staging/.github/instructions/output-timestamps.instructions.md",
+    ".gsd/staging/.github/instructions/prompt-builder.instructions.md",
+    ".gsd/staging/.github/instructions/pull-request.instructions.md",
+    ".gsd/staging/.github/instructions/release-observability.instructions.md",
+    ".gsd/staging/.github/instructions/role-enforcement.instructions.md",
+    ".gsd/staging/.github/instructions/strict-safety.instructions.md",
+    ".gsd/staging/.github/instructions/technology-python.instructions.md",
+    ".gsd/staging/.github/instructions/workflows.instructions.md",
+    ".gsd/staging/.github/instructions/writing-style.instructions.md",
+    ".gsd/staging/.github/policies/workflow-policies.md",
+    ".gsd/staging/.github/prompts/feature-flow-dark.prompt.md",
+    ".gsd/staging/.github/prompts/feature-flow-parallel.prompt.md",
+    ".gsd/staging/.github/prompts/feature-flow.prompt.md",
+    ".gsd/staging/.github/prompts/stage-grouping-analysis.prompt.md",
+    ".gsd/staging/.github/skills/brainstorm/SKILL.md",
+    ".gsd/staging/.github/skills/build-feature/SKILL.md",
+    ".gsd/staging/.github/skills/compact-context/SKILL.md",
+    ".gsd/staging/.github/skills/compound-refresh/SKILL.md",
+    ".gsd/staging/.github/skills/compound/SKILL.md",
+    ".gsd/staging/.github/skills/deliberate/SKILL.md",
+    ".gsd/staging/.github/skills/doc-review/SKILL.md",
+    ".gsd/staging/.github/skills/evolve/SKILL.md",
+    ".gsd/staging/.github/skills/file-lock/SKILL.md",
+    ".gsd/staging/.github/skills/fix-ci/SKILL.md",
+    ".gsd/staging/.github/skills/harness-architect/SKILL.md",
+    ".gsd/staging/.github/skills/harness-doctor/SKILL.md",
+    ".gsd/staging/.github/skills/harvest/SKILL.md",
+    ".gsd/staging/.github/skills/impl-plan/SKILL.md",
+    ".gsd/staging/.github/skills/iterative-experiment/SKILL.md",
+    ".gsd/staging/.github/skills/learn/SKILL.md",
+    ".gsd/staging/.github/skills/observe/SKILL.md",
+    ".gsd/staging/.github/skills/operational-closure/SKILL.md",
+    ".gsd/staging/.github/skills/plan-harden/SKILL.md",
+    ".gsd/staging/.github/skills/plan-review/SKILL.md",
+    ".gsd/staging/.github/skills/pr-lifecycle/SKILL.md",
+    ".gsd/staging/.github/skills/review/SKILL.md",
+    ".gsd/staging/.github/skills/runtime-verification/SKILL.md",
+    ".gsd/staging/.github/skills/safety-modes/SKILL.md",
+    ".gsd/staging/.github/skills/security-audit/SKILL.md",
+    ".gsd/staging/.github/skills/shipment-reconcile/SKILL.md",
+    ".gsd/staging/.github/skills/skill-search/SKILL.md",
+    ".gsd/staging/.github/skills/spike/SKILL.md",
+    ".gsd/staging/.github/workflows/ci.yml",
+    ".gsd/staging/.markdownlint.json",
+    ".gsd/staging/AGENTS.md",
+    ".gsd/staging/scripts/acquire_lock.ps1",
+    ".gsd/staging/scripts/acquire_lock.sh",
+    ".gsd/staging/scripts/ci-topology-check.sh",
+    ".gsd/staging/scripts/pre-commit-markdownlint.ps1",
+    ".gsd/staging/scripts/pre-commit-markdownlint.sh",
+    ".gsd/staging/scripts/pre-commit-pipeline-topology.ps1",
+    ".gsd/staging/scripts/pre-commit-pipeline-topology.sh",
+    ".gsd/staging/scripts/pre-push-quality-gates.ps1",
+    ".gsd/staging/scripts/pre-push-quality-gates.sh",
+    ".gsd/staging/scripts/release_lock.ps1",
+    ".gsd/staging/scripts/release_lock.sh",
+    ".gsd/staging/scripts/search.ps1",
+    ".gsd/staging/scripts/search.sh",
+    ".gsd/staging/start.ps1",
+    ".gsd/staging/start.sh",
+    ".gsd/staging/.github/instructions/shipment-documentation-audit.instructions.md",
+    ".gsd/staging/.github/instructions/browser-verification.instructions.md",
+    ".gsd/staging/.github/agents/subagents/evidence-consistency-reviewer.agent.md",
+    ".gsd/staging/.github/skills/grill-me/SKILL.md",
+    ".gsd/staging/.github/skills/gsd-dark-mode/SKILL.md",
+    ".gsd/staging/.github/skills/gsd-show-dag-queue/SKILL.md",
+    ".gsd/staging/.github/prompts/gsd-dark-mode.prompt.md",
+    ".gsd/staging/.github/prompts/gsd-show-dag-queue.prompt.md",
+    ".gsd/staging/.github/skills/browser-automation/SKILL.md",
+    ".gsd/staging/verify-workspace-report.json",
+    ".gsd/staging/verify-workspace-report.md"
+  ],
+  "controls": [
+    ".gsd/config.yaml",
+    "start.ps1",
+    "start.sh",
+    ".markdownlint.json",
+    ".github/prompts/feature-flow-dark.prompt.md",
+    "scripts/pre-commit-pipeline-topology.ps1",
+    "scripts/pre-commit-pipeline-topology.sh",
+    ".gsd/runtime-manifest.json"
+  ],
+  "backups": [
+    {
+      "path": ".github/workflows/ci.yml",
+      "backup": ".gsd/backups/2026-11-18/.github/workflows/ci.yml",
+      "sha256": "3f6d11dfaba9d3c705663722864f24a527ab49ea6d35fb5fa9c3170c20a3f4f7",
+      "bytes": 9100,
+      "control_only": false
+    },
+    {
+      "path": "scripts/pre-push-quality-gates.ps1",
+      "backup": ".gsd/backups/2026-11-18/scripts/pre-push-quality-gates.ps1",
+      "sha256": "a88e5f37ef26603801aec74b2753ec742ec2e31231d90147f163172e1f0c6f6d",
+      "bytes": 11711,
+      "control_only": false
+    },
+    {
+      "path": "scripts/pre-push-quality-gates.sh",
+      "backup": ".gsd/backups/2026-11-18/scripts/pre-push-quality-gates.sh",
+      "sha256": "0827e050591eb731dcb8d969e447622dee32bbb079e7bdbb8c698cbeb499dfb3",
+      "bytes": 11026,
+      "control_only": false
+    },
+    {
+      "path": "AGENTS.md",
+      "backup": ".gsd/backups/2026-11-18/AGENTS.md",
+      "sha256": "95925382fc0cd3b9bc4b86c3a805a565a71534306a8a65d12c9b2c56fe51233a",
+      "bytes": 19698,
+      "control_only": false
+    },
+    {
+      "path": ".github/copilot-instructions.md",
+      "backup": ".gsd/backups/2026-11-18/.github/copilot-instructions.md",
+      "sha256": "d5f72e143e824bcc5bcabdffb2c73d2b5e12e340ab260006d81a24e59571b65b",
+      "bytes": 11474,
+      "control_only": false
+    },
+    {
+      "path": ".github/instructions/constitution.instructions.md",
+      "backup": ".gsd/backups/2026-11-18/.github/instructions/constitution.instructions.md",
+      "sha256": "127f71405193ae5b454c1d9e4052996867a2db05d0de47bf6175cdd9713ce561",
+      "bytes": 17178,
+      "control_only": false
+    },
+    {
+      "path": ".github/instructions/github-pr-automation.instructions.md",
+      "backup": ".gsd/backups/2026-11-18/.github/instructions/github-pr-automation.instructions.md",
+      "sha256": "8555492bd610dd5c1f5732b17dd08983f63e3e7fcaa5d1d9f815b012c659e02b",
+      "bytes": 44778,
+      "control_only": false
+    },
+    {
+      "path": ".gsd/workspace-profile.yaml",
+      "backup": ".gsd/backups/2026-11-18/.gsd/workspace-profile.yaml",
+      "sha256": "a04d9e554938082f3a4b7cf624b70182cddc1db3e4376981c08ea5539d57ccc3",
+      "bytes": 11200,
+      "control_only": false
+    },
+    {
+      "path": ".gsd/harness-manifest.yaml",
+      "backup": ".gsd/backups/2026-11-18/.gsd/harness-manifest.yaml",
+      "sha256": "1936953d691fa302d7a3106da85dc35535b27f3b7dd6b7535242b0f7872b6466",
+      "bytes": 38292,
+      "control_only": false
+    },
+    {
+      "path": ".github/instructions/technology-python.instructions.md",
+      "backup": ".gsd/backups/2026-11-18/.github/instructions/technology-python.instructions.md",
+      "sha256": "bcbbc5d0b33a098eb98416430ac5fa0a6080da984af1ee256780f21ce78402dc",
+      "bytes": 3598,
+      "control_only": false
+    },
+    {
+      "path": ".github/instructions/copilot-code-review.instructions.md",
+      "backup": ".gsd/backups/2026-11-18/.github/instructions/copilot-code-review.instructions.md",
+      "sha256": "c3cb0ef82563d1dfa2619241fed9d209d69d6c825ba4c2b94167fd72ac980dfd",
+      "bytes": 3921,
+      "control_only": false
+    },
+    {
+      "path": ".github/agents/subagents/evidence-consistency-reviewer.agent.md",
+      "backup": ".gsd/backups/2026-11-18/.github/agents/subagents/evidence-consistency-reviewer.agent.md",
+      "sha256": "07d18f2112ac79a55a8d675f395118ee464a0e1fb7941f18f68c3071d8d70844",
+      "bytes": 7460,
+      "control_only": false
+    },
+    {
+      "path": ".github/agents/_orchestrator.agent.md",
+      "backup": ".gsd/backups/2026-11-18/.github/agents/_orchestrator.agent.md",
+      "sha256": "bbb2899c33d0f497097efd308b39ba449f760bab1522ed394fa5399e36e2e201",
+      "bytes": 77490,
+      "control_only": false
+    },
+    {
+      "path": ".github/agents/_ship.agent.md",
+      "backup": ".gsd/backups/2026-11-18/.github/agents/_ship.agent.md",
+      "sha256": "5ba15c26db369d6eee827c1672770e06513a4d4486b4f4a3a95bd2314b3f722b",
+      "bytes": 159623,
+      "control_only": false
+    },
+    {
+      "path": ".github/agents/_stage.agent.md",
+      "backup": ".gsd/backups/2026-11-18/.github/agents/_stage.agent.md",
+      "sha256": "e23ae55a37fd77321a79e2f3956a12fea2e3f67f381cebe3d29030d09250f64d",
+      "bytes": 85218,
+      "control_only": false
+    },
+    {
+      "path": ".github/instructions/backlogit.instructions.md",
+      "backup": ".gsd/backups/2026-11-18/.github/instructions/backlogit.instructions.md",
+      "sha256": "643ebfd3a85e8722a4caddd841619694f05197a34f2b28762941e8925ed75ddf",
+      "bytes": 24554,
+      "control_only": false
+    },
+    {
+      "path": ".github/instructions/circuit-breaker.instructions.md",
+      "backup": ".gsd/backups/2026-11-18/.github/instructions/circuit-breaker.instructions.md",
+      "sha256": "a0abdd454f7067ef3bef8fd1780be82f4cdb9932f67ff7a1cf95c94e717bc02f",
+      "bytes": 24986,
+      "control_only": false
+    },
+    {
+      "path": ".github/skills/review/SKILL.md",
+      "backup": ".gsd/backups/2026-11-18/.github/skills/review/SKILL.md",
+      "sha256": "acb818672c4d1ac8739018ae83d1407be3ad12e38bc003722d681c25525048ca",
+      "bytes": 18485,
+      "control_only": false
+    },
+    {
+      "path": ".github/skills/pr-lifecycle/SKILL.md",
+      "backup": ".gsd/backups/2026-11-18/.github/skills/pr-lifecycle/SKILL.md",
+      "sha256": "f009c9eacc1ae8602d78fd10d695a68fe3d3b261701f8fd8f4597072653d1089",
+      "bytes": 24446,
+      "control_only": false
+    },
+    {
+      "path": ".github/skills/shipment-reconcile/SKILL.md",
+      "backup": ".gsd/backups/2026-11-18/.github/skills/shipment-reconcile/SKILL.md",
+      "sha256": "3aa55b77d3553a84427c388c7a00193a905144baef8ad232c77d44f0387165c4",
+      "bytes": 169621,
+      "control_only": false
+    },
+    {
+      "path": ".github/skills/install-harness/SKILL.md",
+      "backup": ".gsd/backups/2026-11-18/.github/skills/install-harness/SKILL.md",
+      "sha256": "86a8e528182f05f21797e04f6d05a9e285d5d4823e7745393843ec98c372202d",
+      "bytes": 186709,
+      "control_only": false
+    },
+    {
+      "path": "scripts/ci-topology-check.sh",
+      "backup": ".gsd/backups/2026-11-18/scripts/ci-topology-check.sh",
+      "sha256": "bcc4ed1ea565b445279e0569a7a26cb649f5a98c69698afecafe08f85ac55be2",
+      "bytes": 7518,
+      "control_only": false
+    },
+    {
+      "path": ".github/instructions/mcp-server.instructions.md",
+      "backup": ".gsd/backups/2026-11-18/.github/instructions/mcp-server.instructions.md",
+      "sha256": "edf9beb4cef8365f1d5a7f5a4de6b53136bd61ef8fc83f6f12e3fb7cd2afdc3e",
+      "bytes": 3853,
+      "control_only": false
+    },
+    {
+      "path": "docs/compound/2026-07-17-backlogit-ship-gate-needs-active-to-done.md",
+      "backup": ".gsd/backups/2026-11-18/docs/compound/2026-07-17-backlogit-ship-gate-needs-active-to-done.md",
+      "sha256": "b2dacc2522d8dd42cecffc0d668eb6055fbb5dfbb985006a3285940c55782530",
+      "bytes": 2562,
+      "control_only": false
+    },
+    {
+      "path": "docs/compound/2026-08-30-ship-shipment-deadlocks-in-worktree.md",
+      "backup": ".gsd/backups/2026-11-18/docs/compound/2026-08-30-ship-shipment-deadlocks-in-worktree.md",
+      "sha256": "6b8e462b2b57824a020f272dfbd4065a8f79bf7c8e07ca6b337697c15e8ff9d6",
+      "bytes": 5684,
+      "control_only": false
+    },
+    {
+      "path": ".gsd/continuous-learning/instincts/2026-09-09-060-s-instincts.md",
+      "backup": ".gsd/backups/2026-11-18/.gsd/continuous-learning/instincts/2026-09-09-060-s-instincts.md",
+      "sha256": "29e752d1677232270ba3779468e670d51a238e219c9fa85ef6d23d14f1a488f6",
+      "bytes": 1672,
+      "control_only": false
+    },
+    {
+      "path": ".gsd/tuning-reports/2026-11-18-tuning-report.md",
+      "backup": ".gsd/backups/2026-11-18/.gsd/tuning-reports/2026-11-18-tuning-report.md",
+      "sha256": "7856f3595094a9ccc0f9942a2b799e4e68d2157f112dd5a4e6df1116d4ab7b91",
+      "bytes": 29918,
+      "control_only": false
+    },
+    {
+      "path": ".gsd/tuning-reports/2026-11-18-evidence/proposals.json",
+      "backup": ".gsd/backups/2026-11-18/.gsd/tuning-reports/2026-11-18-evidence/proposals.json",
+      "sha256": "83eb4d58147d8bf9a691c813cb01203e9b72211e9ce8b41ad8989ce4a520856c",
+      "bytes": 24533,
+      "control_only": false
+    },
+    {
+      "path": ".gsd/tuning-reports/2026-11-18-evidence/run-validation.json",
+      "backup": ".gsd/backups/2026-11-18/.gsd/tuning-reports/2026-11-18-evidence/run-validation.json",
+      "sha256": "c3499d45fc32f11ef483e823af44ac405f02fe0504b2ee4b8278642ae09cb7cc",
+      "bytes": 21343,
+      "control_only": false
+    },
+    {
+      "path": ".gsd/tuning-reports/2026-11-18-evidence/tune-evidence.json",
+      "backup": ".gsd/backups/2026-11-18/.gsd/tuning-reports/2026-11-18-evidence/tune-evidence.json",
+      "sha256": "2033f3ce02282982b31e99ab4bdde399196194d57c0cc322ced6dc1c8f350724",
+      "bytes": 299378,
+      "control_only": false
+    },
+    {
+      "path": "docs/memory/2026-11-18/tune-harness-proposal-report-memory.md",
+      "backup": ".gsd/backups/2026-11-18/docs/memory/2026-11-18/tune-harness-proposal-report-memory.md",
+      "sha256": "bfe11e5041187fa19e83fd402e799d06ac17462ae93fcecb5125593a5fc2c865",
+      "bytes": 4463,
+      "control_only": false
+    },
+    {
+      "path": ".gsd/staging/.gsd/backlog-registry.yaml",
+      "backup": ".gsd/backups/2026-11-18/.gsd/staging/.gsd/backlog-registry.yaml",
+      "sha256": "69e176b4e6a53943322014759a84c10db94d4dc1bee14cf83ac86ef9d9e0746b",
+      "bytes": 12080,
+      "control_only": false
+    },
+    {
+      "path": ".gsd/staging/.gsd/config.yaml",
+      "backup": ".gsd/backups/2026-11-18/.gsd/staging/.gsd/config.yaml",
+      "sha256": "9a20d01802a338885ed696f19e9613e288f23ee00aad8116f1e9653368359f0e",
+      "bytes": 10374,
+      "control_only": false
+    },
+    {
+      "path": ".gsd/staging/.github/agents/_orchestrator.agent.md",
+      "backup": ".gsd/backups/2026-11-18/.gsd/staging/.github/agents/_orchestrator.agent.md",
+      "sha256": "e51968a9228e0434bf7957a359f0ccadd2000e3231a6e832f2c06ea50e54b86b",
+      "bytes": 77448,
+      "control_only": false
+    },
+    {
+      "path": ".gsd/staging/.github/agents/_ship.agent.md",
+      "backup": ".gsd/backups/2026-11-18/.gsd/staging/.github/agents/_ship.agent.md",
+      "sha256": "2053cf93880dff373824fde93bb750018588cbdb0e66950e3a5246b3fc59f3c0",
+      "bytes": 159615,
+      "control_only": false
+    },
+    {
+      "path": ".gsd/staging/.github/agents/_stage.agent.md",
+      "backup": ".gsd/backups/2026-11-18/.gsd/staging/.github/agents/_stage.agent.md",
+      "sha256": "e7865981bbc056a292b92d147dc08ebc607cabb18c1fc7ac2ae2f1c9aa0cfda3",
+      "bytes": 84898,
+      "control_only": false
+    },
+    {
+      "path": ".gsd/staging/.github/agents/subagents/adversarial-review.agent.md",
+      "backup": ".gsd/backups/2026-11-18/.gsd/staging/.github/agents/subagents/adversarial-review.agent.md",
+      "sha256": "3b06406621042ef9d3f438736a29638e6b89a0001d6a580af2a1a6bd963c820b",
+      "bytes": 15601,
+      "control_only": false
+    },
+    {
+      "path": ".gsd/staging/.github/agents/subagents/agent-native-parity-reviewer.agent.md",
+      "backup": ".gsd/backups/2026-11-18/.gsd/staging/.github/agents/subagents/agent-native-parity-reviewer.agent.md",
+      "sha256": "b8d7422e6f1af218358a0ddb95ff8e8d8ca828ad6648c7978ae9b89698202cec",
+      "bytes": 2329,
+      "control_only": false
+    },
+    {
+      "path": ".gsd/staging/.github/agents/subagents/architecture-strategist.agent.md",
+      "backup": ".gsd/backups/2026-11-18/.gsd/staging/.github/agents/subagents/architecture-strategist.agent.md",
+      "sha256": "ef0decd3b48444fcee6c8f9e208468faae4938e275cc964145a8214789c7adcf",
+      "bytes": 1925,
+      "control_only": false
+    },
+    {
+      "path": ".gsd/staging/.github/agents/subagents/concurrency-reviewer.agent.md",
+      "backup": ".gsd/backups/2026-11-18/.gsd/staging/.github/agents/subagents/concurrency-reviewer.agent.md",
+      "sha256": "91b1bd33c0299782297f14a64b46f85ac308573e6d431422b7b62707aba813ea",
+      "bytes": 1832,
+      "control_only": false
+    },
+    {
+      "path": ".gsd/staging/.github/agents/subagents/constitution-reviewer.agent.md",
+      "backup": ".gsd/backups/2026-11-18/.gsd/staging/.github/agents/subagents/constitution-reviewer.agent.md",
+      "sha256": "83c53b72d8d14105647cfe39fadeb67cf7b17c85f0e3bee024a1259dd7ec8621",
+      "bytes": 2105,
+      "control_only": false
+    },
+    {
+      "path": ".gsd/staging/.github/agents/subagents/correctness-reviewer.agent.md",
+      "backup": ".gsd/backups/2026-11-18/.gsd/staging/.github/agents/subagents/correctness-reviewer.agent.md",
+      "sha256": "7877c3cad7a6e2536f21d9668f37d339aeacbee99fb0eb867f5ffcc34a8d85ea",
+      "bytes": 1730,
+      "control_only": false
+    },
+    {
+      "path": ".gsd/staging/.github/agents/subagents/learnings-researcher.agent.md",
+      "backup": ".gsd/backups/2026-11-18/.gsd/staging/.github/agents/subagents/learnings-researcher.agent.md",
+      "sha256": "807cc55275672a75a17108bc87fa2b5ecfe7a872a6929551231d799701e1ad5c",
+      "bytes": 2182,
+      "control_only": false
+    },
+    {
+      "path": ".gsd/staging/.github/agents/subagents/maintainability-reviewer.agent.md",
+      "backup": ".gsd/backups/2026-11-18/.gsd/staging/.github/agents/subagents/maintainability-reviewer.agent.md",
+      "sha256": "5540a782c45bb1952d1455e37fcf1b4c06250604f99b09fbe2418ff068b10c80",
+      "bytes": 1751,
+      "control_only": false
+    },
+    {
+      "path": ".gsd/staging/.github/agents/subagents/prompt-builder.agent.md",
+      "backup": ".gsd/backups/2026-11-18/.gsd/staging/.github/agents/subagents/prompt-builder.agent.md",
+      "sha256": "a47a05d0b661ef28f393eff71f9a360aade39babb3dfaa668fb777bbeaf8c253",
+      "bytes": 1972,
+      "control_only": false
+    },
+    {
+      "path": ".gsd/staging/.github/agents/subagents/python-engineer.agent.md",
+      "backup": ".gsd/backups/2026-11-18/.gsd/staging/.github/agents/subagents/python-engineer.agent.md",
+      "sha256": "88833553930c908e55ab876e97e5156a658641bfba381ab6604aab4dbf09d0e0",
+      "bytes": 3432,
+      "control_only": false
+    },
+    {
+      "path": ".gsd/staging/.github/agents/subagents/python-reviewer.agent.md",
+      "backup": ".gsd/backups/2026-11-18/.gsd/staging/.github/agents/subagents/python-reviewer.agent.md",
+      "sha256": "197766c8b9258287e8a03e3d4477bfaa5db33e45ddfb140762218f38510bcfca",
+      "bytes": 2913,
+      "control_only": false
+    },
+    {
+      "path": ".gsd/staging/.github/agents/subagents/schema-cli-docs-coupling-reviewer.agent.md",
+      "backup": ".gsd/backups/2026-11-18/.gsd/staging/.github/agents/subagents/schema-cli-docs-coupling-reviewer.agent.md",
+      "sha256": "6ec4d0117b2b61fbe19637b181f304036dca00a9a0f8b0cbbe51e3821fe2e783",
+      "bytes": 2354,
+      "control_only": false
+    },
+    {
+      "path": ".gsd/staging/.github/agents/subagents/scope-boundary-auditor.agent.md",
+      "backup": ".gsd/backups/2026-11-18/.gsd/staging/.github/agents/subagents/scope-boundary-auditor.agent.md",
+      "sha256": "b44afe66e5294d27f644c1602b7a65ae184ef75a98135036e398032a60d16525",
+      "bytes": 1914,
+      "control_only": false
+    },
+    {
+      "path": ".gsd/staging/.github/agents/subagents/security-lens-reviewer.agent.md",
+      "backup": ".gsd/backups/2026-11-18/.gsd/staging/.github/agents/subagents/security-lens-reviewer.agent.md",
+      "sha256": "5f6301949d7c3eedf707622fb4a0f917a5c6a1516d18255796f992780290530a",
+      "bytes": 4353,
+      "control_only": false
+    },
+    {
+      "path": ".gsd/staging/.github/agents/subagents/security-reviewer.agent.md",
+      "backup": ".gsd/backups/2026-11-18/.gsd/staging/.github/agents/subagents/security-reviewer.agent.md",
+      "sha256": "fd4e866c52b486282ed61ab38a242b5dc5ee4f357cf270d86444d23ace7f0bd2",
+      "bytes": 3934,
+      "control_only": false
+    },
+    {
+      "path": ".gsd/staging/.github/agents/subagents/security-sentinel.agent.md",
+      "backup": ".gsd/backups/2026-11-18/.gsd/staging/.github/agents/subagents/security-sentinel.agent.md",
+      "sha256": "83366a85c34cb9fb942f094df355235fad67633b0f8579662ca7be3ef878f1d5",
+      "bytes": 7569,
+      "control_only": false
+    },
+    {
+      "path": ".gsd/staging/.github/agents/subagents/template-integrity-reviewer.agent.md",
+      "backup": ".gsd/backups/2026-11-18/.gsd/staging/.github/agents/subagents/template-integrity-reviewer.agent.md",
+      "sha256": "e2e9db936bcb1f8b5e757785d39cbbcd102f9b4f7960e0b4cab768cd7e0f01e9",
+      "bytes": 2406,
+      "control_only": false
+    },
+    {
+      "path": ".gsd/staging/.github/copilot-instructions.md",
+      "backup": ".gsd/backups/2026-11-18/.gsd/staging/.github/copilot-instructions.md",
+      "sha256": "b2b98608eb4c68903b9f10068168c39b23157a21d36dedd0e2ed5bddb75c1a65",
+      "bytes": 11348,
+      "control_only": false
+    },
+    {
+      "path": ".gsd/staging/.github/instructions/adversarial-review.instructions.md",
+      "backup": ".gsd/backups/2026-11-18/.gsd/staging/.github/instructions/adversarial-review.instructions.md",
+      "sha256": "1d24b773d40834623942f410fed1d4e0bb085d2a0a4d578d415d373f9629cb40",
+      "bytes": 5869,
+      "control_only": false
+    },
+    {
+      "path": ".gsd/staging/.github/instructions/agent-engram.instructions.md",
+      "backup": ".gsd/backups/2026-11-18/.gsd/staging/.github/instructions/agent-engram.instructions.md",
+      "sha256": "1322484b8215554640858c255a38aa62ffc6a3c2aedf92e589a7afd0a716f47c",
+      "bytes": 7295,
+      "control_only": false
+    },
+    {
+      "path": ".gsd/staging/.github/instructions/architecture-doc.instructions.md",
+      "backup": ".gsd/backups/2026-11-18/.gsd/staging/.github/instructions/architecture-doc.instructions.md",
+      "sha256": "80fda6621cb12a4294cb38311f16b3b780f1815c089a90efdc47ca1b61a12073",
+      "bytes": 4614,
+      "control_only": false
+    },
+    {
+      "path": ".gsd/staging/.github/instructions/backlog-integration.instructions.md",
+      "backup": ".gsd/backups/2026-11-18/.gsd/staging/.github/instructions/backlog-integration.instructions.md",
+      "sha256": "dd54acc4fd43843a7fb098fb75869bdeaefca5df2c4092e0012a13a7946da10b",
+      "bytes": 9407,
+      "control_only": false
+    },
+    {
+      "path": ".gsd/staging/.github/instructions/backlogit-sql-schema.instructions.md",
+      "backup": ".gsd/backups/2026-11-18/.gsd/staging/.github/instructions/backlogit-sql-schema.instructions.md",
+      "sha256": "ca2c5c7f85b12945b47df6fec91838ca9036e05dd7aa5a3abc83dacca827cd6f",
+      "bytes": 10091,
+      "control_only": false
+    },
+    {
+      "path": ".gsd/staging/.github/instructions/backlogit-yaml-header-tooling.instructions.md",
+      "backup": ".gsd/backups/2026-11-18/.gsd/staging/.github/instructions/backlogit-yaml-header-tooling.instructions.md",
+      "sha256": "d5399a2ac5b67c5ae02ca3959f8a7284ed479c883728467c5337372af0d54b85",
+      "bytes": 6422,
+      "control_only": false
+    },
+    {
+      "path": ".gsd/staging/.github/instructions/backlogit.instructions.md",
+      "backup": ".gsd/backups/2026-11-18/.gsd/staging/.github/instructions/backlogit.instructions.md",
+      "sha256": "e344eda2a2de97ad2cf58ddf11e323ce82c1d16fe5896e270bb5aab75295e8f3",
+      "bytes": 24553,
+      "control_only": false
+    },
+    {
+      "path": ".gsd/staging/.github/instructions/capability-pack-enforcement.instructions.md",
+      "backup": ".gsd/backups/2026-11-18/.gsd/staging/.github/instructions/capability-pack-enforcement.instructions.md",
+      "sha256": "c90601df4145ee144cd2a945ac159793a0cd13d7a66656f6b718f63d8f1abe27",
+      "bytes": 5459,
+      "control_only": false
+    },
+    {
+      "path": ".gsd/staging/.github/instructions/ci-security.instructions.md",
+      "backup": ".gsd/backups/2026-11-18/.gsd/staging/.github/instructions/ci-security.instructions.md",
+      "sha256": "5a1342489bcb5663dfd2d5a8b2fb56a428be9b8eef2d73a378507313ce2eda06",
+      "bytes": 2634,
+      "control_only": false
+    },
+    {
+      "path": ".gsd/staging/.github/instructions/circuit-breaker.instructions.md",
+      "backup": ".gsd/backups/2026-11-18/.gsd/staging/.github/instructions/circuit-breaker.instructions.md",
+      "sha256": "a0abdd454f7067ef3bef8fd1780be82f4cdb9932f67ff7a1cf95c94e717bc02f",
+      "bytes": 24986,
+      "control_only": false
+    },
+    {
+      "path": ".gsd/staging/.github/instructions/coding-discipline.instructions.md",
+      "backup": ".gsd/backups/2026-11-18/.gsd/staging/.github/instructions/coding-discipline.instructions.md",
+      "sha256": "e03c5f1790f2040f76ce037bdcede96dcdbee39ce5bf7de1caa3fb582d19e6c9",
+      "bytes": 3038,
+      "control_only": false
+    },
+    {
+      "path": ".gsd/staging/.github/instructions/commit-message.instructions.md",
+      "backup": ".gsd/backups/2026-11-18/.gsd/staging/.github/instructions/commit-message.instructions.md",
+      "sha256": "450b3bd4e34b124bb91020081a76bc7684296aa7c2f998d79c3ba0790675eb77",
+      "bytes": 1600,
+      "control_only": false
+    },
+    {
+      "path": ".gsd/staging/.github/instructions/concurrency.instructions.md",
+      "backup": ".gsd/backups/2026-11-18/.gsd/staging/.github/instructions/concurrency.instructions.md",
+      "sha256": "18cb563d566e651f032f3a96e4df9d08f03d17939b253a78721aa3db73b49be7",
+      "bytes": 7060,
+      "control_only": false
+    },
+    {
+      "path": ".gsd/staging/.github/instructions/constitution.instructions.md",
+      "backup": ".gsd/backups/2026-11-18/.gsd/staging/.github/instructions/constitution.instructions.md",
+      "sha256": "127f71405193ae5b454c1d9e4052996867a2db05d0de47bf6175cdd9713ce561",
+      "bytes": 17178,
+      "control_only": false
+    },
+    {
+      "path": ".gsd/staging/.github/instructions/context-efficiency.instructions.md",
+      "backup": ".gsd/backups/2026-11-18/.gsd/staging/.github/instructions/context-efficiency.instructions.md",
+      "sha256": "1d6e8ea8208bfd574ea5aee6fb30ccba2c8c1bbbe0eb02c02045ea4fef4ea9d8",
+      "bytes": 4879,
+      "control_only": false
+    },
+    {
+      "path": ".gsd/staging/.github/instructions/continuous-learning.instructions.md",
+      "backup": ".gsd/backups/2026-11-18/.gsd/staging/.github/instructions/continuous-learning.instructions.md",
+      "sha256": "2d43a8febccc288e549695020304966b11afd42ad62425ebff7b45390e558c6b",
+      "bytes": 2163,
+      "control_only": false
+    },
+    {
+      "path": ".gsd/staging/.github/instructions/copilot-code-review.instructions.md",
+      "backup": ".gsd/backups/2026-11-18/.gsd/staging/.github/instructions/copilot-code-review.instructions.md",
+      "sha256": "c3cb0ef82563d1dfa2619241fed9d209d69d6c825ba4c2b94167fd72ac980dfd",
+      "bytes": 3921,
+      "control_only": false
+    },
+    {
+      "path": ".gsd/staging/.github/instructions/escalation-protocol.instructions.md",
+      "backup": ".gsd/backups/2026-11-18/.gsd/staging/.github/instructions/escalation-protocol.instructions.md",
+      "sha256": "c5ade87b3c628b66e35d0e546b7c63a9b923f7307cbcf90e177e4caac3fee655",
+      "bytes": 16264,
+      "control_only": false
+    },
+    {
+      "path": ".gsd/staging/.github/instructions/git-merge.instructions.md",
+      "backup": ".gsd/backups/2026-11-18/.gsd/staging/.github/instructions/git-merge.instructions.md",
+      "sha256": "fd20fe96ea6f717aa13f94dd761988b883d7cddfe518ff28ff814d2e66abf796",
+      "bytes": 2563,
+      "control_only": false
+    },
+    {
+      "path": ".gsd/staging/.github/instructions/github-pr-automation.instructions.md",
+      "backup": ".gsd/backups/2026-11-18/.gsd/staging/.github/instructions/github-pr-automation.instructions.md",
+      "sha256": "8555492bd610dd5c1f5732b17dd08983f63e3e7fcaa5d1d9f815b012c659e02b",
+      "bytes": 44778,
+      "control_only": false
+    },
+    {
+      "path": ".gsd/staging/.github/instructions/kbdb.instructions.md",
+      "backup": ".gsd/backups/2026-11-18/.gsd/staging/.github/instructions/kbdb.instructions.md",
+      "sha256": "1ae380a282ab7a20dbd71441848eb9401db8a08dcf339c1fb1fa0a1c15f05b1f",
+      "bytes": 4596,
+      "control_only": false
+    },
+    {
+      "path": ".gsd/staging/.github/instructions/markdown.instructions.md",
+      "backup": ".gsd/backups/2026-11-18/.gsd/staging/.github/instructions/markdown.instructions.md",
+      "sha256": "f6abca0e18c43d27ba0fc0b64f788cae8e9e59ab6c162f246990c847f42ee58c",
+      "bytes": 2003,
+      "control_only": false
+    },
+    {
+      "path": ".gsd/staging/.github/instructions/mcp-server.instructions.md",
+      "backup": ".gsd/backups/2026-11-18/.gsd/staging/.github/instructions/mcp-server.instructions.md",
+      "sha256": "edf9beb4cef8365f1d5a7f5a4de6b53136bd61ef8fc83f6f12e3fb7cd2afdc3e",
+      "bytes": 3853,
+      "control_only": false
+    },
+    {
+      "path": ".gsd/staging/.github/instructions/output-timestamps.instructions.md",
+      "backup": ".gsd/backups/2026-11-18/.gsd/staging/.github/instructions/output-timestamps.instructions.md",
+      "sha256": "e3d13425eab8ca25505b0db9bf8fc8c935b743fe493b4362c3aafe12c076b536",
+      "bytes": 2347,
+      "control_only": false
+    },
+    {
+      "path": ".gsd/staging/.github/instructions/prompt-builder.instructions.md",
+      "backup": ".gsd/backups/2026-11-18/.gsd/staging/.github/instructions/prompt-builder.instructions.md",
+      "sha256": "f980d25e0e72a1c1fc4468f2686e5c75b749cd0096b1a57be6f28f0b2738abdf",
+      "bytes": 1972,
+      "control_only": false
+    },
+    {
+      "path": ".gsd/staging/.github/instructions/pull-request.instructions.md",
+      "backup": ".gsd/backups/2026-11-18/.gsd/staging/.github/instructions/pull-request.instructions.md",
+      "sha256": "8148ecb72612443ebb8c482e0a1724fdc36d6063c8c75fe5743c9cd2c6b38e09",
+      "bytes": 2151,
+      "control_only": false
+    },
+    {
+      "path": ".gsd/staging/.github/instructions/release-observability.instructions.md",
+      "backup": ".gsd/backups/2026-11-18/.gsd/staging/.github/instructions/release-observability.instructions.md",
+      "sha256": "153988f3f3174353e317247a1e0e081b44c710495398008701cb767fa237e6ed",
+      "bytes": 3815,
+      "control_only": false
+    },
+    {
+      "path": ".gsd/staging/.github/instructions/role-enforcement.instructions.md",
+      "backup": ".gsd/backups/2026-11-18/.gsd/staging/.github/instructions/role-enforcement.instructions.md",
+      "sha256": "a0a68a99ba6434a52464dbc6e7a186aef7ba5b73eca75487348cd5c9ebc18587",
+      "bytes": 7582,
+      "control_only": false
+    },
+    {
+      "path": ".gsd/staging/.github/instructions/strict-safety.instructions.md",
+      "backup": ".gsd/backups/2026-11-18/.gsd/staging/.github/instructions/strict-safety.instructions.md",
+      "sha256": "15a314df0430c24038b3acb3881ff5c8675b74af3b937027d80c519c814a72eb",
+      "bytes": 2892,
+      "control_only": false
+    },
+    {
+      "path": ".gsd/staging/.github/instructions/technology-python.instructions.md",
+      "backup": ".gsd/backups/2026-11-18/.gsd/staging/.github/instructions/technology-python.instructions.md",
+      "sha256": "bcbbc5d0b33a098eb98416430ac5fa0a6080da984af1ee256780f21ce78402dc",
+      "bytes": 3598,
+      "control_only": false
+    },
+    {
+      "path": ".gsd/staging/.github/instructions/workflows.instructions.md",
+      "backup": ".gsd/backups/2026-11-18/.gsd/staging/.github/instructions/workflows.instructions.md",
+      "sha256": "9b5162f2dd9489fa94f91b5545c8a6e1f21932e75ee68c5a5ca28113ba427573",
+      "bytes": 3213,
+      "control_only": false
+    },
+    {
+      "path": ".gsd/staging/.github/instructions/writing-style.instructions.md",
+      "backup": ".gsd/backups/2026-11-18/.gsd/staging/.github/instructions/writing-style.instructions.md",
+      "sha256": "89144bc89a413d0853559f23587989d32416e738bbd44971fc719c587a30d509",
+      "bytes": 1675,
+      "control_only": false
+    },
+    {
+      "path": ".gsd/staging/.github/policies/workflow-policies.md",
+      "backup": ".gsd/backups/2026-11-18/.gsd/staging/.github/policies/workflow-policies.md",
+      "sha256": "f963cca61ffc99f3387217fd91680068140e1e50b25bb8d48be4ef6139055fc2",
+      "bytes": 173040,
+      "control_only": false
+    },
+    {
+      "path": ".gsd/staging/.github/prompts/feature-flow-dark.prompt.md",
+      "backup": ".gsd/backups/2026-11-18/.gsd/staging/.github/prompts/feature-flow-dark.prompt.md",
+      "sha256": "4507f5462c56ea9c7bdb7f9275eae9918a460dea7148c8387da4926413816abb",
+      "bytes": 2596,
+      "control_only": false
+    },
+    {
+      "path": ".gsd/staging/.github/prompts/feature-flow-parallel.prompt.md",
+      "backup": ".gsd/backups/2026-11-18/.gsd/staging/.github/prompts/feature-flow-parallel.prompt.md",
+      "sha256": "4fcd9843fbd86a86f8159990aa7b185ad5680f156cf83d2f637aba357282c1cb",
+      "bytes": 1997,
+      "control_only": false
+    },
+    {
+      "path": ".gsd/staging/.github/prompts/feature-flow.prompt.md",
+      "backup": ".gsd/backups/2026-11-18/.gsd/staging/.github/prompts/feature-flow.prompt.md",
+      "sha256": "7811c60eccea2d55c880d3d321ac1437ecf99d20ace667873f6a8c52a241e444",
+      "bytes": 1428,
+      "control_only": false
+    },
+    {
+      "path": ".gsd/staging/.github/prompts/stage-grouping-analysis.prompt.md",
+      "backup": ".gsd/backups/2026-11-18/.gsd/staging/.github/prompts/stage-grouping-analysis.prompt.md",
+      "sha256": "807517cb632d8eed66bfa03e50949118c67ae651de24e8a8f29e229e8f9ee731",
+      "bytes": 1551,
+      "control_only": false
+    },
+    {
+      "path": ".gsd/staging/.github/skills/brainstorm/SKILL.md",
+      "backup": ".gsd/backups/2026-11-18/.gsd/staging/.github/skills/brainstorm/SKILL.md",
+      "sha256": "a46df5635d368674d12117bc3217b84393657437d979ed0a7d5f46c4a9fea8ef",
+      "bytes": 16208,
+      "control_only": false
+    },
+    {
+      "path": ".gsd/staging/.github/skills/build-feature/SKILL.md",
+      "backup": ".gsd/backups/2026-11-18/.gsd/staging/.github/skills/build-feature/SKILL.md",
+      "sha256": "73106da061c3276b9f4364768ccfe37ac9b6dfe259862055c9f9b3dc7eb543cb",
+      "bytes": 7318,
+      "control_only": false
+    },
+    {
+      "path": ".gsd/staging/.github/skills/compact-context/SKILL.md",
+      "backup": ".gsd/backups/2026-11-18/.gsd/staging/.github/skills/compact-context/SKILL.md",
+      "sha256": "63374a688c941e1164aa941ee6f4d59f2c115daeaeb5a773d3269d9550ed1483",
+      "bytes": 6198,
+      "control_only": false
+    },
+    {
+      "path": ".gsd/staging/.github/skills/compound-refresh/SKILL.md",
+      "backup": ".gsd/backups/2026-11-18/.gsd/staging/.github/skills/compound-refresh/SKILL.md",
+      "sha256": "9608920a14bd597a6bf541303b961ea9e648a5f6b7a587498288a107f6d2d1f4",
+      "bytes": 3972,
+      "control_only": false
+    },
+    {
+      "path": ".gsd/staging/.github/skills/compound/SKILL.md",
+      "backup": ".gsd/backups/2026-11-18/.gsd/staging/.github/skills/compound/SKILL.md",
+      "sha256": "58b5784d78538cc6cca525ef50541c481e19409f4148878596af310d1eba9b9a",
+      "bytes": 3896,
+      "control_only": false
+    },
+    {
+      "path": ".gsd/staging/.github/skills/deliberate/SKILL.md",
+      "backup": ".gsd/backups/2026-11-18/.gsd/staging/.github/skills/deliberate/SKILL.md",
+      "sha256": "935f8527e8fad890d195c9adc5172e126d82322c999322838940e19531a96668",
+      "bytes": 11426,
+      "control_only": false
+    },
+    {
+      "path": ".gsd/staging/.github/skills/doc-review/SKILL.md",
+      "backup": ".gsd/backups/2026-11-18/.gsd/staging/.github/skills/doc-review/SKILL.md",
+      "sha256": "5df8846c81d9f6e89c3d01213fad38f99df209617601b64efd8d6d7fa3e8acd5",
+      "bytes": 9901,
+      "control_only": false
+    },
+    {
+      "path": ".gsd/staging/.github/skills/evolve/SKILL.md",
+      "backup": ".gsd/backups/2026-11-18/.gsd/staging/.github/skills/evolve/SKILL.md",
+      "sha256": "f73a09cd76cdd566062ceb8118ce1baf53bbd7619096050b1a4a4ec793f21cb0",
+      "bytes": 1857,
+      "control_only": false
+    },
+    {
+      "path": ".gsd/staging/.github/skills/file-lock/SKILL.md",
+      "backup": ".gsd/backups/2026-11-18/.gsd/staging/.github/skills/file-lock/SKILL.md",
+      "sha256": "2d8a3a664254863a26ccfce9c4207ceb18c3257a41b0a90d864f8adb99fc79df",
+      "bytes": 9668,
+      "control_only": false
+    },
+    {
+      "path": ".gsd/staging/.github/skills/fix-ci/SKILL.md",
+      "backup": ".gsd/backups/2026-11-18/.gsd/staging/.github/skills/fix-ci/SKILL.md",
+      "sha256": "d3b280ee14f28015ba398a2a1b6c5a8d28fa5b40774a5e1b5b89c320fa1df162",
+      "bytes": 23631,
+      "control_only": false
+    },
+    {
+      "path": ".gsd/staging/.github/skills/harness-architect/SKILL.md",
+      "backup": ".gsd/backups/2026-11-18/.gsd/staging/.github/skills/harness-architect/SKILL.md",
+      "sha256": "4bd46f4f556a81f2ce9a5ddb5187da077063a8dca8d36fec77e289bd2f638a33",
+      "bytes": 15284,
+      "control_only": false
+    },
+    {
+      "path": ".gsd/staging/.github/skills/harness-doctor/SKILL.md",
+      "backup": ".gsd/backups/2026-11-18/.gsd/staging/.github/skills/harness-doctor/SKILL.md",
+      "sha256": "4c926b555f5236d0768b6707cfb06fef13ef925b0f42613bbefa764f32a79b8c",
+      "bytes": 11087,
+      "control_only": false
+    },
+    {
+      "path": ".gsd/staging/.github/skills/harvest/SKILL.md",
+      "backup": ".gsd/backups/2026-11-18/.gsd/staging/.github/skills/harvest/SKILL.md",
+      "sha256": "926d8cca31a4ae4ed42d0e8ffd7f6218a2c2fb4005feb2d42dff2b64df922bea",
+      "bytes": 17673,
+      "control_only": false
+    },
+    {
+      "path": ".gsd/staging/.github/skills/impl-plan/SKILL.md",
+      "backup": ".gsd/backups/2026-11-18/.gsd/staging/.github/skills/impl-plan/SKILL.md",
+      "sha256": "d4e1e01273e22b5f9187fb35528dc984383a2ceab3aaa6003f5f36814047deca",
+      "bytes": 6869,
+      "control_only": false
+    },
+    {
+      "path": ".gsd/staging/.github/skills/iterative-experiment/SKILL.md",
+      "backup": ".gsd/backups/2026-11-18/.gsd/staging/.github/skills/iterative-experiment/SKILL.md",
+      "sha256": "e4a25d9228b253c67e9855cf6dbb51bdecc9ac4103d53afdc2780dde9b4ca0c5",
+      "bytes": 8577,
+      "control_only": false
+    },
+    {
+      "path": ".gsd/staging/.github/skills/learn/SKILL.md",
+      "backup": ".gsd/backups/2026-11-18/.gsd/staging/.github/skills/learn/SKILL.md",
+      "sha256": "390253090f45599d1f9c3eb5aea957902f651f2d204bbb40cf1be0785f640b18",
+      "bytes": 1728,
+      "control_only": false
+    },
+    {
+      "path": ".gsd/staging/.github/skills/observe/SKILL.md",
+      "backup": ".gsd/backups/2026-11-18/.gsd/staging/.github/skills/observe/SKILL.md",
+      "sha256": "074bc1b48b21d6b8f884abe3df5ccd1ede04702f0f2e17b8fe79a78f878b9c91",
+      "bytes": 2003,
+      "control_only": false
+    },
+    {
+      "path": ".gsd/staging/.github/skills/operational-closure/SKILL.md",
+      "backup": ".gsd/backups/2026-11-18/.gsd/staging/.github/skills/operational-closure/SKILL.md",
+      "sha256": "f606b14b3c5297b906dfd53b656064f4d8c09904cfd274c5fef0de728777594c",
+      "bytes": 19771,
+      "control_only": false
+    },
+    {
+      "path": ".gsd/staging/.github/skills/plan-harden/SKILL.md",
+      "backup": ".gsd/backups/2026-11-18/.gsd/staging/.github/skills/plan-harden/SKILL.md",
+      "sha256": "989db970781c3b51dcc347f0e6f7f2cb570742e0c59f6d95a02ab166e32f8863",
+      "bytes": 4509,
+      "control_only": false
+    },
+    {
+      "path": ".gsd/staging/.github/skills/plan-review/SKILL.md",
+      "backup": ".gsd/backups/2026-11-18/.gsd/staging/.github/skills/plan-review/SKILL.md",
+      "sha256": "4fc05726dd5f22c459232d1c7ffb1d2c658cdbf393f4ecf8ac59e7f8d7a9a457",
+      "bytes": 18685,
+      "control_only": false
+    },
+    {
+      "path": ".gsd/staging/.github/skills/pr-lifecycle/SKILL.md",
+      "backup": ".gsd/backups/2026-11-18/.gsd/staging/.github/skills/pr-lifecycle/SKILL.md",
+      "sha256": "b1463a17810d0f01b6f0b266945ee611670a10d469ea1d41389d7a846fb29296",
+      "bytes": 23558,
+      "control_only": false
+    },
+    {
+      "path": ".gsd/staging/.github/skills/review/SKILL.md",
+      "backup": ".gsd/backups/2026-11-18/.gsd/staging/.github/skills/review/SKILL.md",
+      "sha256": "b9d5cea4d4590b18a8ba050c70659cc7cc7bbd31c61d954822053215f3744567",
+      "bytes": 18219,
+      "control_only": false
+    },
+    {
+      "path": ".gsd/staging/.github/skills/runtime-verification/SKILL.md",
+      "backup": ".gsd/backups/2026-11-18/.gsd/staging/.github/skills/runtime-verification/SKILL.md",
+      "sha256": "af8a143a5c8b853fe7a20bdbf22c59cbb3a017f8b9c6eb4139d0a5409f1f2736",
+      "bytes": 10055,
+      "control_only": false
+    },
+    {
+      "path": ".gsd/staging/.github/skills/safety-modes/SKILL.md",
+      "backup": ".gsd/backups/2026-11-18/.gsd/staging/.github/skills/safety-modes/SKILL.md",
+      "sha256": "4da35367b1116a169545eec88c87a6576d3b66de941a22f6d2e71296e158fd94",
+      "bytes": 6267,
+      "control_only": false
+    },
+    {
+      "path": ".gsd/staging/.github/skills/security-audit/SKILL.md",
+      "backup": ".gsd/backups/2026-11-18/.gsd/staging/.github/skills/security-audit/SKILL.md",
+      "sha256": "aad40010d3a134cb8a2cf7454223c2bbae56d701e99279e8a293c17880c02bda",
+      "bytes": 10422,
+      "control_only": false
+    },
+    {
+      "path": ".gsd/staging/.github/skills/shipment-reconcile/SKILL.md",
+      "backup": ".gsd/backups/2026-11-18/.gsd/staging/.github/skills/shipment-reconcile/SKILL.md",
+      "sha256": "3aa55b77d3553a84427c388c7a00193a905144baef8ad232c77d44f0387165c4",
+      "bytes": 169621,
+      "control_only": false
+    },
+    {
+      "path": ".gsd/staging/.github/skills/skill-search/SKILL.md",
+      "backup": ".gsd/backups/2026-11-18/.gsd/staging/.github/skills/skill-search/SKILL.md",
+      "sha256": "0f47c946f991f85f8ecf7d65b573e2420f28b40e8c8c837814abbc12d8d973fa",
+      "bytes": 3867,
+      "control_only": false
+    },
+    {
+      "path": ".gsd/staging/.github/skills/spike/SKILL.md",
+      "backup": ".gsd/backups/2026-11-18/.gsd/staging/.github/skills/spike/SKILL.md",
+      "sha256": "207426692093947eb62a86e9dcac5170cb958ff6b8811974fe13227573927d04",
+      "bytes": 15867,
+      "control_only": false
+    },
+    {
+      "path": ".gsd/staging/.github/workflows/ci.yml",
+      "backup": ".gsd/backups/2026-11-18/.gsd/staging/.github/workflows/ci.yml",
+      "sha256": "3f6d11dfaba9d3c705663722864f24a527ab49ea6d35fb5fa9c3170c20a3f4f7",
+      "bytes": 9100,
+      "control_only": false
+    },
+    {
+      "path": ".gsd/staging/.markdownlint.json",
+      "backup": ".gsd/backups/2026-11-18/.gsd/staging/.markdownlint.json",
+      "sha256": "5cb328173ca286c34d6eacb60cf58fe6f579fc4843d2cd6b47533bb5b1965e16",
+      "bytes": 98,
+      "control_only": false
+    },
+    {
+      "path": ".gsd/staging/AGENTS.md",
+      "backup": ".gsd/backups/2026-11-18/.gsd/staging/AGENTS.md",
+      "sha256": "7bd635b864a5cc3fb59c14b06f3e41760e90794c4adc32a2cc13002116562fff",
+      "bytes": 19690,
+      "control_only": false
+    },
+    {
+      "path": ".gsd/staging/scripts/acquire_lock.ps1",
+      "backup": ".gsd/backups/2026-11-18/.gsd/staging/scripts/acquire_lock.ps1",
+      "sha256": "91d6f8630ef18400f539b8191a663f12d9faf526bc68958ccb33b2fa2f907126",
+      "bytes": 21993,
+      "control_only": false
+    },
+    {
+      "path": ".gsd/staging/scripts/acquire_lock.sh",
+      "backup": ".gsd/backups/2026-11-18/.gsd/staging/scripts/acquire_lock.sh",
+      "sha256": "d53ee9beefdbc1388d78438a58342c2fb4a514872a25c7f4a2caa270dede67e7",
+      "bytes": 9625,
+      "control_only": false
+    },
+    {
+      "path": ".gsd/staging/scripts/ci-topology-check.sh",
+      "backup": ".gsd/backups/2026-11-18/.gsd/staging/scripts/ci-topology-check.sh",
+      "sha256": "bcc4ed1ea565b445279e0569a7a26cb649f5a98c69698afecafe08f85ac55be2",
+      "bytes": 7518,
+      "control_only": false
+    },
+    {
+      "path": ".gsd/staging/scripts/pre-commit-markdownlint.ps1",
+      "backup": ".gsd/backups/2026-11-18/.gsd/staging/scripts/pre-commit-markdownlint.ps1",
+      "sha256": "f6401a8f50996f07a78b8a282d0f233bf08b0611a105495cfa5d2e64511617d6",
+      "bytes": 1154,
+      "control_only": false
+    },
+    {
+      "path": ".gsd/staging/scripts/pre-commit-markdownlint.sh",
+      "backup": ".gsd/backups/2026-11-18/.gsd/staging/scripts/pre-commit-markdownlint.sh",
+      "sha256": "fa590415faf85f1c69139cbe93ac460754e1219c748de8d1260d424b72144922",
+      "bytes": 1198,
+      "control_only": false
+    },
+    {
+      "path": ".gsd/staging/scripts/pre-commit-pipeline-topology.ps1",
+      "backup": ".gsd/backups/2026-11-18/.gsd/staging/scripts/pre-commit-pipeline-topology.ps1",
+      "sha256": "11b3513d0732a0d1685b00fcd9e46f8469a2a090e0fd6ce3f8dc5f6241f95c78",
+      "bytes": 2969,
+      "control_only": false
+    },
+    {
+      "path": ".gsd/staging/scripts/pre-commit-pipeline-topology.sh",
+      "backup": ".gsd/backups/2026-11-18/.gsd/staging/scripts/pre-commit-pipeline-topology.sh",
+      "sha256": "37dcb17567609598bb8a3cc492519cc9d5e7bc82d43fe59722050f98630326fa",
+      "bytes": 2935,
+      "control_only": false
+    },
+    {
+      "path": ".gsd/staging/scripts/pre-push-quality-gates.ps1",
+      "backup": ".gsd/backups/2026-11-18/.gsd/staging/scripts/pre-push-quality-gates.ps1",
+      "sha256": "a88e5f37ef26603801aec74b2753ec742ec2e31231d90147f163172e1f0c6f6d",
+      "bytes": 11711,
+      "control_only": false
+    },
+    {
+      "path": ".gsd/staging/scripts/pre-push-quality-gates.sh",
+      "backup": ".gsd/backups/2026-11-18/.gsd/staging/scripts/pre-push-quality-gates.sh",
+      "sha256": "0827e050591eb731dcb8d969e447622dee32bbb079e7bdbb8c698cbeb499dfb3",
+      "bytes": 11026,
+      "control_only": false
+    },
+    {
+      "path": ".gsd/staging/scripts/release_lock.ps1",
+      "backup": ".gsd/backups/2026-11-18/.gsd/staging/scripts/release_lock.ps1",
+      "sha256": "7ba54ebfd04ecc9cd0ccea671e9b2b70581d699b5fa2d90ad4df4c9876931a42",
+      "bytes": 23144,
+      "control_only": false
+    },
+    {
+      "path": ".gsd/staging/scripts/release_lock.sh",
+      "backup": ".gsd/backups/2026-11-18/.gsd/staging/scripts/release_lock.sh",
+      "sha256": "35b817a08b440200a5d8dfa839463446782ddf3792a87eef1d7a6f32df22b040",
+      "bytes": 17601,
+      "control_only": false
+    },
+    {
+      "path": ".gsd/staging/scripts/search.ps1",
+      "backup": ".gsd/backups/2026-11-18/.gsd/staging/scripts/search.ps1",
+      "sha256": "c5263eecfdd57e6f08b444d6c18ed163a0f262864a366a441fa29d105e015add",
+      "bytes": 2613,
+      "control_only": false
+    },
+    {
+      "path": ".gsd/staging/scripts/search.sh",
+      "backup": ".gsd/backups/2026-11-18/.gsd/staging/scripts/search.sh",
+      "sha256": "3d97a8e4acc2d9bb173297e8496a93935b54963a115d59161c4051663dc666f5",
+      "bytes": 2464,
+      "control_only": false
+    },
+    {
+      "path": ".gsd/staging/start.ps1",
+      "backup": ".gsd/backups/2026-11-18/.gsd/staging/start.ps1",
+      "sha256": "cbc24bb5816ffe6602613cf55f8e46a457b85bad4bd3914f7d9ea6b61b91b4d2",
+      "bytes": 8105,
+      "control_only": false
+    },
+    {
+      "path": ".gsd/staging/start.sh",
+      "backup": ".gsd/backups/2026-11-18/.gsd/staging/start.sh",
+      "sha256": "9b50592fc76b11bac2d26ec5049c0fd403a4647f6d0b5a58849ce2c88eb4b78e",
+      "bytes": 6839,
+      "control_only": false
+    },
+    {
+      "path": ".gsd/staging/.github/instructions/shipment-documentation-audit.instructions.md",
+      "backup": ".gsd/backups/2026-11-18/.gsd/staging/.github/instructions/shipment-documentation-audit.instructions.md",
+      "sha256": "e9738658fc9cfe50c4c3c52e42af2f90d3c19238183128a783ced2999eefae44",
+      "bytes": 7098,
+      "control_only": false
+    },
+    {
+      "path": ".gsd/staging/.github/instructions/browser-verification.instructions.md",
+      "backup": ".gsd/backups/2026-11-18/.gsd/staging/.github/instructions/browser-verification.instructions.md",
+      "sha256": "b476a939387d9759ca1775cc1d3e2c7cdc37c3471c2b1954d91cc94c66d154c7",
+      "bytes": 3503,
+      "control_only": false
+    },
+    {
+      "path": ".gsd/staging/.github/agents/subagents/evidence-consistency-reviewer.agent.md",
+      "backup": ".gsd/backups/2026-11-18/.gsd/staging/.github/agents/subagents/evidence-consistency-reviewer.agent.md",
+      "sha256": "07d18f2112ac79a55a8d675f395118ee464a0e1fb7941f18f68c3071d8d70844",
+      "bytes": 7460,
+      "control_only": false
+    },
+    {
+      "path": ".gsd/staging/.github/skills/grill-me/SKILL.md",
+      "backup": ".gsd/backups/2026-11-18/.gsd/staging/.github/skills/grill-me/SKILL.md",
+      "sha256": "871cc9e169048b6228a2c518ec4520cb1ee7deb4737f5f5014602ddc0189fbf4",
+      "bytes": 11928,
+      "control_only": false
+    },
+    {
+      "path": ".gsd/staging/.github/skills/gsd-dark-mode/SKILL.md",
+      "backup": ".gsd/backups/2026-11-18/.gsd/staging/.github/skills/gsd-dark-mode/SKILL.md",
+      "sha256": "92b741c7c18f286c2059c1fde94ae47cb865193ab475906aa6d96c2c6db0b328",
+      "bytes": 15283,
+      "control_only": false
+    },
+    {
+      "path": ".gsd/staging/.github/skills/gsd-show-dag-queue/SKILL.md",
+      "backup": ".gsd/backups/2026-11-18/.gsd/staging/.github/skills/gsd-show-dag-queue/SKILL.md",
+      "sha256": "a9daf630a7837ad8a594844c856b43c65c882e8a95a466bbaea831567f7883b9",
+      "bytes": 8993,
+      "control_only": false
+    },
+    {
+      "path": ".gsd/staging/.github/prompts/gsd-dark-mode.prompt.md",
+      "backup": ".gsd/backups/2026-11-18/.gsd/staging/.github/prompts/gsd-dark-mode.prompt.md",
+      "sha256": "c5fa996a06d607383a477ccf63067fa8714714db7b747027455e3fc980cdac8a",
+      "bytes": 3303,
+      "control_only": false
+    },
+    {
+      "path": ".gsd/staging/.github/prompts/gsd-show-dag-queue.prompt.md",
+      "backup": ".gsd/backups/2026-11-18/.gsd/staging/.github/prompts/gsd-show-dag-queue.prompt.md",
+      "sha256": "3e4646de993fa092de79cf5fe4e857950fa5aa389ec87c987173e5dc61730e27",
+      "bytes": 2220,
+      "control_only": false
+    },
+    {
+      "path": ".gsd/staging/.github/skills/browser-automation/SKILL.md",
+      "backup": ".gsd/backups/2026-11-18/.gsd/staging/.github/skills/browser-automation/SKILL.md",
+      "sha256": "c92c6a5ff151ef8df039ea65aa61c6443bf11789dfe62f14ae952f7cf6a555bc",
+      "bytes": 7907,
+      "control_only": false
+    },
+    {
+      "path": ".gsd/staging/verify-workspace-report.json",
+      "backup": ".gsd/backups/2026-11-18/.gsd/staging/verify-workspace-report.json",
+      "sha256": "2b81567fd56e859c4029289781f36996bde9eaf7445621d35bf1126ec7bfd8ca",
+      "bytes": 72866,
+      "control_only": false
+    },
+    {
+      "path": ".gsd/staging/verify-workspace-report.md",
+      "backup": ".gsd/backups/2026-11-18/.gsd/staging/verify-workspace-report.md",
+      "sha256": "4e80dbdd9d68e2fc508808b649f33f4a8ac0582b476c4ea7be9ac09f31ac47ea",
+      "bytes": 684,
+      "control_only": false
+    },
+    {
+      "path": ".gsd/config.yaml",
+      "backup": ".gsd/backups/2026-11-18/.gsd/config.yaml",
+      "sha256": "df491fa642699ebef5827129737da5e510cd887c84d19c44922140d111a11a87",
+      "bytes": 7483,
+      "control_only": true
+    },
+    {
+      "path": "start.ps1",
+      "backup": ".gsd/backups/2026-11-18/start.ps1",
+      "sha256": "ef68b2bdde8e596962e823e63aa3711254283e87ef73708a69013075d7e7f4ea",
+      "bytes": 8104,
+      "control_only": true
+    },
+    {
+      "path": "start.sh",
+      "backup": ".gsd/backups/2026-11-18/start.sh",
+      "sha256": "623d0e8046d17076a79175609a87b3d8ae32712b3d1dc98fde8eb597d76d95cd",
+      "bytes": 6838,
+      "control_only": true
+    },
+    {
+      "path": ".markdownlint.json",
+      "backup": ".gsd/backups/2026-11-18/.markdownlint.json",
+      "sha256": "40392c674cd1bee95e319d44ad7389562f9722e49fc5fcfefb9a09b45d0e4d46",
+      "bytes": 74,
+      "control_only": true
+    },
+    {
+      "path": ".github/prompts/feature-flow-dark.prompt.md",
+      "backup": ".gsd/backups/2026-11-18/.github/prompts/feature-flow-dark.prompt.md",
+      "sha256": "74253c6f07d266c86cb4b580dc45d3c87759c14d829ca746cd181192e07983dd",
+      "bytes": 3205,
+      "control_only": true
+    },
+    {
+      "path": "scripts/pre-commit-pipeline-topology.ps1",
+      "backup": ".gsd/backups/2026-11-18/scripts/pre-commit-pipeline-topology.ps1",
+      "sha256": "f54df4e72a2ff5e5e09d5e08fd81d7514d543299ad0fbc6efc8da45a8ac84b1e",
+      "bytes": 3724,
+      "control_only": true
+    },
+    {
+      "path": "scripts/pre-commit-pipeline-topology.sh",
+      "backup": ".gsd/backups/2026-11-18/scripts/pre-commit-pipeline-topology.sh",
+      "sha256": "c49658fdf02d743cee4afa7237a58635669d6dd240f0c0a8e4427f297efbda5a",
+      "bytes": 3031,
+      "control_only": true
+    },
+    {
+      "path": ".gsd/runtime-manifest.json",
+      "backup": ".gsd/backups/2026-11-18/.gsd/runtime-manifest.json",
+      "sha256": "04b556b67ba2ee409b14542acdb3b5cd49359fcd4485ed773bdd558d9a8c137f",
+      "bytes": 752,
+      "control_only": true
+    }
+  ],
+  "optional_dispositions": {
+    "TUNE-006": "deferred-by-policy",
+    "TUNE-010": "declined-duplicate",
+    "TUNE-011": "deferred-separate-session",
+    "TUNE-013": "deferred-optional"
+  }
+}

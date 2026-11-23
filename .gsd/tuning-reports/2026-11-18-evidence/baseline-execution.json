@@ -1,0 +1,36 @@
+{
+  "command": [
+    "C:\\Source\\GitHub\\docline\\.gsd\\gsd.exe",
+    "verify-workspace",
+    "--workspace",
+    "C:\\Source\\GitHub\\docline",
+    "--gsd-home",
+    "C:\\Source\\GitHub\\docline\\.gsd\\gsd-assets-v1.6.0.zip",
+    "--json"
+  ],
+  "exit_code": 0,
+  "stderr": "",
+  "stdout_sha256": "1781820d13c894100ef6f03cd61a4eb6ca7aa42dc26301957697f9e328b3a03d",
+  "top_level_keys": [
+    "blockers",
+    "checksum_scan",
+    "gsd_home",
+    "learning_signals",
+    "migration_proposals",
+    "mode",
+    "new_artifacts",
+    "portability_findings",
+    "rendered",
+    "report_paths",
+    "schema_contracts",
+    "skipped",
+    "staging_dir",
+    "startup_script_contracts",
+    "strict_schema_blockers",
+    "targeted_checks",
+    "unresolved",
+    "warning_instances",
+    "warnings",
+    "workspace_path"
+  ]
+}

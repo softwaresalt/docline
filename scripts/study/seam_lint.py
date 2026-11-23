@@ -3,7 +3,7 @@
 Verifies that assembled docline output — which interleaves heuristic pages
 (markitdown/pypdf) with docling ranges — preserves a coherent, ingestible
 document structure across those engine seams. This is the concern that gates
-graphtor-docs ingestion (whole-document AST + proper heading hierarchy), as
+kbdb ingestion (whole-document AST + proper heading hierarchy), as
 distinct from per-page fidelity, which the assembled output discards anyway
 (see ``docs/decisions/2026-06-28-merge-gap-tuning-verdict.md``).
 
@@ -161,7 +161,7 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         description=(
             "Validate assembled triage markdown for a coherent heading "
-            "hierarchy (the graphtor-docs ingestion gate) across engine seams."
+            "hierarchy (the kbdb ingestion gate) across engine seams."
         ),
     )
     parser.add_argument(
