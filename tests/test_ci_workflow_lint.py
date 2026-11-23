@@ -1,16 +1,10 @@
 """Workflow lint tests for .github/workflows/ci.yml.
 
-These tests assert structural invariants of the CI workflow so that
-accidental regressions (matrix removal, fail-fast inversion, runs-on
-drift) are caught in the local test suite.
-
-The CI workflow OS coverage was reduced to ``ubuntu-latest`` only on
-2026-06-10 as a cost-conservation measure after the 3,000-minute
-private-repo allotment was exhausted (see ``.github/workflows/ci.yml``
-header comment for the rationale). The matrix is preserved as a
-structural feature so cost-reduction items #1 (macos) and #2 (windows)
-can be reverted by re-adding entries without touching the workflow's
-shape.
+These tests assert structural invariants of the GSD-managed four-job CI
+workflow (``changes``, ``expensive``, ``topology-check``, ``ci-gate``) so
+accidental regressions (path-filter fail-open drift, missing quality gates,
+runner drift, unpinned GSD runtime, or dropped gate aggregation) are caught
+in the local test suite.
 """
 
 from __future__ import annotations
@@ -23,9 +17,17 @@ import yaml
 REPO_ROOT = Path(__file__).resolve().parents[1]
 CI_WORKFLOW = REPO_ROOT / ".github" / "workflows" / "ci.yml"
 
-EXPECTED_OS_TARGETS = {"ubuntu-latest"}
-UBUNTU_ONLY_JOBS = {"lint", "format", "typecheck", "build"}
+EXPECTED_JOBS = {"changes", "expensive", "topology-check", "ci-gate"}
+METADATA_ONLY_JOBS = {"changes", "ci-gate"}
+WINDOWS_JOBS = {"expensive", "topology-check"}
 TOPOLOGY_JOB = "topology-check"
+REQUIRED_QUALITY_GATES = (
+    "uv run ruff check .",
+    "uv run ruff format --check .",
+    "uv run pyright src/",
+    "uv run pytest",
+    "uv run python -m build",
+)
 
 
 @pytest.fixture(scope="module")
@@ -35,81 +37,73 @@ def workflow() -> dict:
         return yaml.safe_load(fh)
 
 
-def test_ci_workflow_has_test_job(workflow: dict) -> None:
-    """ci.yml declares a `test` job."""
+def test_ci_workflow_declares_four_job_shape(workflow: dict) -> None:
+    """ci.yml declares the GSD four-job pipeline shape."""
     assert "jobs" in workflow, "ci.yml must declare jobs"
-    assert "test" in workflow["jobs"], "ci.yml must declare a test job"
-
-
-def test_test_job_runs_on_matrix(workflow: dict) -> None:
-    """The test job declares a strategy matrix over `os`."""
-    test_job = workflow["jobs"]["test"]
-    assert "strategy" in test_job, "test job must declare a strategy"
-    matrix = test_job["strategy"].get("matrix")
-    assert isinstance(matrix, dict), "test job strategy must include a matrix"
-    assert "os" in matrix, "test job matrix must enumerate os"
-
-
-def test_test_job_matrix_matches_expected_oses(workflow: dict) -> None:
-    """The matrix covers the configured OS targets.
-
-    Currently ``{ubuntu-latest}`` only after the 2026-06-10 cost-conservation
-    change. Re-adding ``windows-latest`` and/or ``macos-latest`` requires
-    updating ``EXPECTED_OS_TARGETS`` above and the cost-reduction tracker
-    comment block at the top of ``.github/workflows/ci.yml``.
-    """
-    matrix_os = workflow["jobs"]["test"]["strategy"]["matrix"]["os"]
-    assert set(matrix_os) == EXPECTED_OS_TARGETS, (
-        f"expected matrix os {EXPECTED_OS_TARGETS}, got {set(matrix_os)}"
+    assert set(workflow["jobs"]) == EXPECTED_JOBS, (
+        f"expected jobs {EXPECTED_JOBS}, got {set(workflow['jobs'])}"
     )
 
 
-def test_test_job_fail_fast_disabled(workflow: dict) -> None:
-    """The test job sets fail-fast: false so per-OS failures don't cancel siblings.
-
-    Preserved even though the matrix is currently single-OS, so re-adding
-    OS entries doesn't require revisiting the fail-fast policy.
-    """
-    strategy = workflow["jobs"]["test"]["strategy"]
-    assert strategy.get("fail-fast") is False, (
-        "test job strategy must set fail-fast: false so a single-platform failure "
-        "does not cancel the others (preserved for matrix re-expansion)"
+def test_changes_job_uses_fail_closed_paths_filter(workflow: dict) -> None:
+    """The changes job uses dorny/paths-filter with predicate-quantifier every."""
+    changes_job = workflow["jobs"]["changes"]
+    filter_steps = [
+        s for s in changes_job["steps"] if str(s.get("uses", "")).startswith("dorny/paths-filter@")
+    ]
+    assert filter_steps, "changes job must use dorny/paths-filter"
+    step_with = filter_steps[0].get("with", {})
+    assert step_with.get("predicate-quantifier") == "every", (
+        "paths-filter must set predicate-quantifier: 'every' so negations fail closed"
     )
+    filters = step_with.get("filters", "")
+    for excluded in ("!docs/**", "!.backlogit/**", "!.gsd/**"):
+        assert excluded in filters, f"changes filter must exclude {excluded}"
 
 
-def test_test_job_runs_on_matrix_os(workflow: dict) -> None:
-    """The test job's runs-on interpolates the matrix.os value."""
-    runs_on = workflow["jobs"]["test"]["runs-on"]
-    assert runs_on == "${{ matrix.os }}", (
-        f"test job runs-on must interpolate matrix.os, got {runs_on!r}"
+def test_expensive_job_gated_on_changes_and_runs_all_gates(workflow: dict) -> None:
+    """The expensive job is gated on changes.outputs.code and runs all quality gates."""
+    expensive = workflow["jobs"]["expensive"]
+    needs = expensive.get("needs", [])
+    if isinstance(needs, str):
+        needs = [needs]
+    assert "changes" in needs, "expensive job must depend on changes"
+    assert expensive.get("if") == "needs.changes.outputs.code == 'true'", (
+        "expensive job must run only when changes.outputs.code == 'true'"
     )
+    run_commands = "\n".join(s.get("run", "") for s in expensive["steps"])
+    for gate_cmd in REQUIRED_QUALITY_GATES:
+        assert gate_cmd in run_commands, f"expensive job must run `{gate_cmd}`"
 
 
-@pytest.mark.parametrize("job_name", sorted(UBUNTU_ONLY_JOBS))
-def test_non_test_jobs_remain_ubuntu_only(workflow: dict, job_name: str) -> None:
-    """Non-test jobs stay on ubuntu-latest and do not declare an OS matrix."""
+@pytest.mark.parametrize("job_name", sorted(METADATA_ONLY_JOBS))
+def test_metadata_jobs_run_on_ubuntu_without_matrix(workflow: dict, job_name: str) -> None:
+    """Metadata-only jobs run on ubuntu-latest without an OS matrix."""
     job = workflow["jobs"].get(job_name)
     assert job is not None, f"ci.yml must declare {job_name} job"
-    assert job["runs-on"] == "ubuntu-latest", f"{job_name} job must remain on ubuntu-latest"
+    assert job["runs-on"] == "ubuntu-latest", f"{job_name} job must run on ubuntu-latest"
     assert "strategy" not in job or "matrix" not in job.get("strategy", {}), (
         f"{job_name} job must not declare an OS matrix"
     )
 
 
+@pytest.mark.parametrize("job_name", sorted(WINDOWS_JOBS))
+def test_product_and_topology_jobs_run_on_windows(workflow: dict, job_name: str) -> None:
+    """Product validation and GSD topology jobs run on windows-latest."""
+    job = workflow["jobs"].get(job_name)
+    assert job is not None, f"ci.yml must declare {job_name} job"
+    assert job["runs-on"] == "windows-latest", f"{job_name} job must run on windows-latest"
+
+
 def test_topology_check_job_exists(workflow: dict) -> None:
     """ci.yml declares the pipeline-topology backstop job."""
     assert TOPOLOGY_JOB in workflow["jobs"], (
-        f"ci.yml must declare a {TOPOLOGY_JOB} job (autoharness pipeline-topology backstop)"
+        f"ci.yml must declare a {TOPOLOGY_JOB} job (GSD pipeline-topology backstop)"
     )
 
 
 def test_topology_check_is_ungated_by_changes(workflow: dict) -> None:
-    """The topology backstop runs on every commit, not just code changes.
-
-    The backstop guards harness/pipeline topology, which lives in Markdown and
-    config that the `changes` path filter deliberately classifies as docs-only.
-    Gating it behind `changes` would let a topology regression land unchecked.
-    """
+    """The topology backstop runs on every commit, not just code changes."""
     job = workflow["jobs"][TOPOLOGY_JOB]
     needs = job.get("needs", [])
     if isinstance(needs, str):
@@ -123,26 +117,32 @@ def test_topology_check_is_ungated_by_changes(workflow: dict) -> None:
 
 
 def test_topology_check_required_by_ci_gate(workflow: dict) -> None:
-    """`ci gate` depends on the topology backstop and aggregates its result."""
+    """`ci gate` depends on all upstream jobs and aggregates their results."""
     gate = workflow["jobs"]["ci-gate"]
-    assert TOPOLOGY_JOB in gate["needs"], (
-        f"ci-gate.needs must include {TOPOLOGY_JOB} so the backstop cannot be silently dropped"
-    )
+    assert gate.get("name") == "ci gate", "ci-gate job must report check name `ci gate`"
+    assert gate.get("if") == "always()", "ci-gate must set if: always()"
+    for dep in ("changes", "expensive", TOPOLOGY_JOB):
+        assert dep in gate["needs"], f"ci-gate.needs must include {dep}"
     steps = gate["steps"]
     aggregated = "\n".join(step.get("run", "") for step in steps)
+    assert "needs.changes.result" in aggregated
+    assert "needs.expensive.result" in aggregated
     assert f"needs['{TOPOLOGY_JOB}'].result" in aggregated, (
         f"ci-gate must aggregate needs['{TOPOLOGY_JOB}'].result; a needs entry alone "
         "does not fail the gate when the backstop fails"
     )
 
 
-def test_topology_check_pins_autoharness_version(workflow: dict) -> None:
-    """The backstop installs a pinned autoharness release, not floating latest."""
+def test_topology_check_pins_gsd_version_and_hashes(workflow: dict) -> None:
+    """The topology backstop installs a version- and SHA-256-pinned GSD release."""
     steps = workflow["jobs"][TOPOLOGY_JOB]["steps"]
-    installs = [s.get("run", "") for s in steps if "pip install autoharness" in s.get("run", "")]
-    assert installs, f"{TOPOLOGY_JOB} must install autoharness"
-    for command in installs:
-        assert "autoharness==" in command, (
-            "autoharness must be version-pinned so an upstream release cannot change "
-            f"the topology verdict for an unchanged commit, got {command.strip()!r}"
-        )
+    install_runs = [s.get("run", "") for s in steps if "gsd.exe" in s.get("run", "")]
+    assert install_runs, f"{TOPOLOGY_JOB} must install gsd.exe"
+    script = "\n".join(install_runs)
+    assert "$version = '" in script, "GSD install step must pin an explicit version"
+    assert "$exeHash = '" in script, "GSD install step must pin gsd.exe SHA-256"
+    assert "$bundleHash = '" in script, "GSD install step must pin gsd-assets.zip SHA-256"
+    assert "Get-FileHash" in script, "GSD install step must verify downloaded hashes"
+    assert any("ci-topology-check.sh" in s.get("run", "") for s in steps), (
+        f"{TOPOLOGY_JOB} must run scripts/ci-topology-check.sh"
+    )
