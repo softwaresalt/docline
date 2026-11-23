@@ -10,18 +10,19 @@ in the local test suite.
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any
 
 import pytest
 import yaml
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
-CI_WORKFLOW = REPO_ROOT / ".github" / "workflows" / "ci.yml"
+REPO_ROOT: Path = Path(__file__).resolve().parents[1]
+CI_WORKFLOW: Path = REPO_ROOT / ".github" / "workflows" / "ci.yml"
 
-EXPECTED_JOBS = {"changes", "expensive", "topology-check", "ci-gate"}
-METADATA_ONLY_JOBS = {"changes", "ci-gate"}
-WINDOWS_JOBS = {"expensive", "topology-check"}
-TOPOLOGY_JOB = "topology-check"
-REQUIRED_QUALITY_GATES = (
+EXPECTED_JOBS: set[str] = {"changes", "expensive", "topology-check", "ci-gate"}
+METADATA_ONLY_JOBS: set[str] = {"changes", "ci-gate"}
+WINDOWS_JOBS: set[str] = {"expensive", "topology-check"}
+TOPOLOGY_JOB: str = "topology-check"
+REQUIRED_QUALITY_GATES: tuple[str, ...] = (
     "uv run ruff check .",
     "uv run ruff format --check .",
     "uv run pyright src/",
@@ -31,13 +32,16 @@ REQUIRED_QUALITY_GATES = (
 
 
 @pytest.fixture(scope="module")
-def workflow() -> dict:
+def workflow() -> dict[str, Any]:
+    """Load and return the parsed CI workflow YAML mapping."""
     assert CI_WORKFLOW.exists(), f"missing {CI_WORKFLOW}"
     with CI_WORKFLOW.open("r", encoding="utf-8") as fh:
-        return yaml.safe_load(fh)
+        data = yaml.safe_load(fh)
+    assert isinstance(data, dict), f"{CI_WORKFLOW} must parse as a YAML mapping"
+    return data
 
 
-def test_ci_workflow_declares_four_job_shape(workflow: dict) -> None:
+def test_ci_workflow_declares_four_job_shape(workflow: dict[str, Any]) -> None:
     """ci.yml declares the GSD four-job pipeline shape."""
     assert "jobs" in workflow, "ci.yml must declare jobs"
     assert set(workflow["jobs"]) == EXPECTED_JOBS, (
@@ -45,7 +49,7 @@ def test_ci_workflow_declares_four_job_shape(workflow: dict) -> None:
     )
 
 
-def test_changes_job_uses_fail_closed_paths_filter(workflow: dict) -> None:
+def test_changes_job_uses_fail_closed_paths_filter(workflow: dict[str, Any]) -> None:
     """The changes job uses dorny/paths-filter with predicate-quantifier every."""
     changes_job = workflow["jobs"]["changes"]
     filter_steps = [
@@ -61,7 +65,7 @@ def test_changes_job_uses_fail_closed_paths_filter(workflow: dict) -> None:
         assert excluded in filters, f"changes filter must exclude {excluded}"
 
 
-def test_expensive_job_gated_on_changes_and_runs_all_gates(workflow: dict) -> None:
+def test_expensive_job_gated_on_changes_and_runs_all_gates(workflow: dict[str, Any]) -> None:
     """The expensive job is gated on changes.outputs.code and runs all quality gates."""
     expensive = workflow["jobs"]["expensive"]
     needs = expensive.get("needs", [])
@@ -77,7 +81,9 @@ def test_expensive_job_gated_on_changes_and_runs_all_gates(workflow: dict) -> No
 
 
 @pytest.mark.parametrize("job_name", sorted(METADATA_ONLY_JOBS))
-def test_metadata_jobs_run_on_ubuntu_without_matrix(workflow: dict, job_name: str) -> None:
+def test_metadata_jobs_run_on_ubuntu_without_matrix(
+    workflow: dict[str, Any], job_name: str
+) -> None:
     """Metadata-only jobs run on ubuntu-latest without an OS matrix."""
     job = workflow["jobs"].get(job_name)
     assert job is not None, f"ci.yml must declare {job_name} job"
@@ -88,21 +94,14 @@ def test_metadata_jobs_run_on_ubuntu_without_matrix(workflow: dict, job_name: st
 
 
 @pytest.mark.parametrize("job_name", sorted(WINDOWS_JOBS))
-def test_product_and_topology_jobs_run_on_windows(workflow: dict, job_name: str) -> None:
+def test_product_and_topology_jobs_run_on_windows(workflow: dict[str, Any], job_name: str) -> None:
     """Product validation and GSD topology jobs run on windows-latest."""
     job = workflow["jobs"].get(job_name)
     assert job is not None, f"ci.yml must declare {job_name} job"
     assert job["runs-on"] == "windows-latest", f"{job_name} job must run on windows-latest"
 
 
-def test_topology_check_job_exists(workflow: dict) -> None:
-    """ci.yml declares the pipeline-topology backstop job."""
-    assert TOPOLOGY_JOB in workflow["jobs"], (
-        f"ci.yml must declare a {TOPOLOGY_JOB} job (GSD pipeline-topology backstop)"
-    )
-
-
-def test_topology_check_is_ungated_by_changes(workflow: dict) -> None:
+def test_topology_check_is_ungated_by_changes(workflow: dict[str, Any]) -> None:
     """The topology backstop runs on every commit, not just code changes."""
     job = workflow["jobs"][TOPOLOGY_JOB]
     needs = job.get("needs", [])
@@ -116,7 +115,7 @@ def test_topology_check_is_ungated_by_changes(workflow: dict) -> None:
     )
 
 
-def test_topology_check_required_by_ci_gate(workflow: dict) -> None:
+def test_topology_check_required_by_ci_gate(workflow: dict[str, Any]) -> None:
     """`ci gate` depends on all upstream jobs and aggregates their results."""
     gate = workflow["jobs"]["ci-gate"]
     assert gate.get("name") == "ci gate", "ci-gate job must report check name `ci gate`"
@@ -133,7 +132,7 @@ def test_topology_check_required_by_ci_gate(workflow: dict) -> None:
     )
 
 
-def test_topology_check_pins_gsd_version_and_hashes(workflow: dict) -> None:
+def test_topology_check_pins_gsd_version_and_hashes(workflow: dict[str, Any]) -> None:
     """The topology backstop installs a version- and SHA-256-pinned GSD release."""
     steps = workflow["jobs"][TOPOLOGY_JOB]["steps"]
     install_runs = [s.get("run", "") for s in steps if "gsd.exe" in s.get("run", "")]
